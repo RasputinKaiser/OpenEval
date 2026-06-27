@@ -20,6 +20,7 @@ export default function CaseDetailClient({ caseId, runId, initial }: Props) {
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
     let cancelled = false;
+    const terminal = (status?: string) => !!status && ["passed", "failed", "error", "skipped"].includes(status);
 
     async function poll() {
       try {
@@ -29,21 +30,18 @@ export default function CaseDetailClient({ caseId, runId, initial }: Props) {
         if (data.case) {
           setRc(data.case);
           if (data.case.ended_at) lastEnd.current = data.case.ended_at;
+          if (!cancelled && !terminal(data.case.status)) timer = setTimeout(poll, 1200);
+          return;
         }
       } finally {
-        if (!cancelled && rc && !["passed", "failed", "error", "skipped"].includes(rc.status)) {
-          timer = setTimeout(poll, 1200);
-        } else if (!cancelled) {
-          // continue polling if still running
-          timer = setTimeout(poll, 2500);
-        }
+        if (!cancelled && !rc) timer = setTimeout(poll, 2500);
       }
     }
 
-    poll();
+    if (!terminal(initial?.status)) poll();
     return () => { cancelled = true; clearTimeout(timer); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [caseId, runId, rc?.status]);
+  }, [caseId, runId]);
 
   if (!rc) return <div className="p-8 text-fg-muted">Loading…</div>;
 

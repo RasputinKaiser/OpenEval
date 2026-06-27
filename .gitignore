@@ -6,6 +6,7 @@ dist
 .DS_Store
 .env
 .env.local
+.codex/
 data/
 runs/
 fixtures/**/node_modules

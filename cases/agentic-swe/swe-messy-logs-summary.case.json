@@ -59,6 +59,7 @@
   ],
   "pass_threshold": 0.7,
   "oracle": {
-    "solve": "oracle/swe-log-summary-adversarial.sh"
+    "solve": "oracle/swe-log-summary-adversarial.sh",
+    "noop_max_score": 0.34
   }
 }

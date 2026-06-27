@@ -109,7 +109,7 @@ export async function executeCase(
     model: modelOverride || runnerCfg.model,
     extraArgs: runnerCfg.extra_args ?? [],
     onEvent: (ev: any) => {
-      try { fs.appendFile(transcriptPath, JSON.stringify(ev) + "\n"); } catch {}
+      void fs.appendFile(transcriptPath, JSON.stringify(ev) + "\n").catch(() => {});
       if (ev.kind === "tool_use") appendEvent(runId, "tool_use", { case_id: def.id, sample, tool: ev.tool, id: ev.id }, def.id);
       else if (ev.kind === "tool_result") appendEvent(runId, "tool_result", { case_id: def.id, sample, id: ev.id, error: ev.isError }, def.id);
       else if (ev.kind === "message") appendEvent(runId, "assistant_message", { case_id: def.id, sample, text: (ev.message.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("").slice(0, 200)) }, def.id);

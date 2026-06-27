@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import clsx from "clsx";
-import { Check, ChevronDown, Cpu, Loader2, Search } from "lucide-react";
+import { Check, ChevronDown, Cpu, EyeOff, Image as ImageIcon, Loader2, Search } from "lucide-react";
 import type { ModelInfo } from "@/lib/models";
 
 interface Props {
@@ -62,6 +62,8 @@ export default function ModelPicker({ value, onChange }: Props) {
           {selected && (
             <span className="text-[10px] text-fg-dim mono px-1.5 py-0.5 rounded bg-bg-elev shrink-0">{selected.family}</span>
           )}
+          {selected?.capabilities.visualCodeOutput && <ImageIcon className="size-3 text-ok shrink-0" />}
+          {selected && !selected.capabilities.visionInput && <EyeOff className="size-3 text-fg-dim shrink-0" />}
         </span>
         <ChevronDown className="size-3.5 text-fg-dim shrink-0" />
       </button>
@@ -115,6 +117,14 @@ export default function ModelPicker({ value, onChange }: Props) {
                   >
                     {m.family}
                   </span>
+                  <span className="text-[9px] uppercase tracking-wider mono px-1.5 py-0.5 rounded shrink-0 bg-bg-elev text-fg-dim">
+                    {m.capabilities.visionInput ? "vision" : "blind"}
+                  </span>
+                  {m.capabilities.visualCodeOutput && (
+                    <span className="text-[9px] uppercase tracking-wider mono px-1.5 py-0.5 rounded shrink-0 bg-ok/10 text-ok">
+                      visual code
+                    </span>
+                  )}
                   {value === m.id && <Check className="size-3.5 text-accent-soft shrink-0" />}
                 </button>
               ))}

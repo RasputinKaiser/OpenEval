@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
+import { evidenceLabel, graderEvidenceTier } from "../accuracy";
 import type { CaseEvaluation, GraderResult, GraderSpec, RunnerResult } from "../types";
 
 function runShell(spec: { command: string; cwd?: string; env?: Record<string, string>; timeout_ms?: number }): Promise<{ code: number; stdout: string; stderr: string; durationMs: number; timedOut: boolean }> {
@@ -12,30 +13,36 @@ function runShell(spec: { command: string; cwd?: string; env?: Record<string, st
     const p = spawn("bash", ["-lc", spec.command], { cwd: spec.cwd, env });
     let out = "";
     let err = "";
+    let settled = false;
+    let timedOut = false;
+    const finish = (code: number, timedOutFlag = timedOut) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve({ code, stdout: out, stderr: err, durationMs: Date.now() - start, timedOut: timedOutFlag });
+    };
     p.stdout.on("data", (c) => (out += c.toString()));
     p.stderr.on("data", (c) => (err += c.toString()));
     const timer = setTimeout(() => {
+      timedOut = true;
       try { p.kill("SIGKILL"); } catch {}
+      setTimeout(() => finish(124, true), 1000);
     }, spec.timeout_ms ?? 30_000);
-    p.on("error", () => resolve({ code: 1, stdout: out, stderr: err, durationMs: Date.now() - start, timedOut: false }));
+    p.on("error", () => finish(1, timedOut));
     p.on("close", (code) => {
-      clearTimeout(timer);
-      resolve({ code: code ?? 0, stdout: out, stderr: err, durationMs: Date.now() - start, timedOut: false });
-    });
-    p.on("exit", (code, signal) => {
-      if (signal === "SIGKILL") {
-        // already resolved if timeout fired; otherwise resolve now
-      }
+      finish(timedOut ? 124 : code ?? 1, timedOut);
     });
   });
 }
 
 function ok(spec: GraderSpec, detail: string, durationMs: number, output?: string): GraderResult {
-  return { spec, passed: true, detail, durationMs, score: 1, output };
+  const evidenceTier = graderEvidenceTier(spec);
+  return { spec, passed: true, detail, durationMs, score: 1, evidenceTier, evidenceLabel: evidenceLabel(evidenceTier), output };
 }
 
 function fail(spec: GraderSpec, detail: string, durationMs: number, output?: string): GraderResult {
-  return { spec, passed: false, detail, durationMs, score: 0, output };
+  const evidenceTier = graderEvidenceTier(spec);
+  return { spec, passed: false, detail, durationMs, score: 0, evidenceTier, evidenceLabel: evidenceLabel(evidenceTier), output };
 }
 
 async function safeRead(p: string): Promise<string | null> {
@@ -51,6 +58,9 @@ export async function runGrader(
 
   if (spec.type === "exit_code" || spec.type === "tests_pass") {
     const res = await runShell({ command: spec.command, cwd: spec.cwd ? path.resolve(ctx.workdir, spec.cwd) : ctx.workdir, env: spec.env, timeout_ms: spec.timeout_ms });
+    if (res.timedOut) {
+      return fail(spec, `timeout after ${res.durationMs}ms`, dur(), `${res.stdout}\n${res.stderr}`.slice(0, 2000));
+    }
     if (spec.type === "exit_code") {
       return res.code === 0
         ? ok(spec, `exit=0 in ${res.durationMs}ms`, dur(), res.stdout)

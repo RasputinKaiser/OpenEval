@@ -30,6 +30,7 @@ export default function NewRunClient({ cases }: Props) {
   const visible = cases.filter((c) => filterCats.has(c.category) && (!filterDiff.size || filterDiff.has(c.difficulty || "untiered")) && (!filterTags.size || (c.tags ?? []).some((t) => filterTags.has(t))));
   const allSelected = visible.length > 0 && visible.every((c) => selected[c.id]);
   const selectedCount = Object.values(selected).filter(Boolean).length;
+  const plannedCaseCount = selectedCount > 0 ? selectedCount : visible.length;
 
   function toggleAll() {
     const next = { ...selected };
@@ -105,7 +106,7 @@ export default function NewRunClient({ cases }: Props) {
                 <input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder={`Run ${new Date().toLocaleString()}`}
+                  placeholder="Auto-generated if blank"
                   className="mt-1.5 w-full px-3 py-2 text-sm bg-bg border border-bd rounded-md focus:outline-none focus:border-accent"
                 />
               </div>
@@ -238,7 +239,7 @@ export default function NewRunClient({ cases }: Props) {
           <section className="card p-5 sticky top-4">
             <div className="text-xs text-fg-muted mb-3">Run summary</div>
             <dl className="space-y-2 text-sm">
-              <Row label="Cases" value={samples > 1 ? `${visible.length} × ${samples} = ${visible.length * samples}` : `${visible.length} (filtered)`} />
+              <Row label="Cases" value={samples > 1 ? `${plannedCaseCount} × ${samples} = ${plannedCaseCount * samples}` : selectedCount > 0 ? `${selectedCount} selected` : `${visible.length} filtered`} />
               <Row label="Runner" value={runner} />
               <Row label="Model" value={model || "default"} />
               <Row label="Parallel" value={`${parallel}×`} />

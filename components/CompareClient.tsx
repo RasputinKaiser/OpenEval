@@ -50,7 +50,7 @@ export default function CompareClient({ runs, initialA, initialB }: Props) {
           aCost: ca?.runner_result?.usage.costUsd ?? 0,
           bCost: cb?.runner_result?.usage.costUsd ?? 0,
           aTurns: ca?.runner_result?.numTurns ?? 0,
-          bTurns: ca?.runner_result?.numTurns ?? 0,
+          bTurns: cb?.runner_result?.numTurns ?? 0,
           aModel: ca?.runner_result?.model, bModel: cb?.runner_result?.model,
         });
       }
@@ -92,6 +92,19 @@ export default function CompareClient({ runs, initialA, initialB }: Props) {
 
       {loading && <div className="text-sm text-fg-muted mb-4 flex items-center gap-2"><Loader2 className="size-3.5 animate-spin" /> Loading diff…</div>}
 
+      {runs.length < 2 && (
+        <section className="card p-10 text-center">
+          <div className="text-sm text-fg-muted">Create at least two runs to compare regressions and performance deltas.</div>
+          <Link href="/runs/new" className="mt-3 inline-flex text-xs text-accent-soft hover:underline">Start another run</Link>
+        </section>
+      )}
+
+      {a && b && a === b && (
+        <section className="card p-6 text-center text-sm text-fg-muted">
+          Pick two different runs to compute a useful diff.
+        </section>
+      )}
+
       {a && b && a !== b && rows.length > 0 && (
         <>
           <div className="flex gap-3 mb-3 text-xs">
@@ -123,9 +136,9 @@ export default function CompareClient({ runs, initialA, initialB }: Props) {
                         </td>
                         <td className="px-4 py-2"><StatusPill status={r.aStatus} /></td>
                         <td className="px-4 py-2"><StatusPill status={r.bStatus} /></td>
-                        <td className="px-4 py-2 text-right mono">{fmtDelta(r.bTokPerSec - r.aTokPerSec, 1)}</td>
-                        <td className="px-4 py-2 text-right mono">${(r.bCost - r.aCost).toFixed(4)}</td>
-                        <td className="px-4 py-2 text-right mono">{r.bTurns - r.aTurns > 0 ? "+" : ""}{r.bTurns - r.aTurns}</td>
+                        <td className="px-4 py-2 text-right mono"><DeltaText value={r.bTokPerSec - r.aTokPerSec} digits={1} higherIsBetter /></td>
+                        <td className="px-4 py-2 text-right mono"><DeltaText value={r.bCost - r.aCost} digits={4} prefix="$" lowerIsBetter /></td>
+                        <td className="px-4 py-2 text-right mono"><DeltaText value={r.bTurns - r.aTurns} digits={0} lowerIsBetter /></td>
                       </tr>
                     );
                   })}
@@ -156,6 +169,13 @@ function StatusPill({ status }: { status: string | null }) {
   const c = status === "passed" ? "text-ok" : status === "failed" || status === "error" ? "text-err" : "text-fg-muted";
   const sym = status === "passed" ? "" : status === "failed" || status === "error" ? "" : "•";
   return <span className={clsx("text-xs mono", c)}>{sym} {status}</span>;
+}
+
+function DeltaText({ value, digits, prefix = "", higherIsBetter, lowerIsBetter }: { value: number; digits: number; prefix?: string; higherIsBetter?: boolean; lowerIsBetter?: boolean }) {
+  let tone = "text-fg-muted";
+  if (higherIsBetter) tone = value > 0 ? "text-ok" : value < 0 ? "text-err" : "text-fg-muted";
+  if (lowerIsBetter) tone = value < 0 ? "text-ok" : value > 0 ? "text-err" : "text-fg-muted";
+  return <span className={tone}>{value > 0 ? "+" : ""}{prefix}{value.toFixed(digits)}</span>;
 }
 
 function Delta({ label, a, b, aVal, bVal, higherIsBetter, lowerIsBetter }: { label: string; a: string; b: string; aVal: number; bVal: number; higherIsBetter?: boolean; lowerIsBetter?: boolean }) {

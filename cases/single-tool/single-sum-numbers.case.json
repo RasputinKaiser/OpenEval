@@ -12,5 +12,8 @@
     { "type": "file_exists", "path": "sum.txt" },
     { "type": "file_eq", "path": "sum.txt", "expected": "297", "trim": true }
   ],
-  "pass_threshold": 1.0
+  "pass_threshold": 1.0,
+  "oracle": {
+    "solve": "oracle/single-sum-numbers.sh"
+  }
 }

@@ -33,6 +33,7 @@ export default function BenchClient({ runId, runName }: Props) {
         setTelemetry(r.telemetry);
         setPerCase(r.perCase || []);
       } finally {
+        if (!cancelled) setLoading(false);
         if (!cancelled) t = setTimeout(poll, 3000);
       }
     };

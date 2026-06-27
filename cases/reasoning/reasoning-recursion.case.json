@@ -12,5 +12,8 @@
     { "type": "regex_match", "pattern": "itself", "source": "final_text" },
     { "type": "regex_match", "pattern": "function|method|calls?|itself|subproblem", "source": "final_text" }
   ],
-  "pass_threshold": 1.0
+  "pass_threshold": 1.0,
+  "oracle": {
+    "final_text": "Recursion is when a function calls itself to solve smaller subproblems."
+  }
 }

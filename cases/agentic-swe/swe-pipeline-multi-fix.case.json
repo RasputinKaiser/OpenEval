@@ -58,6 +58,7 @@
   ],
   "pass_threshold": 0.8,
   "oracle": {
-    "solve": "oracle/swe-pipeline-multi-fix.sh"
+    "solve": "oracle/swe-pipeline-multi-fix.sh",
+    "noop_max_score": 0.2
   }
 }

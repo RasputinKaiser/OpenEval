@@ -2,7 +2,7 @@ import Link from "next/link";
 import { listRuns } from "@/lib/db";
 import { loadCases } from "@/lib/cases";
 import StatusBadge from "@/components/StatusBadge";
-import { Activity, ArrowRight, CheckCircle2, Cpu, DollarSign, FileText, Timer } from "lucide-react";
+import { Activity, ArrowRight, BarChart3, CheckCircle2, Cpu, DollarSign, FileText, Timer } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -66,12 +66,12 @@ export default async function Page() {
           ) : (
             <div className="space-y-1.5">
               {runs.map((r) => (
-                <Link key={r.id} href={`/runs/${r.id}`} className="block px-3 py-2.5 rounded-md hover:bg-bg-elev transition-colors">
-                  <div className="flex items-center justify-between gap-3">
+                <div key={r.id} className="px-3 py-2.5 rounded-md hover:bg-bg-elev transition-colors">
+                  <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3">
                     <div className="min-w-0">
-                      <div className="font-medium text-sm truncate">{r.name}</div>
+                      <Link href={`/runs/${r.id}`} className="font-medium text-sm truncate block hover:text-accent-soft">{r.name}</Link>
                       <div className="text-[11px] text-fg-dim mono mt-0.5">
-                        {new Date(r.created_at).toLocaleString()} · {r.params.runner} · {r.params.parallel}×
+                        {new Date(r.created_at).toLocaleString()} · {r.params.runner} · {r.params.parallel}×{r.params.samples && r.params.samples > 1 ? ` · ${r.params.samples} samples` : ""}
                       </div>
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
@@ -87,8 +87,11 @@ export default async function Page() {
                       )}
                       <StatusBadge status={r.status} />
                     </div>
+                    <Link href={`/runs/${r.id}/bench`} className="text-fg-dim hover:text-accent-soft" aria-label={`Open bench for ${r.name}`}>
+                      <BarChart3 className="size-4" />
+                    </Link>
                   </div>
-                </Link>
+                </div>
               ))}
             </div>
           )}

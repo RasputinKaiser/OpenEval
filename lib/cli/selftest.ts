@@ -37,16 +37,32 @@ async function main() {
 
   console.log(`Self-test: ${cases.length} cases\n`);
   for (const def of cases) {
-    if (!def.oracle?.solve) {
+    const noop = await prepareWorkdir(tmpRun, `${def.id}-noop`, def, 0);
+    const noopRunner = emptyRunnerResult();
+    const noopResults = [];
+    for (const spec of def.graders) {
+      const r = await runGrader(spec, { workdir: noop.dir, runner: noopRunner, transcriptText: "", fixtureSrc: noop.fixtureSrc });
+      noopResults.push(r);
+    }
+    const noopEval = evaluate(noopResults, def.pass_threshold ?? 1);
+    const noopMax = def.oracle?.noop_max_score ?? 0;
+    if (noopEval.passed || noopEval.passRatio > noopMax) {
+      fail++;
+      failures.push(`${def.id}: no-op baseline scored ${noopEval.passRatio.toFixed(2)} (max ${noopMax})`);
+      console.log(`  FAIL  ${def.id.padEnd(36)} no-op baseline was accepted`);
+      continue;
+    }
+
+    if (!def.oracle?.solve && !def.oracle?.final_text) {
       skip++;
-      console.log(`  SKIP  ${def.id.padEnd(36)} (no oracle)`);
+      console.log(`  SKIP  ${def.id.padEnd(36)} noop:reject  (no oracle)`);
       continue;
     }
     const { dir, fixtureSrc } = await prepareWorkdir(tmpRun, def.id, def, 0);
-    const scriptPath = path.resolve("cases", def.category, def.oracle.solve);
+    const scriptPath = def.oracle.solve ? path.resolve("cases", def.category, def.oracle.solve) : null;
     let oracleOk = true;
     let oracleErr = "";
-    try {
+    if (scriptPath) try {
       execSync(`bash ${JSON.stringify(scriptPath)}`, { cwd: dir, stdio: "pipe", timeout: 30_000 });
     } catch (e: any) {
       oracleOk = false;
@@ -59,6 +75,10 @@ async function main() {
       continue;
     }
     const runner = emptyRunnerResult();
+    if (def.oracle.final_text) {
+      runner.finalText = def.oracle.final_text;
+      runner.resultText = def.oracle.final_text;
+    }
     const transcriptText = "";
     const results = [];
     for (const spec of def.graders) {

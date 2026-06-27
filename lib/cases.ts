@@ -35,7 +35,14 @@ const CaseSchema = z.object({
   }).optional(),
   oracle: z.object({
     solve: z.string().optional(),
+    final_text: z.string().optional(),
     noop_max_score: z.number().optional(),
+    known_bad: z.array(z.string()).optional(),
+  }).optional(),
+  visual: z.object({
+    kind: z.enum(["svg", "threejs", "web_ui", "app_ui", "screenshot"]),
+    requires_vision_input: z.boolean().optional(),
+    expected_artifacts: z.array(z.string()).optional(),
   }).optional(),
   graders: z.array(z.any()).nonempty(),
   pass_threshold: z.number().optional(),

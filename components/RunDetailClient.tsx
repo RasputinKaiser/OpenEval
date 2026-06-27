@@ -14,7 +14,7 @@ interface Props { runId: string; initialCases: RunCaseRecord[]; running: boolean
 
 export default function RunDetailClient({ runId, initialCases, running }: Props) {
   const [cases, setCases] = useState<RunCaseRecord[]>(initialCases);
-  const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
+  const [selectedIdx, setSelectedIdx] = useState<number | null>(initialCases.length ? 0 : null);
   const [live, setLive] = useState(running);
   const lastSig = useRefSig(cases);
 
@@ -95,7 +95,7 @@ export default function RunDetailClient({ runId, initialCases, running }: Props)
       </section>
 
       <section>
-        {selectedIdx === null ? (
+        {selectedIdx === null || !cases[selectedIdx] ? (
           <div className="card p-12 text-center">
             <CircleDot className="size-8 text-fg-dim mx-auto mb-2" />
             <div className="text-sm text-fg-muted">Select a case to view details</div>

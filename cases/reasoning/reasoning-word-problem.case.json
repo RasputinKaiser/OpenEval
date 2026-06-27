@@ -11,5 +11,8 @@
   "graders": [
     { "type": "regex_match", "pattern": "11:00pm|11pm|23:00", "source": "final_text" }
   ],
-  "pass_threshold": 1.0
+  "pass_threshold": 1.0,
+  "oracle": {
+    "final_text": "11:00pm"
+  }
 }

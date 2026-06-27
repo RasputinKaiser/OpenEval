@@ -28,6 +28,8 @@ export type GraderSpecVariant =
 
 export type GraderSpec = GraderSpecVariant & { forbidden?: boolean };
 
+export type EvidenceTier = "deterministic" | "trace" | "visual" | "llm_judge" | "manual";
+
 export interface CaseDefinition {
   id: string;
   category: Category;
@@ -58,7 +60,14 @@ export interface CaseDefinition {
   };
   oracle?: {
     solve?: string;
+    final_text?: string;
     noop_max_score?: number;
+    known_bad?: string[];
+  };
+  visual?: {
+    kind: "svg" | "threejs" | "web_ui" | "app_ui" | "screenshot";
+    requires_vision_input?: boolean;
+    expected_artifacts?: string[];
   };
   graders: GraderSpec[];
   pass_threshold?: number;
@@ -169,6 +178,8 @@ export interface GraderResult {
   detail: string;
   durationMs: number;
   score: number;
+  evidenceTier?: EvidenceTier;
+  evidenceLabel?: string;
   output?: string;
 }
 

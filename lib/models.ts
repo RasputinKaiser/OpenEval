@@ -8,6 +8,11 @@ export interface ModelInfo {
   family: string;
   source: "config" | "alias" | "default";
   contextWindow?: number;
+  capabilities: {
+    visionInput: boolean;
+    visualCodeOutput: boolean;
+    notes?: string;
+  };
   isAlias?: boolean;
 }
 
@@ -53,12 +58,31 @@ function labelFromId(id: string): string {
 
 let cache: ModelInfo[] | null = null;
 
+function capabilitiesForFamily(family: string, id: string): ModelInfo["capabilities"] {
+  const l = id.toLowerCase();
+  if (family === "glm") {
+    return {
+      visionInput: false,
+      visualCodeOutput: true,
+      notes: "Text-only model; still suitable for SVG, Three.js, web UI, and app UI generation tasks.",
+    };
+  }
+  if (family === "gemini" || l.includes("vision") || l.includes("multimodal")) {
+    return { visionInput: true, visualCodeOutput: true };
+  }
+  return { visionInput: false, visualCodeOutput: true };
+}
+
+function modelInfo(input: Omit<ModelInfo, "capabilities">): ModelInfo {
+  return { ...input, capabilities: capabilitiesForFamily(input.family, input.id) };
+}
+
 export function discoverModels(): ModelInfo[] {
   if (cache) return cache;
   const found = new Map<string, ModelInfo>();
 
   for (const a of KNOWN_ALIASES) {
-    found.set(a.id, { id: a.id, label: a.label, family: a.family, source: "alias", isAlias: true });
+    found.set(a.id, modelInfo({ id: a.id, label: a.label, family: a.family, source: "alias", isAlias: true }));
   }
 
   const cfg = ncodeConfigPath();
@@ -72,23 +96,23 @@ export function discoverModels(): ModelInfo[] {
         for (const [modelId, stats] of Object.entries(usage)) {
           const s = (stats || {}) as any;
           if (found.has(modelId)) continue;
-          found.set(modelId, {
+          found.set(modelId, modelInfo({
             id: modelId,
             label: labelFromId(modelId),
             family: familyFromId(modelId),
             source: "config",
             contextWindow: s.contextWindow,
-          });
+          }));
         }
       }
       const teammateDefault = data.teammateDefaultModel;
       if (teammateDefault && !found.has(teammateDefault)) {
-        found.set(teammateDefault, {
+        found.set(teammateDefault, modelInfo({
           id: teammateDefault,
           label: labelFromId(teammateDefault),
           family: familyFromId(teammateDefault),
           source: "default",
-        });
+        }));
       }
     } catch {}
   }

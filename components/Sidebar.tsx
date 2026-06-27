@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Activity, FileText, GitCompareArrows, LayoutDashboard, Radio, Plus, Terminal } from "lucide-react";
+import { Activity, FileText, GitCompareArrows, LayoutDashboard, Radio, Plus, ShieldCheck, Terminal } from "lucide-react";
 import clsx from "clsx";
 
 const NAV = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/runs", label: "Runs", icon: Activity },
   { href: "/runs/compare", label: "Compare", icon: GitCompareArrows },
+  { href: "/accuracy", label: "Accuracy", icon: ShieldCheck },
   { href: "/live", label: "Live", icon: Radio },
   { href: "/cases", label: "Cases", icon: FileText },
   { href: "/runs/new", label: "New Run", icon: Plus },
@@ -31,7 +32,7 @@ export default function Sidebar() {
       </div>
       <nav className="flex-1 p-2 space-y-0.5">
         {NAV.map((item) => {
-          const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+          const active = isActive(pathname, item.href);
           const Icon = item.icon;
           return (
             <Link
@@ -54,4 +55,10 @@ export default function Sidebar() {
       </div>
     </aside>
   );
+}
+
+function isActive(pathname: string, href: string): boolean {
+  if (href === "/") return pathname === "/";
+  if (href === "/runs") return pathname === "/runs" || /^\/runs\/(?!new(?:\/|$)|compare(?:\/|$))[^/]+/.test(pathname);
+  return pathname === href || pathname.startsWith(`${href}/`);
 }

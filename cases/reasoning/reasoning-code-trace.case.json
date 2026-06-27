@@ -11,5 +11,8 @@
   "graders": [
     { "type": "regex_match", "pattern": "\\b60\\b", "source": "final_text" }
   ],
-  "pass_threshold": 1.0
+  "pass_threshold": 1.0,
+  "oracle": {
+    "final_text": "60"
+  }
 }
