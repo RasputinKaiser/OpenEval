@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Play, Check, Filter } from "lucide-react";
+import { Loader2, Play, Check, Filter, Cpu } from "lucide-react";
 import clsx from "clsx";
 import type { CaseDefinition } from "@/lib/types";
+import ModelPicker from "./ModelPicker";
 
 interface Props { cases: CaseDefinition[]; }
 
@@ -15,6 +16,7 @@ export default function NewRunClient({ cases }: Props) {
   const [runner, setRunner] = useState<"headless" | "tmux">("headless");
   const [parallel, setParallel] = useState(1);
   const [name, setName] = useState("");
+  const [model, setModel] = useState<string | undefined>(undefined);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [filterCats, setFilterCats] = useState<Set<string>>(new Set(cases.map((c) => c.category)));
   const [submitting, setSubmitting] = useState(false);
@@ -58,6 +60,7 @@ export default function NewRunClient({ cases }: Props) {
           name: name || undefined,
           runner,
           parallel,
+          model,
           caseIds,
           categories: useSelection ? undefined : Array.from(filterCats),
           tags: useSelection ? undefined : Array.from(filterTags),
@@ -123,6 +126,14 @@ export default function NewRunClient({ cases }: Props) {
                   </button>
                 ))}
               </div>
+            </div>
+
+            <div className="mt-4">
+              <label className="text-[11px] uppercase tracking-wider text-fg-muted">Model</label>
+              <div className="mt-1.5">
+                <ModelPicker value={model} onChange={setModel} />
+              </div>
+              <div className="text-[10px] text-fg-dim mt-1.5">Discovered from your Noumena Code profile. Leave default to let ncode pick.</div>
             </div>
           </section>
 
@@ -197,6 +208,7 @@ export default function NewRunClient({ cases }: Props) {
             <dl className="space-y-2 text-sm">
               <Row label="Cases" value={selectedCount > 0 ? `${selectedCount} selected` : `${visible.length} (filtered)`} />
               <Row label="Runner" value={runner} />
+              <Row label="Model" value={model || "default"} />
               <Row label="Parallel" value={`${parallel}×`} />
             </dl>
             <button

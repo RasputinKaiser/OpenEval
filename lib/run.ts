@@ -12,6 +12,7 @@ export interface CreateRunParams {
   name?: string;
   runner: RunnerKind;
   parallel: number;
+  model?: string;
   filter?: { caseIds?: string[]; categories?: string[]; tags?: string[] };
 }
 
@@ -26,14 +27,13 @@ export async function createAndStartRun(params: CreateRunParams): Promise<{ id: 
     status: "running" as const,
     created_at: Date.now(),
     ended_at: null,
-    params: { runner: params.runner, parallel: params.parallel, filter: params.filter },
+    params: { runner: params.runner, parallel: params.parallel, model: params.model, filter: params.filter },
     summary: null,
   };
   insertRun(run);
-  appendEvent(id, "run_started", { case_count: cases.length, runner: params.runner }, undefined);
+  appendEvent(id, "run_started", { case_count: cases.length, runner: params.runner, model: params.model }, undefined);
 
-  // fire and forget — runs in background, writes to db
-  void runLoop(id, cases, params.runner, params.parallel).catch((e) => {
+  void runLoop(id, cases, params.runner, params.parallel, params.model).catch((e) => {
     appendEvent(id, "run_fatal", { error: String(e?.stack || e) }, undefined);
     updateRunStatus(id, "failed", Date.now(), null);
   });
@@ -41,7 +41,7 @@ export async function createAndStartRun(params: CreateRunParams): Promise<{ id: 
   return { id, caseCount: cases.length };
 }
 
-async function runLoop(runId: string, cases: CaseDefinition[], runner: RunnerKind, parallel: number) {
+async function runLoop(runId: string, cases: CaseDefinition[], runner: RunnerKind, parallel: number, model?: string) {
   const queue = cases.map((c, i) => ({ def: c, seq: i + 1 }));
   const inflight: Promise<unknown>[] = [];
   const parallelN = Math.max(1, parallel);
@@ -50,7 +50,7 @@ async function runLoop(runId: string, cases: CaseDefinition[], runner: RunnerKin
     while (queue.length) {
       const item = queue.shift();
       if (!item) break;
-      await executeCase(runId, item.def, runner, item.seq);
+      await executeCase(runId, item.def, runner, item.seq, model);
     }
   }
 

@@ -42,6 +42,7 @@ export class TmuxRunner implements Runner {
     emit(ctx, { kind: "started", at: startedAt });
 
     const acc = {
+      startedAt,
       transcript: [] as TranscriptEntry[],
       toolCalls: [] as RunnerResult["toolCalls"],
       finalText: "",
@@ -94,7 +95,7 @@ export class TmuxRunner implements Runner {
 
 function fail(
   ctx: RunnerContext,
-  acc: { transcript: TranscriptEntry[]; toolCalls: RunnerResult["toolCalls"]; finalText: string; result: Partial<RunnerResult> | null },
+  acc: { startedAt: number; transcript: TranscriptEntry[]; toolCalls: RunnerResult["toolCalls"]; finalText: string; result: Partial<RunnerResult> | null },
   startedAt: number,
   message: string,
 ): RunnerResult {
@@ -103,6 +104,8 @@ function fail(
   return {
     exitCode: 1,
     durationMs,
+    startedAt,
+    endedAt: Date.now(),
     transcript: acc.transcript,
     toolCalls: acc.toolCalls,
     finalText: acc.finalText || message,
@@ -114,5 +117,7 @@ function fail(
     model: acc.result?.model ?? null,
     isError: true,
     rawJson: null,
+    tokenSegments: [],
+    toolCallCounts: {},
   };
 }

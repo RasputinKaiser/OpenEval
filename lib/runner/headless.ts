@@ -32,6 +32,7 @@ export class HeadlessRunner implements Runner {
       let stdoutBuf = "";
       let stderrBuf = "";
       const acc = {
+        startedAt,
         transcript: [] as TranscriptEntry[],
         toolCalls: [] as RunnerResult["toolCalls"],
         finalText: "",
@@ -95,7 +96,7 @@ export class HeadlessRunner implements Runner {
 
 function failure(
   ctx: RunnerContext,
-  acc: { transcript: TranscriptEntry[]; toolCalls: RunnerResult["toolCalls"]; finalText: string; result: Partial<RunnerResult> | null },
+  acc: { startedAt: number; transcript: TranscriptEntry[]; toolCalls: RunnerResult["toolCalls"]; finalText: string; result: Partial<RunnerResult> | null },
   startedAt: number,
   info: { exitCode: number; durationMs: number; stderr: string; error?: string }
 ): RunnerResult {
@@ -106,6 +107,8 @@ function failure(
   return {
     exitCode: info.exitCode,
     durationMs: info.durationMs,
+    startedAt,
+    endedAt: Date.now(),
     transcript: acc.transcript,
     toolCalls: acc.toolCalls,
     finalText: acc.finalText || msg,
@@ -117,5 +120,7 @@ function failure(
     model: acc.result?.model ?? null,
     isError: true,
     rawJson: null,
+    tokenSegments: [],
+    toolCallCounts: {},
   };
 }

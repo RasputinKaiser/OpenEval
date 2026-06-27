@@ -12,6 +12,7 @@ export function emit(ctx: RunnerContext, ev: RunnerEvent): void {
 export function parseStreamLine(
   line: string,
   into: {
+    startedAt: number;
     transcript: TranscriptEntry[];
     toolCalls: RunnerResult["toolCalls"];
     finalText: string;
@@ -33,6 +34,8 @@ export function parseStreamLine(
       ...(into.result || {}),
       exitCode: 0,
       durationMs: 0,
+      startedAt: into.startedAt,
+      endedAt: null,
       transcript: into.transcript,
       toolCalls: into.toolCalls,
       finalText: "",
@@ -44,6 +47,8 @@ export function parseStreamLine(
       model: obj.model ?? null,
       isError: false,
       rawJson: null,
+      tokenSegments: [],
+      toolCallCounts: {},
     };
     return events;
   }
@@ -57,21 +62,17 @@ export function parseStreamLine(
         events.push({ kind: "tool_use", tool: b.name, input: b.input, id: b.id, at });
         return tu;
       }
-      if (b.type === "tool_result")
-        return {
-          type: "tool_result",
-          tool_use_id: b.tool_use_id,
-          content: typeof b.content === "string" ? b.content : JSON.stringify(b.content ?? ""),
-          is_error: !!b.is_error,
-        };
+      if (b.type === "tool_result") return {
+        type: "tool_result",
+        tool_use_id: b.tool_use_id,
+        content: typeof b.content === "string" ? b.content : JSON.stringify(b.content ?? ""),
+        is_error: !!b.is_error,
+      };
       return b;
     });
-    const entry: TranscriptEntry = { role: "assistant", content: blocks, uuid: obj.uuid };
+    const text = blocks.filter((b: any) => b.type === "text").map((b: any) => b.text).join("");
+    const entry: TranscriptEntry = { role: "assistant", content: blocks, uuid: obj.uuid, atMs: at, textLen: text.length };
     into.transcript.push(entry);
-    const text = blocks
-      .filter((b: any) => b.type === "text")
-      .map((b: any) => b.text)
-      .join("");
     if (text) {
       into.finalText = text;
       events.push({ kind: "message", message: entry, at });
@@ -80,6 +81,7 @@ export function parseStreamLine(
   }
 
   if (obj.type === "user" && Array.isArray(obj.message?.content)) {
+    const toolStartMap = (into as any)._toolStartMap || ((into as any)._toolStartMap = {});
     const blocks = obj.message.content.map((b: any) => {
       if (b.type === "tool_result") {
         const content = typeof b.content === "string"
@@ -91,28 +93,53 @@ export function parseStreamLine(
         if (tc) {
           tc.output = content;
           tc.isError = !!b.is_error;
+          const started = toolStartMap[b.tool_use_id];
+          if (started) tc.durationMs = at - started;
         }
-        events.push({
-          kind: "tool_result",
-          id: b.tool_use_id,
-          output: content,
-          isError: !!b.is_error,
-          at,
-        });
+        events.push({ kind: "tool_result", id: b.tool_use_id, output: content, isError: !!b.is_error, at });
         return { type: "tool_result", tool_use_id: b.tool_use_id, content, is_error: !!b.is_error };
       }
       return b;
     });
-    into.transcript.push({ role: "user", content: blocks, uuid: obj.uuid });
+    into.transcript.push({ role: "user", content: blocks, uuid: obj.uuid, atMs: at });
     return events;
   }
 
   if (obj.type === "result") {
     const usage = obj.usage || {};
+    const toolCallCounts: Record<string, number> = {};
+    for (const tc of into.toolCalls) toolCallCounts[tc.name] = (toolCallCounts[tc.name] || 0) + 1;
+    const segs: any[] = [];
+    const finalDur = (obj.duration_ms ?? 0) || 1;
+    const totalOut = usage.output_tokens ?? 0;
+    const totalIn = usage.input_tokens ?? 0;
+    const cumulativeBy = (into.transcript.filter((m) => m.role === "assistant")).length;
+    if (cumulativeBy > 1) {
+      const outStep = Math.floor(totalOut / Math.max(cumulativeBy, 1));
+      const inStep = Math.floor(totalIn / Math.max(cumulativeBy, 1));
+      let tIdx = 0;
+      for (const m of into.transcript) {
+        if (m.role !== "assistant") continue;
+        tIdx++;
+        const elapsedFromPrev = 1;
+        segs.push({
+          atMs: m.atMs ?? into.startedAt,
+          cumulativeInput: inStep * tIdx,
+          cumulativeOutput: outStep * tIdx,
+          deltaOutput: outStep,
+          deltaInput: inStep,
+          outTokPerSec: outStep / elapsedFromPrev,
+        });
+      }
+    } else if (totalOut > 0) {
+      segs.push({ atMs: into.startedAt, cumulativeInput: totalIn, cumulativeOutput: totalOut, deltaOutput: totalOut, deltaInput: totalIn, outTokPerSec: totalOut / (finalDur / 1000) });
+    }
     into.result = {
       ...(into.result || {}),
       exitCode: obj.is_error ? 1 : 0,
       durationMs: obj.duration_ms ?? 0,
+      startedAt: into.startedAt,
+      endedAt: into.startedAt + (obj.duration_ms ?? 0),
       transcript: into.transcript,
       toolCalls: into.toolCalls,
       finalText: into.finalText,
@@ -130,6 +157,8 @@ export function parseStreamLine(
       model: into.result?.model ?? null,
       isError: !!obj.is_error,
       rawJson: obj,
+      tokenSegments: segs,
+      toolCallCounts,
     };
     return events;
   }

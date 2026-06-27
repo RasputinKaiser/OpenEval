@@ -73,13 +73,26 @@ export interface TranscriptEntry {
     | { type: "tool_result"; tool_use_id: string; content: string; is_error?: boolean }
   >;
   uuid?: string;
+  atMs?: number;
+  textLen?: number;
+}
+
+export interface TokenSegment {
+  atMs: number;
+  cumulativeInput: number;
+  cumulativeOutput: number;
+  deltaOutput: number;
+  deltaInput: number;
+  outTokPerSec: number;
 }
 
 export interface RunnerResult {
   exitCode: number;
   durationMs: number;
+  startedAt: number | null;
+  endedAt: number | null;
   transcript: TranscriptEntry[];
-  toolCalls: Array<{ id: string; name: string; input?: unknown; output?: string; isError?: boolean; atMs?: number }>;
+  toolCalls: Array<{ id: string; name: string; input?: unknown; output?: string; isError?: boolean; atMs?: number; durationMs?: number }>;
   finalText: string;
   resultText: string;
   usage: {
@@ -95,6 +108,35 @@ export interface RunnerResult {
   model: string | null;
   isError: boolean;
   rawJson: unknown;
+  tokenSegments: TokenSegment[];
+  toolCallCounts: Record<string, number>;
+}
+
+export interface CaseTelemetry {
+  tokPerSec: number;
+  inTokPerSec: number;
+  toolCallCount: number;
+  toolCallCounts: Record<string, number>;
+  errorCount: number;
+  cacheHitRate: number;
+  tokensPerCase: number;
+  costPerCase: number;
+  msPerTurn: number;
+  msPerTool: number;
+}
+
+export interface RunTelemetry {
+  p50DurationMs: number;
+  p95DurationMs: number;
+  p50TokPerSec: number;
+  maxTokPerSec: number;
+  avgTokPerSec: number;
+  totalToolCalls: number;
+  topTools: Array<{ name: string; count: number }>;
+  cacheHitRate: number;
+  errorRate: number;
+  avgTurns: number;
+  perCase: Array<{ caseId: string; caseName: string; tokPerSec: number; inTokPerSec: number; durationMs: number; costUsd: number; tokens: number; passed: boolean }>;
 }
 
 export interface GraderResult {
@@ -141,6 +183,7 @@ export interface RunRecord {
   params: {
     runner: RunnerKind;
     parallel: number;
+    model?: string;
     filter?: { caseIds?: string[]; categories?: string[]; tags?: string[] };
   };
   summary: RunSummary | null;

@@ -58,7 +58,8 @@ export async function executeCase(
   runId: string,
   def: CaseDefinition,
   runnerKind: RunnerKind,
-  seq: number
+  seq: number,
+  modelOverride?: string
 ): Promise<RunCaseRecord> {
   const rcId = randomUUID();
   const workdir = await prepareWorkdir(runId, def.id, def);
@@ -94,7 +95,7 @@ export async function executeCase(
     maxTurns: runnerCfg.max_turns ?? 25,
     timeoutMs: (runnerCfg.timeout_seconds ?? 300) * 1000,
     permissionMode: runnerCfg.permission_mode ?? "bypassPermissions",
-    model: runnerCfg.model,
+    model: modelOverride || runnerCfg.model,
     extraArgs: runnerCfg.extra_args ?? [],
     onEvent: (ev: any) => {
       try { fs.appendFile(transcriptPath, JSON.stringify(ev) + "\n"); } catch {}
@@ -111,6 +112,8 @@ export async function executeCase(
     runnerResult = {
       exitCode: 1,
       durationMs: 0,
+      startedAt: Date.now(),
+      endedAt: Date.now(),
       transcript: [],
       toolCalls: [],
       finalText: "",
@@ -119,9 +122,11 @@ export async function executeCase(
       numTurns: 0,
       stopReason: null,
       sessionId: null,
-      model: null,
+      model: modelOverride || runnerCfg.model || null,
       isError: true,
       rawJson: null,
+      tokenSegments: [],
+      toolCallCounts: {},
     };
     rec.error_msg = `Runner threw: ${String(e?.stack || e)}`;
   }

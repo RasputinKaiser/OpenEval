@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import clsx from "clsx";
 import StatusBadge from "./StatusBadge";
+import TelemetryStrip from "./TelemetryStrip";
 import {
-  ChevronRight, Wrench, Clock, Hash, Cpu, DollarSign, Loader2, CircleDot,
+  ChevronRight, Wrench, Clock, Hash, Cpu, DollarSign, Loader2, CircleDot, Gauge,
 } from "lucide-react";
 import type { RunCaseRecord } from "@/lib/types";
 
@@ -44,8 +45,10 @@ export default function RunDetailClient({ runId, initialCases, running }: Props)
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.4fr] gap-4">
-      <section className="card overflow-hidden flex flex-col">
+    <div>
+      <TelemetryStrip runId={runId} />
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.4fr] gap-4">
+        <section className="card overflow-hidden flex flex-col">
         <div className="px-4 py-3 border-b border-bd flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Hash className="size-3.5 text-fg-muted" />
@@ -102,6 +105,7 @@ export default function RunDetailClient({ runId, initialCases, running }: Props)
           <CaseSidePanel key={cases[selectedIdx].id} rc={cases[selectedIdx]} runId={runId} />
         )}
       </section>
+      </div>
     </div>
   );
 }
@@ -125,6 +129,7 @@ function CaseSidePanel({ rc, runId }: { rc: RunCaseRecord; runId: string }) {
         <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
           <Mini label="Turns" value={String(runner.numTurns)} icon={Hash} />
           <Mini label="Duration" value={runner.durationMs < 1000 ? `${runner.durationMs}ms` : `${(runner.durationMs / 1000).toFixed(1)}s`} icon={Clock} />
+          <Mini label="tok/s" value={runner.durationMs > 0 ? (runner.usage.outputTokens / (runner.durationMs / 1000)).toFixed(1) : "0"} icon={Gauge} />
           <Mini label="Cost" value={`$${runner.usage.costUsd.toFixed(4)}`} icon={DollarSign} />
           <Mini label="Tokens ↑" value={runner.usage.inputTokens.toLocaleString()} icon={Cpu} />
           <Mini label="Tokens ↓" value={runner.usage.outputTokens.toLocaleString()} icon={Cpu} />
