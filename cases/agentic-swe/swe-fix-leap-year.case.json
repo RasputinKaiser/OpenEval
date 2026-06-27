@@ -1,0 +1,16 @@
+{
+  "id": "swe-fix-leap-year",
+  "category": "agentic-swe",
+  "name": "Fix leap year logic",
+  "description": "The leap year detector is wrong about century years. A year is a leap year if divisible by 4, except centuries which are not, except every 400 years which are. Fix the implementation and run the tests.",
+  "tags": ["bugfix", "node", "tests"],
+  "prompt": "lib/leap.js implements isLeapYear but it returns wrong values for century years: 1900 should be false (not a leap year) and 2000 should be true. Fix the logic so it follows the Gregorian calendar rules (divisible by 4, except centuries are not leap years unless divisible by 400). Run `npm test` to verify all tests pass. Do not modify the tests.",
+  "setup": { "type": "fixture", "fixture": "leap-year" },
+  "runner": { "max_turns": 18, "timeout_seconds": 240, "permission_mode": "bypassPermissions" },
+  "graders": [
+    { "type": "tests_pass", "command": "npm test", "timeout_ms": 30000 },
+    { "type": "exit_code", "command": "node -e \"const {isLeapYear}=require('./lib/leap'); if(isLeapYear(1900)!==false) process.exit(1); if(isLeapYear(2000)!==true) process.exit(1); if(isLeapYear(2024)!==true) process.exit(1)\"" },
+    { "type": "file_contains", "path": "lib/leap.js", "pattern": "400" }
+  ],
+  "pass_threshold": 1.0
+}

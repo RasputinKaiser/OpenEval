@@ -1,0 +1,15 @@
+{
+  "id": "reasoning-recursion",
+  "category": "reasoning",
+  "name": "Explain recursion in one sentence",
+  "description": "Reasoning/knowledge. No tools needed. Final answer must include the word 'itself' and be reasonably short.",
+  "tags": ["explanation"],
+  "prompt": "In one or two sentences, explain what recursion is in programming. Be concise.",
+  "setup": { "type": "none" },
+  "runner": { "max_turns": 3, "timeout_seconds": 60, "permission_mode": "bypassPermissions" },
+  "graders": [
+    { "type": "regex_match", "pattern": "itself", "source": "final_text" },
+    { "type": "regex_match", "pattern": "function|method|calls?|itself|subproblem", "source": "final_text" }
+  ],
+  "pass_threshold": 1.0
+}

@@ -1,0 +1,5 @@
+{
+  "name": "leap-year",
+  "version": "1.0.0",
+  "scripts": { "test": "node --test test/leap.test.js" }
+}

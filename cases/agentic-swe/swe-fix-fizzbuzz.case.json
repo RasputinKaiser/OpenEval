@@ -1,0 +1,16 @@
+{
+  "id": "swe-fix-fizzbuzz",
+  "category": "agentic-swe",
+  "name": "Fix the FizzBuzz bug",
+  "description": "The fizzbuzz function is returning wrong output for multiples of 15 (and any number divisible by both 3 and 5). Diagnose and fix so that multiples of 3 produce 'Fizz', multiples of 5 produce 'Buzz', and multiples of both produce 'FizzBuzz'. Run the tests to confirm.",
+  "tags": ["bugfix", "node", "tests"],
+  "prompt": "There is a bug in src/fizzbuzz.js: multiples of 15 (like 15 and 30) should print 'FizzBuzz' but currently print 'Fizz'. Investigate the code, fix the bug, and run the tests with `npm test` to make sure they all pass. Do not change the test file.",
+  "setup": { "type": "fixture", "fixture": "fizzbuzz-repo" },
+  "runner": { "max_turns": 18, "timeout_seconds": 240, "permission_mode": "bypassPermissions" },
+  "graders": [
+    { "type": "tests_pass", "command": "npm test", "timeout_ms": 30000 },
+    { "type": "file_contains", "path": "src/fizzbuzz.js", "pattern": "FizzBuzz" },
+    { "type": "exit_code", "command": "node -e \"const {fizzbuzz}=require('./src/fizzbuzz'); const p=fizzbuzz(30).split(','); if(p[14]!=='FizzBuzz'||p[29]!=='FizzBuzz') process.exit(1)\"" }
+  ],
+  "pass_threshold": 1.0
+}

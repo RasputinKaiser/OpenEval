@@ -1,0 +1,16 @@
+{
+  "id": "swe-cjs-to-esm",
+  "category": "agentic-swe",
+  "name": "Convert CommonJS counter to ESM",
+  "description": "The counter module is written as CommonJS (counter.cjs). The test file imports it as ESM from ./counter.mjs. Convert counter.cjs to counter.mjs using ES module syntax (export function makeCounter...) so the tests pass.",
+  "tags": ["refactor", "node", "esm"],
+  "prompt": "counter.cjs is a CommonJS module. The test at counter.test.mjs imports `makeCounter` from `./counter.mjs` and the project's package.json has `\"type\": \"module\"`. Create counter.mjs as an ES module version of counter.cjs (same functionality, but using `export function` syntax). Run `npm test` to confirm tests pass. Do not modify the test file or counter.cjs.",
+  "setup": { "type": "fixture", "fixture": "counter" },
+  "runner": { "max_turns": 20, "timeout_seconds": 240, "permission_mode": "bypassPermissions" },
+  "graders": [
+    { "type": "file_exists", "path": "counter.mjs" },
+    { "type": "tests_pass", "command": "npm test", "timeout_ms": 30000 },
+    { "type": "file_contains", "path": "counter.mjs", "pattern": "export function makeCounter" }
+  ],
+  "pass_threshold": 1.0
+}

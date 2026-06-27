@@ -1,0 +1,15 @@
+{
+  "id": "single-count-errors",
+  "category": "single-tool",
+  "name": "Count ERROR lines in log.txt",
+  "description": "Uses Grep or Bash to count occurrences of 'ERROR' in log.txt. Tests grep tool.",
+  "tags": ["grep", "bash"],
+  "prompt": "Count how many lines in log.txt contain the word \"ERROR\" (as a tag, not as a substring of another word). Write just the integer count (no newline) to a file named error-count.txt in the current directory.",
+  "setup": { "type": "fixture", "fixture": "inputs" },
+  "runner": { "max_turns": 8, "timeout_seconds": 120, "permission_mode": "bypassPermissions" },
+  "graders": [
+    { "type": "file_exists", "path": "error-count.txt" },
+    { "type": "file_eq", "path": "error-count.txt", "expected": "3", "trim": true }
+  ],
+  "pass_threshold": 1.0
+}

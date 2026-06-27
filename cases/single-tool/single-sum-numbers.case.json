@@ -1,0 +1,15 @@
+{
+  "id": "single-sum-numbers",
+  "category": "single-tool",
+  "name": "Sum numbers from a file",
+  "description": "Multi-tool: read numbers.txt, compute the sum, write to sum.txt. Tests Read + reasoning + Write.",
+  "tags": ["read", "write", "math"],
+  "prompt": "Read the file numbers.txt. It contains one integer per line. Compute the sum of all integers and write it (as a single integer, no trailing newline) to a new file named sum.txt in the current directory.",
+  "setup": { "type": "fixture", "fixture": "inputs" },
+  "runner": { "max_turns": 8, "timeout_seconds": 120, "permission_mode": "bypassPermissions" },
+  "graders": [
+    { "type": "file_exists", "path": "sum.txt" },
+    { "type": "file_eq", "path": "sum.txt", "expected": "297", "trim": true }
+  ],
+  "pass_threshold": 1.0
+}

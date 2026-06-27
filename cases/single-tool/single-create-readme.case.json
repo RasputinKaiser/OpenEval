@@ -1,0 +1,15 @@
+{
+  "id": "single-create-readme",
+  "category": "single-tool",
+  "name": "Create README.md with project description",
+  "description": "Verifies Write tool: create a README.md file with specific content in the workdir.",
+  "tags": ["write"],
+  "prompt": "Create a file named README.md in the current directory with exactly the following content (no extra lines, no trailing blank line):\n\n# Demo Project\n\nA small demonstration project.\n",
+  "setup": { "type": "none" },
+  "runner": { "max_turns": 5, "timeout_seconds": 90, "permission_mode": "bypassPermissions" },
+  "graders": [
+    { "type": "file_exists", "path": "README.md" },
+    { "type": "file_eq", "path": "README.md", "expected": "# Demo Project\n\nA small demonstration project.\n", "trim": true }
+  ],
+  "pass_threshold": 1.0
+}

@@ -1,0 +1,14 @@
+{
+  "id": "reasoning-word-problem",
+  "category": "reasoning",
+  "name": "Solve a travel word problem",
+  "description": "Math word problem. A train leaves at 3pm at 60mph. Another leaves at 5pm at 80mph on parallel track. When does the second catch up?",
+  "tags": ["math"],
+  "prompt": "A train leaves the station at 3pm traveling at 60 mph. A second train leaves the same station at 5pm traveling at 80 mph on a parallel track in the same direction. At what time will the second train catch up to the first? Reply with just the clock time, e.g. 'HH:MMpm'.",
+  "setup": { "type": "none" },
+  "runner": { "max_turns": 3, "timeout_seconds": 60, "permission_mode": "bypassPermissions" },
+  "graders": [
+    { "type": "regex_match", "pattern": "11:00pm|11pm|23:00", "source": "final_text" }
+  ],
+  "pass_threshold": 1.0
+}

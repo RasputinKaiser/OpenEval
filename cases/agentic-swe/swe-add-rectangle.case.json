@@ -1,0 +1,15 @@
+{
+  "id": "swe-add-rectangle",
+  "category": "agentic-swe",
+  "name": "Add a Rectangle class",
+  "description": "The shapes module has a Circle class. Add a Rectangle class extending Shape, with width and height, area = width * height, and export it. The existing tests already expect this class. Make them pass.",
+  "tags": ["feature", "node", "tests"],
+  "prompt": "src/shapes.js exports Shape and Circle. The tests in src/shapes.test.js already import `Rectangle` and expect it to have width and height with area = width*height and name 'rectangle'. Add the Rectangle class to src/shapes.js and export it. Run `npm test` to confirm all tests pass. Do not modify the tests.",
+  "setup": { "type": "fixture", "fixture": "shapes" },
+  "runner": { "max_turns": 18, "timeout_seconds": 240, "permission_mode": "bypassPermissions" },
+  "graders": [
+    { "type": "tests_pass", "command": "npm test", "timeout_ms": 30000 },
+    { "type": "file_contains", "path": "src/shapes.js", "pattern": "class Rectangle extends Shape" }
+  ],
+  "pass_threshold": 1.0
+}

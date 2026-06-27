@@ -1,0 +1,14 @@
+{
+  "id": "reasoning-code-trace",
+  "category": "reasoning",
+  "name": "Predict JavaScript output",
+  "description": "Trace through a small JS snippet and predict its printed output.",
+  "tags": ["javascript", "trace"],
+  "prompt": "Consider this JavaScript code:\n\nconst arr = [1, 2, 3, 4];\nconst r = arr.filter(x => x % 2 === 0).map(x => x * 10).reduce((a, b) => a + b, 0);\nconsole.log(r);\n\nWhat does it print? Reply with just the number.",
+  "setup": { "type": "none" },
+  "runner": { "max_turns": 3, "timeout_seconds": 60, "permission_mode": "bypassPermissions" },
+  "graders": [
+    { "type": "regex_match", "pattern": "\\b60\\b", "source": "final_text" }
+  ],
+  "pass_threshold": 1.0
+}

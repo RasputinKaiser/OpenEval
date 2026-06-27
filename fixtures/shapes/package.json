@@ -1,0 +1,5 @@
+{
+  "name": "shapes",
+  "version": "1.0.0",
+  "scripts": { "test": "node --test src/shapes.test.js" }
+}
