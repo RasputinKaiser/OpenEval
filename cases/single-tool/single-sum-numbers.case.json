@@ -1,5 +1,6 @@
 {
   "id": "single-sum-numbers",
+  "difficulty": "easy",
   "category": "single-tool",
   "name": "Sum numbers from a file",
   "description": "Multi-tool: read numbers.txt, compute the sum, write to sum.txt. Tests Read + reasoning + Write.",

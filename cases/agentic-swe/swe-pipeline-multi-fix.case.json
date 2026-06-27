@@ -1,0 +1,63 @@
+{
+  "id": "swe-pipeline-multi-fix",
+  "category": "agentic-swe",
+  "difficulty": "hard",
+  "name": "Fix three bugs across a two-module math pipeline",
+  "description": "Long-horizon: three independent bugs across lib/math.js (average off-by-one, max returns min) and lib/stats.js (variance not divided by n). The agent must diagnose each, fix them, and get the full test suite green. Early mistakes compound because stats.js depends on math.js.",
+  "tags": [
+    "long-horizon",
+    "bugfix",
+    "refactor",
+    "tests",
+    "dependency"
+  ],
+  "split": "public",
+  "prompt": "There are three bugs in this small pipeline:\n1. In lib/math.js, average() divides by the wrong count.\n2. In lib/math.js, max() returns the minimum instead of the maximum.\n3. In lib/stats.js, variance() is not divided by the number of elements.\n\nDiagnose each, fix them, and run `npm test` until all tests pass. Do not modify the test file.",
+  "setup": {
+    "type": "fixture",
+    "fixture": "pipeline",
+    "init_git": true
+  },
+  "runner": {
+    "max_turns": 28,
+    "timeout_seconds": 420,
+    "permission_mode": "bypassPermissions"
+  },
+  "budget": {
+    "max_turns": 28,
+    "max_cost_usd": 1.5
+  },
+  "graders": [
+    {
+      "type": "tests_pass",
+      "command": "npm test",
+      "timeout_ms": 30000,
+      "weight": 60
+    },
+    {
+      "type": "git_diff_contains",
+      "pattern": "arr\\.length",
+      "pathFilter": "lib/math.js",
+      "weight": 10
+    },
+    {
+      "type": "git_diff_contains",
+      "pattern": "(variance|arr\\.length)",
+      "pathFilter": "lib/stats.js",
+      "weight": 10
+    },
+    {
+      "type": "files_unchanged",
+      "paths": [
+        "package.json",
+        "test/pipeline.test.js"
+      ],
+      "weight": 20,
+      "forbidden": true
+    }
+  ],
+  "pass_threshold": 0.8,
+  "oracle": {
+    "solve": "oracle/swe-pipeline-multi-fix.sh"
+  }
+}

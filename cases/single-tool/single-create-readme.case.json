@@ -1,5 +1,6 @@
 {
   "id": "single-create-readme",
+  "difficulty": "easy",
   "category": "single-tool",
   "name": "Create README.md with project description",
   "description": "Verifies Write tool: create a README.md file with specific content in the workdir.",

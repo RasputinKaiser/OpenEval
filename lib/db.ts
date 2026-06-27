@@ -7,10 +7,12 @@ let db: Database.Database | null = null;
 export function getDb(): Database.Database {
   if (db) return db;
   ensureDirs();
-  const conn = new Database(DB_PATH);
-  conn.pragma("journal_mode = WAL");
+  const conn = new Database(DB_PATH, { timeout: 15_000 });
+  conn.pragma("busy_timeout = 15000");
+  try { conn.pragma("journal_mode = WAL"); } catch {}
   conn.pragma("synchronous = NORMAL");
   conn.exec(SCHEMA);
+  migrate(conn);
   db = conn;
   return conn;
 }
@@ -32,6 +34,7 @@ CREATE TABLE IF NOT EXISTS run_cases (
   case_id TEXT NOT NULL,
   case_name TEXT NOT NULL,
   category TEXT NOT NULL,
+  difficulty TEXT,
   status TEXT NOT NULL,
   started_at INTEGER,
   ended_at INTEGER,
@@ -41,13 +44,16 @@ CREATE TABLE IF NOT EXISTS run_cases (
   runner_result_json TEXT,
   grader_result_json TEXT,
   evaluation_json TEXT,
+  budget_exceeded INTEGER DEFAULT 0,
   case_def_json TEXT NOT NULL,
   error_msg TEXT,
   seq INTEGER NOT NULL,
+  sample INTEGER DEFAULT 0,
   FOREIGN KEY (run_id) REFERENCES runs(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_run_cases_run ON run_cases(run_id);
 CREATE INDEX IF NOT EXISTS idx_run_cases_seq ON run_cases(run_id, seq);
+CREATE INDEX IF NOT EXISTS idx_run_cases_case_sample ON run_cases(run_id, case_id, sample);
 
 CREATE TABLE IF NOT EXISTS events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -59,6 +65,17 @@ CREATE TABLE IF NOT EXISTS events (
 );
 CREATE INDEX IF NOT EXISTS idx_events_run ON events(run_id, at);
 `;
+
+function migrate(conn: Database.Database) {
+  const cols = conn.prepare("PRAGMA table_info(run_cases)").all() as Array<{ name: string }>;
+  const names = new Set(cols.map((c) => c.name));
+  const add = (col: string, decl: string) => {
+    if (!names.has(col)) { try { conn.exec(`ALTER TABLE run_cases ADD COLUMN ${col} ${decl}`); } catch {} }
+  };
+  add("difficulty", "TEXT");
+  add("budget_exceeded", "INTEGER DEFAULT 0");
+  add("sample", "INTEGER DEFAULT 0");
+}
 
 export interface RunQuery {
   caseIds?: string[];
@@ -105,14 +122,14 @@ export function getRunCaseBySeq(runId: string, seq: number): RunCaseRecord | nul
 
 export function insertRunCase(rc: RunCaseRecord & { seq: number }): void {
   getDb().prepare(
-    `INSERT INTO run_cases (id, run_id, case_id, case_name, category, status, started_at, ended_at, workdir_path, transcript_path, runner_kind, runner_result_json, grader_result_json, evaluation_json, case_def_json, error_msg, seq)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO run_cases (id, run_id, case_id, case_name, category, difficulty, status, started_at, ended_at, workdir_path, transcript_path, runner_kind, runner_result_json, grader_result_json, evaluation_json, budget_exceeded, case_def_json, error_msg, seq, sample)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
-    rc.id, rc.run_id, rc.case_id, rc.case_name, rc.category, rc.status,
+    rc.id, rc.run_id, rc.case_id, rc.case_name, rc.category, rc.difficulty ?? null, rc.status,
     rc.started_at, rc.ended_at, rc.workdir_path, rc.transcript_path,
     rc.runner_kind, rc.runner_result ? JSON.stringify(rc.runner_result) : null,
     rc.grader_result ? JSON.stringify(rc.grader_result) : null,
-    null, JSON.stringify(rc.case_def), rc.error_msg, rc.seq
+    null, rc.budget_exceeded ? 1 : 0, JSON.stringify(rc.case_def), rc.error_msg, rc.seq, rc.sample ?? 0
   );
 }
 
@@ -121,12 +138,13 @@ export function updateRunCase(id: string, patch: Partial<RunCaseRecord>): void {
   if (!cur) return;
   const next = { ...cur, ...patch };
   getDb().prepare(
-    `UPDATE run_cases SET status=?, started_at=?, ended_at=?, transcript_path=?, runner_result_json=?, grader_result_json=?, evaluation_json=?, error_msg=? WHERE id=?`
+    `UPDATE run_cases SET status=?, started_at=?, ended_at=?, transcript_path=?, runner_result_json=?, grader_result_json=?, evaluation_json=?, budget_exceeded=?, error_msg=? WHERE id=?`
   ).run(
     next.status, next.started_at, next.ended_at, next.transcript_path,
     next.runner_result ? JSON.stringify(next.runner_result) : null,
     next.grader_result ? JSON.stringify(next.grader_result) : null,
     next.grader_result ? JSON.stringify(next.grader_result) : null,
+    next.budget_exceeded ? 1 : 0,
     next.error_msg, id
   );
 }
@@ -160,6 +178,7 @@ function rowToRunCase(r: any): RunCaseRecord {
     case_id: r.case_id,
     case_name: r.case_name,
     category: r.category,
+    difficulty: r.difficulty ?? undefined,
     status: r.status,
     started_at: r.started_at,
     ended_at: r.ended_at,
@@ -168,9 +187,10 @@ function rowToRunCase(r: any): RunCaseRecord {
     runner_kind: r.runner_kind,
     runner_result: r.runner_result_json ? JSON.parse(r.runner_result_json) : null,
     grader_result: r.grader_result_json ? JSON.parse(r.grader_result_json) : null,
+    budget_exceeded: !!r.budget_exceeded,
     error_msg: r.error_msg,
     case_def: JSON.parse(r.case_def_json),
-    // evaluation_json aliases grader_result for the UI
-    ...(r.evaluation_json ? { grader_result: JSON.parse(r.evaluation_json) } : {}),
+    seq: r.seq,
+    sample: r.sample ?? 0,
   };
 }

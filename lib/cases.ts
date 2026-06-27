@@ -8,15 +8,19 @@ import type { CaseDefinition, Category } from "./types";
 const CaseSchema = z.object({
   id: z.string(),
   category: z.enum(["agentic-swe", "single-tool", "reasoning"]),
+  difficulty: z.enum(["easy", "medium", "hard"]).optional(),
   name: z.string(),
   description: z.string().optional(),
   tags: z.array(z.string()).optional(),
+  split: z.enum(["public", "held_out"]).optional(),
+  canary: z.string().optional(),
   prompt: z.string(),
   setup: z.object({
     type: z.enum(["none", "fixture", "git-clone"]),
     fixture: z.string().optional(),
     repo: z.string().optional(),
     workdir_name: z.string().optional(),
+    init_git: z.boolean().optional(),
   }).optional(),
   runner: z.object({
     max_turns: z.number().optional(),
@@ -24,6 +28,14 @@ const CaseSchema = z.object({
     permission_mode: z.enum(["bypassPermissions", "default", "acceptEdits", "dontAsk", "plan", "auto"]).optional(),
     model: z.string().optional(),
     extra_args: z.array(z.string()).optional(),
+  }).optional(),
+  budget: z.object({
+    max_cost_usd: z.number().optional(),
+    max_turns: z.number().optional(),
+  }).optional(),
+  oracle: z.object({
+    solve: z.string().optional(),
+    noop_max_score: z.number().optional(),
   }).optional(),
   graders: z.array(z.any()).nonempty(),
   pass_threshold: z.number().optional(),
@@ -64,6 +76,7 @@ export interface CaseFilter {
   caseIds?: string[];
   categories?: string[];
   tags?: string[];
+  difficulty?: string[];
 }
 
 export async function selectCases(filter: CaseFilter): Promise<CaseDefinition[]> {
@@ -72,6 +85,7 @@ export async function selectCases(filter: CaseFilter): Promise<CaseDefinition[]>
     if (filter.caseIds && filter.caseIds.length && !filter.caseIds.includes(c.id)) return false;
     if (filter.categories && filter.categories.length && !filter.categories.includes(c.category)) return false;
     if (filter.tags && filter.tags.length && !filter.tags.some((t) => c.tags?.includes(t))) return false;
+    if (filter.difficulty && filter.difficulty.length && (!c.difficulty || !filter.difficulty.includes(c.difficulty))) return false;
     return true;
   });
 }

@@ -1,5 +1,7 @@
 import { spawn } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs/promises";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import type { CaseEvaluation, GraderResult, GraderSpec, RunnerResult } from "../types";
 
@@ -42,7 +44,7 @@ async function safeRead(p: string): Promise<string | null> {
 
 export async function runGrader(
   spec: GraderSpec,
-  ctx: { workdir: string; runner: RunnerResult; transcriptText: string }
+  ctx: { workdir: string; runner: RunnerResult; transcriptText: string; fixtureSrc?: string }
 ): Promise<GraderResult> {
   const start = Date.now();
   const dur = () => Date.now() - start;
@@ -138,6 +140,93 @@ export async function runGrader(
       : fail(spec, `${spec.jsonpath} !== ${expected} (got ${actual})`, dur(), content.slice(0, 400));
   }
 
+  if (spec.type === "files_unchanged") {
+    const changes: string[] = [];
+    for (const rel of spec.paths) {
+      const actualPath = path.resolve(ctx.workdir, rel);
+      let baselinePath: string | null = null;
+      if (spec.fixture && ctx.fixtureSrc) baselinePath = path.resolve(ctx.fixtureSrc, rel);
+      else if (ctx.fixtureSrc) baselinePath = path.resolve(ctx.fixtureSrc, rel);
+      const actual = await safeRead(actualPath);
+      const baseline = baselinePath ? await safeRead(baselinePath) : null;
+      if (actual === null && baseline === null) { changes.push(`${rel}: absent in both`); continue; }
+      if (actual === null || baseline === null) { changes.push(`${rel}: existence changed (${baseline ? "existed → deleted" : "created"})`); continue; }
+      const ah = createHash("sha256").update(actual).digest("hex");
+      const bh = createHash("sha256").update(baseline).digest("hex");
+      if (ah !== bh) changes.push(`${rel}: content modified (sha256 ${bh.slice(0, 8)} → ${ah.slice(0, 8)})`);
+    }
+    return changes.length === 0
+      ? ok(spec, `${spec.paths.length} file(s) unchanged`, dur())
+      : fail(spec, `${changes.length} file(s) modified:\n${changes.join("\n")}`, dur());
+  }
+
+  if (spec.type === "file_deleted") {
+    const exists = await safeRead(path.resolve(ctx.workdir, spec.path));
+    return exists === null
+      ? ok(spec, `${spec.path} deleted`, dur())
+      : fail(spec, `${spec.path} still exists (should be deleted)`, dur(), exists.slice(0, 200));
+  }
+
+  if (spec.type === "git_diff_contains") {
+    const res = await runShell({ command: `git diff --no-color ${spec.pathFilter ? `-- ${spec.pathFilter}` : ""}`, cwd: ctx.workdir, timeout_ms: 10_000 });
+    const diff = res.stdout;
+    try {
+      const re = new RegExp(spec.pattern, "m");
+      const matches = re.test(diff);
+      const passed = spec.negate ? !matches : matches;
+      return passed
+        ? ok(spec, `pattern ${spec.negate ? "absent in diff" : "found in diff"}`, dur(), diff.slice(0, 500))
+        : fail(spec, `pattern ${spec.negate ? "present in diff (should be absent)" : "not in diff"}`, dur(), diff.slice(0, 500));
+    } catch (e) {
+      return fail(spec, `invalid regex: ${spec.pattern} — ${String(e)}`, dur());
+    }
+  }
+
+  if (spec.type === "checksum") {
+    const algo = spec.algorithm ?? "sha256";
+    const content = await safeRead(path.resolve(ctx.workdir, spec.path));
+    if (content === null) return fail(spec, `file not found: ${spec.path}`, dur());
+    const hash = createHash(algo).update(content).digest("hex");
+    return hash === spec.expected
+      ? ok(spec, `${algo}(${spec.path}) = ${hash.slice(0, 12)}…`, dur())
+      : fail(spec, `${algo} mismatch: got ${hash}, expected ${spec.expected}`, dur());
+  }
+
+  if (spec.type === "step") {
+    const calls = ctx.runner.toolCalls;
+    const matches = (c: any) => {
+      if (spec.tool && c.name !== spec.tool) return false;
+      const inv = typeof c.input === "string" ? c.input : JSON.stringify(c.input ?? "");
+      if (spec.input_includes && !inv.includes(spec.input_includes)) return false;
+      if (spec.input_includes_any && !spec.input_includes_any.some((s: string) => inv.includes(s))) return false;
+      return true;
+    };
+    const matched = calls.filter(matches);
+    if (spec.negate) {
+      return matched.length === 0
+        ? ok(spec, `no matching step found (${calls.length} calls)`, dur(), matched.map((m) => m.name).join(","))
+        : fail(spec, `${matched.length} unwanted step(s): ${matched.slice(0, 5).map((m) => m.name).join(", ")}`, dur());
+    }
+    if (typeof spec.at_index === "number") {
+      const c = calls[spec.at_index];
+      return c && matches(c)
+        ? ok(spec, `step[${spec.at_index}] = ${c.name}`, dur())
+        : fail(spec, `step[${spec.at_index}] did not match (got ${c?.name ?? "nothing"})`, dur());
+    }
+    if (spec.before_tool) {
+      const firstMatchIdx = matched[0] ? calls.indexOf(matched[0]) : -1;
+      const beforeIdx = calls.findIndex((c) => c.name === spec.before_tool);
+      if (firstMatchIdx >= 0 && (beforeIdx < 0 || firstMatchIdx < beforeIdx)) {
+        return ok(spec, `${calls[firstMatchIdx].name} before ${spec.before_tool}`, dur());
+      }
+      return fail(spec, `expected ${spec.tool ?? "matching"} call before first ${spec.before_tool}`, dur());
+    }
+    const min = spec.min_count ?? 1;
+    return matched.length >= min
+      ? ok(spec, `${matched.length} matching step(s) ≥ ${min}`, dur(), matched.map((m) => m.name).join(","))
+      : fail(spec, `only ${matched.length} matching step(s), needed ≥ ${min}`, dur());
+  }
+
   if (spec.type === "rubric_llm") {
     // LLM judge: spawn ncode -p with the rubric + final output and ask for a 0-1 score
     const prompt = `You are grading an agent task. Rubric:\n${spec.rubric}\n\nAgent final output:\n"${(ctx.runner.finalText || ctx.runner.resultText || "").slice(0, 4000)}"\n\nTranscript excerpt:\n${ctx.transcriptText.slice(0, 4000)}\n\nReply with only JSON: {"passed": <bool>, "score": <0..1>, "reason": "<short>"}`;
@@ -170,8 +259,10 @@ export function evaluate(results: GraderResult[], passThreshold = 1): CaseEvalua
   const totalWeight = weights.reduce((a, b) => a + b, 0) || 1;
   const passedWeight = results.reduce((sum, r, i) => (r.passed ? sum + weights[i] : sum), 0);
   const passRatio = passedWeight / totalWeight;
+  const forbiddenViolations = results.filter((r) => (r.spec as any).forbidden && !r.passed);
+  const passed = forbiddenViolations.length === 0 && passRatio >= passThreshold;
   return {
-    passed: passRatio >= passThreshold,
+    passed,
     passRatio,
     results,
     durationMs: results.reduce((a, b) => a + b.durationMs, 0),

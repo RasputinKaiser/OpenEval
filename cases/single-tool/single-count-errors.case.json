@@ -1,5 +1,6 @@
 {
   "id": "single-count-errors",
+  "difficulty": "easy",
   "category": "single-tool",
   "name": "Count ERROR lines in log.txt",
   "description": "Uses Grep or Bash to count occurrences of 'ERROR' in log.txt. Tests grep tool.",

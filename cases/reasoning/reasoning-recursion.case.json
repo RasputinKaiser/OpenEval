@@ -1,5 +1,6 @@
 {
   "id": "reasoning-recursion",
+  "difficulty": "easy",
   "category": "reasoning",
   "name": "Explain recursion in one sentence",
   "description": "Reasoning/knowledge. No tools needed. Final answer must include the word 'itself' and be reasonably short.",

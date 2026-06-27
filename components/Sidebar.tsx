@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Activity, FileText, LayoutDashboard, Plus, Terminal } from "lucide-react";
+import { Activity, FileText, GitCompareArrows, LayoutDashboard, Radio, Plus, Terminal } from "lucide-react";
 import clsx from "clsx";
 
 const NAV = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/runs", label: "Runs", icon: Activity },
+  { href: "/runs/compare", label: "Compare", icon: GitCompareArrows },
+  { href: "/live", label: "Live", icon: Radio },
   { href: "/cases", label: "Cases", icon: FileText },
   { href: "/runs/new", label: "New Run", icon: Plus },
 ];

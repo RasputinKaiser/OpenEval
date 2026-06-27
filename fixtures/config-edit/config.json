@@ -1,0 +1,4 @@
+{
+  "feature_flags": { "new_dashboard": false, "rate_limits": false },
+  "limits": { "max_requests_per_min": 60 }
+}

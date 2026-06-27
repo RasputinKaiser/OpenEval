@@ -2,6 +2,7 @@ import type { CaseTelemetry, RunCaseRecord, RunSummary, RunTelemetry } from "./t
 
 export function computeSummary(cases: RunCaseRecord[]): RunSummary {
   const byCategory: Record<string, { total: number; passed: number; failed: number; errored: number }> = {};
+  const byDifficulty: Record<string, { total: number; passed: number; failed: number; errored: number }> = {};
   let passed = 0;
   let failed = 0;
   let errored = 0;
@@ -11,13 +12,22 @@ export function computeSummary(cases: RunCaseRecord[]): RunSummary {
   let totalTokensOut = 0;
   let totalDurationMs = 0;
 
+  const buckets: Record<string, RunCaseRecord[]> = {};
+  let samples = 0;
+  for (const c of cases) {
+    (buckets[c.case_id] ||= []).push(c);
+    samples = Math.max(samples, (c.sample ?? 0) + 1);
+  }
   for (const c of cases) {
     const cat = c.category;
     if (!byCategory[cat]) byCategory[cat] = { total: 0, passed: 0, failed: 0, errored: 0 };
     byCategory[cat].total++;
-    if (c.status === "passed") { passed++; byCategory[cat].passed++; }
-    else if (c.status === "failed") { failed++; byCategory[cat].failed++; }
-    else if (c.status === "error") { errored++; byCategory[cat].errored++; }
+    const diff = c.difficulty ?? "untiered";
+    if (!byDifficulty[diff]) byDifficulty[diff] = { total: 0, passed: 0, failed: 0, errored: 0 };
+    byDifficulty[diff].total++;
+    if (c.status === "passed") { passed++; byCategory[cat].passed++; byDifficulty[diff].passed++; }
+    else if (c.status === "failed") { failed++; byCategory[cat].failed++; byDifficulty[diff].failed++; }
+    else if (c.status === "error") { errored++; byCategory[cat].errored++; byDifficulty[diff].errored++; }
     else if (c.status === "skipped") skipped++;
     if (c.runner_result) {
       totalCostUsd += c.runner_result.usage.costUsd || 0;
@@ -27,6 +37,19 @@ export function computeSummary(cases: RunCaseRecord[]): RunSummary {
     }
   }
   const total = cases.length;
+
+  let passAt1 = 0, passAtK = 0, passPowK = 0, uniqueCases = 0;
+  for (const list of Object.values(buckets)) {
+    const trial0 = list.find((c) => (c.sample ?? 0) === 0) ?? list[0];
+    const anyPassed = list.some((c) => c.status === "passed");
+    const allPassed = list.length > 0 && list.every((c) => c.status === "passed");
+    uniqueCases++;
+    if (trial0?.status === "passed") passAt1++;
+    if (anyPassed) passAtK++;
+    if (allPassed) passPowK++;
+  }
+
+  const shownSamples = samples > 0 ? samples : 1;
   return {
     total,
     passed,
@@ -34,11 +57,16 @@ export function computeSummary(cases: RunCaseRecord[]): RunSummary {
     errored,
     skipped,
     passRate: total ? passed / total : 0,
+    passAt1: uniqueCases ? passAt1 / uniqueCases : 0,
+    passAtK: uniqueCases ? passAtK / uniqueCases : 0,
+    passPowK: uniqueCases ? passPowK / uniqueCases : 0,
+    samples: samples > 0 ? samples : 1,
     totalCostUsd,
     totalTokensIn,
     totalTokensOut,
     totalDurationMs,
     byCategory,
+    byDifficulty,
   };
 }
 function percentile(sorted: number[], p: number): number {
@@ -101,6 +129,19 @@ export function computeTelemetry(cases: RunCaseRecord[]): RunTelemetry {
   const errored = cases.filter((c) => c.status === "error" || c.status === "failed").length;
   const totalTurns = completed.reduce((a, c) => a + c.runner_result!.numTurns, 0);
 
+  let forbiddenViolations = 0;
+  let cheapestPassUsd = Infinity;
+  for (const c of completed) {
+    const gr = c.grader_result;
+    if (gr) {
+      const fv = gr.results.some((r: any) => (r.spec as any).forbidden && !r.passed);
+      if (fv) forbiddenViolations++;
+    }
+    if (c.status === "passed" && c.runner_result!.usage.costUsd < cheapestPassUsd) {
+      cheapestPassUsd = c.runner_result!.usage.costUsd;
+    }
+  }
+
   const perCase = cases.map((c) => {
     const t = caseTelemetry(c);
     const r = c.runner_result;
@@ -127,6 +168,9 @@ export function computeTelemetry(cases: RunCaseRecord[]): RunTelemetry {
     cacheHitRate: cacheTotalAll > 0 ? cacheRead / cacheTotalAll : 0,
     errorRate: cases.length ? errored / cases.length : 0,
     avgTurns: completed.length ? totalTurns / completed.length : 0,
+    forbiddenViolationRate: completed.length ? forbiddenViolations / completed.length : 0,
+    failsSafelyRate: completed.length ? (completed.length - forbiddenViolations) / completed.length : 1,
+    cheapestPassUsd: cheapestPassUsd === Infinity ? 0 : cheapestPassUsd,
     perCase,
   };
 }

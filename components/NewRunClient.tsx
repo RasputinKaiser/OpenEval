@@ -15,17 +15,19 @@ export default function NewRunClient({ cases }: Props) {
   const router = useRouter();
   const [runner, setRunner] = useState<"headless" | "tmux">("headless");
   const [parallel, setParallel] = useState(1);
+  const [samples, setSamples] = useState(1);
   const [name, setName] = useState("");
-  const [model, setModel] = useState<string | undefined>(undefined);
+  const [model, setModel] = useState<string | undefined>("glm-5.2");
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [filterCats, setFilterCats] = useState<Set<string>>(new Set(cases.map((c) => c.category)));
+  const [filterDiff, setFilterDiff] = useState<Set<string>>(new Set());
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const allTags = Array.from(new Set(cases.flatMap((c) => c.tags ?? []))).sort();
   const [filterTags, setFilterTags] = useState<Set<string>>(new Set());
 
-  const visible = cases.filter((c) => filterCats.has(c.category) && (!filterTags.size || (c.tags ?? []).some((t) => filterTags.has(t))));
+  const visible = cases.filter((c) => filterCats.has(c.category) && (!filterDiff.size || filterDiff.has(c.difficulty || "untiered")) && (!filterTags.size || (c.tags ?? []).some((t) => filterTags.has(t))));
   const allSelected = visible.length > 0 && visible.every((c) => selected[c.id]);
   const selectedCount = Object.values(selected).filter(Boolean).length;
 
@@ -47,6 +49,12 @@ export default function NewRunClient({ cases }: Props) {
     setFilterTags(next);
   }
 
+  function toggleDiff(d: string) {
+    const next = new Set(filterDiff);
+    if (next.has(d)) next.delete(d); else next.add(d);
+    setFilterDiff(next);
+  }
+
   async function submit() {
     setSubmitting(true);
     setError(null);
@@ -60,10 +68,12 @@ export default function NewRunClient({ cases }: Props) {
           name: name || undefined,
           runner,
           parallel,
+          samples,
           model,
           caseIds,
           categories: useSelection ? undefined : Array.from(filterCats),
           tags: useSelection ? undefined : Array.from(filterTags),
+          difficulty: useSelection ? undefined : Array.from(filterDiff),
         }),
       });
       if (!res.ok) {
@@ -106,6 +116,15 @@ export default function NewRunClient({ cases }: Props) {
                   onChange={(e) => setParallel(Math.max(1, Math.min(8, parseInt(e.target.value) || 1)))}
                   className="mt-1.5 w-full px-3 py-2 text-sm bg-bg border border-bd rounded-md mono focus:outline-none focus:border-accent"
                 />
+              </div>
+              <div>
+                <label className="text-[11px] uppercase tracking-wider text-fg-muted">Samples (pass@k)</label>
+                <input
+                  type="number" min={1} max={8} value={samples}
+                  onChange={(e) => setSamples(Math.max(1, Math.min(8, parseInt(e.target.value) || 1)))}
+                  className="mt-1.5 w-full px-3 py-2 text-sm bg-bg border border-bd rounded-md mono focus:outline-none focus:border-accent"
+                />
+                <div className="text-[10px] text-fg-dim mt-1">Run each case k times · report pass@1, pass@k, pass^k</div>
               </div>
             </div>
 
@@ -159,7 +178,20 @@ export default function NewRunClient({ cases }: Props) {
                   {c}
                 </button>
               ))}
-              {allTags.length > 0 && <span className="mx-2 text-fg-dim text-xs">|</span>}
+              <span className="mx-1 text-fg-dim text-xs">·</span>
+              {["easy", "medium", "hard", "untiered"].map((d) => (
+                <button
+                  key={d}
+                  onClick={() => toggleDiff(d)}
+                  className={clsx(
+                    "text-[11px] px-2 py-1 rounded-md border",
+                    filterDiff.has(d) ? "border-accent bg-accent/10 text-accent-soft" : "border-bd text-fg-muted hover:bg-bg-elev"
+                  )}
+                >
+                  {d}
+                </button>
+              ))}
+              {allTags.length > 0 && <span className="mx-1 text-fg-dim text-xs">·</span>}
               {allTags.map((t) => (
                 <button
                   key={t}
@@ -206,10 +238,11 @@ export default function NewRunClient({ cases }: Props) {
           <section className="card p-5 sticky top-4">
             <div className="text-xs text-fg-muted mb-3">Run summary</div>
             <dl className="space-y-2 text-sm">
-              <Row label="Cases" value={selectedCount > 0 ? `${selectedCount} selected` : `${visible.length} (filtered)`} />
+              <Row label="Cases" value={samples > 1 ? `${visible.length} × ${samples} = ${visible.length * samples}` : `${visible.length} (filtered)`} />
               <Row label="Runner" value={runner} />
               <Row label="Model" value={model || "default"} />
               <Row label="Parallel" value={`${parallel}×`} />
+              <Row label="Samples" value={samples > 1 ? `${samples} (pass@k)` : "1"} />
             </dl>
             <button
               onClick={submit}

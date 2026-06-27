@@ -9,25 +9,29 @@ interface Args {
   case?: string;
   runner: RunnerKind;
   parallel: number;
-  name?: string;
+  samples: number;
   model?: string;
+  name?: string;
   categories: string[];
   tags: string[];
+  difficulty: string[];
   watch: boolean;
 }
 
 function parseArgs(argv: string[]): Args {
-  const a: Args = { runner: "headless", parallel: 1, categories: [], tags: [], watch: true };
+  const a: Args = { runner: "headless", parallel: 1, samples: 1, categories: [], tags: [], difficulty: [], watch: true };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     switch (arg) {
       case "--case": a.case = argv[++i]; break;
       case "--runner": a.runner = (argv[++i] as RunnerKind) || "headless"; break;
       case "--parallel": a.parallel = parseInt(argv[++i] || "1", 10) || 1; break;
-      case "--name": a.name = argv[++i]; break;
+      case "--samples": a.samples = parseInt(argv[++i] || "1", 10) || 1; break;
       case "--model": a.model = argv[++i]; break;
+      case "--name": a.name = argv[++i]; break;
       case "--category": a.categories.push(argv[++i]); break;
       case "--tag": a.tags.push(argv[++i]); break;
+      case "--difficulty": a.difficulty.push(argv[++i]); break;
       case "--no-watch": a.watch = false; break;
       case "-h": case "--help":
         console.log(USAGE); process.exit(0);
@@ -48,17 +52,19 @@ Options:
   --case <id>          Run a single case by ID
   --runner <kind>      headless | tmux          (default: headless)
   --parallel <n>       Concurrent cases        (default: 1)
+  --samples <k>        Trials per case for pass@k  (default: 1, max 8)
   --model <id|alias>   Model for ncode sessions (default: ncode's default)
   --name <name>        Run name
   --category <cat>     Filter by category (repeatable)
   --tag <tag>          Filter by tag (repeatable)
+  --difficulty <tier>  Filter by difficulty easy|medium|hard (repeatable)
   --no-watch           Exit immediately after starting, don't poll status
   -h, --help           Show this help
 
 Examples:
   npx tsx lib/cli/run.ts --case swe-fix-fizzbuzz
   npx tsx lib/cli/run.ts --runner headless --parallel 4 --category agentic-swe
-  npx tsx lib/cli/run.ts --model glm-5.2 --category reasoning
+  npx tsx lib/cli/run.ts --model glm-5.2 --samples 3 --difficulty medium
 `;
 
 async function main() {
@@ -67,6 +73,7 @@ async function main() {
   if (args.case) filter.caseIds = [args.case];
   if (args.categories.length) filter.categories = args.categories;
   if (args.tags.length) filter.tags = args.tags;
+  if (args.difficulty.length) filter.difficulty = args.difficulty;
 
   const selected = await selectCases(filter);
   if (selected.length === 0) {
@@ -74,12 +81,13 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(`Starting run: ${selected.length} case(s) — runner=${args.runner} parallel=${args.parallel}${args.model ? ` model=${args.model}` : ""}`);
+  console.log(`Starting run: ${selected.length} case(s) × ${args.samples} sample(s) — runner=${args.runner} parallel=${args.parallel}${args.model ? ` model=${args.model}` : ""}`);
   const { id } = await createAndStartRun({
     name: args.name,
     runner: args.runner,
     parallel: args.parallel,
     model: args.model,
+    samples: args.samples,
     filter,
   });
   console.log(`Run started: ${id}`);

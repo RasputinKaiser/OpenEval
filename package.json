@@ -10,7 +10,9 @@
     "typecheck": "tsc --noEmit",
     "run:eval": "tsx lib/cli/run.ts",
     "run:case": "tsx lib/cli/run.ts --case",
-    "run:headless": "tsx lib/cli/run.ts --runner headless"
+    "run:headless": "tsx lib/cli/run.ts --runner headless",
+    "selftest": "tsx lib/cli/selftest.ts",
+    "live": "echo \"Live evals run on demand at http://localhost:3000/live\""
   },
   "dependencies": {
     "better-sqlite3": "^11.3.0",

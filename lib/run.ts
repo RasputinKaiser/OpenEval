@@ -13,13 +13,16 @@ export interface CreateRunParams {
   runner: RunnerKind;
   parallel: number;
   model?: string;
-  filter?: { caseIds?: string[]; categories?: string[]; tags?: string[] };
+  samples?: number;
+  filter?: { caseIds?: string[]; categories?: string[]; tags?: string[]; difficulty?: string[] };
 }
 
 export async function createAndStartRun(params: CreateRunParams): Promise<{ id: string; caseCount: number }> {
   const id = randomUUID().slice(0, 8);
   const cases = await selectCases(params.filter ?? {});
   if (cases.length === 0) throw new Error("No cases match the filter");
+  const samples = Math.max(1, Math.min(params.samples ?? 1, 8));
+  const model = params.model || "glm-5.2";
 
   const run = {
     id,
@@ -27,30 +30,36 @@ export async function createAndStartRun(params: CreateRunParams): Promise<{ id: 
     status: "running" as const,
     created_at: Date.now(),
     ended_at: null,
-    params: { runner: params.runner, parallel: params.parallel, model: params.model, filter: params.filter },
+    params: { runner: params.runner, parallel: params.parallel, model, samples, filter: params.filter },
     summary: null,
   };
   insertRun(run);
-  appendEvent(id, "run_started", { case_count: cases.length, runner: params.runner, model: params.model }, undefined);
+  appendEvent(id, "run_started", { case_count: cases.length, samples, runner: params.runner, model }, undefined);
 
-  void runLoop(id, cases, params.runner, params.parallel, params.model).catch((e) => {
+  void runLoop(id, cases, params.runner, params.parallel, model, samples).catch((e) => {
     appendEvent(id, "run_fatal", { error: String(e?.stack || e) }, undefined);
     updateRunStatus(id, "failed", Date.now(), null);
   });
 
-  return { id, caseCount: cases.length };
+  return { id, caseCount: cases.length * samples };
 }
 
-async function runLoop(runId: string, cases: CaseDefinition[], runner: RunnerKind, parallel: number, model?: string) {
-  const queue = cases.map((c, i) => ({ def: c, seq: i + 1 }));
+async function runLoop(runId: string, cases: CaseDefinition[], runner: RunnerKind, parallel: number, model?: string, samples = 1) {
+  const work: Array<{ def: CaseDefinition; seq: number; sample: number }> = [];
+  let seq = 0;
+  for (const def of cases) {
+    for (let s = 0; s < samples; s++) {
+      work.push({ def, seq: ++seq, sample: s });
+    }
+  }
   const inflight: Promise<unknown>[] = [];
   const parallelN = Math.max(1, parallel);
 
   async function worker(): Promise<void> {
-    while (queue.length) {
-      const item = queue.shift();
+    while (work.length) {
+      const item = work.shift();
       if (!item) break;
-      await executeCase(runId, item.def, runner, item.seq, model);
+      await executeCase(runId, item.def, runner, item.seq, model, item.sample);
     }
   }
 
@@ -60,9 +69,8 @@ async function runLoop(runId: string, cases: CaseDefinition[], runner: RunnerKin
   const runCases = listRunCases(runId);
   const summary = computeSummary(runCases);
   updateRunStatus(runId, "completed", Date.now(), summary);
-  appendEvent(runId, "run_completed", { pass_rate: summary.passRate, total: summary.total }, undefined);
+  appendEvent(runId, "run_completed", { pass_rate: summary.passRate, pass_at_1: summary.passAt1, pass_at_k: summary.passAtK, pass_pow_k: summary.passPowK, total: summary.total }, undefined);
 
-  // Best-effort cleanup of workdirs after completion (keep last 5 runs)
   try { await cleanupOldWorkdirs(runId, 5); } catch {}
 }
 

@@ -7,19 +7,26 @@ import { runGrader, evaluate } from "./grader";
 import { getRunner } from "./runner";
 import type { CaseDefinition, RunCaseRecord, RunnerKind, RunnerResult } from "./types";
 
-export async function prepareWorkdir(runId: string, caseId: string, def: CaseDefinition): Promise<string> {
-  const dir = path.join(WORKDIRS_DIR, runId, caseId);
+export async function prepareWorkdir(runId: string, caseId: string, def: CaseDefinition, sample: number): Promise<{ dir: string; fixtureSrc?: string }> {
+  const dir = path.join(WORKDIRS_DIR, runId, `${caseId}__s${sample}`);
   await fs.mkdir(dir, { recursive: true });
   const setup = def.setup;
-  if (!setup || setup.type === "none") return dir;
+  let fixtureSrc: string | undefined;
+  if (!setup || setup.type === "none") return { dir };
   if (setup.type === "fixture" && setup.fixture) {
-    const src = path.resolve(FIXTURES_DIR, setup.fixture);
-    await copyDir(src, dir);
+    fixtureSrc = path.resolve(FIXTURES_DIR, setup.fixture);
+    await copyDir(fixtureSrc, dir);
   } else if (setup.type === "git-clone" && setup.repo) {
     const { execSync } = await import("node:child_process");
     execSync(`git clone --depth 1 ${setup.repo} .`, { cwd: dir, stdio: "pipe" });
   }
-  return dir;
+  if (setup.init_git) {
+    const { execSync } = await import("node:child_process");
+    try {
+      execSync("git init -q && git add -A && git -c user.email=eval@local -c user.name=eval commit -q -m baseline", { cwd: dir, stdio: "pipe" });
+    } catch {}
+  }
+  return { dir, fixtureSrc };
 }
 
 async function copyDir(src: string, dest: string): Promise<void> {
@@ -59,11 +66,12 @@ export async function executeCase(
   def: CaseDefinition,
   runnerKind: RunnerKind,
   seq: number,
-  modelOverride?: string
+  modelOverride?: string,
+  sample: number = 0
 ): Promise<RunCaseRecord> {
   const rcId = randomUUID();
-  const workdir = await prepareWorkdir(runId, def.id, def);
-  const transcriptPath = path.join(TRANSCRIPTS_DIR, `${runId}_${def.id}.jsonl`);
+  const { dir: workdir, fixtureSrc } = await prepareWorkdir(runId, def.id, def, sample);
+  const transcriptPath = path.join(TRANSCRIPTS_DIR, `${runId}_${def.id}__s${sample}.jsonl`);
 
   const rec: RunCaseRecord & { seq: number } = {
     id: rcId,
@@ -71,6 +79,7 @@ export async function executeCase(
     case_id: def.id,
     case_name: def.name,
     category: def.category,
+    difficulty: def.difficulty,
     status: "running",
     started_at: Date.now(),
     ended_at: null,
@@ -79,12 +88,14 @@ export async function executeCase(
     runner_kind: runnerKind,
     runner_result: null,
     grader_result: null,
+    budget_exceeded: false,
     error_msg: null,
     case_def: def,
     seq,
+    sample,
   };
   insertRunCase(rec);
-  appendEvent(runId, "case_started", { case_id: def.id, seq, name: def.name, category: def.category }, def.id);
+  appendEvent(runId, "case_started", { case_id: def.id, seq, sample, name: def.name, category: def.category, difficulty: def.difficulty }, def.id);
 
   const runner = getRunner(runnerKind);
   const runnerCfg = def.runner || {};
@@ -99,9 +110,9 @@ export async function executeCase(
     extraArgs: runnerCfg.extra_args ?? [],
     onEvent: (ev: any) => {
       try { fs.appendFile(transcriptPath, JSON.stringify(ev) + "\n"); } catch {}
-      if (ev.kind === "tool_use") appendEvent(runId, "tool_use", { case_id: def.id, tool: ev.tool, id: ev.id }, def.id);
-      else if (ev.kind === "tool_result") appendEvent(runId, "tool_result", { case_id: def.id, id: ev.id, error: ev.isError }, def.id);
-      else if (ev.kind === "message") appendEvent(runId, "assistant_message", { case_id: def.id, text: (ev.message.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("").slice(0, 200)) }, def.id);
+      if (ev.kind === "tool_use") appendEvent(runId, "tool_use", { case_id: def.id, sample, tool: ev.tool, id: ev.id }, def.id);
+      else if (ev.kind === "tool_result") appendEvent(runId, "tool_result", { case_id: def.id, sample, id: ev.id, error: ev.isError }, def.id);
+      else if (ev.kind === "message") appendEvent(runId, "assistant_message", { case_id: def.id, sample, text: (ev.message.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("").slice(0, 200)) }, def.id);
     },
   };
 
@@ -131,22 +142,37 @@ export async function executeCase(
     rec.error_msg = `Runner threw: ${String(e?.stack || e)}`;
   }
 
+  if (def.budget) {
+    const overCost = def.budget.max_cost_usd != null && runnerResult.usage.costUsd > def.budget.max_cost_usd;
+    const overTurns = def.budget.max_turns != null && runnerResult.numTurns > def.budget.max_turns;
+    if (overCost || overTurns) {
+      rec.budget_exceeded = true;
+      const reasons = [overCost ? `cost $${runnerResult.usage.costUsd.toFixed(4)} > $${def.budget.max_cost_usd}` : null, overTurns ? `turns ${runnerResult.numTurns} > ${def.budget.max_turns}` : null].filter(Boolean).join("; ");
+      rec.error_msg = (rec.error_msg ? rec.error_msg + " | " : "") + `Budget exceeded: ${reasons}`;
+    }
+  }
+
   rec.runner_result = runnerResult;
   rec.status = "grading";
-  updateRunCase(rcId, { status: "grading", runner_result: runnerResult, error_msg: rec.error_msg });
-  appendEvent(runId, "case_grading", { case_id: def.id, duration_ms: runnerResult.durationMs }, def.id);
+  updateRunCase(rcId, { status: "grading", runner_result: runnerResult, budget_exceeded: rec.budget_exceeded, error_msg: rec.error_msg });
+  appendEvent(runId, "case_grading", { case_id: def.id, sample, duration_ms: runnerResult.durationMs }, def.id);
 
   try {
     const transcriptText = transcriptToText(runnerResult);
     const graderResults = [];
     for (const spec of def.graders) {
-      const r = await runGrader(spec, { workdir, runner: runnerResult, transcriptText });
+      const r = await runGrader(spec, { workdir, runner: runnerResult, transcriptText, fixtureSrc });
       graderResults.push(r);
-      appendEvent(runId, "grader_result", { case_id: def.id, type: (spec as any).type, passed: r.passed, detail: r.detail.slice(0, 200) }, def.id);
+      appendEvent(runId, "grader_result", { case_id: def.id, sample, type: (spec as any).type, passed: r.passed, detail: r.detail.slice(0, 200) }, def.id);
     }
     const evaluation = evaluate(graderResults, def.pass_threshold ?? 1);
     rec.grader_result = evaluation;
-    rec.status = evaluation.passed ? "passed" : (runnerResult.isError ? "error" : "failed");
+    if (rec.budget_exceeded) {
+      rec.status = "failed";
+      if (!rec.error_msg) rec.error_msg = "Budget exceeded";
+    } else {
+      rec.status = evaluation.passed ? "passed" : (runnerResult.isError ? "error" : "failed");
+    }
     if (rec.status === "error" && !rec.error_msg) rec.error_msg = "Runner reported error";
   } catch (e: any) {
     rec.status = "error";
@@ -154,7 +180,7 @@ export async function executeCase(
   }
 
   rec.ended_at = Date.now();
-  updateRunCase(rcId, { status: rec.status, ended_at: rec.ended_at, grader_result: rec.grader_result, error_msg: rec.error_msg });
-  appendEvent(runId, "case_finished", { case_id: def.id, seq, status: rec.status }, def.id);
+  updateRunCase(rcId, { status: rec.status, ended_at: rec.ended_at, grader_result: rec.grader_result, budget_exceeded: rec.budget_exceeded, error_msg: rec.error_msg });
+  appendEvent(runId, "case_finished", { case_id: def.id, seq, sample, status: rec.status }, def.id);
   return rec;
 }

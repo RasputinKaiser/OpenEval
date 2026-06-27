@@ -68,6 +68,8 @@ export default function BenchClient({ runId, runName }: Props) {
             <Stat label="P95 duration" value={fmtMs(t.p95DurationMs)} icon={Timer} tone={t.p95DurationMs > 60000 ? "warn" : undefined} />
             <Stat label="Cache hit" value={`${(t.cacheHitRate * 100).toFixed(0)}%`} icon={Layers} tone={t.cacheHitRate > 0.3 ? "ok" : undefined} />
             <Stat label="Error rate" value={`${(t.errorRate * 100).toFixed(0)}%`} icon={AlertTriangle} tone={t.errorRate > 0 ? "err" : "ok"} />
+            <Stat label="Fails safely" value={`${(t.failsSafelyRate * 100).toFixed(0)}%`} icon={Layers} tone={t.failsSafelyRate >= 1 ? "ok" : "warn"} />
+            <Stat label="Cheapest pass" value={`$${t.cheapestPassUsd.toFixed(4)}`} icon={DollarSign} tone="accent" />
             <Stat label="Avg turns" value={t.avgTurns.toFixed(1)} icon={Hash} />
             <Stat label="Tool calls" value={String(t.totalToolCalls)} icon={Wrench} />
             <Stat label="Cases" value={String(t.perCase.length)} icon={Activity} />

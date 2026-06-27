@@ -1,5 +1,6 @@
 {
   "id": "reasoning-code-trace",
+  "difficulty": "easy",
   "category": "reasoning",
   "name": "Predict JavaScript output",
   "description": "Trace through a small JS snippet and predict its printed output.",

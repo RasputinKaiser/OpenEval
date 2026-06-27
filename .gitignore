@@ -10,3 +10,4 @@ data/
 runs/
 fixtures/**/node_modules
 fixtures/**/.git
+fixtures/.DS_Store
