@@ -1,0 +1,36 @@
+{
+  "id": "visual-svg-status-card",
+  "category": "visual-code",
+  "difficulty": "medium",
+  "name": "Generate a polished SVG status card",
+  "description": "Visual-code task for blind-but-design-capable models: create a single SVG artifact with a structured status card, labeled chart, legend, and accessible title/description. Grading stays deterministic by checking the generated SVG contract.",
+  "tags": ["visual-code", "svg", "design", "accessibility"],
+  "split": "public",
+  "prompt": "Create a file named status-card.svg. It must be a self-contained SVG with viewBox=\"0 0 800 500\". The design should be a polished dark status card for an agent eval run named \"NEval Accuracy Run\". Include an accessible <title> and <desc>, visible text for \"NEval Accuracy Run\", \"Pass rate\", \"Known-bad rejected\", and \"Visual-code\". Include at least one chart-like element using <rect> bars and one <path> trend line. Do not create any other files.",
+  "setup": { "type": "none" },
+  "runner": { "max_turns": 12, "timeout_seconds": 180, "permission_mode": "bypassPermissions" },
+  "budget": { "max_turns": 12, "max_cost_usd": 0.5 },
+  "visual": {
+    "kind": "svg",
+    "requires_vision_input": false,
+    "expected_artifacts": ["status-card.svg"]
+  },
+  "graders": [
+    { "type": "file_exists", "path": "status-card.svg", "weight": 10 },
+    { "type": "file_contains", "path": "status-card.svg", "pattern": "<svg[^>]+viewBox=[\"']0 0 800 500[\"']", "weight": 15 },
+    { "type": "file_contains", "path": "status-card.svg", "pattern": "<title>[^<]*NEval Accuracy Run[^<]*</title>", "weight": 15 },
+    { "type": "file_contains", "path": "status-card.svg", "pattern": "<desc>[^<]{30,}</desc>", "weight": 10 },
+    { "type": "file_contains", "path": "status-card.svg", "pattern": "Pass rate", "weight": 10 },
+    { "type": "file_contains", "path": "status-card.svg", "pattern": "Known-bad rejected", "weight": 10 },
+    { "type": "file_contains", "path": "status-card.svg", "pattern": "Visual-code", "weight": 10 },
+    { "type": "file_contains", "path": "status-card.svg", "pattern": "<rect\\b", "weight": 10 },
+    { "type": "file_contains", "path": "status-card.svg", "pattern": "<path\\b", "weight": 10 },
+    { "type": "file_exists", "path": "index.html", "negate": true, "weight": 5, "forbidden": true }
+  ],
+  "pass_threshold": 0.9,
+  "oracle": {
+    "solve": "oracle/visual-svg-status-card.sh",
+    "noop_max_score": 0.1,
+    "known_bad": ["oracle/visual-svg-status-card-bad.sh"]
+  }
+}

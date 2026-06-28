@@ -6,6 +6,7 @@ import clsx from "clsx";
 import {
   ChevronRight, ChevronDown, Hash, Wrench, Terminal, FileText,
   CornerDownRight, Clock, User, Cpu, DollarSign, AlertTriangle, CheckCircle2, XCircle,
+  Eye, FileCode,
 } from "lucide-react";
 import type { RunCaseRecord, RunnerResult } from "@/lib/types";
 
@@ -15,6 +16,9 @@ export default function CaseDetailClient({ caseId, runId, initial }: Props) {
   const [rc, setRc] = useState<RunCaseRecord | null>(initial);
   const [openTools, setOpenTools] = useState(true);
   const [openTranscript, setOpenTranscript] = useState(true);
+  const [openPreview, setOpenPreview] = useState(true);
+  const [previewContent, setPreviewContent] = useState<{ path: string; content: string; kind: "svg" | "html" } | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const lastEnd = useRef(initial?.ended_at ?? 0);
 
   useEffect(() => {
@@ -45,6 +49,32 @@ export default function CaseDetailClient({ caseId, runId, initial }: Props) {
 
   if (!rc) return <div className="p-8 text-fg-muted">Loading…</div>;
 
+  async function loadPreview(artifactPath: string) {
+    setPreviewLoading(true);
+    setPreviewContent(null);
+    try {
+      const res = await fetch(`/api/runs/${runId}/case/${caseId}/artifact?path=${encodeURIComponent(artifactPath)}`);
+      if (!res.ok) {
+        setPreviewContent(null);
+        return;
+      }
+      const data = await res.json();
+      if (data.content) {
+        const isSvg = artifactPath.endsWith(".svg");
+        const isHtml = artifactPath.endsWith(".html") || artifactPath.endsWith(".htm");
+        setPreviewContent({
+          path: artifactPath,
+          content: data.content,
+          kind: isSvg ? "svg" : isHtml ? "html" : "svg",
+        });
+      }
+    } catch {
+      // Artifact not available yet
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
   const runner = rc.runner_result;
   const grader = rc.grader_result;
 
@@ -72,6 +102,50 @@ export default function CaseDetailClient({ caseId, runId, initial }: Props) {
       {openTranscript && runner && (
         <Section title="Transcript" icon={Terminal} count={runner.transcript.length} open={openTranscript} onToggle={() => setOpenTranscript(!openTranscript)}>
           <Transcript runner={runner} />
+        </Section>
+      )}
+
+      {rc.case_def?.visual?.expected_artifacts?.length && (
+        <Section title="Visual preview" icon={Eye} count={rc.case_def.visual.expected_artifacts.length} open={openPreview} onToggle={() => setOpenPreview(!openPreview)}>
+          <div className="px-4 py-3 space-y-3">
+            <div className="flex flex-wrap gap-2">
+              {rc.case_def.visual.expected_artifacts.map((art) => (
+                <button
+                  key={art}
+                  onClick={() => loadPreview(art)}
+                  className={clsx(
+                    "text-xs mono px-2 py-1 rounded border transition-colors",
+                    previewContent?.path === art
+                      ? "border-accent-soft text-accent-soft bg-accent-soft/10"
+                      : "border-bd-subtle text-fg-muted hover:text-fg hover:border-fg-dim"
+                  )}
+                >
+                  <FileCode className="size-3 inline mr-1" />
+                  {art}
+                </button>
+              ))}
+            </div>
+            {previewLoading && <div className="text-xs text-fg-muted">Loading artifact…</div>}
+            {previewContent && previewContent.kind === "svg" && (
+              <div className="rounded-lg border border-bd-subtle overflow-hidden bg-white p-4">
+                <div dangerouslySetInnerHTML={{ __html: previewContent.content }} />
+              </div>
+            )}
+            {previewContent && previewContent.kind === "html" && (
+              <iframe
+                sandbox=""
+                srcDoc={previewContent.content}
+                className="w-full rounded-lg border border-bd-subtle"
+                style={{ minHeight: "400px", background: "#fff" }}
+                title="Preview"
+              />
+            )}
+            {!previewContent && !previewLoading && (
+              <div className="text-xs text-fg-muted">
+                Click an artifact filename to render it inline. Artifacts are read from the run workdir after the case has been executed or the oracle solve script has been run.
+              </div>
+            )}
+          </div>
         </Section>
       )}
 
