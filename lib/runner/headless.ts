@@ -81,7 +81,7 @@ export class HeadlessRunner implements Runner {
 
         if (acc.result) {
           emit(ctx, { kind: "finished", at: Date.now(), durationMs, exitCode });
-          resolve({ ...acc.result, exitCode, durationMs } as RunnerResult);
+          resolve({ ...acc.result, exitCode, durationMs, startedAt, endedAt: startedAt + durationMs } as RunnerResult);
           return;
         }
         resolve(failure(ctx, acc, startedAt, {

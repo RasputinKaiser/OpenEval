@@ -11,7 +11,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className="min-h-screen bg-bg text-fg font-sans antialiased">
-        <div className="flex min-h-screen">
+        <div className="flex min-h-screen flex-col md:flex-row">
           <Sidebar />
           <main className="flex-1 min-w-0 overflow-x-hidden">{children}</main>
         </div>

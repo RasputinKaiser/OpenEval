@@ -82,18 +82,37 @@ export function caseTelemetry(c: RunCaseRecord): CaseTelemetry {
     return {
       tokPerSec: 0, inTokPerSec: 0, toolCallCount: 0, toolCallCounts: {},
       errorCount: 0, cacheHitRate: 0, tokensPerCase: 0, costPerCase: 0, msPerTurn: 0, msPerTool: 0,
+      durationSource: "missing",
+      tokenSource: "missing",
+      toolSource: "missing",
+      throughputMode: "output_tokens_per_runner_wall_second",
+      toolDurationCoverage: 0,
+      warnings: ["runner result missing"],
     };
   }
+  const warnings: string[] = [];
+  const hasDuration = r.durationMs > 0;
+  const hasUsage = r.usage.inputTokens > 0 || r.usage.outputTokens > 0 || r.usage.cacheReadTokens > 0 || r.usage.cacheCreateTokens > 0;
   const durSec = Math.max(r.durationMs / 1000, 0.001);
   const tokPerSec = r.usage.outputTokens / durSec;
   const inTokPerSec = r.usage.inputTokens / durSec;
   const toolCallCount = r.toolCalls.length;
   const toolDurations = r.toolCalls.map((t) => t.durationMs ?? 0).filter((x) => x > 0);
+  const toolDurationCoverage = toolCallCount > 0 ? toolDurations.length / toolCallCount : 1;
   const msPerTool = toolDurations.length ? toolDurations.reduce((a, b) => a + b, 0) / toolDurations.length : 0;
   const msPerTurn = r.numTurns > 0 ? r.durationMs / r.numTurns : 0;
   const cacheTotal = r.usage.cacheReadTokens + r.usage.cacheCreateTokens + r.usage.inputTokens;
   const cacheHitRate = cacheTotal > 0 ? r.usage.cacheReadTokens / cacheTotal : 0;
   const errorCount = r.toolCalls.filter((t) => t.isError).length;
+  const summaryToolCount = Object.values(r.toolCallCounts || {}).reduce((a, b) => a + b, 0);
+  if (!hasDuration) warnings.push("duration missing; throughput is zeroed");
+  if (!hasUsage) warnings.push("CLI usage missing; token and cost metrics are zeroed");
+  if (toolCallCount === 0 && summaryToolCount > 0) warnings.push("tool summary exists but raw tool events are missing");
+  if (toolCallCount > 0 && toolDurationCoverage < 1) warnings.push(`${Math.round(toolDurationCoverage * 100)}% of tool calls have measured duration`);
+  if (summaryToolCount > 0 && summaryToolCount !== toolCallCount) warnings.push(`tool count mismatch: events=${toolCallCount}, summary=${summaryToolCount}`);
+  if (r.durationMs > 0 && r.endedAt && r.startedAt && Math.abs((r.endedAt - r.startedAt) - r.durationMs) > 1000) {
+    warnings.push("runner wall duration differs from result timestamps");
+  }
   return {
     tokPerSec,
     inTokPerSec,
@@ -105,13 +124,20 @@ export function caseTelemetry(c: RunCaseRecord): CaseTelemetry {
     costPerCase: r.usage.costUsd || 0,
     msPerTurn,
     msPerTool,
+    durationSource: hasDuration ? "runner_wall" : "missing",
+    tokenSource: hasUsage ? "cli_usage" : "missing",
+    toolSource: toolCallCount > 0 ? "stream_tool_events" : summaryToolCount > 0 ? "summary_counts" : "missing",
+    throughputMode: "output_tokens_per_runner_wall_second",
+    toolDurationCoverage,
+    warnings,
   };
 }
 
 export function computeTelemetry(cases: RunCaseRecord[]): RunTelemetry {
   const completed = cases.filter((c) => c.runner_result);
   const durations = completed.map((c) => c.runner_result!.durationMs).sort((a, b) => a - b);
-  const tpsValues = completed.map(caseTelemetry).map((t) => t.tokPerSec).sort((a, b) => a - b);
+  const caseTs = completed.map(caseTelemetry);
+  const tpsValues = caseTs.map((t) => t.tokPerSec).sort((a, b) => a - b);
   const totalOut = completed.reduce((a, c) => a + c.runner_result!.usage.outputTokens, 0);
   const totalDurSec = completed.reduce((a, c) => a + c.runner_result!.durationMs, 0) / 1000;
   const avgTokPerSec = totalDurSec > 0 ? totalOut / totalDurSec : 0;
@@ -154,8 +180,21 @@ export function computeTelemetry(cases: RunCaseRecord[]): RunTelemetry {
       costUsd: t.costPerCase,
       tokens: t.tokensPerCase,
       passed: c.status === "passed",
+      toolCallCount: t.toolCallCount,
+      toolErrorCount: t.errorCount,
+      toolDurationCoverage: t.toolDurationCoverage,
+      warnings: t.warnings,
     };
   });
+  const measuredDurationCases = caseTs.filter((t) => t.durationSource === "runner_wall").length;
+  const usageReportedCases = caseTs.filter((t) => t.tokenSource === "cli_usage").length;
+  const toolEventCases = caseTs.filter((t) => t.toolSource === "stream_tool_events").length;
+  const totalToolCallsWithEvents = caseTs.reduce((sum, t) => sum + t.toolCallCount, 0);
+  const totalMeasuredToolDurations = completed.reduce(
+    (sum, c) => sum + c.runner_result!.toolCalls.filter((tool) => (tool.durationMs ?? 0) > 0).length,
+    0
+  );
+  const telemetryWarnings = Array.from(new Set(caseTs.flatMap((t) => t.warnings))).slice(0, 8);
 
   return {
     p50DurationMs: percentile(durations, 0.5),
@@ -171,6 +210,15 @@ export function computeTelemetry(cases: RunCaseRecord[]): RunTelemetry {
     forbiddenViolationRate: completed.length ? forbiddenViolations / completed.length : 0,
     failsSafelyRate: completed.length ? (completed.length - forbiddenViolations) / completed.length : 1,
     cheapestPassUsd: cheapestPassUsd === Infinity ? 0 : cheapestPassUsd,
+    quality: {
+      completedCases: completed.length,
+      measuredDurationCases,
+      usageReportedCases,
+      toolEventCases,
+      toolDurationCoverage: totalToolCallsWithEvents > 0 ? totalMeasuredToolDurations / totalToolCallsWithEvents : 1,
+      throughputMode: "output_tokens_per_runner_wall_second",
+      warnings: telemetryWarnings,
+    },
     perCase,
   };
 }

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { listRuns } from "@/lib/db";
+import { countRuns, listRuns } from "@/lib/db";
 import { loadCases } from "@/lib/cases";
 import StatusBadge from "@/components/StatusBadge";
 import { Activity, ArrowRight, BarChart3, CheckCircle2, Cpu, DollarSign, FileText, Timer } from "lucide-react";
@@ -16,12 +16,13 @@ function fmtDuration(ms: number) {
 
 export default async function Page() {
   const runs = listRuns(5);
+  const totalRuns = countRuns();
   const cases = await loadCases();
   const lastRun = runs[0];
   const summary = lastRun?.summary;
 
   const stats = [
-    { label: "Total Runs", value: runs.length, icon: Activity },
+    { label: "Total Runs", value: totalRuns, icon: Activity },
     { label: "Test Cases", value: cases.length, icon: FileText },
     { label: "Last Pass Rate", value: summary ? `${(summary.passRate * 100).toFixed(0)}%` : "—", icon: CheckCircle2 },
     { label: "Avg Tokens (last)", value: summary ? `${((summary.totalTokensIn + summary.totalTokensOut) / Math.max(summary.total, 1)).toFixed(0)}` : "—", icon: Cpu },
@@ -33,7 +34,7 @@ export default async function Page() {
     <div className="p-8 max-w-7xl mx-auto">
       <header className="mb-8">
         <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-        <p className="text-sm text-fg-muted mt-1">Evaluate NCode CLI across SWE, single-tool, and reasoning tasks.</p>
+        <p className="text-sm text-fg-muted mt-1">Evaluate agent CLIs across SWE, single-tool, reasoning, and visual-code tasks.</p>
       </header>
 
       <section className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">

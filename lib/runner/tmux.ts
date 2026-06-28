@@ -87,7 +87,7 @@ export class TmuxRunner implements Runner {
     emit(ctx, { kind: "finished", at: Date.now(), durationMs, exitCode });
 
     if (acc.result) {
-      return { ...acc.result, exitCode, durationMs } as RunnerResult;
+      return { ...acc.result, exitCode, durationMs, startedAt, endedAt: startedAt + durationMs } as RunnerResult;
     }
     return fail(ctx, acc, startedAt, "tmux session ended without a result event");
   }

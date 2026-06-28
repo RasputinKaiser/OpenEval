@@ -5,7 +5,9 @@ import { CASES_DIR } from "./config";
 import { z } from "zod";
 import type { CaseDefinition } from "./types";
 
-const CATEGORIES = new Set(["agentic-swe", "single-tool", "reasoning"]);
+export const CASE_CATEGORIES = ["agentic-swe", "single-tool", "reasoning", "visual-code"] as const;
+
+const CATEGORIES = new Set<string>(CASE_CATEGORIES);
 
 const GraderSpecSchema = z.intersection(
   z.discriminatedUnion("type", [
@@ -131,7 +133,7 @@ const VisualSchema = z.object({
 
 export const CaseDefinitionSchema = z.object({
   id: z.string().min(1),
-  category: z.enum(["agentic-swe", "single-tool", "reasoning"]),
+  category: z.enum(CASE_CATEGORIES),
   difficulty: z.enum(["easy", "medium", "hard"]).optional(),
   name: z.string(),
   description: z.string().optional(),

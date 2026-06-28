@@ -58,6 +58,8 @@ export function parseStreamLine(
       if (b.type === "text") return { type: "text", text: b.text ?? "" };
       if (b.type === "tool_use") {
         const tu = { type: "tool_use", id: b.id, name: b.name, input: b.input };
+        const toolStartMap = (into as any)._toolStartMap || ((into as any)._toolStartMap = {});
+        toolStartMap[b.id] = at;
         into.toolCalls.push({ id: b.id, name: b.name, input: b.input, atMs: at });
         events.push({ kind: "tool_use", tool: b.name, input: b.input, id: b.id, at });
         return tu;
@@ -94,7 +96,7 @@ export function parseStreamLine(
           tc.output = content;
           tc.isError = !!b.is_error;
           const started = toolStartMap[b.tool_use_id];
-          if (started) tc.durationMs = at - started;
+          if (started !== undefined) tc.durationMs = Math.max(0, at - started);
         }
         events.push({ kind: "tool_result", id: b.tool_use_id, output: content, isError: !!b.is_error, at });
         return { type: "tool_result", tool_use_id: b.tool_use_id, content, is_error: !!b.is_error };
@@ -113,26 +115,15 @@ export function parseStreamLine(
     const finalDur = (obj.duration_ms ?? 0) || 1;
     const totalOut = usage.output_tokens ?? 0;
     const totalIn = usage.input_tokens ?? 0;
-    const cumulativeBy = (into.transcript.filter((m) => m.role === "assistant")).length;
-    if (cumulativeBy > 1) {
-      const outStep = Math.floor(totalOut / Math.max(cumulativeBy, 1));
-      const inStep = Math.floor(totalIn / Math.max(cumulativeBy, 1));
-      let tIdx = 0;
-      for (const m of into.transcript) {
-        if (m.role !== "assistant") continue;
-        tIdx++;
-        const elapsedFromPrev = 1;
-        segs.push({
-          atMs: m.atMs ?? into.startedAt,
-          cumulativeInput: inStep * tIdx,
-          cumulativeOutput: outStep * tIdx,
-          deltaOutput: outStep,
-          deltaInput: inStep,
-          outTokPerSec: outStep / elapsedFromPrev,
-        });
-      }
-    } else if (totalOut > 0) {
-      segs.push({ atMs: into.startedAt, cumulativeInput: totalIn, cumulativeOutput: totalOut, deltaOutput: totalOut, deltaInput: totalIn, outTokPerSec: totalOut / (finalDur / 1000) });
+    if (totalOut > 0 || totalIn > 0) {
+      segs.push({
+        atMs: into.startedAt + finalDur,
+        cumulativeInput: totalIn,
+        cumulativeOutput: totalOut,
+        deltaOutput: totalOut,
+        deltaInput: totalIn,
+        outTokPerSec: totalOut / Math.max(finalDur / 1000, 0.001),
+      });
     }
     into.result = {
       ...(into.result || {}),

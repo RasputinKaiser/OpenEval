@@ -7,8 +7,10 @@ import StatusBadge from "./StatusBadge";
 import TelemetryStrip from "./TelemetryStrip";
 import {
   ChevronRight, Wrench, Clock, Hash, Cpu, DollarSign, Loader2, CircleDot, Gauge, AlertCircle, PlayCircle,
+  Eye, FileCode, Palette, Sparkles, ShieldCheck, ShieldAlert, CheckCircle2, XCircle, Boxes, FlaskConical,
+  SearchCheck, BadgeCheck, Scale, Fingerprint,
 } from "lucide-react";
-import type { RunCaseRecord, GraderResult, TranscriptEntry } from "@/lib/types";
+import type { EvidenceTier, GraderResult, GraderSpec, RunCaseRecord, TranscriptEntry } from "@/lib/types";
 
 interface Props { runId: string; initialCases: RunCaseRecord[]; running: boolean; model?: string; }
 
@@ -16,7 +18,6 @@ export default function RunDetailClient({ runId, initialCases, running, model }:
   const [cases, setCases] = useState<RunCaseRecord[]>(initialCases);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(initialCases.length ? 0 : null);
   const [live, setLive] = useState(running);
-  const lastSig = useRefSig(cases);
 
   useEffect(() => {
     if (!live) return;
@@ -43,10 +44,73 @@ export default function RunDetailClient({ runId, initialCases, running, model }:
     running: cases.filter((c) => c.status === "running" || c.status === "grading").length,
     pending: cases.filter((c) => c.status === "pending").length,
   };
+  const completed = counts.passed + counts.failed + counts.error;
+  const passRatio = cases.length ? Math.round((counts.passed / cases.length) * 100) : 0;
+  const visualCases = cases.filter((c) => c.case_def?.visual?.expected_artifacts?.length);
+  const activeCase = selectedIdx === null ? null : cases[selectedIdx] ?? null;
+  const confidence = summarizeRunConfidence(cases);
 
   return (
     <div>
       <TelemetryStrip runId={runId} />
+      <section className="mb-4 overflow-hidden rounded-lg border border-bd bg-[linear-gradient(135deg,rgba(124,92,255,0.18),rgba(17,17,19,0.96)_42%,rgba(63,185,80,0.09))]">
+        <div className="grid gap-4 p-4 xl:grid-cols-[1fr_360px_340px] xl:items-end">
+          <div>
+            <div className="flex flex-wrap items-center gap-2 text-[11px] text-fg-muted">
+              <span className="inline-flex items-center gap-1 rounded border border-accent-soft/30 bg-accent/15 px-2 py-1 text-accent-soft">
+                {live ? <Loader2 className="size-3 animate-spin" /> : <CircleDot className="size-3" />}
+                {live ? "Running eval" : "Eval complete"}
+              </span>
+              <span className="mono">{runId}</span>
+              {model && <span className="mono">{model}</span>}
+            </div>
+            <h1 className="mt-3 text-2xl font-semibold tracking-normal text-fg md:text-3xl">Run output</h1>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-fg-muted">
+              Watch cases resolve, inspect grader evidence, preview artifacts, and see how much proof backs the score.
+            </p>
+          </div>
+          <div className="rounded-lg border border-bd-subtle bg-bg/55 p-3">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-fg-muted">Progress</span>
+              <span className="mono text-fg">{completed}/{cases.length}</span>
+            </div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-bg-elev">
+              <div className="h-full rounded-full bg-accent-soft transition-all" style={{ width: `${cases.length ? (completed / cases.length) * 100 : 0}%` }} />
+            </div>
+            <div className="mt-3 grid grid-cols-4 gap-2 text-center">
+              <RunMetric label="Pass" value={String(counts.passed)} tone="ok" />
+              <RunMetric label="Fail" value={String(counts.failed)} tone="err" />
+              <RunMetric label="Live" value={String(counts.running)} tone="accent" />
+              <RunMetric label="Visual" value={String(visualCases.length)} tone="visual" />
+            </div>
+          </div>
+          <div className="rounded-lg border border-bd-subtle bg-bg/55 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                {confidence.score >= 80 ? <ShieldCheck className="size-4 text-ok" /> : <ShieldAlert className="size-4 text-warn" />}
+                <span className="text-xs font-medium">Confidence</span>
+              </div>
+              <span className={clsx("mono text-lg font-semibold", confidence.score >= 80 ? "text-ok" : confidence.score >= 60 ? "text-warn" : "text-err")}>
+                {confidence.score}
+              </span>
+            </div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-bg-elev">
+              <div
+                className={clsx("h-full rounded-full transition-all", confidence.score >= 80 ? "bg-ok" : confidence.score >= 60 ? "bg-warn" : "bg-err")}
+                style={{ width: `${confidence.score}%` }}
+              />
+            </div>
+            <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+              <RunMetric label="Proof" value={`${confidence.deterministicCoverage}%`} tone="ok" />
+              <RunMetric label="Bad rej." value={`${confidence.knownBadCoverage}%`} tone="accent" />
+              <RunMetric label="Weak" value={String(confidence.weakCaseCount)} tone={confidence.weakCaseCount ? "err" : "ok"} />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <RunConfidencePanel confidence={confidence} />
+
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.4fr] gap-4">
         <section className="card overflow-hidden flex flex-col">
           <div className="px-4 py-3 border-b border-bd flex items-center justify-between">
@@ -58,12 +122,13 @@ export default function RunDetailClient({ runId, initialCases, running, model }:
             {live && <Loader2 className="size-3.5 text-accent-soft animate-spin" />}
           </div>
 
-          <div className="px-4 py-2 border-b border-bd-subtle flex gap-3 text-[11px]">
+          <div className="px-4 py-2 border-b border-bd-subtle flex flex-wrap items-center gap-3 text-[11px]">
             <span className="text-ok">● {counts.passed}</span>
             <span className="text-err">● {counts.failed}</span>
             <span className="text-warn">! {counts.error}</span>
             {counts.running > 0 && <span className="text-accent-soft">● {counts.running}</span>}
             {counts.pending > 0 && <span className="text-fg-dim">● {counts.pending}</span>}
+            <span className="ml-auto mono text-fg-muted">{passRatio}% pass</span>
           </div>
 
           <div className="max-h-[calc(100vh-280px)] overflow-y-auto divide-y divide-bd-subtle">
@@ -75,6 +140,7 @@ export default function RunDetailClient({ runId, initialCases, running, model }:
                 ? (runner.usage.outputTokens / (runner.durationMs / 1000)).toFixed(1)
                 : "—";
               const cost = runner ? `$${runner.usage.costUsd.toFixed(4)}` : "—";
+              const caseTrust = summarizeCaseTrust(c);
               return (
                 <div
                   key={c.id}
@@ -89,7 +155,14 @@ export default function RunDetailClient({ runId, initialCases, running, model }:
                 >
                   <span className="text-[10px] text-fg-dim mono w-6 shrink-0">{String(i + 1).padStart(2, "0")}</span>
                   <div className="min-w-0 flex-1">
-                    <div className="text-sm truncate">{c.case_name}</div>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <div className="truncate text-sm">{c.case_name}</div>
+                      {c.case_def?.visual?.expected_artifacts?.length ? (
+                        <span className="inline-flex shrink-0 items-center gap-1 rounded bg-accent-soft/10 px-1.5 py-0.5 text-[10px] text-accent-soft">
+                          <Palette className="size-3" /> preview
+                        </span>
+                      ) : null}
+                    </div>
                     <div className="text-[10px] text-fg-dim mono mt-0.5 flex items-center gap-1.5">
                       <span className="px-1 rounded bg-bg-elev">{c.category}</span>
                       {runner && <span>· turns {runner.numTurns} · {runner.toolCalls.length} tools</span>}
@@ -108,6 +181,12 @@ export default function RunDetailClient({ runId, initialCases, running, model }:
                       <span>{cost}</span>
                     </div>
                   )}
+                  <span className={clsx(
+                    "hidden sm:inline-flex shrink-0 items-center rounded border px-1.5 py-0.5 text-[10px] mono",
+                    caseTrust.score >= 80 ? "border-ok/30 bg-ok/10 text-ok" : caseTrust.score >= 60 ? "border-warn/30 bg-warn/10 text-warn" : "border-err/30 bg-err/10 text-err"
+                  )}>
+                    {caseTrust.score}
+                  </span>
                   <StatusBadge status={c.status} size="xs" />
                 </div>
               );
@@ -116,14 +195,14 @@ export default function RunDetailClient({ runId, initialCases, running, model }:
         </section>
 
         <section>
-          {selectedIdx === null || !cases[selectedIdx] ? (
+          {selectedIdx === null || !activeCase ? (
             <div className="card p-12 text-center">
               <CircleDot className="size-8 text-fg-dim mx-auto mb-2" />
               <div className="text-sm text-fg-muted">Select a case to view details</div>
               <div className="text-[11px] text-fg-dim mt-1">Live transcript and grading results available after completion</div>
             </div>
           ) : (
-            <CaseSidePanel key={cases[selectedIdx].id} rc={cases[selectedIdx]} runId={runId} />
+            <CaseSidePanel key={activeCase.id} rc={activeCase} runId={runId} />
           )}
         </section>
       </div>
@@ -134,6 +213,7 @@ export default function RunDetailClient({ runId, initialCases, running, model }:
 function CaseSidePanel({ rc, runId }: { rc: RunCaseRecord; runId: string }) {
   const runner = rc.runner_result;
   const grader = rc.grader_result;
+  const trust = summarizeCaseTrust(rc);
   return (
     <div className="space-y-3">
       <div className="card p-4">
@@ -158,6 +238,8 @@ function CaseSidePanel({ rc, runId }: { rc: RunCaseRecord; runId: string }) {
         </div>
       )}
 
+      <CaseTrustPanel trust={trust} rc={rc} />
+
       {runner && (
         <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
           <Mini label="Turns" value={String(runner.numTurns)} icon={Hash} />
@@ -173,11 +255,12 @@ function CaseSidePanel({ rc, runId }: { rc: RunCaseRecord; runId: string }) {
       {grader && grader.results.length > 0 && (
         <div className="card overflow-hidden">
           <div className="px-4 py-2.5 border-b border-bd-subtle bg-bg-subtle/50 flex items-center justify-between">
-            <span className="text-xs font-medium">Graders</span>
+            <span className="text-xs font-medium">Evidence groups</span>
             <span className={clsx("text-xs mono font-semibold", grader.passed ? "text-ok" : "text-err")}>
               {(grader.passRatio * 100).toFixed(0)}%
             </span>
           </div>
+          <EvidenceGroupSummary results={grader.results} visualContract={!!rc.case_def.visual} />
           <div className="divide-y divide-bd-subtle">
             {grader.results.map((g, i) => (
               <GraderRow key={i} g={g} />
@@ -185,6 +268,15 @@ function CaseSidePanel({ rc, runId }: { rc: RunCaseRecord; runId: string }) {
           </div>
         </div>
       )}
+
+      {rc.case_def?.visual?.expected_artifacts?.length ? (
+        <ArtifactStage
+          artifacts={rc.case_def.visual.expected_artifacts}
+          caseId={rc.case_id}
+          runId={runId}
+          status={rc.status}
+        />
+      ) : null}
 
       {runner && runner.transcript.length > 0 && (
         <div className="card overflow-hidden">
@@ -227,6 +319,491 @@ function CaseSidePanel({ rc, runId }: { rc: RunCaseRecord; runId: string }) {
       </div>
     </div>
   );
+}
+
+function RunMetric({ label, value, tone }: { label: string; value: string; tone: "ok" | "err" | "accent" | "visual" }) {
+  const toneClass = {
+    ok: "text-ok",
+    err: "text-err",
+    accent: "text-accent-soft",
+    visual: "text-fg",
+  }[tone];
+  return (
+    <div className="rounded border border-bd-subtle bg-bg-subtle/70 px-2 py-2">
+      <div className={clsx("mono text-base font-semibold", toneClass)}>{value}</div>
+      <div className="mt-0.5 text-[10px] uppercase tracking-wider text-fg-dim">{label}</div>
+    </div>
+  );
+}
+
+function RunConfidencePanel({ confidence }: { confidence: RunConfidenceSummary }) {
+  return (
+    <section className="card mb-4 overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-bd-subtle bg-bg-subtle/50 px-4 py-3">
+        <div className="flex items-center gap-2">
+          <ShieldCheck className="size-4 text-accent-soft" />
+          <div>
+            <div className="text-sm font-medium">Evaluation confidence</div>
+            <div className="text-[11px] text-fg-dim">
+              Separates pass rate from proof coverage, adversarial coverage, and known weaknesses.
+            </div>
+          </div>
+        </div>
+        <div className={clsx(
+          "rounded border px-2.5 py-1 text-xs mono",
+          confidence.score >= 80 ? "border-ok/30 bg-ok/10 text-ok" : confidence.score >= 60 ? "border-warn/30 bg-warn/10 text-warn" : "border-err/30 bg-err/10 text-err"
+        )}>
+          {confidence.grade}
+        </div>
+      </div>
+      <div className="grid gap-3 p-4 lg:grid-cols-[1fr_1fr_1.2fr]">
+        <TrustMeter
+          icon={SearchCheck}
+          label="Deterministic + trace proof"
+          value={`${confidence.deterministicCoverage}%`}
+          help={`${confidence.provenCaseCount}/${confidence.totalCases} cases have non-LLM proof backstops`}
+          tone={confidence.deterministicCoverage >= 80 ? "ok" : "warn"}
+        />
+        <TrustMeter
+          icon={FlaskConical}
+          label="Known-bad coverage"
+          value={`${confidence.knownBadCoverage}%`}
+          help={`${confidence.knownBadCaseCount}/${confidence.totalCases} cases include plausible bad solves to reject`}
+          tone={confidence.knownBadCoverage >= 80 ? "ok" : "warn"}
+        />
+        <div className="rounded-lg border border-bd-subtle bg-bg/60 p-3">
+          <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-fg-muted">
+            <ShieldAlert className="size-3" /> Weakness radar
+          </div>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {confidence.topWeaknesses.length ? confidence.topWeaknesses.map((w) => (
+              <span key={w.label} className="rounded border border-warn/30 bg-warn/10 px-2 py-1 text-[11px] text-warn">
+                {w.count} {w.label}
+              </span>
+            )) : (
+              <span className="rounded border border-ok/30 bg-ok/10 px-2 py-1 text-[11px] text-ok">No structural weaknesses detected</span>
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function TrustMeter({
+  icon: Icon,
+  label,
+  value,
+  help,
+  tone,
+}: {
+  icon: any;
+  label: string;
+  value: string;
+  help: string;
+  tone: "ok" | "warn" | "err";
+}) {
+  return (
+    <div className="rounded-lg border border-bd-subtle bg-bg/60 p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-fg-muted">
+            <Icon className="size-3" /> {label}
+          </div>
+          <div className="mt-1 text-[11px] text-fg-dim">{help}</div>
+        </div>
+        <div className={clsx("mono text-lg font-semibold", tone === "ok" && "text-ok", tone === "warn" && "text-warn", tone === "err" && "text-err")}>
+          {value}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CaseTrustPanel({ trust, rc }: { trust: CaseTrustSummary; rc: RunCaseRecord }) {
+  return (
+    <div className="card overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-bd-subtle bg-bg-subtle/50 px-4 py-3">
+        <div className="flex items-center gap-2">
+          {trust.score >= 80 ? <ShieldCheck className="size-4 text-ok" /> : <ShieldAlert className="size-4 text-warn" />}
+          <div>
+            <div className="text-xs font-medium">Case trust contract</div>
+            <div className="text-[10px] text-fg-dim mono">{trust.grade} · score {trust.score}</div>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          <TrustChip ok={trust.hasOracle} label="oracle" />
+          <TrustChip ok={trust.hasKnownBad} label="known-bad" />
+          <TrustChip ok={trust.hasProofBackstop} label="proof" />
+          <TrustChip ok={trust.hasBudget} label="budget" />
+          {rc.case_def.visual ? <TrustChip ok={trust.hasVisualContract} label="visual" /> : null}
+        </div>
+      </div>
+      <div className="grid gap-2 p-3 sm:grid-cols-3">
+        <MiniProof label="Deterministic" value={`${trust.evidence.deterministic.passed}/${trust.evidence.deterministic.total}`} icon={BadgeCheck} />
+        <MiniProof label="Trace" value={`${trust.evidence.trace.passed}/${trust.evidence.trace.total}`} icon={Boxes} />
+        <MiniProof label="Visual" value={trust.hasVisualContract ? "contracted" : "none"} icon={Eye} />
+      </div>
+      {trust.weaknesses.length ? (
+        <div className="border-t border-bd-subtle px-4 py-3">
+          <div className="mb-2 flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-warn">
+            <ShieldAlert className="size-3" /> Weaknesses
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {trust.weaknesses.map((w) => (
+              <span key={w} className="rounded border border-warn/30 bg-warn/10 px-2 py-1 text-[11px] text-warn">{w}</span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function TrustChip({ ok, label }: { ok: boolean; label: string }) {
+  return (
+    <span className={clsx(
+      "inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px]",
+      ok ? "border-ok/30 bg-ok/10 text-ok" : "border-warn/30 bg-warn/10 text-warn"
+    )}>
+      {ok ? <CheckCircle2 className="size-3" /> : <XCircle className="size-3" />}
+      {label}
+    </span>
+  );
+}
+
+function MiniProof({ label, value, icon: Icon }: { label: string; value: string; icon: any }) {
+  return (
+    <div className="rounded border border-bd-subtle bg-bg/50 p-2">
+      <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-fg-muted">
+        <Icon className="size-3" /> {label}
+      </div>
+      <div className="mt-1 text-xs mono text-fg">{value}</div>
+    </div>
+  );
+}
+
+function EvidenceGroupSummary({ results, visualContract }: { results: GraderResult[]; visualContract: boolean }) {
+  const grouped = summarizeEvidence(results);
+  const rawCards: Array<{ tier: EvidenceTier; label: string; icon: any; passed: number; total: number }> = [
+    { tier: "deterministic", label: "Deterministic", icon: SearchCheck, passed: grouped.deterministic.passed, total: grouped.deterministic.total },
+    { tier: "trace", label: "Trace", icon: Boxes, passed: grouped.trace.passed, total: grouped.trace.total },
+    { tier: "visual", label: "Visual", icon: Eye, passed: visualContract ? 1 : 0, total: visualContract ? 1 : 0 },
+    { tier: "llm_judge", label: "LLM judge", icon: Scale, passed: grouped.llm_judge.passed, total: grouped.llm_judge.total },
+    { tier: "manual", label: "Manual", icon: Fingerprint, passed: grouped.manual.passed, total: grouped.manual.total },
+  ];
+  const cards = rawCards.filter((c) => c.total > 0);
+
+  return (
+    <div className="grid gap-2 border-b border-bd-subtle p-3 sm:grid-cols-2 xl:grid-cols-3">
+      {cards.map((card) => {
+        const passed = card.total > 0 && card.passed === card.total;
+        const Icon = card.icon;
+        return (
+          <div key={card.tier} className="rounded border border-bd-subtle bg-bg/50 p-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-fg-muted">
+                <Icon className="size-3" /> {card.label}
+              </div>
+              <span className={clsx("mono text-xs", passed ? "text-ok" : "text-warn")}>{card.passed}/{card.total}</span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ArtifactStage({
+  artifacts,
+  caseId,
+  runId,
+  status,
+}: {
+  artifacts: string[];
+  caseId: string;
+  runId: string;
+  status: RunCaseRecord["status"];
+}) {
+  const [selected, setSelected] = useState(artifacts[0] ?? "");
+  const [preview, setPreview] = useState<{ path: string; content: string; kind: "svg" | "html" | "text" } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!selected) return;
+    let cancelled = false;
+    async function load() {
+      setLoading(true);
+      setError(null);
+      try {
+        const main = await fetchArtifact(runId, caseId, selected);
+        let content = main.content;
+        const kind = artifactKind(selected, content);
+        if (kind === "html" && artifacts.includes("styles.css")) {
+          try {
+            const css = await fetchArtifact(runId, caseId, "styles.css");
+            content = inlineStyles(content, css.content);
+          } catch {
+            // HTML still renders without the optional stylesheet while the run is in flight.
+          }
+        }
+        if (!cancelled) setPreview({ path: selected, content, kind });
+      } catch (e) {
+        if (!cancelled) {
+          setPreview(null);
+          setError(e instanceof Error ? e.message : "Artifact is not available yet.");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    load();
+    return () => { cancelled = true; };
+  }, [artifacts, caseId, runId, selected, status]);
+
+  return (
+    <div className="card overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-bd-subtle bg-bg-subtle/50 px-4 py-3">
+        <div className="flex items-center gap-2">
+          <Eye className="size-4 text-accent-soft" />
+          <div>
+            <div className="text-xs font-medium">Live artifact preview</div>
+            <div className="text-[10px] text-fg-dim mono">{preview?.path ?? selected}</div>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {artifacts.map((artifact) => (
+            <button
+              key={artifact}
+              onClick={() => setSelected(artifact)}
+              className={clsx(
+                "inline-flex items-center gap-1 rounded border px-2 py-1 text-[11px] mono",
+                selected === artifact
+                  ? "border-accent-soft bg-accent-soft/10 text-accent-soft"
+                  : "border-bd-subtle bg-bg text-fg-muted hover:text-fg"
+              )}
+            >
+              <FileCode className="size-3" />
+              {artifact}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="bg-[#f6f7fb] p-3">
+        {loading ? (
+          <div className="flex min-h-[280px] items-center justify-center text-sm text-[#5f6673]">
+            <Loader2 className="mr-2 size-4 animate-spin" />
+            Rendering artifact
+          </div>
+        ) : preview ? (
+          preview.kind === "text" ? (
+            <pre className="max-h-[420px] overflow-auto rounded-md bg-white p-4 text-[11px] text-[#20242d]">{preview.content}</pre>
+          ) : (
+            <iframe
+              sandbox=""
+              srcDoc={preview.kind === "svg" ? svgDocument(preview.content) : preview.content}
+              title={`Preview of ${preview.path}`}
+              className="h-[420px] w-full rounded-md border border-[#d9dde8] bg-white"
+            />
+          )
+        ) : (
+          <div className="flex min-h-[280px] flex-col items-center justify-center rounded-md border border-dashed border-[#cbd2df] bg-white px-6 text-center">
+            <Sparkles className="mb-2 size-6 text-[#7c5cff]" />
+            <div className="text-sm font-medium text-[#20242d]">Waiting for artifact</div>
+            <div className="mt-1 max-w-sm text-xs leading-5 text-[#687182]">
+              {error ?? "The preview appears automatically once the eval writes the expected file."}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+async function fetchArtifact(runId: string, caseId: string, artifact: string) {
+  const res = await fetch(`/api/runs/${runId}/case/${caseId}/artifact?path=${encodeURIComponent(artifact)}`);
+  if (!res.ok) throw new Error("Artifact is not available yet.");
+  return (await res.json()) as { path: string; content: string };
+}
+
+function artifactKind(path: string, content: string): "svg" | "html" | "text" {
+  if (path.endsWith(".svg") || content.trimStart().startsWith("<svg")) return "svg";
+  if (path.endsWith(".html") || path.endsWith(".htm") || content.includes("<html")) return "html";
+  return "text";
+}
+
+function inlineStyles(html: string, css: string) {
+  const style = `<style>${css}</style>`;
+  if (html.includes("</head>")) return html.replace("</head>", `${style}</head>`);
+  return `${style}${html}`;
+}
+
+function svgDocument(svg: string) {
+  return `<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;min-height:100%;background:#fff;display:grid;place-items:center}svg{max-width:100%;max-height:100%;width:100%;height:auto}</style></head><body>${svg}</body></html>`;
+}
+
+type EvidenceCounts = Record<EvidenceTier, { passed: number; total: number }>;
+
+interface CaseTrustSummary {
+  score: number;
+  grade: string;
+  hasOracle: boolean;
+  hasKnownBad: boolean;
+  hasBudget: boolean;
+  hasVisualContract: boolean;
+  hasProofBackstop: boolean;
+  evidence: EvidenceCounts;
+  weaknesses: string[];
+}
+
+interface RunConfidenceSummary {
+  score: number;
+  grade: string;
+  totalCases: number;
+  provenCaseCount: number;
+  knownBadCaseCount: number;
+  weakCaseCount: number;
+  deterministicCoverage: number;
+  knownBadCoverage: number;
+  oracleCoverage: number;
+  visualCoverage: number;
+  topWeaknesses: Array<{ label: string; count: number }>;
+}
+
+function summarizeRunConfidence(cases: RunCaseRecord[]): RunConfidenceSummary {
+  const totalCases = cases.length || 1;
+  const trusts = cases.map((c) => summarizeCaseTrust(c));
+  const provenCaseCount = trusts.filter((t) => t.hasProofBackstop).length;
+  const knownBadCaseCount = trusts.filter((t) => t.hasKnownBad).length;
+  const oracleCaseCount = trusts.filter((t) => t.hasOracle).length;
+  const visualCaseCount = cases.filter((c) => c.case_def.visual).length;
+  const visualContractCount = trusts.filter((t) => t.hasVisualContract).length;
+  const weakCaseCount = trusts.filter((t) => t.weaknesses.length > 0).length;
+  const passRatio = cases.length ? cases.filter((c) => c.status === "passed").length / cases.length : 0;
+  const deterministicCoverage = Math.round((provenCaseCount / totalCases) * 100);
+  const knownBadCoverage = Math.round((knownBadCaseCount / totalCases) * 100);
+  const oracleCoverage = Math.round((oracleCaseCount / totalCases) * 100);
+  const visualCoverage = visualCaseCount ? Math.round((visualContractCount / visualCaseCount) * 100) : 100;
+  const avgCaseTrust = trusts.length ? trusts.reduce((sum, t) => sum + t.score, 0) / trusts.length : 0;
+  const score = clampScore(
+    passRatio * 30 +
+    avgCaseTrust * 0.35 +
+    deterministicCoverage * 0.15 +
+    knownBadCoverage * 0.1 +
+    oracleCoverage * 0.05 +
+    visualCoverage * 0.05
+  );
+
+  const weaknessCounts = new Map<string, number>();
+  for (const trust of trusts) {
+    for (const weakness of trust.weaknesses) {
+      weaknessCounts.set(weakness, (weaknessCounts.get(weakness) ?? 0) + 1);
+    }
+  }
+
+  return {
+    score,
+    grade: confidenceGrade(score),
+    totalCases: cases.length,
+    provenCaseCount,
+    knownBadCaseCount,
+    weakCaseCount,
+    deterministicCoverage,
+    knownBadCoverage,
+    oracleCoverage,
+    visualCoverage,
+    topWeaknesses: Array.from(weaknessCounts, ([label, count]) => ({ label, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5),
+  };
+}
+
+function summarizeCaseTrust(rc: RunCaseRecord): CaseTrustSummary {
+  const evidence = summarizeEvidence(rc.grader_result?.results ?? []);
+  const hasOracle = !!(rc.case_def.oracle?.solve || rc.case_def.oracle?.final_text);
+  const hasKnownBad = !!rc.case_def.oracle?.known_bad?.length;
+  const hasBudget = !!rc.case_def.budget;
+  const hasVisualContract = !rc.case_def.visual || !!rc.case_def.visual.expected_artifacts?.length;
+  const hasProofBackstop = evidence.deterministic.total + evidence.trace.total > 0;
+  const weaknesses: string[] = [];
+
+  if (!hasOracle) weaknesses.push("missing oracle");
+  if (!hasKnownBad) weaknesses.push("no known-bad");
+  if (!hasProofBackstop) weaknesses.push("no deterministic/trace proof");
+  if (evidence.llm_judge.total > 0 && evidence.deterministic.total === 0) weaknesses.push("LLM judge lacks backstop");
+  if (!hasBudget) weaknesses.push("no budget");
+  if (rc.case_def.visual && !hasVisualContract) weaknesses.push("visual has no artifacts");
+  if (evidence.manual.total > 0) weaknesses.push("manual grader");
+
+  const deterministicRatio = ratio(evidence.deterministic.passed + evidence.trace.passed, evidence.deterministic.total + evidence.trace.total);
+  const allGraderRatio = rc.grader_result ? rc.grader_result.passRatio : statusRatio(rc.status);
+  const metadataScore =
+    (hasOracle ? 15 : 0) +
+    (hasKnownBad ? 15 : 0) +
+    (hasBudget ? 8 : 0) +
+    (hasVisualContract ? 7 : 0);
+  const score = clampScore(allGraderRatio * 35 + deterministicRatio * 20 + metadataScore - Math.max(0, weaknesses.length - 1) * 5);
+
+  return {
+    score,
+    grade: confidenceGrade(score),
+    hasOracle,
+    hasKnownBad,
+    hasBudget,
+    hasVisualContract,
+    hasProofBackstop,
+    evidence,
+    weaknesses,
+  };
+}
+
+function summarizeEvidence(results: GraderResult[]): EvidenceCounts {
+  const counts: EvidenceCounts = {
+    deterministic: { passed: 0, total: 0 },
+    trace: { passed: 0, total: 0 },
+    visual: { passed: 0, total: 0 },
+    llm_judge: { passed: 0, total: 0 },
+    manual: { passed: 0, total: 0 },
+  };
+  for (const result of results) {
+    const tier = result.evidenceTier ?? evidenceTierForSpec(result.spec);
+    counts[tier].total += 1;
+    if (result.passed) counts[tier].passed += 1;
+  }
+  return counts;
+}
+
+function evidenceTierForSpec(spec: GraderSpec): EvidenceTier {
+  switch (spec.type) {
+    case "step":
+      return "trace";
+    case "rubric_llm":
+      return "llm_judge";
+    case "manual":
+      return "manual";
+    default:
+      return "deterministic";
+  }
+}
+
+function statusRatio(status: RunCaseRecord["status"]) {
+  return status === "passed" ? 1 : status === "pending" || status === "running" || status === "grading" ? 0.5 : 0;
+}
+
+function ratio(passed: number, total: number) {
+  return total > 0 ? passed / total : 0;
+}
+
+function clampScore(value: number) {
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function confidenceGrade(score: number) {
+  if (score >= 90) return "High confidence";
+  if (score >= 75) return "Solid confidence";
+  if (score >= 60) return "Needs review";
+  return "Weak proof";
 }
 
 function GraderRow({ g }: { g: GraderResult }) {
@@ -361,9 +938,4 @@ function Mini({ label, value, icon: Icon }: { label: string; value: string; icon
       <div className="text-sm font-medium mono">{value}</div>
     </div>
   );
-}
-
-function useRefSig(_cases: RunCaseRecord[]) {
-  // placeholder for future diff-based streaming
-  return null;
 }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "node:fs";
 import path from "node:path";
-import { getRunCase } from "@/lib/db";
+import { listRunCases } from "@/lib/db";
 
 export async function GET(
   req: NextRequest,
@@ -20,8 +20,8 @@ export async function GET(
     return NextResponse.json({ error: "Invalid path" }, { status: 400 });
   }
 
-  const rc = getRunCase(caseId);
-  if (!rc || rc.run_id !== runId) {
+  const rc = listRunCases(runId).find((item) => item.case_id === caseId || item.id === caseId);
+  if (!rc) {
     return NextResponse.json({ error: "Case not found" }, { status: 404 });
   }
 

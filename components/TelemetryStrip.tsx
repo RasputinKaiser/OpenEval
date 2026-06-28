@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import clsx from "clsx";
-import { Gauge, Timer, Layers, AlertTriangle, Hash, Wrench, BarChart3, DollarSign, Bug, Shield, ShieldCheck } from "lucide-react";
+import { Gauge, Timer, Layers, AlertTriangle, Hash, Wrench, BarChart3, DollarSign, Bug, Shield, ShieldCheck, Activity } from "lucide-react";
 import type { RunTelemetry } from "@/lib/types";
 
 export default function TelemetryStrip({ runId }: { runId: string }) {
@@ -27,10 +27,19 @@ export default function TelemetryStrip({ runId }: { runId: string }) {
 
   return (
     <div className="card p-3 mb-4">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-[11px] uppercase tracking-wider text-fg-muted flex items-center gap-1.5">
-          <Gauge className="size-3" /> Live telemetry
-        </span>
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[11px] uppercase tracking-wider text-fg-muted flex items-center gap-1.5">
+            <Gauge className="size-3" /> Live telemetry
+          </span>
+          <span className={clsx(
+            "inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px]",
+            t.quality.warnings.length ? "border-warn/30 bg-warn/10 text-warn" : "border-ok/30 bg-ok/10 text-ok"
+          )}>
+            <Activity className="size-3" />
+            {t.quality.warnings.length ? "review telemetry" : "measured"}
+          </span>
+        </div>
         <Link href={`/runs/${runId}/bench`} className="text-[11px] text-accent-soft hover:underline flex items-center gap-1">
           <BarChart3 className="size-3" /> Full bench
         </Link>
@@ -49,6 +58,47 @@ export default function TelemetryStrip({ runId }: { runId: string }) {
         <Cell label="tool calls" value={String(t.totalToolCalls)} icon={Wrench} />
         <Cell label="top tool" value={t.topTools[0]?.name ?? "—"} icon={Wrench} small />
       </div>
+      <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-3">
+        <QualityCell
+          label="duration source"
+          value={`${t.quality.measuredDurationCases}/${t.quality.completedCases}`}
+          detail="runner wall-clock cases"
+          ok={t.quality.measuredDurationCases === t.quality.completedCases}
+        />
+        <QualityCell
+          label="usage source"
+          value={`${t.quality.usageReportedCases}/${t.quality.completedCases}`}
+          detail="CLI usage records"
+          ok={t.quality.usageReportedCases === t.quality.completedCases}
+        />
+        <QualityCell
+          label="tool timing"
+          value={`${Math.round(t.quality.toolDurationCoverage * 100)}%`}
+          detail="calls with measured duration"
+          ok={t.quality.toolDurationCoverage >= 0.95}
+        />
+      </div>
+      {t.quality.warnings.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {t.quality.warnings.map((warning) => (
+            <span key={warning} className="rounded border border-warn/30 bg-warn/10 px-2 py-1 text-[10px] text-warn">
+              {warning}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function QualityCell({ label, value, detail, ok }: { label: string; value: string; detail: string; ok: boolean }) {
+  return (
+    <div className="rounded bg-bg-elev/35 px-2 py-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[9px] uppercase tracking-wider text-fg-muted">{label}</span>
+        <span className={clsx("mono text-xs", ok ? "text-ok" : "text-warn")}>{value}</span>
+      </div>
+      <div className="mt-0.5 text-[10px] text-fg-dim">{detail}</div>
     </div>
   );
 }

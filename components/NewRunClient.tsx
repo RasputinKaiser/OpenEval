@@ -7,18 +7,18 @@ import clsx from "clsx";
 import type { CaseDefinition } from "@/lib/types";
 import ModelPicker from "./ModelPicker";
 
-interface Props { cases: CaseDefinition[]; }
+interface Props { cases: CaseDefinition[]; initialCaseIds?: string[]; }
 
-const CATEGORIES = ["agentic-swe", "single-tool", "reasoning"] as const;
+const CATEGORIES = ["agentic-swe", "single-tool", "reasoning", "visual-code"] as const;
 
-export default function NewRunClient({ cases }: Props) {
+export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
   const router = useRouter();
   const [runner, setRunner] = useState<"headless" | "tmux">("headless");
   const [parallel, setParallel] = useState(1);
   const [samples, setSamples] = useState(1);
   const [name, setName] = useState("");
   const [model, setModel] = useState<string | undefined>("glm-5.2");
-  const [selected, setSelected] = useState<Record<string, boolean>>({});
+  const [selected, setSelected] = useState<Record<string, boolean>>(() => Object.fromEntries(initialCaseIds.map((id) => [id, true])));
   const [filterCats, setFilterCats] = useState<Set<string>>(new Set(cases.map((c) => c.category)));
   const [filterDiff, setFilterDiff] = useState<Set<string>>(new Set());
   const [submitting, setSubmitting] = useState(false);

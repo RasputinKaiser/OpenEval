@@ -18,8 +18,8 @@ const NAV = [
 export default function Sidebar() {
   const pathname = usePathname();
   return (
-    <aside className="w-60 shrink-0 border-r border-bd bg-bg-subtle/60 backdrop-blur flex flex-col">
-      <div className="px-4 py-5 border-b border-bd">
+    <aside className="shrink-0 border-b border-bd bg-bg-subtle/80 backdrop-blur md:flex md:min-h-screen md:w-60 md:flex-col md:border-b-0 md:border-r">
+      <div className="px-4 py-3 md:border-b md:border-bd md:py-5">
         <div className="flex items-center gap-2">
           <div className="size-7 rounded-md bg-gradient-to-br from-accent to-accent-soft grid place-items-center">
             <Terminal className="size-4 text-white" />
@@ -30,7 +30,7 @@ export default function Sidebar() {
           </div>
         </div>
       </div>
-      <nav className="flex-1 p-2 space-y-0.5">
+      <nav className="flex gap-1 overflow-x-auto px-2 pb-2 md:flex-1 md:flex-col md:space-y-0.5 md:overflow-visible md:p-2">
         {NAV.map((item) => {
           const active = isActive(pathname, item.href);
           const Icon = item.icon;
@@ -39,7 +39,7 @@ export default function Sidebar() {
               key={item.href}
               href={item.href}
               className={clsx(
-                "flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors",
+                "flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors",
                 active ? "bg-accent/15 text-accent-soft" : "text-fg-muted hover:bg-bg-elev hover:text-fg"
               )}
             >
@@ -49,7 +49,7 @@ export default function Sidebar() {
           );
         })}
       </nav>
-      <div className="p-3 border-t border-bd text-[10px] text-fg-dim">
+      <div className="hidden border-t border-bd p-3 text-[10px] text-fg-dim md:block">
         <div className="mono">v0.1.0</div>
         <div className="mt-0.5">agents · graders · runs</div>
       </div>

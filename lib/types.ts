@@ -1,4 +1,4 @@
-export type Category = "agentic-swe" | "single-tool" | "reasoning";
+export type Category = "agentic-swe" | "single-tool" | "reasoning" | "visual-code";
 
 export type Difficulty = "easy" | "medium" | "hard";
 
@@ -153,6 +153,12 @@ export interface CaseTelemetry {
   costPerCase: number;
   msPerTurn: number;
   msPerTool: number;
+  durationSource: "runner_wall" | "cli_result" | "missing";
+  tokenSource: "cli_usage" | "missing";
+  toolSource: "stream_tool_events" | "summary_counts" | "missing";
+  throughputMode: "output_tokens_per_runner_wall_second";
+  toolDurationCoverage: number;
+  warnings: string[];
 }
 
 export interface RunTelemetry {
@@ -169,7 +175,29 @@ export interface RunTelemetry {
   forbiddenViolationRate: number;
   failsSafelyRate: number;
   cheapestPassUsd: number;
-  perCase: Array<{ caseId: string; caseName: string; tokPerSec: number; inTokPerSec: number; durationMs: number; costUsd: number; tokens: number; passed: boolean }>;
+  quality: {
+    completedCases: number;
+    measuredDurationCases: number;
+    usageReportedCases: number;
+    toolEventCases: number;
+    toolDurationCoverage: number;
+    throughputMode: "output_tokens_per_runner_wall_second";
+    warnings: string[];
+  };
+  perCase: Array<{
+    caseId: string;
+    caseName: string;
+    tokPerSec: number;
+    inTokPerSec: number;
+    durationMs: number;
+    costUsd: number;
+    tokens: number;
+    passed: boolean;
+    toolCallCount: number;
+    toolErrorCount: number;
+    toolDurationCoverage: number;
+    warnings: string[];
+  }>;
 }
 
 export interface GraderResult {

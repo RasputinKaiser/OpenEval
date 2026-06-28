@@ -14,6 +14,12 @@ interface PerCase {
   errorCount: number; cacheHitRate: number; tokensPerCase: number;
   costPerCase: number; msPerTurn: number; msPerTool: number;
   durationMs: number; model: string | null; numTurns: number;
+  toolDurationCoverage: number;
+  durationSource: "runner_wall" | "cli_result" | "missing";
+  tokenSource: "cli_usage" | "missing";
+  toolSource: "stream_tool_events" | "summary_counts" | "missing";
+  throughputMode: "output_tokens_per_runner_wall_second";
+  warnings: string[];
 }
 
 interface Props { runId: string; runName: string; }
@@ -76,6 +82,40 @@ export default function BenchClient({ runId, runName }: Props) {
             <Stat label="Cases" value={String(t.perCase.length)} icon={Activity} />
           </section>
 
+          <section className="card p-5 mb-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-medium flex items-center gap-2">
+                  <Gauge className="size-4 text-accent-soft" /> Telemetry integrity
+                </h2>
+                <p className="mt-1 text-xs text-fg-muted">
+                  Throughput is output tokens divided by measured runner wall-clock seconds. Tool timing is only shown as complete when each streamed tool call has a matching result event.
+                </p>
+              </div>
+              <span className={clsx(
+                "rounded border px-2 py-1 text-xs mono",
+                t.quality.warnings.length ? "border-warn/30 bg-warn/10 text-warn" : "border-ok/30 bg-ok/10 text-ok"
+              )}>
+                {t.quality.warnings.length ? "review" : "measured"}
+              </span>
+            </div>
+            <div className="mt-4 grid gap-2 md:grid-cols-4">
+              <IntegrityStat label="Duration" value={`${t.quality.measuredDurationCases}/${t.quality.completedCases}`} detail="runner wall-clock" ok={t.quality.measuredDurationCases === t.quality.completedCases} />
+              <IntegrityStat label="Usage" value={`${t.quality.usageReportedCases}/${t.quality.completedCases}`} detail="CLI usage payload" ok={t.quality.usageReportedCases === t.quality.completedCases} />
+              <IntegrityStat label="Tool events" value={`${t.quality.toolEventCases}/${t.quality.completedCases}`} detail="streamed calls" ok={t.quality.toolEventCases === t.quality.completedCases} />
+              <IntegrityStat label="Tool timing" value={`${Math.round(t.quality.toolDurationCoverage * 100)}%`} detail="matched result durations" ok={t.quality.toolDurationCoverage >= 0.95} />
+            </div>
+            {t.quality.warnings.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {t.quality.warnings.map((warning) => (
+                  <span key={warning} className="rounded border border-warn/30 bg-warn/10 px-2 py-1 text-[11px] text-warn">
+                    {warning}
+                  </span>
+                ))}
+              </div>
+            )}
+          </section>
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
             <ScatterSection cases={cases} maxTokens={maxTokens} maxCost={maxCost} />
             <TokPerSecSection cases={cases} maxTokPerSec={maxTokPerSec} />
@@ -115,6 +155,8 @@ export default function BenchClient({ runId, runName }: Props) {
                     <th className="text-right px-4 py-2 font-medium">cost</th>
                     <th className="text-right px-4 py-2 font-medium">dur</th>
                     <th className="text-right px-4 py-2 font-medium">tools</th>
+                    <th className="text-right px-4 py-2 font-medium">tool ms</th>
+                    <th className="text-left px-4 py-2 font-medium">source</th>
                     <th className="text-right px-4 py-2 font-medium">turns</th>
                     <th className="text-left px-4 py-2 font-medium">status</th>
                   </tr>
@@ -134,6 +176,15 @@ export default function BenchClient({ runId, runName }: Props) {
                       <td className="px-4 py-2 text-right mono">${c.costPerCase.toFixed(4)}</td>
                       <td className="px-4 py-2 text-right mono">{fmtMs(c.durationMs)}</td>
                       <td className="px-4 py-2 text-right mono">{c.toolCallCount}</td>
+                      <td className="px-4 py-2 text-right mono">{c.msPerTool ? fmtMs(c.msPerTool) : "—"}</td>
+                      <td className="px-4 py-2">
+                        <div className="flex flex-wrap gap-1">
+                          <SourceChip label="dur" ok={c.durationSource === "runner_wall"} />
+                          <SourceChip label="tok" ok={c.tokenSource === "cli_usage"} />
+                          <SourceChip label="tool" ok={c.toolSource === "stream_tool_events"} />
+                        </div>
+                        {c.warnings.length > 0 && <div className="mt-1 text-[10px] text-warn">{c.warnings[0]}</div>}
+                      </td>
                       <td className="px-4 py-2 text-right mono">{c.numTurns}</td>
                       <td className="px-4 py-2">
                         <span className={clsx(
@@ -153,6 +204,27 @@ export default function BenchClient({ runId, runName }: Props) {
         </>
       )}
     </div>
+  );
+}
+
+function IntegrityStat({ label, value, detail, ok }: { label: string; value: string; detail: string; ok: boolean }) {
+  return (
+    <div className="rounded border border-bd-subtle bg-bg/50 p-3">
+      <div className="text-[10px] uppercase tracking-wider text-fg-muted">{label}</div>
+      <div className={clsx("mt-1 mono text-base font-semibold", ok ? "text-ok" : "text-warn")}>{value}</div>
+      <div className="mt-0.5 text-[10px] text-fg-dim">{detail}</div>
+    </div>
+  );
+}
+
+function SourceChip({ label, ok }: { label: string; ok: boolean }) {
+  return (
+    <span className={clsx(
+      "rounded border px-1.5 py-0.5 text-[10px] mono",
+      ok ? "border-ok/30 bg-ok/10 text-ok" : "border-warn/30 bg-warn/10 text-warn"
+    )}>
+      {label}
+    </span>
   );
 }
 

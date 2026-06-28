@@ -4,11 +4,12 @@ A full evaluation suite for the NCode CLI — branded NEval — runs cases headl
 
 ## What it tests
 
-Three case categories live in `cases/`:
+Four case categories live in `cases/`:
 
 - **`agentic-swe`** — multi-step software tasks against real small repos (bug fixes, refactors, feature additions). Exercises the full tool loop: Read, Grep, Edit, Bash(`npm test`).
 - **`single-tool`** — narrow tasks isolating one tool (Write, Read, Grep/Bash). Deterministic assertions.
 - **`reasoning`** — knowledge/trace/math prompts with no tools required. Regex-based final-answer grading.
+- **`visual-code`** — generated SVG/web UI artifacts with deterministic contracts plus visual preview support.
 
 Each case ships with one or more **graders** from the registry in `lib/grader/index.ts`:
 

@@ -6,6 +6,8 @@
 
 html, body { background: #0a0a0b; color: #e8e8ea; }
 body { font-feature-settings: "ss01", "cv01"; -webkit-font-smoothing: antialiased; }
+h1, h2, h3 { text-wrap: balance; }
+p { text-wrap: pretty; }
 
 ::selection { background: rgba(124, 92, 255, 0.35); }
 
@@ -15,5 +17,22 @@ body { font-feature-settings: "ss01", "cv01"; -webkit-font-smoothing: antialiase
 *::-webkit-scrollbar-thumb { background: #26262b; border-radius: 4px; }
 *::-webkit-scrollbar-thumb:hover { background: #3a3a40; }
 
-.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; }
-.card { @apply bg-bg-subtle border border-bd rounded-lg; }
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+button {
+  transition-property: background-color, border-color, color, opacity, transform;
+  transition-duration: 150ms;
+  transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+
+button:active:not(:disabled) { transform: scale(0.96); }
+
+.card {
+  @apply bg-bg-subtle border border-bd rounded-lg;
+  box-shadow:
+    0 1px 1px rgba(0, 0, 0, 0.18),
+    0 8px 24px rgba(0, 0, 0, 0.18);
+}

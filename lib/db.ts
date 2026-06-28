@@ -106,6 +106,10 @@ export function listRuns(limit = 100): RunRecord[] {
   return rows.map(rowToRun);
 }
 
+export function countRuns(): number {
+  return Number(getDb().prepare(`SELECT COUNT(*) FROM runs`).pluck().get() ?? 0);
+}
+
 export function getRun(id: string): RunRecord | null {
   const r = getDb().prepare(`SELECT * FROM runs WHERE id = ?`).get(id) as any;
   return r ? rowToRun(r) : null;
