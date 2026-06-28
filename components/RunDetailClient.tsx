@@ -7,6 +7,7 @@ import StatusBadge from "./StatusBadge";
 import TelemetryStrip from "./TelemetryStrip";
 import {
   ChevronRight, Wrench, Clock, Hash, Cpu, DollarSign, Loader2, CircleDot, Gauge,
+  Eye, EyeOff,
 } from "lucide-react";
 import type { RunCaseRecord } from "@/lib/types";
 
@@ -16,6 +17,7 @@ export default function RunDetailClient({ runId, initialCases, running }: Props)
   const [cases, setCases] = useState<RunCaseRecord[]>(initialCases);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(initialCases.length ? 0 : null);
   const [live, setLive] = useState(running);
+  const [debug, setDebug] = useState(false);
   const lastSig = useRefSig(cases);
 
   useEffect(() => {
@@ -70,6 +72,10 @@ export default function RunDetailClient({ runId, initialCases, running }: Props)
           {cases.map((c, i) => {
             const sel = selectedIdx === i;
             const runner = c.runner_result;
+            const tokPerSec = runner && runner.durationMs > 0
+              ? (runner.usage.outputTokens / (runner.durationMs / 1000)).toFixed(1)
+              : "—";
+            const cost = runner ? `$${runner.usage.costUsd.toFixed(4)}` : "—";
             return (
               <button
                 key={c.id}
@@ -87,6 +93,12 @@ export default function RunDetailClient({ runId, initialCases, running }: Props)
                     {runner && <span>· turns {runner.numTurns} · {runner.toolCalls.length} tools</span>}
                   </div>
                 </div>
+                {runner && (
+                  <div className="hidden md:flex flex-col items-end text-[10px] mono text-fg-dim gap-0.5 mr-1">
+                    <span>{tokPerSec} tok/s</span>
+                    <span>{cost}</span>
+                  </div>
+                )}
                 <StatusBadge status={c.status} size="xs" />
               </button>
             );
@@ -102,7 +114,7 @@ export default function RunDetailClient({ runId, initialCases, running }: Props)
             <div className="text-[11px] text-fg-dim mt-1">Live transcript and grading results available after completion</div>
           </div>
         ) : (
-          <CaseSidePanel key={cases[selectedIdx].id} rc={cases[selectedIdx]} runId={runId} />
+          <CaseSidePanel key={cases[selectedIdx].id} rc={cases[selectedIdx]} runId={runId} debug={debug} setDebug={setDebug} />
         )}
       </section>
       </div>
@@ -110,7 +122,7 @@ export default function RunDetailClient({ runId, initialCases, running }: Props)
   );
 }
 
-function CaseSidePanel({ rc, runId }: { rc: RunCaseRecord; runId: string }) {
+function CaseSidePanel({ rc, runId, debug, setDebug }: { rc: RunCaseRecord; runId: string; debug: boolean; setDebug: (v: boolean) => void; }) {
   const runner = rc.runner_result;
   const grader = rc.grader_result;
   return (
@@ -141,9 +153,22 @@ function CaseSidePanel({ rc, runId }: { rc: RunCaseRecord; runId: string }) {
         <div className="card overflow-hidden">
           <div className="px-4 py-2.5 border-b border-bd-subtle bg-bg-subtle/50 flex items-center justify-between">
             <span className="text-xs font-medium">Graders</span>
-            <span className={clsx("text-xs mono font-semibold", grader.passed ? "text-ok" : "text-err")}>
-              {(grader.passRatio * 100).toFixed(0)}%
-            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setDebug(!debug)}
+                className={clsx(
+                  "flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] mono border border-bd-subtle transition-colors",
+                  debug ? "bg-accent/10 text-accent-soft" : "text-fg-muted hover:text-fg"
+                )}
+                aria-pressed={debug}
+              >
+                {debug ? <EyeOff className="size-3" /> : <Eye className="size-3" />}
+                Debug
+              </button>
+              <span className={clsx("text-xs mono font-semibold", grader.passed ? "text-ok" : "text-err")}>
+                {(grader.passRatio * 100).toFixed(0)}%
+              </span>
+            </div>
           </div>
           <div className="divide-y divide-bd-subtle">
             {grader.results.map((g, i) => (
@@ -156,7 +181,7 @@ function CaseSidePanel({ rc, runId }: { rc: RunCaseRecord; runId: string }) {
                       <span className="text-[10px] text-fg-dim mono">{g.durationMs}ms</span>
                     </div>
                     <div className="text-[11px] text-fg-muted mt-1 break-words">{g.detail}</div>
-                    {g.output && <pre className="mt-1.5 text-[10px] mono text-fg-dim bg-bg p-2 rounded border border-bd-subtle overflow-x-auto max-h-40 overflow-y-auto">{g.output.slice(0, 2000)}</pre>}
+                    {debug && g.output && <pre className="mt-1.5 text-[10px] mono text-fg-dim bg-bg p-2 rounded border border-bd-subtle overflow-x-auto max-h-80 overflow-y-auto">{g.output}</pre>}
                   </div>
                 </div>
               </div>
