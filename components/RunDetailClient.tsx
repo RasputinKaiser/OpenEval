@@ -71,6 +71,10 @@ export default function RunDetailClient({ runId, initialCases, running, model }:
               const sel = selectedIdx === i;
               const runner = c.runner_result;
               const rerunHref = `/runs/new?caseIds=${encodeURIComponent(c.case_id)}${model ? `&model=${encodeURIComponent(model)}` : ""}`;
+              const tokPerSec = runner && runner.durationMs > 0
+                ? (runner.usage.outputTokens / (runner.durationMs / 1000)).toFixed(1)
+                : "—";
+              const cost = runner ? `$${runner.usage.costUsd.toFixed(4)}` : "—";
               return (
                 <div
                   key={c.id}
@@ -98,6 +102,12 @@ export default function RunDetailClient({ runId, initialCases, running, model }:
                   >
                     <PlayCircle className="size-3.5" /> Re-run
                   </Link>
+                  {runner && (
+                    <div className="hidden md:flex flex-col items-end text-[10px] mono text-fg-dim gap-0.5 mr-1">
+                      <span>{tokPerSec} tok/s</span>
+                      <span>{cost}</span>
+                    </div>
+                  )}
                   <StatusBadge status={c.status} size="xs" />
                 </div>
               );

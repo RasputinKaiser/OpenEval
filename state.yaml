@@ -6,6 +6,7 @@ notes:
   - "Review is focused on harness correctness, grader trust, and desktop operator UI."
   - "GLM 5.2 should be treated as vision-input blind but strong at visual-code output such as SVG, Three.js, web UI, and app UI."
   - "Private GitHub repo created at RasputinKaiser/NEval."
+  - "Telemetry strip surfaces errorRate, forbiddenViolationRate, failsSafelyRate, and cheapestPassUsd"
 receipts:
   - "initial browser review found compare turns delta, nav highlighting, hydration warning, and mobile-only layout issues"
   - "npm run lint passed"
