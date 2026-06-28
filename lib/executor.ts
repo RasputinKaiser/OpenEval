@@ -88,6 +88,7 @@ export async function executeCase(
     runner_kind: runnerKind,
     runner_result: null,
     grader_result: null,
+    evaluation: null,
     budget_exceeded: false,
     error_msg: null,
     case_def: def,
@@ -166,6 +167,7 @@ export async function executeCase(
       appendEvent(runId, "grader_result", { case_id: def.id, sample, type: (spec as any).type, passed: r.passed, detail: r.detail.slice(0, 200) }, def.id);
     }
     const evaluation = evaluate(graderResults, def.pass_threshold ?? 1);
+    rec.evaluation = evaluation;
     rec.grader_result = evaluation;
     if (rec.budget_exceeded) {
       rec.status = "failed";
@@ -180,7 +182,7 @@ export async function executeCase(
   }
 
   rec.ended_at = Date.now();
-  updateRunCase(rcId, { status: rec.status, ended_at: rec.ended_at, grader_result: rec.grader_result, budget_exceeded: rec.budget_exceeded, error_msg: rec.error_msg });
+  updateRunCase(rcId, { status: rec.status, ended_at: rec.ended_at, grader_result: rec.grader_result, evaluation: rec.evaluation, budget_exceeded: rec.budget_exceeded, error_msg: rec.error_msg });
   appendEvent(runId, "case_finished", { case_id: def.id, seq, sample, status: rec.status }, def.id);
   return rec;
 }

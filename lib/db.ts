@@ -75,6 +75,12 @@ function migrate(conn: Database.Database) {
   add("difficulty", "TEXT");
   add("budget_exceeded", "INTEGER DEFAULT 0");
   add("sample", "INTEGER DEFAULT 0");
+  const versionRow = conn.prepare("PRAGMA user_version").pluck().get() as number | undefined;
+  const version = versionRow ?? 0;
+  if (version < 1) {
+    try { conn.exec("UPDATE run_cases SET evaluation_json = NULL WHERE evaluation_json = grader_result_json"); } catch {}
+    try { conn.exec("PRAGMA user_version = 1"); } catch {}
+  }
 }
 
 export interface RunQuery {
@@ -129,7 +135,7 @@ export function insertRunCase(rc: RunCaseRecord & { seq: number }): void {
     rc.started_at, rc.ended_at, rc.workdir_path, rc.transcript_path,
     rc.runner_kind, rc.runner_result ? JSON.stringify(rc.runner_result) : null,
     rc.grader_result ? JSON.stringify(rc.grader_result) : null,
-    null, rc.budget_exceeded ? 1 : 0, JSON.stringify(rc.case_def), rc.error_msg, rc.seq, rc.sample ?? 0
+    rc.evaluation ? JSON.stringify(rc.evaluation) : null, rc.budget_exceeded ? 1 : 0, JSON.stringify(rc.case_def), rc.error_msg, rc.seq, rc.sample ?? 0
   );
 }
 
@@ -143,7 +149,7 @@ export function updateRunCase(id: string, patch: Partial<RunCaseRecord>): void {
     next.status, next.started_at, next.ended_at, next.transcript_path,
     next.runner_result ? JSON.stringify(next.runner_result) : null,
     next.grader_result ? JSON.stringify(next.grader_result) : null,
-    next.grader_result ? JSON.stringify(next.grader_result) : null,
+    next.evaluation ? JSON.stringify(next.evaluation) : null,
     next.budget_exceeded ? 1 : 0,
     next.error_msg, id
   );
@@ -187,6 +193,7 @@ function rowToRunCase(r: any): RunCaseRecord {
     runner_kind: r.runner_kind,
     runner_result: r.runner_result_json ? JSON.parse(r.runner_result_json) : null,
     grader_result: r.grader_result_json ? JSON.parse(r.grader_result_json) : null,
+    evaluation: r.evaluation_json ? JSON.parse(r.evaluation_json) : null,
     budget_exceeded: !!r.budget_exceeded,
     error_msg: r.error_msg,
     case_def: JSON.parse(r.case_def_json),
