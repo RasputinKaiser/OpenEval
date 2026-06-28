@@ -205,6 +205,7 @@ export interface RunCaseRecord {
   runner_kind: RunnerKind;
   runner_result: RunnerResult | null;
   grader_result: CaseEvaluation | null;
+  evaluation: CaseEvaluation | null;
   budget_exceeded?: boolean;
   error_msg: string | null;
   case_def: CaseDefinition;
