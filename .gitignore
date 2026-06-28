@@ -9,6 +9,16 @@ dist
 .codex/
 data/
 runs/
+!app/runs/
+!app/runs/**
+!app/api/runs/
+!app/api/runs/**
+!app/runs/
+!app/runs/
+!app/runs/**
+!app/api/runs/
+!app/api/runs/**
+!app/runs/**
 fixtures/**/node_modules
 fixtures/**/.git
 fixtures/.DS_Store
