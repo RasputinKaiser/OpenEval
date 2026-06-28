@@ -46,7 +46,7 @@ export function scanLiveSessions(limit = 200): LiveAggregate {
   const sessions: LiveSession[] = [];
 
   let projectDirs: string[] = [];
-  try { projectDirs = fs.readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name); } catch { return emptyAggregate(); }
+  projectDirs = fs.readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
 
   const files: Array<{ file: string; project: string; mtime: number }> = [];
   for (const pd of projectDirs) {
@@ -218,8 +218,4 @@ function aggregate(sessions: LiveSession[]): LiveAggregate {
     byModel,
     sessions: sessions.slice(0, 100),
   };
-}
-
-function emptyAggregate(): LiveAggregate {
-  return { totalSessions: 0, totalProjects: 0, totalCostUsd: 0, totalInputTokens: 0, totalOutputTokens: 0, totalToolCalls: 0, totalToolErrors: 0, byModel: [], sessions: [] };
 }

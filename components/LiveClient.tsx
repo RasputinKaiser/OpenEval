@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import {
   Activity,
@@ -30,6 +30,8 @@ export default function LiveClient({ initialData, error: initialError, getTransc
   const [loading, setLoading] = useState(!initialData && !initialError);
   const [selected, setSelected] = useState<LiveSession | null>(null);
 
+  const lastSigRef = useRef("");
+
   useEffect(() => {
     let cancelled = false;
     let t: ReturnType<typeof setTimeout>;
@@ -37,7 +39,9 @@ export default function LiveClient({ initialData, error: initialError, getTransc
       try {
         const d = (await fetch("/api/live").then((r) => r.json())) as LiveAggregate;
         if (!cancelled) {
-          if (JSON.stringify(d) !== JSON.stringify(data)) {
+          const sig = `${d.totalSessions}:${d.totalToolCalls}:${d.totalToolErrors}:${d.sessions[0]?.sessionId ?? ""}`;
+          if (sig !== lastSigRef.current) {
+            lastSigRef.current = sig;
             setData(d);
           }
           if (d.totalSessions > 0) setError(undefined);
@@ -54,7 +58,7 @@ export default function LiveClient({ initialData, error: initialError, getTransc
       cancelled = true;
       clearTimeout(t);
     };
-  }, [data]);
+  }, []);
 
   if (loading && !data) return <LoadingSkeleton />;
   if (!data || data.totalSessions === 0) {

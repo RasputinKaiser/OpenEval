@@ -240,37 +240,14 @@ export async function loadCases(
 export async function loadCasesStrict(
   opts: { force?: boolean } = {}
 ): Promise<CaseDefinition[]> {
-  const cases: CaseDefinition[] = [];
-  let entries: Dirent[] = [];
-  try {
-    entries = await fs.readdir(CASES_DIR, { withFileTypes: true });
-  } catch {
-    return cases;
+  const { cases, errors } = await loadCasesWithErrors(opts);
+  if (errors.length > 0) {
+    const first = errors[0];
+    throw new Error(
+      `Validation failed for ${first.file}: ${first.paths.join(", ")}`
+    );
   }
-  const categorySet = CATEGORIES;
-  for (const ent of entries) {
-    if (!ent.isDirectory()) continue;
-    if (!categorySet.has(ent.name)) continue;
-    const catDir = path.join(CASES_DIR, ent.name);
-    const files = await fs.readdir(catDir);
-    for (const f of files) {
-      if (!f.endsWith(".case.json")) continue;
-      const full = path.join(catDir, f);
-      const relative = path.relative(CASES_DIR, full);
-      const text = await fs.readFile(full, "utf8");
-      const parsed = JSON.parse(text);
-      const result = CaseDefinitionSchema.safeParse(parsed);
-      if (!result.success) {
-        const issue = result.error.issues[0];
-        const failingPath = formatZodPath(issue?.path ?? []);
-        throw new Error(
-          `Validation failed for ${relative}: ${failingPath} — ${issue?.message ?? "unknown error"}`
-        );
-      }
-      cases.push(result.data as CaseDefinition);
-    }
-  }
-  return cases.sort((a, b) => a.id.localeCompare(b.id));
+  return cases;
 }
 
 export async function getCase(id: string): Promise<CaseDefinition | null> {

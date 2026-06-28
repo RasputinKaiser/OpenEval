@@ -1,4 +1,3 @@
-import fs from "node:fs";
 import path from "node:path";
 import LiveClient from "@/components/LiveClient";
 import { scanLiveSessions, ncodeProjectsDir, getErroringTurns, type LiveAggregate, type TranscriptResult } from "@/lib/live";
@@ -24,12 +23,6 @@ export default function LivePage() {
   let error: string | undefined;
 
   try {
-    const dir = ncodeProjectsDir();
-    try {
-      fs.accessSync(dir, fs.constants.R_OK);
-    } catch (e) {
-      throw new Error(`~/.ncode/projects is not readable: ${e instanceof Error ? e.message : String(e)}`);
-    }
     data = scanLiveSessions(200);
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
