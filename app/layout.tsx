@@ -4,7 +4,7 @@ import Sidebar from "@/components/Sidebar";
 
 export const metadata: Metadata = {
   title: "NEval",
-  description: "NEval — NCode evaluation harness",
+  description: "NEval — agent-CLI evaluation harness",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

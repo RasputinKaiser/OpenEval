@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { evidenceLabel, graderEvidenceTier } from "../accuracy";
+import { runJudge } from "./judge";
 import type { CaseEvaluation, GraderResult, GraderSpec, RunnerResult } from "../types";
 
 function runShell(spec: { command: string; cwd?: string; env?: Record<string, string>; timeout_ms?: number }): Promise<{ code: number; stdout: string; stderr: string; durationMs: number; timedOut: boolean }> {
@@ -238,23 +239,21 @@ export async function runGrader(
   }
 
   if (spec.type === "rubric_llm") {
-    // LLM judge: spawn ncode -p with the rubric + final output and ask for a 0-1 score
+    const judgeHarness = spec.judge_harness || process.env.JUDGE_HARNESS || "claude-code";
+    const judgeModel = spec.judge_model || process.env.JUDGE_MODEL || spec.model || undefined;
     const prompt = `You are grading an agent task. Rubric:\n${spec.rubric}\n\nAgent final output:\n"${(ctx.runner.finalText || ctx.runner.resultText || "").slice(0, 4000)}"\n\nTranscript excerpt:\n${ctx.transcriptText.slice(0, 4000)}\n\nReply with only JSON: {"passed": <bool>, "score": <0..1>, "reason": "<short>"}`;
-    const res = await runShell({ command: `${process.env.NCODE_BIN || "ncode"} -p --output-format json --permission-mode bypassPermissions ${JSON.stringify(prompt)}`, timeout_ms: 120_000 });
+    const res = await runJudge({ harness: judgeHarness, model: judgeModel, prompt, timeoutMs: 120_000 });
     let judge: { passed?: boolean; score?: number; reason?: string } | null = null;
-    try {
-      // find result text
-      const arr = JSON.parse(res.stdout);
-      const r = Array.isArray(arr) ? arr.find((x: any) => x.type === "result") : null;
-      const txt = r?.result || "";
-      const m = txt.match(/\{[\s\S]*\}/);
-      if (m) judge = JSON.parse(m[0]);
-    } catch {}
+    if (res.ok || res.text) {
+      const m = res.text.match(/\{[\s\S]*\}/);
+      if (m) { try { judge = JSON.parse(m[0]); } catch {} }
+    }
     const passed = judge?.passed === true || (judge?.score ?? 0) >= (spec.min_score ?? 0.7);
     const score = typeof judge?.score === "number" ? judge.score : passed ? 1 : 0;
+    const detailSuffix = `via ${judgeHarness}${judgeModel ? "/" + judgeModel : ""}`;
     return passed
-      ? ok(spec, `LLM judge: ${judge?.reason ?? "passed"} (score=${score})`, dur(), res.stdout.slice(0, 500))
-      : fail(spec, `LLM judge: ${judge?.reason ?? "failed"} (score=${score})`, dur(), res.stdout.slice(0, 500));
+      ? ok(spec, `LLM judge ${detailSuffix}: ${judge?.reason ?? "passed"} (score=${score})`, dur(), res.text.slice(0, 500))
+      : fail(spec, `LLM judge ${detailSuffix}: ${judge?.reason ?? res.error ?? "failed"} (score=${score})`, dur(), res.text.slice(0, 500));
   }
 
   if (spec.type === "manual") {

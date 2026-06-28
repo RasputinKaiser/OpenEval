@@ -8,6 +8,11 @@ import { prepareWorkdir } from '../executor';
 import { runGrader, evaluate } from '../grader';
 import { getDb } from '../db';
 import type { RunnerResult } from '../types';
+import { runCodexParserSelfCheck } from '../adapters/codex';
+import { makeGenericAdapter, parseGenericJsonlLine } from '../adapters/generic';
+import type { HarnessDescriptor } from '../adapters/generic';
+import { loadDescriptorAdapters } from '../adapters/loader';
+import { getAdapter } from '../adapters/registry';
 
 interface Check {
   name: string;
@@ -105,6 +110,73 @@ async function runChecks(json: boolean, verbose: boolean, withLlmJudge: boolean)
     } catch (e) {
       record('ncode binary callable', 'fail', errorMessage(e));
     }
+  }
+
+  try {
+    const pc = runCodexParserSelfCheck();
+    record('codex adapter parser (canned stream)', pc.ok ? 'pass' : 'fail', pc.detail);
+  } catch (e) {
+    record('codex adapter parser (canned stream)', 'fail', errorMessage(e));
+  }
+
+  try {
+    const descAdapters = loadDescriptorAdapters();
+    const ids = descAdapters.map((a) => a.id).join(',') || '(none)';
+    record('zero-code descriptor adapters loaded', descAdapters.length > 0 ? 'pass' : 'skip', ids);
+  } catch (e) {
+    record('zero-code descriptor adapters loaded', 'fail', errorMessage(e));
+  }
+
+  try {
+    const sampleDesc: HarnessDescriptor = {
+      id: '_selftest_generic',
+      label: 'Self-test Generic',
+      binNames: ['_selftest_bin'],
+      output: 'jsonl',
+      argTemplate: ['run', '{workdir}'],
+      fields: {
+        finalText: 'message.text',
+        sessionId: 'session_id',
+        toolCallName: 'tool.name',
+        toolCallId: 'tool.id',
+        toolCallInput: 'tool.input',
+        toolCallOutput: 'result.output',
+        toolCallError: 'result.is_error',
+        inputTokens: 'usage.input_tokens',
+        outputTokens: 'usage.output_tokens',
+        durationMs: 'duration_ms',
+        numTurns: 'num_turns',
+        stopReason: 'stop_reason',
+        isError: 'is_error',
+      },
+    };
+    const acc: any = { startedAt: Date.now(), transcript: [], toolCalls: [], finalText: '', result: null };
+    const lines = [
+      '{"session_id":"s1","message":{"text":"hello world"}}',
+      '{"tool":{"id":"t1","name":"shell","input":{"command":["npm","test"]}}}',
+      '{"result":{"output":"3 passing","is_error":false}}',
+      '{"duration_ms":500,"num_turns":2,"usage":{"input_tokens":10,"output_tokens":5},"stop_reason":"completed","is_error":false}',
+    ];
+    for (const l of lines) parseGenericJsonlLine(l, acc, sampleDesc);
+    const r = acc.result;
+    const ok = r && acc.finalText === 'hello world' && r.sessionId === 's1' &&
+      acc.toolCalls.length === 1 && acc.toolCalls[0].name === 'shell' && acc.toolCalls[0].output === '3 passing' &&
+      r.usage.inputTokens === 10 && r.usage.outputTokens === 5;
+    record('generic descriptor parser (canned stream)', ok ? 'pass' : 'fail',
+      `final=${acc.finalText === 'hello world'} tool=${acc.toolCalls.length === 1} usage=${!!r && r.usage.inputTokens === 10}`);
+    void makeGenericAdapter;
+  } catch (e) {
+    record('generic descriptor parser (canned stream)', 'fail', errorMessage(e));
+  }
+
+  try {
+    const judgeAdapter = getAdapter(process.env.JUDGE_HARNESS || 'claude-code');
+    const ctx = { caseId: 'judge-test', workdir: '/tmp', prompt: 'grade this', maxTurns: 1, timeoutMs: 1000, permissionMode: 'bypassPermissions' as const, model: process.env.JUDGE_MODEL, extraArgs: [] as string[] };
+    const cmd = judgeAdapter.buildCommand(ctx);
+    const okJudge = !!cmd.bin && cmd.args.length > 0 && cmd.args.includes('grade this');
+    record('rubric_llm judge decoupled (buildCommand via adapter)', okJudge ? 'pass' : 'fail', `harness=${judgeAdapter.id} bin=${cmd.bin} args=${cmd.args.length}`);
+  } catch (e) {
+    record('rubric_llm judge decoupled (buildCommand via adapter)', 'fail', errorMessage(e));
   }
 
   const tmpRun = 'selftest-' + Date.now().toString(36);

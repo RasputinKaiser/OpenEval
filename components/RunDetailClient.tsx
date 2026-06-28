@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import clsx from "clsx";
 import StatusBadge from "./StatusBadge";
+import HarnessBadge from "./HarnessBadge";
 import TelemetryStrip from "./TelemetryStrip";
 import {
   ChevronRight, Wrench, Clock, Hash, Cpu, DollarSign, Loader2, CircleDot, Gauge, AlertCircle, PlayCircle,
@@ -12,9 +13,9 @@ import {
 } from "lucide-react";
 import type { EvidenceTier, GraderResult, GraderSpec, RunCaseRecord, TranscriptEntry } from "@/lib/types";
 
-interface Props { runId: string; initialCases: RunCaseRecord[]; running: boolean; model?: string; }
+interface Props { runId: string; runName?: string; initialCases: RunCaseRecord[]; running: boolean; model?: string; harness?: string; harnessInfo?: { id: string; bin: string | null; version: string | null }; }
 
-export default function RunDetailClient({ runId, initialCases, running, model }: Props) {
+export default function RunDetailClient({ runId, runName, initialCases, running, model, harness, harnessInfo }: Props) {
   const [cases, setCases] = useState<RunCaseRecord[]>(initialCases);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(initialCases.length ? 0 : null);
   const [live, setLive] = useState(running);
@@ -61,10 +62,11 @@ export default function RunDetailClient({ runId, initialCases, running, model }:
                 {live ? <Loader2 className="size-3 animate-spin" /> : <CircleDot className="size-3" />}
                 {live ? "Running eval" : "Eval complete"}
               </span>
+              {harness && <HarnessBadge harness={harness} bin={harnessInfo?.bin} version={harnessInfo?.version} />}
               <span className="mono">{runId}</span>
               {model && <span className="mono">{model}</span>}
             </div>
-            <h1 className="mt-3 text-2xl font-semibold tracking-normal text-fg md:text-3xl">Run output</h1>
+            <h1 className="mt-3 text-2xl font-semibold tracking-normal text-fg md:text-3xl">{runName || "Run output"}</h1>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-fg-muted">
               Watch cases resolve, inspect grader evidence, preview artifacts, and see how much proof backs the score.
             </p>
@@ -110,7 +112,6 @@ export default function RunDetailClient({ runId, initialCases, running, model }:
       </section>
 
       <RunConfidencePanel confidence={confidence} />
-
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.4fr] gap-4">
         <section className="card overflow-hidden flex flex-col">
           <div className="px-4 py-3 border-b border-bd flex items-center justify-between">

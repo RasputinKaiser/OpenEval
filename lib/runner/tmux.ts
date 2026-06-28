@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
-import { NCODE_BIN } from "../config";
-import { emit, parseStreamLine, type Runner } from "./parse";
+import { getAdapter } from "../adapters/registry";
+import { emit, type Runner } from "./parse";
 import type { RunnerContext, RunnerResult, TranscriptEntry } from "../types";
 
 function tmux(args: string[], opts?: { cwd?: string }): Promise<{ code: number; stdout: string; stderr: string }> {
@@ -25,19 +25,10 @@ export class TmuxRunner implements Runner {
   async run(ctx: RunnerContext): Promise<RunnerResult> {
     const session = `eval-${ctx.caseId}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 
-    const cmdArgs = [
-      "-p",
-      "--output-format", "stream-json",
-      "--input-format", "text",
-      "--permission-mode", ctx.permissionMode,
-      "--add-dir", ctx.workdir,
-    ];
-    if (ctx.model) cmdArgs.push("--model", ctx.model);
-    if (ctx.maxTurns > 0) cmdArgs.push("--max-turns", String(ctx.maxTurns));
-    cmdArgs.push(...ctx.extraArgs);
-    cmdArgs.push(ctx.prompt);
+    const adapter = getAdapter(ctx.harness);
+    const { bin, args: cmdArgs, env: extraEnv } = adapter.buildCommand(ctx);
 
-    const ncmd = [NCODE_BIN, ...cmdArgs].map((a) => (a.includes(" ") ? `'${a.replace(/'/g, "'\\''")}'` : a)).join(" ");
+    const ncmd = [bin, ...cmdArgs].map((a) => (a.includes(" ") ? `'${a.replace(/'/g, "'\\''")}'` : a)).join(" ");
     const startedAt = Date.now();
     emit(ctx, { kind: "started", at: startedAt });
 
@@ -49,9 +40,11 @@ export class TmuxRunner implements Runner {
       result: null as Partial<RunnerResult> | null,
     };
 
+    const envPrefix = Object.entries(extraEnv).map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(" ");
+    const shellCmd = (envPrefix ? envPrefix + " " : "") + ncmd;
     const newSession = await tmux([
       "new-session", "-d", "-s", session, "-x", "220", "-y", "50",
-      "bash -lc " + JSON.stringify(ncmd),
+      "bash -lc " + JSON.stringify(shellCmd),
     ], { cwd: ctx.workdir });
 
     if (newSession.code !== 0) {
@@ -70,7 +63,7 @@ export class TmuxRunner implements Runner {
         lastCapture = cap.stdout;
         emit(ctx, { kind: "log", stream: "stdout", chunk: diff, at: Date.now() });
         for (const line of diff.split("\n")) {
-          for (const ev of parseStreamLine(line, acc)) emit(ctx, ev);
+          for (const ev of adapter.parseLine(line, acc)) emit(ctx, ev);
         }
       }
       await sleep(400);
@@ -78,7 +71,7 @@ export class TmuxRunner implements Runner {
 
     const finalCap = await tmux(["capture-pane", "-p", "-S", "-", "-E", "-", "-t", session]);
     for (const line of finalCap.stdout.split("\n")) {
-      for (const ev of parseStreamLine(line, acc)) emit(ctx, ev);
+      for (const ev of adapter.parseLine(line, acc)) emit(ctx, ev);
     }
     await tmux(["kill-session", "-t", session]).catch(async () => ({ code: 0, stdout: "", stderr: "" }));
 

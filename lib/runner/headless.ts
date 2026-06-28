@@ -1,31 +1,22 @@
 import { spawn } from "node:child_process";
-import { NCODE_BIN } from "../config";
-import { emit, parseStreamLine, type Runner } from "./parse";
+import { getAdapter } from "../adapters/registry";
+import { emit, type Runner } from "./parse";
 import type { RunnerContext, RunnerResult, TranscriptEntry } from "../types";
 
 export class HeadlessRunner implements Runner {
   kind = "headless" as const;
 
   async run(ctx: RunnerContext): Promise<RunnerResult> {
-    const args = [
-      "-p",
-      "--output-format", "stream-json",
-      "--input-format", "text",
-      "--permission-mode", ctx.permissionMode,
-      "--add-dir", ctx.workdir,
-    ];
-    if (ctx.model) args.push("--model", ctx.model);
-    if (ctx.maxTurns > 0) args.push("--max-turns", String(ctx.maxTurns));
-    args.push(...ctx.extraArgs);
-    args.push(ctx.prompt);
+    const adapter = getAdapter(ctx.harness);
+    const { bin, args, env: extraEnv } = adapter.buildCommand(ctx);
 
     const startedAt = Date.now();
     emit(ctx, { kind: "started", at: startedAt });
 
     return new Promise<RunnerResult>((resolve) => {
-      const proc = spawn(NCODE_BIN, args, {
+      const proc = spawn(bin, args, {
         cwd: ctx.workdir,
-        env: { ...process.env, NCODE_DISABLE_NONESSENTIAL_TRAFFIC: "1" },
+        env: { ...process.env, ...extraEnv },
         stdio: ["ignore", "pipe", "pipe"],
       });
 
@@ -46,7 +37,7 @@ export class HeadlessRunner implements Runner {
         const lines = stdoutBuf.split("\n");
         stdoutBuf = lines.pop() ?? "";
         for (const line of lines) {
-          for (const ev of parseStreamLine(line, acc)) emit(ctx, ev);
+          for (const ev of adapter.parseLine(line, acc)) emit(ctx, ev);
         }
       });
 
@@ -74,7 +65,7 @@ export class HeadlessRunner implements Runner {
       proc.on("close", (code) => {
         clearTimeout(timer);
         if (stdoutBuf.trim()) {
-          for (const ev of parseStreamLine(stdoutBuf, acc)) emit(ctx, ev);
+          for (const ev of adapter.parseLine(stdoutBuf, acc)) emit(ctx, ev);
         }
         const durationMs = Date.now() - startedAt;
         const exitCode = code ?? (acc.result?.isError ? 1 : 0);

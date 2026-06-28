@@ -49,7 +49,6 @@ export function computeSummary(cases: RunCaseRecord[]): RunSummary {
     if (allPassed) passPowK++;
   }
 
-  const shownSamples = samples > 0 ? samples : 1;
   return {
     total,
     passed,

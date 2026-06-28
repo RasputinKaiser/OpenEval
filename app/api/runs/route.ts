@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
     const runner = body.runner === "tmux" ? "tmux" : "headless";
     const parallel = clampInt(body.parallel, 1, 8, 1);
     const samples = clampInt(body.samples, 1, 8, 1);
@@ -22,6 +22,7 @@ export async function POST(req: Request) {
     const result = await createAndStartRun({
       name: typeof body.name === "string" && body.name.trim() ? body.name.trim() : undefined,
       runner: runner as RunnerKind,
+      harness: typeof body.harness === "string" && body.harness.trim() ? body.harness.trim() : undefined,
       parallel,
       samples,
       model: typeof body.model === "string" && body.model.trim() ? body.model.trim() : undefined,

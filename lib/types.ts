@@ -23,7 +23,7 @@ export type GraderSpecVariant =
   | { type: "git_diff_contains"; pattern: string; negate?: boolean; pathFilter?: string; weight?: number }
   | { type: "checksum"; path: string; algorithm?: "sha256" | "md5"; expected: string; weight?: number }
   | { type: "step"; tool?: string; input_includes?: string; input_includes_any?: string[]; at_index?: number; min_count?: number; before_tool?: string; negate?: boolean; weight?: number }
-  | { type: "rubric_llm"; rubric: string; min_score?: number; model?: string; weight?: number }
+  | { type: "rubric_llm"; rubric: string; min_score?: number; model?: string; judge_harness?: string; judge_model?: string; weight?: number }
   | { type: "manual"; note?: string; weight?: number };
 
 export type GraderSpec = GraderSpecVariant & { forbidden?: boolean };
@@ -84,6 +84,7 @@ export interface RunnerContext {
   permissionMode: PermissionMode;
   model?: string;
   extraArgs: string[];
+  harness?: string;
   onEvent?: (event: RunnerEvent) => void;
 }
 
@@ -239,6 +240,7 @@ export interface RunCaseRecord {
   case_def: CaseDefinition;
   seq?: number;
   sample?: number;
+  harness_info?: { id: string; bin: string | null; version: string | null };
 }
 
 export interface RunRecord {
@@ -249,6 +251,7 @@ export interface RunRecord {
   ended_at: number | null;
   params: {
     runner: RunnerKind;
+    harness?: string;
     parallel: number;
     model?: string;
     samples?: number;

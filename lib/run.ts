@@ -6,11 +6,13 @@ import { appendEvent, insertRun, listRunCases, updateRunStatus } from "./db";
 import { executeCase } from "./executor";
 import { computeSummary } from "./summary";
 import { selectCases } from "./cases";
+import { DEFAULT_HARNESS } from "./adapters/registry";
 import type { CaseDefinition, RunnerKind } from "./types";
 
 export interface CreateRunParams {
   name?: string;
   runner: RunnerKind;
+  harness?: string;
   parallel: number;
   model?: string;
   samples?: number;
@@ -23,6 +25,7 @@ export async function createAndStartRun(params: CreateRunParams): Promise<{ id: 
   if (cases.length === 0) throw new Error("No cases match the filter");
   const samples = Math.max(1, Math.min(params.samples ?? 1, 8));
   const model = params.model || "glm-5.2";
+  const harness = params.harness || DEFAULT_HARNESS;
 
   const run = {
     id,
@@ -30,13 +33,13 @@ export async function createAndStartRun(params: CreateRunParams): Promise<{ id: 
     status: "running" as const,
     created_at: Date.now(),
     ended_at: null,
-    params: { runner: params.runner, parallel: params.parallel, model, samples, filter: params.filter },
+    params: { runner: params.runner, harness, parallel: params.parallel, model, samples, filter: params.filter },
     summary: null,
   };
   insertRun(run);
-  appendEvent(id, "run_started", { case_count: cases.length, samples, runner: params.runner, model }, undefined);
+  appendEvent(id, "run_started", { case_count: cases.length, samples, runner: params.runner, harness, model }, undefined);
 
-  void runLoop(id, cases, params.runner, params.parallel, model, samples).catch((e) => {
+  void runLoop(id, cases, params.runner, harness, params.parallel, model, samples).catch((e) => {
     appendEvent(id, "run_fatal", { error: String(e?.stack || e) }, undefined);
     updateRunStatus(id, "failed", Date.now(), null);
   });
@@ -44,7 +47,7 @@ export async function createAndStartRun(params: CreateRunParams): Promise<{ id: 
   return { id, caseCount: cases.length * samples };
 }
 
-async function runLoop(runId: string, cases: CaseDefinition[], runner: RunnerKind, parallel: number, model?: string, samples = 1) {
+async function runLoop(runId: string, cases: CaseDefinition[], runner: RunnerKind, harness: string, parallel: number, model?: string, samples = 1) {
   const work: Array<{ def: CaseDefinition; seq: number; sample: number }> = [];
   let seq = 0;
   for (const def of cases) {
@@ -59,7 +62,7 @@ async function runLoop(runId: string, cases: CaseDefinition[], runner: RunnerKin
     while (work.length) {
       const item = work.shift();
       if (!item) break;
-      await executeCase(runId, item.def, runner, item.seq, model, item.sample);
+      await executeCase(runId, item.def, runner, item.seq, model, item.sample, harness);
     }
   }
 

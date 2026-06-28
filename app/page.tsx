@@ -2,6 +2,7 @@ import Link from "next/link";
 import { countRuns, listRuns } from "@/lib/db";
 import { loadCases } from "@/lib/cases";
 import StatusBadge from "@/components/StatusBadge";
+import HarnessBadge from "@/components/HarnessBadge";
 import { Activity, ArrowRight, BarChart3, CheckCircle2, Cpu, DollarSign, FileText, Timer } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -71,8 +72,11 @@ export default async function Page() {
                   <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3">
                     <div className="min-w-0">
                       <Link href={`/runs/${r.id}`} className="font-medium text-sm truncate block hover:text-accent-soft">{r.name}</Link>
-                      <div className="text-[11px] text-fg-dim mono mt-0.5">
-                        {new Date(r.created_at).toLocaleString()} · {r.params.runner} · {r.params.parallel}×{r.params.samples && r.params.samples > 1 ? ` · ${r.params.samples} samples` : ""}
+                      <div className="text-[11px] text-fg-dim mono mt-0.5 flex items-center gap-1.5 flex-wrap">
+                        {new Date(r.created_at).toLocaleString()} · {r.params.runner}
+                        {r.params.harness && <HarnessBadge harness={r.params.harness} />}
+                        <span>· {r.params.parallel}×</span>
+                        {r.params.samples && r.params.samples > 1 ? <span>· {r.params.samples} samples</span> : null}
                       </div>
                     </div>
                     <div className="flex items-center gap-3 shrink-0">

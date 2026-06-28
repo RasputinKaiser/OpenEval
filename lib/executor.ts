@@ -5,6 +5,8 @@ import { FIXTURES_DIR, TRANSCRIPTS_DIR, WORKDIRS_DIR } from "./config";
 import { appendEvent, insertRunCase, updateRunCase } from "./db";
 import { runGrader, evaluate } from "./grader";
 import { getRunner } from "./runner";
+import { getAdapter } from "./adapters/registry";
+import { discoverHarnesses } from "./adapters/discover";
 import type { CaseDefinition, RunCaseRecord, RunnerKind, RunnerResult } from "./types";
 
 export async function prepareWorkdir(runId: string, caseId: string, def: CaseDefinition, sample: number): Promise<{ dir: string; fixtureSrc?: string }> {
@@ -67,7 +69,8 @@ export async function executeCase(
   runnerKind: RunnerKind,
   seq: number,
   modelOverride?: string,
-  sample: number = 0
+  sample: number = 0,
+  harness?: string,
 ): Promise<RunCaseRecord> {
   const rcId = randomUUID();
   const { dir: workdir, fixtureSrc } = await prepareWorkdir(runId, def.id, def, sample);
@@ -100,6 +103,18 @@ export async function executeCase(
 
   const runner = getRunner(runnerKind);
   const runnerCfg = def.runner || {};
+  const adapter = getAdapter(harness);
+  let harnessInfo: { id: string; bin: string | null; version: string | null } | undefined;
+  if (harness) {
+    try {
+      const discovered = await discoverHarnesses();
+      const hit = discovered.find((h) => h.id === adapter.id);
+      harnessInfo = hit ? { id: adapter.id, bin: hit.bin, version: hit.version } : { id: adapter.id, bin: null, version: null };
+    } catch {
+      harnessInfo = { id: adapter.id, bin: null, version: null };
+    }
+  }
+  rec.harness_info = harnessInfo;
   const ctx = {
     caseId: def.id,
     workdir,
@@ -109,6 +124,7 @@ export async function executeCase(
     permissionMode: runnerCfg.permission_mode ?? "bypassPermissions",
     model: modelOverride || runnerCfg.model,
     extraArgs: runnerCfg.extra_args ?? [],
+    harness,
     onEvent: (ev: any) => {
       void fs.appendFile(transcriptPath, JSON.stringify(ev) + "\n").catch(() => {});
       if (ev.kind === "tool_use") appendEvent(runId, "tool_use", { case_id: def.id, sample, tool: ev.tool, id: ev.id }, def.id);

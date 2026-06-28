@@ -7,6 +7,7 @@ export const CASES_DIR = path.join(ROOT, "cases");
 export const FIXTURES_DIR = path.join(ROOT, "fixtures");
 export const WORKDIRS_DIR = path.join(ROOT, "data", "workdirs");
 export const TRANSCRIPTS_DIR = path.join(ROOT, "data", "transcripts");
+export const HARNESS_DESC_DIR = path.join(ROOT, "harnesses");
 
 export const NCODE_BIN = process.env.NCODE_BIN || "ncode";
 

@@ -6,6 +6,7 @@ import { Loader2, Play, Check, Filter, Cpu } from "lucide-react";
 import clsx from "clsx";
 import type { CaseDefinition } from "@/lib/types";
 import ModelPicker from "./ModelPicker";
+import HarnessPicker from "./HarnessPicker";
 
 interface Props { cases: CaseDefinition[]; initialCaseIds?: string[]; }
 
@@ -14,6 +15,7 @@ const CATEGORIES = ["agentic-swe", "single-tool", "reasoning", "visual-code"] as
 export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
   const router = useRouter();
   const [runner, setRunner] = useState<"headless" | "tmux">("headless");
+  const [harness, setHarness] = useState<string | undefined>("ncode");
   const [parallel, setParallel] = useState(1);
   const [samples, setSamples] = useState(1);
   const [name, setName] = useState("");
@@ -68,6 +70,7 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
         body: JSON.stringify({
           name: name || undefined,
           runner,
+          harness,
           parallel,
           samples,
           model,
@@ -149,11 +152,19 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
             </div>
 
             <div className="mt-4">
+              <label className="text-[11px] uppercase tracking-wider text-fg-muted">Harness</label>
+              <div className="mt-1.5">
+                <HarnessPicker value={harness} onChange={setHarness} />
+              </div>
+              <div className="text-[10px] text-fg-dim mt-1.5">Agent CLI to run cases against. Discovered from PATH — missing binaries are disabled.</div>
+            </div>
+
+            <div className="mt-4">
               <label className="text-[11px] uppercase tracking-wider text-fg-muted">Model</label>
               <div className="mt-1.5">
                 <ModelPicker value={model} onChange={setModel} />
               </div>
-              <div className="text-[10px] text-fg-dim mt-1.5">Discovered from your Noumena Code profile. Leave default to let ncode pick.</div>
+              <div className="text-[10px] text-fg-dim mt-1.5">Leave default to let the harness pick.</div>
             </div>
           </section>
 
@@ -241,6 +252,7 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
             <dl className="space-y-2 text-sm">
               <Row label="Cases" value={samples > 1 ? `${plannedCaseCount} × ${samples} = ${plannedCaseCount * samples}` : selectedCount > 0 ? `${selectedCount} selected` : `${visible.length} filtered`} />
               <Row label="Runner" value={runner} />
+              <Row label="Harness" value={harness || "ncode"} />
               <Row label="Model" value={model || "default"} />
               <Row label="Parallel" value={`${parallel}×`} />
               <Row label="Samples" value={samples > 1 ? `${samples} (pass@k)` : "1"} />

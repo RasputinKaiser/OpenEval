@@ -1,0 +1,28 @@
+{
+  "id": "hermes",
+  "label": "Hermes CLI",
+  "binNames": ["hermes"],
+  "wellKnownPaths": ["~/.local/bin/hermes", "~/.hermes/bin/hermes"],
+  "versionArgs": ["--version"],
+  "output": "jsonl",
+  "argTemplate": ["run", "--json", "--workdir", "{workdir}"],
+  "promptPlaceholder": "--prompt",
+  "extraEnv": {},
+  "fields": {
+    "finalText": "message.text",
+    "sessionId": "session_id",
+    "model": "model",
+    "toolCallName": "tool.name",
+    "toolCallId": "tool.id",
+    "toolCallInput": "tool.input",
+    "toolCallOutput": "result.output",
+    "toolCallError": "result.is_error",
+    "durationMs": "duration_ms",
+    "numTurns": "num_turns",
+    "inputTokens": "usage.input_tokens",
+    "outputTokens": "usage.output_tokens",
+    "costUsd": "usage.cost_usd",
+    "stopReason": "stop_reason",
+    "isError": "is_error"
+  }
+}

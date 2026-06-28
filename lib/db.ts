@@ -75,6 +75,7 @@ function migrate(conn: Database.Database) {
   add("difficulty", "TEXT");
   add("budget_exceeded", "INTEGER DEFAULT 0");
   add("sample", "INTEGER DEFAULT 0");
+  add("harness_info_json", "TEXT");
   const versionRow = conn.prepare("PRAGMA user_version").pluck().get() as number | undefined;
   const version = versionRow ?? 0;
   if (version < 1) {
@@ -132,14 +133,15 @@ export function getRunCaseBySeq(runId: string, seq: number): RunCaseRecord | nul
 
 export function insertRunCase(rc: RunCaseRecord & { seq: number }): void {
   getDb().prepare(
-    `INSERT INTO run_cases (id, run_id, case_id, case_name, category, difficulty, status, started_at, ended_at, workdir_path, transcript_path, runner_kind, runner_result_json, grader_result_json, evaluation_json, budget_exceeded, case_def_json, error_msg, seq, sample)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO run_cases (id, run_id, case_id, case_name, category, difficulty, status, started_at, ended_at, workdir_path, transcript_path, runner_kind, runner_result_json, grader_result_json, evaluation_json, budget_exceeded, case_def_json, error_msg, seq, sample, harness_info_json)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     rc.id, rc.run_id, rc.case_id, rc.case_name, rc.category, rc.difficulty ?? null, rc.status,
     rc.started_at, rc.ended_at, rc.workdir_path, rc.transcript_path,
     rc.runner_kind, rc.runner_result ? JSON.stringify(rc.runner_result) : null,
     rc.grader_result ? JSON.stringify(rc.grader_result) : null,
-    rc.evaluation ? JSON.stringify(rc.evaluation) : null, rc.budget_exceeded ? 1 : 0, JSON.stringify(rc.case_def), rc.error_msg, rc.seq, rc.sample ?? 0
+    rc.evaluation ? JSON.stringify(rc.evaluation) : null, rc.budget_exceeded ? 1 : 0, JSON.stringify(rc.case_def), rc.error_msg, rc.seq, rc.sample ?? 0,
+    rc.harness_info ? JSON.stringify(rc.harness_info) : null
   );
 }
 
@@ -148,14 +150,14 @@ export function updateRunCase(id: string, patch: Partial<RunCaseRecord>): void {
   if (!cur) return;
   const next = { ...cur, ...patch };
   getDb().prepare(
-    `UPDATE run_cases SET status=?, started_at=?, ended_at=?, transcript_path=?, runner_result_json=?, grader_result_json=?, evaluation_json=?, budget_exceeded=?, error_msg=? WHERE id=?`
+    `UPDATE run_cases SET status=?, started_at=?, ended_at=?, transcript_path=?, runner_result_json=?, grader_result_json=?, evaluation_json=?, budget_exceeded=?, error_msg=?, harness_info_json=? WHERE id=?`
   ).run(
     next.status, next.started_at, next.ended_at, next.transcript_path,
     next.runner_result ? JSON.stringify(next.runner_result) : null,
     next.grader_result ? JSON.stringify(next.grader_result) : null,
     next.evaluation ? JSON.stringify(next.evaluation) : null,
     next.budget_exceeded ? 1 : 0,
-    next.error_msg, id
+    next.error_msg, next.harness_info ? JSON.stringify(next.harness_info) : null, id
   );
 }
 
@@ -203,5 +205,6 @@ function rowToRunCase(r: any): RunCaseRecord {
     case_def: JSON.parse(r.case_def_json),
     seq: r.seq,
     sample: r.sample ?? 0,
+    harness_info: r.harness_info_json ? JSON.parse(r.harness_info_json) : undefined,
   };
 }
