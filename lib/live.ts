@@ -18,6 +18,7 @@ export interface LiveSession {
   stopReason: string | null;
   isError: boolean;
   pathBytes: number;
+  path?: string;
 }
 
 export interface LiveAggregate {
@@ -32,7 +33,7 @@ export interface LiveAggregate {
   sessions: LiveSession[];
 }
 
-function ncodeProjectsDir(): string {
+export function ncodeProjectsDir(): string {
   return path.join(os.homedir(), ".ncode", "projects");
 }
 
@@ -55,8 +56,12 @@ export function scanLiveSessions(limit = 200): LiveAggregate {
     for (const ent of entries) {
       if (!ent.isFile() || !ent.name.endsWith(".jsonl")) continue;
       const full = path.join(pdir, ent.name);
-      const st = fs.statSync(full);
-      files.push({ file: full, project: pd, mtime: st.mtimeMs });
+      try {
+        const st = fs.statSync(full);
+        files.push({ file: full, project: pd, mtime: st.mtimeMs });
+      } catch {
+        continue;
+      }
     }
   }
   files.sort((a, b) => b.mtime - a.mtime);
@@ -68,6 +73,50 @@ export function scanLiveSessions(limit = 200): LiveAggregate {
   }
 
   return aggregate(sessions);
+}
+
+export interface TranscriptResult {
+  turns: unknown[];
+  error?: string;
+}
+
+export function parseSessionTranscript(filePath: string): TranscriptResult {
+  try {
+    const content = fs.readFileSync(filePath, "utf8");
+    const turns: unknown[] = [];
+    for (const line of content.split("\n")) {
+      if (!line.trim()) continue;
+      try {
+        turns.push(JSON.parse(line));
+      } catch {
+        // skip malformed lines
+      }
+    }
+    return { turns };
+  } catch (e) {
+    return { turns: [], error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+function isErroringTurn(obj: unknown): boolean {
+  if (!obj || typeof obj !== "object") return false;
+  const o = obj as Record<string, unknown>;
+  if (o.is_error) return true;
+  if (o.type === "result" && o.is_error) return true;
+  if (o.type === "user" && o.message && typeof o.message === "object" && Array.isArray((o.message as Record<string, unknown>).content)) {
+    for (const b of (o.message as Record<string, unknown>).content as unknown[]) {
+      if (b && typeof b === "object" && (b as Record<string, unknown>).type === "tool_result" && (b as Record<string, unknown>).is_error) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+export function getErroringTurns(filePath: string): TranscriptResult {
+  const parsed = parseSessionTranscript(filePath);
+  if (parsed.error) return { turns: [], error: parsed.error };
+  return { turns: parsed.turns.filter(isErroringTurn) };
 }
 
 function summarizeSessionFile(file: string, projectDir: string, mtime: number): LiveSession | null {
@@ -131,6 +180,7 @@ function summarizeSessionFile(file: string, projectDir: string, mtime: number): 
     stopReason,
     isError,
     pathBytes,
+    path: file,
   };
 }
 
