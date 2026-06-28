@@ -6,6 +6,7 @@ export interface CaseAccuracyAudit {
   category: string;
   difficulty: string;
   hasOracle: boolean;
+  oracleApplicable: boolean;
   hasKnownBad: boolean;
   hasBudget: boolean;
   hasVisualContract: boolean;
@@ -18,6 +19,7 @@ export interface CaseAccuracyAudit {
 export interface AccuracyAudit {
   totalCases: number;
   oracleCases: number;
+  oracleApplicableCases: number;
   knownBadCases: number;
   visualCases: number;
   visionInputCases: number;
@@ -81,6 +83,7 @@ export function auditCases(cases: CaseDefinition[]): AccuracyAudit {
   return {
     totalCases: rows.length,
     oracleCases: rows.filter((r) => r.hasOracle).length,
+    oracleApplicableCases: rows.filter((r) => r.oracleApplicable).length,
     knownBadCases: rows.filter((r) => r.hasKnownBad).length,
     visualCases: rows.filter((r) => r.hasVisualContract).length,
     visionInputCases: rows.filter((r) => r.requiresVisionInput).length,
@@ -97,11 +100,15 @@ function auditCase(c: CaseDefinition): CaseAccuracyAudit {
   if (c.visual?.expected_artifacts?.length) tiers.visual++;
 
   const hasOracle = !!(c.oracle?.solve || c.oracle?.final_text);
-  const hasKnownBad = !!c.oracle?.known_bad?.length;
+  const hasKnownBad = !!(c.oracle?.known_bad?.length || c.oracle?.known_bad_final_text?.length);
   const hasDeterministic = tiers.deterministic + tiers.trace > 0;
+  const oracleApplicable = !(
+    (c.visual?.expected_artifacts?.length ?? 0) > 0 && c.graders.length > 0 && !c.oracle?.solve && !c.oracle?.final_text
+  );
+
   const weaknesses: string[] = [];
 
-  if (!hasOracle) weaknesses.push("missing oracle solve script");
+  if (oracleApplicable && !hasOracle) weaknesses.push("missing oracle solve script");
   if (!hasKnownBad) weaknesses.push("no known-bad rejection script");
   if (!hasDeterministic) weaknesses.push("no deterministic or trace grader");
   if (tiers.llm_judge > 0 && tiers.deterministic === 0) weaknesses.push("LLM judge without deterministic backstop");
@@ -113,6 +120,7 @@ function auditCase(c: CaseDefinition): CaseAccuracyAudit {
     category: c.category,
     difficulty: c.difficulty ?? "untiered",
     hasOracle,
+    oracleApplicable,
     hasKnownBad,
     hasBudget: !!c.budget,
     hasVisualContract: !!c.visual,

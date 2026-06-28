@@ -238,23 +238,83 @@ export async function runGrader(
   }
 
   if (spec.type === "rubric_llm") {
-    // LLM judge: spawn ncode -p with the rubric + final output and ask for a 0-1 score
-    const prompt = `You are grading an agent task. Rubric:\n${spec.rubric}\n\nAgent final output:\n"${(ctx.runner.finalText || ctx.runner.resultText || "").slice(0, 4000)}"\n\nTranscript excerpt:\n${ctx.transcriptText.slice(0, 4000)}\n\nReply with only JSON: {"passed": <bool>, "score": <0..1>, "reason": "<short>"}`;
-    const res = await runShell({ command: `${process.env.NCODE_BIN || "ncode"} -p --output-format json --permission-mode bypassPermissions ${JSON.stringify(prompt)}`, timeout_ms: 120_000 });
-    let judge: { passed?: boolean; score?: number; reason?: string } | null = null;
+    const rubricSpec = spec as Extract<GraderSpec, { type: "rubric_llm" }>;
+    const finalText = (ctx.runner.finalText || ctx.runner.resultText || "").slice(-4000);
+    const transcriptExcerpt = ctx.transcriptText.slice(-4000);
+
+    const prompt = `You are an expert auditor grading a coding-agent task. Grade strictly; do not inflate.
+
+RUBRIC:
+${rubricSpec.rubric}
+
+AGENT FINAL OUTPUT:
+"""
+${finalText}
+"""
+
+TRANSCRIPT EXCERPT (most recent):
+"""
+${transcriptExcerpt}
+"""
+
+Instructions:
+1. Internally reason about whether the agent's output satisfies each rubric criterion.
+2. Output your reasoning inside <reasoning>...</reasoning> tags.
+3. Then output your verdict inside <verdict>...</verdict> tags as strict JSON:
+   {"passed": <true|false>, "score": <0.0-1.0>, "reason": "<one sentence>"}
+4. Use score >= ${rubricSpec.min_score ?? 0.7} to pass.`;
+
+    const modelFlag = rubricSpec.model ? ` --model ${rubricSpec.model}` : "";
+    const ncodeBin = process.env.NCODE_BIN || "ncode";
+    const cmd = `${ncodeBin} -p --output-format json --permission-mode bypassPermissions${modelFlag} ${JSON.stringify(prompt)}`;
+
     try {
-      // find result text
-      const arr = JSON.parse(res.stdout);
-      const r = Array.isArray(arr) ? arr.find((x: any) => x.type === "result") : null;
-      const txt = r?.result || "";
-      const m = txt.match(/\{[\s\S]*\}/);
-      if (m) judge = JSON.parse(m[0]);
-    } catch {}
-    const passed = judge?.passed === true || (judge?.score ?? 0) >= (spec.min_score ?? 0.7);
-    const score = typeof judge?.score === "number" ? judge.score : passed ? 1 : 0;
-    return passed
-      ? ok(spec, `LLM judge: ${judge?.reason ?? "passed"} (score=${score})`, dur(), res.stdout.slice(0, 500))
-      : fail(spec, `LLM judge: ${judge?.reason ?? "failed"} (score=${score})`, dur(), res.stdout.slice(0, 500));
+      const res = await runShell({ command: cmd, timeout_ms: 120_000 });
+
+      if (res.timedOut) {
+        return fail(spec, `LLM judge: timed out after ${res.durationMs}ms`, dur(), res.stdout.slice(0, 500));
+      }
+
+      let judge: { passed?: boolean; score?: number; reason?: string } | null = null;
+      let resultText = "";
+
+      try {
+        const arr = JSON.parse(res.stdout);
+        const r = Array.isArray(arr) ? arr.find((x: any) => x.type === "result") : null;
+        resultText = r?.result || res.stdout;
+      } catch {
+        resultText = res.stdout;
+      }
+
+      // Primary parse: extract <verdict>...</verdict> JSON
+      const verdictMatch = resultText.match(/<verdict>\s*(\{[\s\S]*?\})\s*<\/verdict>/i);
+      if (verdictMatch) {
+        try { judge = JSON.parse(verdictMatch[1]); } catch {}
+      }
+
+      // Fallback: first JSON object that looks like a verdict
+      if (!judge) {
+        const jsonMatch = resultText.match(/\{[\s\S]*?"passed"[\s\S]*?\}/);
+        if (jsonMatch) {
+          try { judge = JSON.parse(jsonMatch[0]); } catch {}
+        }
+      }
+
+      if (!judge) {
+        return fail(spec, `LLM judge: output unparseable`, dur(), resultText.slice(0, 500));
+      }
+
+      const minScore = rubricSpec.min_score ?? 0.7;
+      const score = typeof judge.score === "number" ? judge.score : judge.passed === true ? 1 : 0;
+      const passed = judge.passed === true || score >= minScore;
+      const reason = judge.reason ?? (passed ? "passed" : "failed");
+
+      return passed
+        ? ok(spec, `LLM judge: ${reason} (score=${score})`, dur(), resultText.slice(0, 500))
+        : fail(spec, `LLM judge: ${reason} (score=${score})`, dur(), resultText.slice(0, 500));
+    } catch (e) {
+      return fail(spec, `LLM judge: error — ${String(e).slice(0, 200)}`, dur());
+    }
   }
 
   if (spec.type === "manual") {
