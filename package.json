@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
+    "test:live": "node --import tsx --test tests/live.test.ts",
     "test:telemetry": "node --import tsx --test tests/telemetry.test.ts",
     "run:eval": "tsx lib/cli/run.ts",
     "run:case": "tsx lib/cli/run.ts --case",

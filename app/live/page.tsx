@@ -34,6 +34,13 @@ export default function LivePage() {
       totalOutputTokens: 0,
       totalToolCalls: 0,
       totalToolErrors: 0,
+      sessionsWithMeasuredDuration: 0,
+      sessionsWithMissingModel: 0,
+      sessionsWithMissingTokens: 0,
+      sessionsWithMalformedLines: 0,
+      staleSessions: 0,
+      avgDataQuality: 0,
+      scanWarnings: [],
       byModel: [],
       sessions: [],
     };
