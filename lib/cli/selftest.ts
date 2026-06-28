@@ -28,19 +28,24 @@ function emptyRunnerResult(): RunnerResult {
 }
 
 async function main() {
+  const withLlmJudge = process.argv.includes("--with-llm-judge");
+  const json = process.argv.includes("--json");
   const cases = await loadCases();
   if (cases.length === 0) { console.error("No cases found."); process.exit(1); }
 
   const tmpRun = `selftest-${Date.now().toString(36)}`;
-  let pass = 0, fail = 0, skip = 0;
+  let pass = 0, fail = 0, skip = 0, llmSkip = 0;
   const failures: string[] = [];
 
-  console.log(`Self-test: ${cases.length} cases\n`);
+  function log(msg: string) { if (!json) console.log(msg); }
+
+  log(`Self-test: ${cases.length} cases${withLlmJudge ? " (with LLM judge)" : ""}\n`);
   for (const def of cases) {
     const noop = await prepareWorkdir(tmpRun, `${def.id}-noop`, def, 0);
     const noopRunner = emptyRunnerResult();
     const noopResults = [];
     for (const spec of def.graders) {
+      if (spec.type === "rubric_llm" && !withLlmJudge) { llmSkip++; continue; }
       const r = await runGrader(spec, { workdir: noop.dir, runner: noopRunner, transcriptText: "", fixtureSrc: noop.fixtureSrc });
       noopResults.push(r);
     }
@@ -82,6 +87,7 @@ async function main() {
     const transcriptText = "";
     const results = [];
     for (const spec of def.graders) {
+      if (spec.type === "rubric_llm" && !withLlmJudge) { llmSkip++; continue; }
       const r = await runGrader(spec, { workdir: dir, runner, transcriptText, fixtureSrc });
       results.push(r);
     }
@@ -97,10 +103,13 @@ async function main() {
     }
   }
 
-  console.log(`\nSelf-test result: ${pass} pass, ${fail} fail, ${skip} skip (no oracle)`);
+  log(`\nSelf-test result: ${pass} pass, ${fail} fail, ${skip} skip (no oracle)${llmSkip > 0 ? `, ${llmSkip} skip (LLM judge — use --with-llm-judge to enable)` : ""}`);
   if (failures.length) {
-    console.log("\nFailures:");
-    for (const f of failures) console.log(`  - ${f}`);
+    log("\nFailures:");
+    for (const f of failures) log(`  - ${f}`);
+  }
+  if (json) {
+    console.log(JSON.stringify({ ok: fail === 0, pass, fail, skip, llmSkip, total: cases.length, failures }));
   }
   // cleanup
   try { fs.rmSync(path.join(os.tmpdir(), "..", "data", "workdirs", tmpRun), { recursive: true, force: true }); } catch {}
@@ -111,4 +120,11 @@ async function main() {
   process.exit(fail > 0 ? 1 : 0);
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+main().catch((e) => {
+  if (process.argv.includes("--json")) {
+    console.log(JSON.stringify({ ok: false, error: String(e).slice(0, 500) }));
+  } else {
+    console.error(e);
+  }
+  process.exit(1);
+});
