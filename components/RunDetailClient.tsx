@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import clsx from "clsx";
 import StatusBadge from "./StatusBadge";
@@ -9,7 +9,7 @@ import TelemetryStrip from "./TelemetryStrip";
 import {
   ChevronRight, Wrench, Clock, Hash, Cpu, DollarSign, Loader2, CircleDot, Gauge, AlertCircle, PlayCircle,
   Eye, FileCode, Palette, Sparkles, ShieldCheck, ShieldAlert, CheckCircle2, XCircle, Boxes, FlaskConical,
-  SearchCheck, BadgeCheck, Scale, Fingerprint,
+  SearchCheck, BadgeCheck, Scale, Fingerprint, Search,
 } from "lucide-react";
 import type { EvidenceTier, GraderResult, GraderSpec, RunCaseRecord, TranscriptEntry } from "@/lib/types";
 
@@ -19,6 +19,19 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
   const [cases, setCases] = useState<RunCaseRecord[]>(initialCases);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(initialCases.length ? 0 : null);
   const [live, setLive] = useState(running);
+  const [caseSearch, setCaseSearch] = useState("");
+
+  const visibleCases = useMemo(() => {
+    const q = caseSearch.trim().toLowerCase();
+    if (!q) return cases.map((c, i) => ({ c, i }));
+    return cases
+      .map((c, i) => ({ c, i }))
+      .filter(({ c }) =>
+        c.case_name.toLowerCase().includes(q) ||
+        c.case_id.toLowerCase().includes(q) ||
+        c.category.toLowerCase().includes(q)
+      );
+  }, [cases, caseSearch]);
 
   useEffect(() => {
     if (!live) return;
@@ -113,8 +126,22 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
             <span className="ml-auto mono text-fg-muted">{passRatio}% pass</span>
           </div>
 
+          {cases.length > 6 && (
+            <div className="px-4 py-2 border-b border-bd-subtle">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3 text-fg-dim" />
+                <input
+                  value={caseSearch}
+                  onChange={(e) => setCaseSearch(e.target.value)}
+                  placeholder="Filter cases…"
+                  className="w-full pl-8 pr-2 py-1.5 text-xs bg-bg border border-bd rounded-md focus:outline-none focus:border-accent placeholder:text-fg-dim"
+                />
+              </div>
+            </div>
+          )}
+
           <div className="max-h-[calc(100vh-280px)] overflow-y-auto divide-y divide-bd-subtle">
-            {cases.map((c, i) => {
+            {visibleCases.map(({ c, i }) => {
               const sel = selectedIdx === i;
               const runner = c.runner_result;
               const rerunHref = `/runs/new?caseIds=${encodeURIComponent(c.case_id)}${model ? `&model=${encodeURIComponent(model)}` : ""}`;
