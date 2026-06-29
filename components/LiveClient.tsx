@@ -891,12 +891,11 @@ function SelectPill({ icon: Icon, value, onChange, options }: { icon: any; value
   );
 }
 
-function MetricCard({ label, value, source }: { label: string; value: string; source?: MetricSource }) {
+function MetricCard({ label, value }: { label: string; value: string; source?: MetricSource }) {
   return (
     <div className="rounded-lg border border-bd bg-bg/45 p-3">
       <div className="mb-1 text-[10px] uppercase tracking-wider text-fg-muted">{label}</div>
       <div className="mono truncate text-sm tabular-nums text-fg">{value}</div>
-      {source ? <div className="mt-1"><SourceChip label={source} source={source} /></div> : null}
     </div>
   );
 }
