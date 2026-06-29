@@ -665,7 +665,7 @@ function SessionDrawer({
           </div>
         </div>
 
-        <div className="flex-1 space-y-5 overflow-y-auto p-5">
+        <div className="drawer-stagger flex-1 space-y-5 overflow-y-auto p-5">
           <section className="grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
             <MetricCard label="Project" value={compactDisplayPath(session.project || "(unknown)", redact)} />
             <MetricCard label="Model" value={session.model || "missing"} source={session.metricSources.model} />
