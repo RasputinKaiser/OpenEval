@@ -73,9 +73,14 @@ export default function LiveClient({ initialData, error: initialError, getTransc
   useEffect(() => {
     let cancelled = false;
     let t: ReturnType<typeof setTimeout>;
+    let activeController: AbortController | null = null;
     const poll = async () => {
+      const controller = new AbortController();
+      activeController = controller;
       try {
-        const d = (await fetch("/api/live").then((r) => r.json())) as LiveAggregate;
+        const response = await fetch("/api/live", { signal: controller.signal });
+        if (!response.ok) throw new Error(`Live poll failed: HTTP ${response.status}`);
+        const d = (await response.json()) as LiveAggregate;
         if (!cancelled) {
           const sig = `${d.totalSessions}:${d.totalToolCalls}:${d.totalToolErrors}:${d.sessions[0]?.sessionId ?? ""}:${d.avgDataQuality}`;
           if (sig !== lastSigRef.current) {
@@ -84,7 +89,12 @@ export default function LiveClient({ initialData, error: initialError, getTransc
           }
           if (d.totalSessions > 0) setError(undefined);
         }
+      } catch (e) {
+        if (!cancelled && !(e instanceof DOMException && e.name === "AbortError")) {
+          setError(e instanceof Error ? e.message : String(e));
+        }
       } finally {
+        if (activeController === controller) activeController = null;
         if (!cancelled) {
           setLoading(false);
           t = setTimeout(poll, 10000);
@@ -94,6 +104,7 @@ export default function LiveClient({ initialData, error: initialError, getTransc
     poll();
     return () => {
       cancelled = true;
+      activeController?.abort();
       clearTimeout(t);
     };
   }, []);
