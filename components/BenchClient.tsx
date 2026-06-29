@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import clsx from "clsx";
 import {
@@ -67,19 +67,27 @@ export default function BenchClient({ runId, runName }: Props) {
 
       {t && (
         <>
-          <section className="stagger-grid grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 mb-6">
-            <Stat label="Avg tok/s" value={t.avgTokPerSec.toFixed(1)} icon={Gauge} tone="accent" />
-            <Stat label="P50 tok/s" value={t.p50TokPerSec.toFixed(1)} icon={Zap} />
-            <Stat label="Max tok/s" value={t.maxTokPerSec.toFixed(1)} icon={Zap} />
-            <Stat label="P50 duration" value={fmtMs(t.p50DurationMs)} icon={Timer} />
-            <Stat label="P95 duration" value={fmtMs(t.p95DurationMs)} icon={Timer} tone={t.p95DurationMs > 60000 ? "warn" : undefined} />
-            <Stat label="Cache hit" value={`${(t.cacheHitRate * 100).toFixed(0)}%`} icon={Layers} tone={t.cacheHitRate > 0.3 ? "ok" : undefined} />
-            <Stat label="Error rate" value={`${(t.errorRate * 100).toFixed(0)}%`} icon={AlertTriangle} tone={t.errorRate > 0 ? "err" : "ok"} />
-            <Stat label="Fails safely" value={`${(t.failsSafelyRate * 100).toFixed(0)}%`} icon={Layers} tone={t.failsSafelyRate >= 1 ? "ok" : "warn"} />
-            <Stat label="Cheapest pass" value={`$${t.cheapestPassUsd.toFixed(4)}`} icon={DollarSign} tone="accent" />
-            <Stat label="Avg turns" value={t.avgTurns.toFixed(1)} icon={Hash} />
-            <Stat label="Tool calls" value={String(t.totalToolCalls)} icon={Wrench} />
-            <Stat label="Cases" value={String(t.perCase.length)} icon={Activity} />
+          <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+            <MetricGroup label="Throughput">
+              <Stat label="Avg tok/s" value={t.avgTokPerSec.toFixed(1)} icon={Gauge} tone="accent" />
+              <Stat label="Max tok/s" value={t.maxTokPerSec.toFixed(1)} icon={Zap} />
+              <Stat label="P50 tok/s" value={t.p50TokPerSec.toFixed(1)} icon={Zap} />
+            </MetricGroup>
+            <MetricGroup label="Latency & volume">
+              <Stat label="P50 duration" value={fmtMs(t.p50DurationMs)} icon={Timer} />
+              <Stat label="P95 duration" value={fmtMs(t.p95DurationMs)} icon={Timer} tone={t.p95DurationMs > 60000 ? "warn" : undefined} />
+              <Stat label="Avg turns" value={t.avgTurns.toFixed(1)} icon={Hash} />
+            </MetricGroup>
+            <MetricGroup label="Reliability">
+              <Stat label="Cache hit" value={`${(t.cacheHitRate * 100).toFixed(0)}%`} icon={Layers} tone={t.cacheHitRate > 0.3 ? "ok" : undefined} />
+              <Stat label="Error rate" value={`${(t.errorRate * 100).toFixed(0)}%`} icon={AlertTriangle} tone={t.errorRate > 0 ? "err" : "ok"} />
+              <Stat label="Fails safely" value={`${(t.failsSafelyRate * 100).toFixed(0)}%`} icon={Layers} tone={t.failsSafelyRate >= 1 ? "ok" : "warn"} />
+            </MetricGroup>
+            <MetricGroup label="Cost & tooling">
+              <Stat label="Cheapest pass" value={`$${t.cheapestPassUsd.toFixed(4)}`} icon={DollarSign} tone="accent" />
+              <Stat label="Tool calls" value={String(t.totalToolCalls)} icon={Wrench} />
+              <Stat label="Cases" value={String(t.perCase.length)} icon={Activity} />
+            </MetricGroup>
           </section>
 
           <section className="card p-5 mb-4">
@@ -236,14 +244,23 @@ function fmtMs(ms: number): string {
   return `${m}m${s}s`;
 }
 
+function MetricGroup({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="rounded-lg border border-bd-subtle bg-bg-subtle/30 p-3 space-y-2">
+      <div className="text-[10px] uppercase tracking-wider text-fg-dim">{label}</div>
+      {children}
+    </div>
+  );
+}
+
 function Stat({ label, value, icon: Icon, tone }: { label: string; value: string; icon: any; tone?: "ok" | "warn" | "err" | "accent" }) {
   const c = tone === "ok" ? "text-ok" : tone === "err" ? "text-err" : tone === "warn" ? "text-warn" : tone === "accent" ? "text-accent-soft" : "text-fg";
   return (
-    <div className="card p-3">
-      <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-fg-muted mb-1">
+    <div className="flex items-baseline justify-between gap-2">
+      <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-fg-muted">
         <Icon className="size-3" /> {label}
       </div>
-      <div className={`text-lg font-semibold mono ${c}`}>{value}</div>
+      <div className={`text-base font-semibold mono tabular-nums ${c}`}>{value}</div>
     </div>
   );
 }
