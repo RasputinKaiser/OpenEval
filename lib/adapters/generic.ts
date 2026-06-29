@@ -15,8 +15,16 @@ export interface FieldMapping {
   costUsd?: string;
   inputTokens?: string;
   outputTokens?: string;
+  cacheReadTokens?: string;
+  cacheCreateTokens?: string;
   stopReason?: string;
   isError?: string;
+}
+
+export interface LiveTraceDescriptor {
+  roots: string[];
+  maxDepth?: number;
+  fields?: FieldMapping;
 }
 
 export type GenericOutputFormat = "jsonl" | "stream-json" | "text";
@@ -38,6 +46,7 @@ export interface HarnessDescriptor {
   maxTurnsFlag?: string;
   eventFilter?: string;
   fields: FieldMapping;
+  liveTrace?: LiveTraceDescriptor;
 }
 
 export function getPath(obj: any, path: string | undefined): any {
@@ -137,8 +146,8 @@ export function parseGenericJsonlLine(line: string, into: ParseAccumulator, desc
       usage: {
         inputTokens: maybeNum(inputTokens),
         outputTokens: maybeNum(outputTokens),
-        cacheReadTokens: 0,
-        cacheCreateTokens: 0,
+        cacheReadTokens: maybeNum(getPath(obj, f.cacheReadTokens)),
+        cacheCreateTokens: maybeNum(getPath(obj, f.cacheCreateTokens)),
         costUsd: maybeNum(getPath(obj, f.costUsd)),
       },
       numTurns: maybeNum(getPath(obj, f.numTurns)) || into.toolCalls.length,

@@ -9,12 +9,9 @@ import {
   AlertTriangle,
   ArrowDownWideNarrow,
   BarChart3,
-  CheckCircle2,
   Clock3,
   Cpu,
-  DollarSign,
   Eye,
-  EyeOff,
   FileText,
   Filter,
   FolderGit2,
@@ -35,25 +32,32 @@ import {
   X,
   Zap,
 } from "lucide-react";
+import HarnessPicker from "./HarnessPicker";
 import { compactDisplayPath, redactSensitiveText } from "@/lib/redaction";
 import type { LiveAggregate, LiveMetricSources, LiveSession, LiveTranscriptTurn, MetricSource, TranscriptResult } from "@/lib/live";
 
 type LiveClientProps = {
   initialData?: LiveAggregate | null;
   error?: string;
-  getTranscript?: (filePath: string) => Promise<TranscriptResult>;
+  getTranscript?: (filePath: string, harness?: string) => Promise<TranscriptResult>;
 };
 
 type FilterMode = "all" | "attention" | "stale" | "missing";
 type SortMode = "recent" | "quality" | "errors";
 
 const REDACT_STORAGE_KEY = "neval.live.redactUsernames";
+const HARNESS_STORAGE_KEY = "neval.live.harness";
+
+function defaultLiveLimitForHarnessClient(harness: string): number {
+  return harness === "codex" ? 50 : 200;
+}
 
 export default function LiveClient({ initialData, error: initialError, getTranscript }: LiveClientProps) {
   const [data, setData] = useState<LiveAggregate | null>(initialData ?? null);
   const [error, setError] = useState<string | undefined>(initialError);
   const [loading, setLoading] = useState(!initialData && !initialError);
   const [selected, setSelected] = useState<LiveSession | null>(null);
+  const [selectedHarness, setSelectedHarness] = useState(initialData?.sourceHarness ?? "ncode");
   const [redact, setRedact] = useState(true);
   const [filter, setFilter] = useState<FilterMode>("all");
   const [sort, setSort] = useState<SortMode>("recent");
@@ -65,6 +69,11 @@ export default function LiveClient({ initialData, error: initialError, getTransc
       const stored = window.localStorage.getItem(REDACT_STORAGE_KEY);
       if (stored === "0") setRedact(false);
       if (stored === "1") setRedact(true);
+      const url = new URL(window.location.href);
+      const urlHarness = url.searchParams.get("harness");
+      const storedHarness = window.localStorage.getItem(HARNESS_STORAGE_KEY);
+      if (urlHarness) setSelectedHarness(urlHarness);
+      else if (storedHarness) setSelectedHarness(storedHarness);
     } catch {}
   }, []);
 
@@ -75,6 +84,16 @@ export default function LiveClient({ initialData, error: initialError, getTransc
   }, [redact]);
 
   useEffect(() => {
+    try {
+      window.localStorage.setItem(HARNESS_STORAGE_KEY, selectedHarness);
+      const url = new URL(window.location.href);
+      if (selectedHarness === "ncode") url.searchParams.delete("harness");
+      else url.searchParams.set("harness", selectedHarness);
+      window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+    } catch {}
+  }, [selectedHarness]);
+
+  useEffect(() => {
     let cancelled = false;
     let t: ReturnType<typeof setTimeout>;
     let activeController: AbortController | null = null;
@@ -82,11 +101,12 @@ export default function LiveClient({ initialData, error: initialError, getTransc
       const controller = new AbortController();
       activeController = controller;
       try {
-        const response = await fetch("/api/live", { signal: controller.signal });
+        const limit = defaultLiveLimitForHarnessClient(selectedHarness);
+        const response = await fetch(`/api/live?harness=${encodeURIComponent(selectedHarness)}&limit=${limit}`, { signal: controller.signal });
         if (!response.ok) throw new Error(`Live poll failed: HTTP ${response.status}`);
         const d = (await response.json()) as LiveAggregate;
         if (!cancelled) {
-          const sig = `${d.totalSessions}:${d.totalToolCalls}:${d.totalToolErrors}:${d.sessions[0]?.sessionId ?? ""}:${d.avgDataQuality}`;
+          const sig = `${d.sourceHarness}:${d.sourceStatus}:${d.totalSessions}:${d.totalToolCalls}:${d.totalToolErrors}:${d.usageSummary.totalTokens}:${d.sessions[0]?.sessionId ?? ""}:${d.avgDataQuality}`;
           if (sig !== lastSigRef.current) {
             lastSigRef.current = sig;
             setData(d);
@@ -111,7 +131,7 @@ export default function LiveClient({ initialData, error: initialError, getTransc
       activeController?.abort();
       clearTimeout(t);
     };
-  }, []);
+  }, [selectedHarness]);
 
   const visibleSessions = useMemo(() => {
     const sessions = data?.sessions ?? [];
@@ -129,9 +149,7 @@ export default function LiveClient({ initialData, error: initialError, getTransc
   }, [data, filter, sort]);
 
   if (loading && !data) return <LoadingSkeleton />;
-  if (!data || data.totalSessions === 0) {
-    return error ? <ErrorCard message={error} /> : <EmptyCard warnings={data?.scanWarnings ?? []} />;
-  }
+  if (!data) return error ? <ErrorCard message={error} /> : <EmptyCard warnings={[]} />;
 
   const toolErrorRate = data.totalToolCalls > 0 ? data.totalToolErrors / data.totalToolCalls : 0;
   const modelEvidenceLabel = data.sessionsWithMissingModel ? "Unknown model" : "Inferred model";
@@ -146,11 +164,16 @@ export default function LiveClient({ initialData, error: initialError, getTransc
             <Activity className="size-6 text-accent-soft" /> Live sessions
           </h1>
           <p className="mt-1 max-w-3xl text-sm leading-6 text-fg-muted">
-            Real ncode traces from <code className="mono text-xs">~/.ncode/projects</code>, with metric provenance, parser confidence,
-            and copy-safe redaction for local usernames.
+            Live trace sessions from <code className="mono text-xs">{displayText(data.sourceRoots[0] ?? data.sourceLabel, redact)}</code>, with usage
+            provenance, parser confidence, and copy-safe redaction for local usernames.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:min-w-80">
+          <HarnessPicker value={selectedHarness === "ncode" ? undefined : selectedHarness} onChange={(harness) => {
+            setSelected(null);
+            setSelectedHarness(harness || "ncode");
+          }} />
+          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
           <button
             type="button"
             onClick={() => setRedact((value) => !value)}
@@ -169,14 +192,23 @@ export default function LiveClient({ initialData, error: initialError, getTransc
           >
             <RefreshCw className="size-4" /> Refresh
           </button>
+          </div>
         </div>
       </header>
+
+      {data.sourceStatus !== "available" && (
+        <div className="mb-4 rounded-lg border border-warn/30 bg-warn/10 p-3 text-sm text-warn">
+          {displayText(data.sourceMessage ?? "No live trace source is available for this harness.", redact)}
+        </div>
+      )}
 
       {data.scanWarnings.length > 0 && (
         <div className="mb-4 rounded-lg border border-warn/30 bg-warn/10 p-3 text-sm text-warn">
           {data.scanWarnings.map((warning) => <div key={warning}>{displayText(warning, redact)}</div>)}
         </div>
       )}
+
+      <UsageStrip data={data} />
 
       <section className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
         <Stat label="Sessions" value={String(data.totalSessions)} icon={Activity} />
@@ -249,6 +281,7 @@ export default function LiveClient({ initialData, error: initialError, getTransc
           redact={redact}
           onClose={() => setSelected(null)}
           getTranscript={getTranscript}
+          harness={data.sourceHarness}
         />
       )}
     </div>
@@ -371,6 +404,48 @@ function TraceIntelligencePanels({ data, redact }: { data: LiveAggregate; redact
   );
 }
 
+function UsageStrip({ data }: { data: LiveAggregate }) {
+  const usage = data.usageSummary;
+  const tokenMeasured = usage.sessionsWithMeasuredUsage;
+  const costMeasured = usage.sessionsWithMeasuredCost;
+  const measuredTone = tokenMeasured === data.totalSessions && data.totalSessions > 0 ? "ok" : tokenMeasured > 0 ? "warn" : "warn";
+  return (
+    <section className="mb-6 card overflow-hidden">
+      <div className="flex flex-col gap-2 border-b border-bd-subtle px-4 py-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <Cpu className="size-4 text-fg-muted" /> Usage
+          </div>
+          <div className="mt-1 text-xs text-fg-muted">
+            Tokens and cost are shown only when the selected trace source reports them.
+          </div>
+        </div>
+        <div className={clsx(
+          "inline-flex w-fit items-center gap-1 rounded border px-2 py-1 text-[10px] uppercase tracking-wider",
+          measuredTone === "ok" ? "border-ok/30 bg-ok/10 text-ok" : "border-warn/30 bg-warn/10 text-warn"
+        )}>
+          {tokenMeasured}/{data.totalSessions} usage measured
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-2 p-4 md:grid-cols-4 xl:grid-cols-8">
+        <TinyMetric label="Total tok" value={usage.totalTokens ? fmt(usage.totalTokens) : "missing"} />
+        <TinyMetric label="Input" value={usage.totalInputTokens ? fmt(usage.totalInputTokens) : "missing"} />
+        <TinyMetric label="Output" value={usage.totalOutputTokens ? fmt(usage.totalOutputTokens) : "missing"} />
+        <TinyMetric label="Cache read" value={usage.totalCacheReadTokens ? fmt(usage.totalCacheReadTokens) : "missing"} />
+        <TinyMetric label="Cache create" value={usage.totalCacheCreateTokens ? fmt(usage.totalCacheCreateTokens) : "missing"} />
+        <TinyMetric label="Cost" value={costMeasured ? `$${usage.totalCostUsd.toFixed(4)}` : "missing"} />
+        <TinyMetric label="Tok source" value={`${Math.round(usage.tokenCoverage * 100)}%`} />
+        <TinyMetric label="Out tok/s" value={usage.avgOutputTokPerSec ? usage.avgOutputTokPerSec.toFixed(1) : "missing"} />
+      </div>
+      {data.totalSessions > 0 && tokenMeasured === 0 && (
+        <div className="border-t border-bd-subtle px-4 py-3 text-xs text-warn">
+          This source currently has no measured token usage in the scanned sessions; values are marked missing instead of treated as zero.
+        </div>
+      )}
+    </section>
+  );
+}
+
 function PanelHeader({ icon: Icon, title, subtitle }: { icon: any; title: string; subtitle: string }) {
   return (
     <div className="border-b border-bd-subtle px-4 py-3">
@@ -443,6 +518,12 @@ function SessionRow({ session, redact, onClick }: { session: LiveSession; redact
           {session.traceGraph.sidechainMessages > 0 ? <span className="rounded bg-accent/10 px-1.5 py-0.5 text-accent-soft">{session.traceGraph.sidechainMessages} side</span> : null}
           {session.traceGraph.agentCount > 0 ? <span className="rounded bg-bg-elev px-1.5 py-0.5 text-fg-muted">{session.traceGraph.agentCount} agent</span> : null}
           {session.modeSummary.gitBranch ? <span className="rounded bg-bg-elev px-1.5 py-0.5 text-fg-muted">{displayText(session.modeSummary.gitBranch, redact)}</span> : null}
+          <span className={clsx(
+            "rounded px-1.5 py-0.5",
+            session.metricSources.tokens === "measured" ? "bg-ok/10 text-ok" : "bg-warn/10 text-warn"
+          )}>
+            {session.metricSources.tokens === "measured" ? `${fmt(session.totalTokens)} tok` : "usage missing"}
+          </span>
           {session.parseWarnings.slice(0, 2).map((warning) => (
             <span key={warning} className="rounded bg-warn/10 px-1.5 py-0.5 text-warn">{displayText(warning, redact)}</span>
           ))}
@@ -474,11 +555,13 @@ function SessionDrawer({
   redact,
   onClose,
   getTranscript,
+  harness,
 }: {
   session: LiveSession;
   redact: boolean;
   onClose: () => void;
-  getTranscript?: (filePath: string) => Promise<TranscriptResult>;
+  getTranscript?: (filePath: string, harness?: string) => Promise<TranscriptResult>;
+  harness: string;
 }) {
   const [turns, setTurns] = useState<LiveTranscriptTurn[] | null>(null);
   const [transcriptError, setTranscriptError] = useState<string | null>(null);
@@ -491,7 +574,7 @@ function SessionDrawer({
     }
     setTurns(null);
     setTranscriptError(null);
-    getTranscript(session.path)
+    getTranscript(session.path, harness)
       .then((res) => {
         if (cancelled) return;
         if (res.error) {
@@ -508,7 +591,7 @@ function SessionDrawer({
         }
       });
     return () => { cancelled = true; };
-  }, [session, getTranscript]);
+  }, [session, getTranscript, harness]);
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -537,6 +620,23 @@ function SessionDrawer({
             <MetricCard label="Duration" value={session.metricSources.duration === "missing" ? "missing" : fmtMs(session.durationMs)} source={session.metricSources.duration} />
             <MetricCard label="Tokens" value={session.metricSources.tokens === "missing" ? "missing" : fmt(session.inputTokens + session.outputTokens)} source={session.metricSources.tokens} />
           </section>
+
+          <DetailPanel title="Usage">
+            <div className="mb-3 grid grid-cols-2 gap-2 md:grid-cols-5">
+              <TinyMetric label="Input" value={session.metricSources.tokens === "measured" ? fmt(session.inputTokens) : "missing"} />
+              <TinyMetric label="Output" value={session.metricSources.tokens === "measured" ? fmt(session.outputTokens) : "missing"} />
+              <TinyMetric label="Cache read" value={session.metricSources.tokens === "measured" ? fmt(session.cacheReadTokens) : "missing"} />
+              <TinyMetric label="Cache create" value={session.metricSources.tokens === "measured" ? fmt(session.cacheCreateTokens) : "missing"} />
+              <TinyMetric label="Cost" value={session.metricSources.cost === "measured" ? `$${session.costUsd.toFixed(4)}` : "missing"} />
+            </div>
+            {session.usageSegments.length > 0 ? (
+              <UsageTimeline session={session} />
+            ) : (
+              <div className="rounded border border-warn/30 bg-warn/10 px-3 py-2 text-xs text-warn">
+                Usage timeline unavailable because this trace did not report token segment data.
+              </div>
+            )}
+          </DetailPanel>
 
           {(session.displayTitle || session.lastPromptPreview) && (
             <section className="rounded-lg border border-bd bg-bg/45 p-4">
@@ -678,6 +778,31 @@ function TurnRow({ turn, redact }: { turn: LiveTranscriptTurn; redact: boolean }
       <pre className="mono max-h-40 overflow-auto whitespace-pre-wrap text-[11px] leading-5 text-fg-muted">
         {displayText(turn.preview, redact)}
       </pre>
+    </div>
+  );
+}
+
+function UsageTimeline({ session }: { session: LiveSession }) {
+  const maxOutput = Math.max(...session.usageSegments.map((segment) => segment.cumulativeOutput), 1);
+  return (
+    <div className="space-y-2">
+      {session.usageSegments.map((segment, index) => {
+        const width = Math.max(4, Math.round((segment.cumulativeOutput / maxOutput) * 100));
+        return (
+          <div key={`${segment.atMs}-${index}`} className="rounded border border-bd-subtle bg-bg/40 p-2">
+            <div className="mb-1 flex items-center justify-between gap-3 text-[10px] text-fg-muted">
+              <span className="mono">{new Date(segment.atMs).toLocaleTimeString()}</span>
+              <span className="mono">{fmt(segment.cumulativeOutput)} out · {segment.outTokPerSec.toFixed(1)} tok/s</span>
+            </div>
+            <div className="h-2 overflow-hidden rounded bg-bg-elev">
+              <div className="h-full rounded bg-accent-soft" style={{ width: `${width}%` }} />
+            </div>
+            <div className="mt-1 text-[10px] text-fg-dim">
+              +{fmt(segment.deltaInput)} input · +{fmt(segment.deltaOutput)} output
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

@@ -1,32 +1,52 @@
 import path from "node:path";
 import LiveClient from "@/components/LiveClient";
-import { scanLiveSessions, ncodeProjectsDir, getErroringTurns, type LiveAggregate, type TranscriptResult } from "@/lib/live";
+import { defaultLiveLimitForHarness, scanLiveSessions, isPathInLiveSource, getErroringTurns, type LiveAggregate, type TranscriptResult } from "@/lib/live";
 
 export const dynamic = "force-dynamic";
 
-async function getSessionTranscript(filePath: string): Promise<TranscriptResult> {
+async function getSessionTranscript(filePath: string, harness = "ncode"): Promise<TranscriptResult> {
   "use server";
-  const root = ncodeProjectsDir();
-  const rel = path.relative(root, filePath);
-  if (rel.startsWith("..") || path.isAbsolute(rel) || !filePath.endsWith(".jsonl")) {
+  const normalized = path.resolve(filePath);
+  if (!normalized.endsWith(".jsonl") || !isPathInLiveSource(normalized, harness)) {
     return { turns: [], error: "Invalid session path" };
   }
   try {
-    return getErroringTurns(filePath);
+    return getErroringTurns(normalized);
   } catch (e) {
     return { turns: [], error: `Failed to parse session transcript: ${e instanceof Error ? e.message : String(e)}` };
   }
 }
 
-export default function LivePage() {
+export default function LivePage({ searchParams }: { searchParams?: { harness?: string; limit?: string } }) {
   let data: LiveAggregate;
   let error: string | undefined;
+  const harness = searchParams?.harness || "ncode";
+  const parsedLimit = Number(searchParams?.limit || defaultLiveLimitForHarness(harness));
+  const limit = Number.isFinite(parsedLimit) ? Math.max(1, Math.min(1000, parsedLimit)) : defaultLiveLimitForHarness(harness);
 
   try {
-    data = scanLiveSessions(200);
+    data = scanLiveSessions(limit, harness);
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
     data = {
+      sourceHarness: harness,
+      sourceLabel: harness,
+      sourceStatus: "error",
+      sourceRoots: [],
+      sourceMessage: error,
+      usageSummary: {
+        totalInputTokens: 0,
+        totalOutputTokens: 0,
+        totalCacheReadTokens: 0,
+        totalCacheCreateTokens: 0,
+        totalTokens: 0,
+        totalCostUsd: 0,
+        sessionsWithMeasuredUsage: 0,
+        sessionsWithMeasuredCost: 0,
+        tokenCoverage: 0,
+        costCoverage: 0,
+        avgOutputTokPerSec: 0,
+      },
       totalSessions: 0,
       totalProjects: 0,
       totalCostUsd: 0,
