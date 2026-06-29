@@ -12,5 +12,9 @@ export async function GET(_request: Request, { params }: { params: { id: string;
   if (!rc) {
     return NextResponse.json({ error: "Case not found" }, { status: 404 });
   }
-  return NextResponse.json({ case: rc });
+  const isTerminal = ["passed", "failed", "error", "skipped"].includes(rc.status);
+  const cacheHeaders = isTerminal
+    ? { "Cache-Control": "private, max-age=120, stale-while-revalidate=600" }
+    : { "Cache-Control": "no-cache" };
+  return NextResponse.json({ case: rc }, { headers: cacheHeaders });
 }

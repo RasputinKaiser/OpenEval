@@ -33,5 +33,9 @@ export async function GET(request: Request, { params }: { params: { id: string }
   const url = new URL(request.url);
   const lite = url.searchParams.get("lite") === "1";
   const finalCases = lite ? stripHeavyFields(cases) : cases;
-  return NextResponse.json({ run, cases: finalCases });
+  const isTerminal = run.status === "completed" || run.status === "failed" || run.status === "aborted";
+  const cacheHeaders = isTerminal && !lite
+    ? { "Cache-Control": "private, max-age=60, stale-while-revalidate=300" }
+    : { "Cache-Control": "no-cache" };
+  return NextResponse.json({ run, cases: finalCases }, { headers: cacheHeaders });
 }

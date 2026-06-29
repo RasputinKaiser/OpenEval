@@ -66,5 +66,8 @@ export async function GET() {
   }));
   list.sort((a, b) => b.passRate - a.passRate || b.runCount - a.runCount);
 
-  return NextResponse.json({ harnesses: list });
+  return NextResponse.json(
+    { harnesses: list },
+    { headers: { "Cache-Control": "private, max-age=30, stale-while-revalidate=120" } }
+  );
 }
