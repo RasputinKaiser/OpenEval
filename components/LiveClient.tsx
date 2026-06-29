@@ -523,15 +523,17 @@ function ListStack({ items, redact, empty }: { items: Array<{ key: string; label
 
 function SessionRow({ session, redact, onClick }: { session: LiveSession; redact: boolean; onClick: () => void }) {
   const attention = needsAttention(session);
+  const edgeColor = session.isError || session.toolErrors > 0 ? "bg-err" : session.hookErrors > 0 ? "bg-warn" : attention ? "bg-warn/50" : session.staleMs > staleThresholdMs() ? "bg-fg-dim" : "bg-ok/40";
   return (
     <button
       type="button"
       onClick={onClick}
       className={clsx(
-        "grid w-full gap-3 px-4 py-3 text-left transition-colors hover:bg-bg-elev md:grid-cols-[minmax(220px,1.7fr)_90px_100px_100px_90px_80px] md:items-center",
+        "relative grid w-full gap-3 pl-4 pr-4 py-3 text-left transition-colors hover:bg-bg-elev md:grid-cols-[minmax(220px,1.7fr)_90px_100px_100px_90px_80px] md:items-center",
         attention && "bg-warn/5"
       )}
     >
+      <div className={clsx("absolute left-0 top-2 bottom-2 w-0.5 rounded-full", edgeColor)} />
       <div className="min-w-0">
         <div className="flex min-w-0 items-center gap-2">
           {attention ? <ShieldAlert className="size-4 shrink-0 text-warn" /> : <ShieldCheck className="size-4 shrink-0 text-ok" />}
