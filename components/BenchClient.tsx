@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import clsx from "clsx";
 import {
   Activity, Cpu, DollarSign, Gauge, Hash, Layers, Timer, Wrench, Zap, AlertTriangle,
+  ArrowUp, ArrowDown,
 } from "lucide-react";
 import type { RunTelemetry } from "@/lib/types";
 
@@ -28,6 +29,17 @@ export default function BenchClient({ runId, runName }: Props) {
   const [telemetry, setTelemetry] = useState<RunTelemetry | null>(null);
   const [perCase, setPerCase] = useState<PerCase[]>([]);
   const [loading, setLoading] = useState(true);
+  const [sortKey, setSortKey] = useState<keyof PerCase>("tokPerSec");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
+  function toggleSort(key: keyof PerCase) {
+    if (sortKey === key) {
+      setSortDir(sortDir === "asc" ? "desc" : "asc");
+    } else {
+      setSortKey(key);
+      setSortDir("desc");
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -47,12 +59,24 @@ export default function BenchClient({ runId, runName }: Props) {
     return () => { cancelled = true; clearTimeout(t); };
   }, [runId]);
 
+  const cases = useMemo(() => {
+    const sorted = [...perCase].sort((a, b) => {
+      let av: any = (a as any)[sortKey];
+      let bv: any = (b as any)[sortKey];
+      if (typeof av === "string" && typeof bv === "string") {
+        return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+      }
+      av = av ?? 0; bv = bv ?? 0;
+      return sortDir === "asc" ? av - bv : bv - av;
+    });
+    return sorted;
+  }, [perCase, sortKey, sortDir]);
+
   if (loading && !telemetry) {
     return <div className="p-8 text-fg-muted">Loading telemetry…</div>;
   }
 
   const t = telemetry;
-  const cases = perCase;
   const maxTokPerSec = Math.max(1, ...cases.map((c) => c.tokPerSec));
   const maxTokens = Math.max(1, ...cases.map((c) => c.tokensPerCase));
   const maxCost = Math.max(0.0001, ...cases.map((c) => c.costPerCase));
@@ -156,17 +180,17 @@ export default function BenchClient({ runId, runName }: Props) {
               <table className="w-full text-sm">
                 <thead className="text-[11px] uppercase tracking-wider text-fg-muted bg-bg-subtle">
                   <tr>
-                    <th className="text-left px-4 py-2 font-medium">Case</th>
-                    <th className="text-right px-4 py-2 font-medium">tok/s</th>
-                    <th className="text-right px-4 py-2 font-medium">in tok/s</th>
-                    <th className="text-right px-4 py-2 font-medium">tokens</th>
-                    <th className="text-right px-4 py-2 font-medium">cost</th>
-                    <th className="text-right px-4 py-2 font-medium">dur</th>
-                    <th className="text-right px-4 py-2 font-medium">tools</th>
-                    <th className="text-right px-4 py-2 font-medium">tool ms</th>
+                    <th className="text-left px-4 py-2 font-medium"><SortBtn label="Case" k="caseName" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="left" /></th>
+                    <th className="text-right px-4 py-2 font-medium"><SortBtn label="tok/s" k="tokPerSec" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} /></th>
+                    <th className="text-right px-4 py-2 font-medium"><SortBtn label="in tok/s" k="inTokPerSec" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} /></th>
+                    <th className="text-right px-4 py-2 font-medium"><SortBtn label="tokens" k="tokensPerCase" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} /></th>
+                    <th className="text-right px-4 py-2 font-medium"><SortBtn label="cost" k="costPerCase" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} /></th>
+                    <th className="text-right px-4 py-2 font-medium"><SortBtn label="dur" k="durationMs" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} /></th>
+                    <th className="text-right px-4 py-2 font-medium"><SortBtn label="tools" k="toolCallCount" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} /></th>
+                    <th className="text-right px-4 py-2 font-medium"><SortBtn label="tool ms" k="msPerTool" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} /></th>
                     <th className="text-left px-4 py-2 font-medium">source</th>
-                    <th className="text-right px-4 py-2 font-medium">turns</th>
-                    <th className="text-left px-4 py-2 font-medium">status</th>
+                    <th className="text-right px-4 py-2 font-medium"><SortBtn label="turns" k="numTurns" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} /></th>
+                    <th className="text-left px-4 py-2 font-medium"><SortBtn label="status" k="status" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="left" /></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-bd-subtle">
@@ -332,5 +356,24 @@ function TokPerSecSection({ cases, maxTokPerSec }: { cases: PerCase[]; maxTokPer
         <text x={10} y={H / 2} textAnchor="middle" transform={`rotate(-90 10 ${H / 2})`} className="fill-fg-dim" style={{ fontSize: 9 }}>tok/s</text>
       </svg>
     </section>
+  );
+}
+
+function SortBtn({
+  label, k, sortKey, sortDir, onClick, align = "right",
+}: {
+  label: string; k: keyof PerCase; sortKey: keyof PerCase; sortDir: "asc" | "desc";
+  onClick: (k: keyof PerCase) => void; align?: "left" | "right";
+}) {
+  const active = sortKey === k;
+  return (
+    <button
+      onClick={() => onClick(k)}
+      className={clsx("inline-flex items-center gap-1 hover:text-fg transition-colors", active && "text-accent-soft")}
+    >
+      {align === "left" && label}
+      {active && (sortDir === "asc" ? <ArrowUp className="size-2.5" /> : <ArrowDown className="size-2.5" />)}
+      {align === "right" && label}
+    </button>
   );
 }
