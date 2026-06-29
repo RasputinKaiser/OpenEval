@@ -606,7 +606,7 @@ function ArtifactStage({
               sandbox=""
               srcDoc={preview.kind === "svg" ? svgDocument(preview.content) : preview.content}
               title={`Preview of ${preview.path}`}
-              className="h-[420px] w-full rounded-md border border-[#d9dde8] bg-white"
+              className="h-[420px] w-full rounded-md bg-white ring-1 ring-white/10"
             />
           )
         ) : (

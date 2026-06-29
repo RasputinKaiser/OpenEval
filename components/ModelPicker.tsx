@@ -71,7 +71,10 @@ export default function ModelPicker({ value, onChange }: Props) {
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute z-20 mt-1 w-full bg-bg-subtle border border-bd rounded-md shadow-xl max-h-80 overflow-hidden flex flex-col">
+          <div
+            className="absolute z-20 mt-1 w-full bg-bg-subtle border border-bd rounded-md shadow-xl max-h-80 overflow-hidden flex flex-col origin-top"
+            style={{ animation: "menu-enter 120ms cubic-bezier(0.2, 0, 0, 1)" }}
+          >
             <div className="p-2 border-b border-bd-subtle">
               <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-bg border border-bd-subtle">
                 <Search className="size-3 text-fg-dim" />

@@ -127,7 +127,7 @@ export default function CaseDetailClient({ caseId, runId, initial }: Props) {
             </div>
             {previewLoading && <div className="text-xs text-fg-muted">Loading artifact…</div>}
             {previewContent && previewContent.kind === "svg" && (
-              <div className="rounded-lg border border-bd-subtle overflow-hidden bg-white p-4">
+              <div className="rounded-lg overflow-hidden bg-white p-4 ring-1 ring-white/10">
                 <div dangerouslySetInnerHTML={{ __html: previewContent.content }} />
               </div>
             )}
@@ -135,7 +135,7 @@ export default function CaseDetailClient({ caseId, runId, initial }: Props) {
               <iframe
                 sandbox=""
                 srcDoc={previewContent.content}
-                className="w-full rounded-lg border border-bd-subtle"
+                className="w-full rounded-lg ring-1 ring-white/10"
                 style={{ minHeight: "400px", background: "#fff" }}
                 title="Preview"
               />
