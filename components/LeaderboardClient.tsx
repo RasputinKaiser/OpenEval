@@ -139,10 +139,19 @@ export default function LeaderboardClient() {
                       <td className="px-4 py-2.5"><HarnessBadge harness={r.harness} /></td>
                       <td className="px-4 py-2.5 text-right mono">{r.runCount}</td>
                       <td className="px-4 py-2.5 text-right mono">{r.totalCases}</td>
-                      <td className="px-4 py-2.5 text-right mono font-semibold">
-                        <span className={r.passRate >= 0.8 ? "text-ok" : r.passRate >= 0.5 ? "text-fg-muted" : "text-err"}>
-                          {(r.passRate * 100).toFixed(0)}%
-                        </span>
+                      <td className="px-4 py-2.5 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <div className="h-1.5 w-16 overflow-hidden rounded-full bg-bg-elev">
+                            <div className="h-full flex">
+                              <div className="bg-ok" style={{ width: `${r.passRate * 100}%` }} />
+                              {r.failed > 0 && <div className="bg-err" style={{ width: `${(r.failed / r.totalCases) * 100}%` }} />}
+                              {r.errored > 0 && <div className="bg-warn" style={{ width: `${(r.errored / r.totalCases) * 100}%` }} />}
+                            </div>
+                          </div>
+                          <span className={clsx("mono font-semibold tabular-nums", r.passRate >= 0.8 ? "text-ok" : r.passRate >= 0.5 ? "text-fg-muted" : "text-err")}>
+                            {(r.passRate * 100).toFixed(0)}%
+                          </span>
+                        </div>
                       </td>
                       <td className="px-4 py-2.5 text-right mono text-xs">
                         <span className="text-ok">{r.passed}</span> / <span className="text-err">{r.failed}</span>
