@@ -340,10 +340,14 @@ function ScatterSection({ cases, maxTokens, maxCost }: { cases: PerCase[]; maxTo
             cx={ix(c.tokensPerCase)}
             cy={iy(c.costPerCase)}
             r={4}
-            fill={c.status === "passed" ? "#3fb950" : "#f85149"}
-            opacity={0.8}
+            fill={c.status === "passed" ? "#3fb950" : c.status === "error" ? "#d29922" : "#f85149"}
+            stroke={c.status === "passed" ? "#3fb950" : c.status === "error" ? "#d29922" : "#f85149"}
+            strokeWidth={1.5}
+            fillOpacity={0.5}
+            className="cursor-pointer transition-all hover:opacity-100"
+            style={{ transitionProperty: "fill-opacity, r" }}
           >
-            <title>{`${c.caseName}\n${c.tokensPerCase} tok · $${c.costPerCase.toFixed(4)}`}</title>
+            <title>{`${c.caseName}\n${c.tokensPerCase} tok · $${c.costPerCase.toFixed(4)} · ${c.status}`}</title>
           </circle>
         ))}
       </svg>
@@ -373,8 +377,13 @@ function TokPerSecSection({ cases, maxTokPerSec }: { cases: PerCase[]; maxTokPer
           const h = (c.tokPerSec / maxTokPerSec) * (H - P - 12);
           return (
             <g key={c.caseId}>
-              <rect x={x} y={H - P - h} width={barW} height={h} fill={c.status === "passed" ? "#3fb950" : "#f85149"} opacity={0.75} rx={1}>
-                <title>{`${c.caseName}: ${c.tokPerSec.toFixed(1)} tok/s`}</title>
+              <rect x={x} y={H - P - h} width={barW} height={h}
+                fill={c.status === "passed" ? "#3fb950" : c.status === "error" ? "#d29922" : "#f85149"}
+                fillOpacity={0.6}
+                rx={2}
+                className="cursor-pointer transition-opacity hover:opacity-100"
+              >
+                <title>{`${c.caseName}: ${c.tokPerSec.toFixed(1)} tok/s · ${c.status}`}</title>
               </rect>
             </g>
           );
