@@ -24,6 +24,7 @@ import {
   Lock,
   MessageSquareText,
   RefreshCw,
+  Search,
   ShieldAlert,
   ShieldCheck,
   Sparkles,
@@ -61,6 +62,7 @@ export default function LiveClient({ initialData, error: initialError, getTransc
   const [redact, setRedact] = useState(true);
   const [filter, setFilter] = useState<FilterMode>("all");
   const [sort, setSort] = useState<SortMode>("recent");
+  const [search, setSearch] = useState("");
 
   const lastSigRef = useRef("");
 
@@ -135,10 +137,15 @@ export default function LiveClient({ initialData, error: initialError, getTransc
 
   const visibleSessions = useMemo(() => {
     const sessions = data?.sessions ?? [];
+    const q = search.trim().toLowerCase();
     const filtered = sessions.filter((session) => {
-      if (filter === "attention") return needsAttention(session);
-      if (filter === "stale") return session.staleMs > staleThresholdMs();
-      if (filter === "missing") return Object.values(session.metricSources).some((source) => source === "missing" || source === "malformed");
+      if (filter === "attention" && !needsAttention(session)) return false;
+      if (filter === "stale" && !(session.staleMs > staleThresholdMs())) return false;
+      if (filter === "missing" && !Object.values(session.metricSources).some((source) => source === "missing" || source === "malformed")) return false;
+      if (q) {
+        const hay = `${session.sessionId} ${session.project} ${session.displayTitle ?? ""} ${session.model ?? ""}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
       return true;
     });
     return [...filtered].sort((a, b) => {
@@ -146,7 +153,7 @@ export default function LiveClient({ initialData, error: initialError, getTransc
       if (sort === "errors") return b.toolErrors - a.toolErrors || b.hookErrors - a.hookErrors || b.lastEventAt - a.lastEventAt;
       return b.lastEventAt - a.lastEventAt;
     });
-  }, [data, filter, sort]);
+  }, [data, filter, sort, search]);
 
   if (loading && !data) return <LoadingSkeleton />;
   if (!data) return error ? <ErrorCard message={error} /> : <EmptyCard warnings={[]} />;
@@ -251,6 +258,15 @@ export default function LiveClient({ initialData, error: initialError, getTransc
                 ["quality", "Quality"],
                 ["errors", "Errors"],
               ]} />
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3 text-fg-dim" />
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search…"
+                  className="w-32 lg:w-44 pl-8 pr-2 py-1.5 text-[11px] bg-bg border border-bd rounded-md focus:outline-none focus:border-accent focus:w-40 lg:focus:w-52 transition-all placeholder:text-fg-dim"
+                />
+              </div>
             </div>
           </div>
 
