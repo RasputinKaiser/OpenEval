@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import clsx from "clsx";
 import {
@@ -60,6 +60,7 @@ export default function LiveClient({ initialData, error: initialError, getTransc
   const [error, setError] = useState<string | undefined>(initialError);
   const [loading, setLoading] = useState(!initialData && !initialError);
   const [selected, setSelected] = useState<LiveSession | null>(null);
+  const handleSelectSession = useCallback((s: LiveSession) => setSelected(s), []);
   const [selectedHarness, setSelectedHarness] = useState(initialData?.sourceHarness ?? "ncode");
   const [redact, setRedact] = useState(true);
   const [filter, setFilter] = useState<FilterMode>("all");
@@ -294,7 +295,7 @@ export default function LiveClient({ initialData, error: initialError, getTransc
                 key={session.sessionId + session.project}
                 session={session}
                 redact={redact}
-                onClick={() => setSelected(session)}
+                onSelect={handleSelectSession}
               />
             ))}
             {visibleSessions.length === 0 && (
@@ -526,13 +527,13 @@ function ListStack({ items, redact, empty }: { items: Array<{ key: string; label
   );
 }
 
-function SessionRow({ session, redact, onClick }: { session: LiveSession; redact: boolean; onClick: () => void }) {
+const SessionRow = React.memo(function SessionRow({ session, redact, onSelect }: { session: LiveSession; redact: boolean; onSelect: (s: LiveSession) => void }) {
   const attention = needsAttention(session);
   const edgeColor = session.isError || session.toolErrors > 0 ? "bg-err" : session.hookErrors > 0 ? "bg-warn" : attention ? "bg-warn/50" : session.staleMs > staleThresholdMs() ? "bg-fg-dim" : "bg-ok/40";
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={() => onSelect(session)}
       className={clsx(
         "relative grid w-full gap-3 pl-4 pr-4 py-3 text-left transition-colors hover:bg-bg-elev md:grid-cols-[minmax(220px,1.7fr)_90px_100px_100px_90px_80px] md:items-center",
         attention && "bg-warn/5"
@@ -590,7 +591,7 @@ function SessionRow({ session, redact, onClick }: { session: LiveSession; redact
       <StatusPill session={session} />
     </button>
   );
-}
+});
 
 function SessionDrawer({
   session,
