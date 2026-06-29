@@ -1,8 +1,9 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Activity, FileText, GitCompareArrows, LayoutDashboard, Radio, Plus, ShieldCheck, Terminal, Plug, Trophy } from "lucide-react";
+import { Activity, FileText, GitCompareArrows, LayoutDashboard, Radio, Plus, ShieldCheck, Terminal, Plug, Trophy, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import clsx from "clsx";
 
 const NAV = [
@@ -19,42 +20,93 @@ const NAV = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const [collapsed, setCollapsed] = useState(false);
+  const [runningCount, setRunningCount] = useState(0);
+
+  useEffect(() => {
+    try {
+      setCollapsed(localStorage.getItem("neval-sidebar-collapsed") === "1");
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    try { localStorage.setItem("neval-sidebar-collapsed", collapsed ? "1" : "0"); } catch {}
+  }, [collapsed]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function checkRunning() {
+      try {
+        const res = await fetch("/api/runs");
+        if (res.ok) {
+          const d = await res.json();
+          const runs = d.runs ?? [];
+          const running = runs.filter((r: any) => r.status === "running").length;
+          if (!cancelled) setRunningCount(running);
+        }
+      } catch {}
+    }
+    checkRunning();
+    const interval = setInterval(checkRunning, 5000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, []);
+
   return (
-    <aside className="shrink-0 border-b border-bd bg-bg-subtle/80 backdrop-blur md:flex md:min-h-screen md:w-60 md:flex-col md:border-b-0 md:border-r">
+    <aside className={clsx(
+      "shrink-0 border-b border-bd bg-bg-subtle/80 backdrop-blur md:flex md:min-h-screen md:flex-col md:border-b-0 md:border-r transition-all",
+      collapsed ? "md:w-14" : "md:w-60"
+    )}>
       <div className="px-4 py-3 md:border-b md:border-bd md:py-5">
         <div className="flex items-center gap-2">
-          <div className="size-7 rounded-md bg-gradient-to-br from-accent to-accent-soft grid place-items-center">
+          <div className="size-7 rounded-md bg-gradient-to-br from-accent to-accent-soft grid place-items-center shrink-0">
             <Terminal className="size-4 text-white" />
           </div>
-          <div>
-            <div className="text-sm font-semibold tracking-tight">NEval</div>
-            <div className="text-[10px] text-fg-dim uppercase tracking-wider">NEval Suite</div>
-          </div>
+          {!collapsed && (
+            <div className="min-w-0">
+              <div className="text-sm font-semibold tracking-tight">NEval</div>
+              <div className="text-[10px] text-fg-dim uppercase tracking-wider">NEval Suite</div>
+            </div>
+          )}
         </div>
       </div>
       <nav className="flex gap-1 overflow-x-auto px-2 pb-2 md:flex-1 md:flex-col md:space-y-0.5 md:overflow-visible md:p-2">
         {NAV.map((item) => {
           const active = isActive(pathname, item.href);
           const Icon = item.icon;
+          const showBadge = item.href === "/runs" && runningCount > 0;
           return (
             <Link
               key={item.href}
               href={item.href}
+              title={collapsed ? item.label : undefined}
               className={clsx(
-                "relative flex shrink-0 items-center gap-2 rounded-md px-3 py-3 md:py-2 text-sm transition-colors",
+                "relative flex shrink-0 items-center gap-2 rounded-md text-sm transition-colors",
+                collapsed ? "md:justify-center md:px-0 px-3 py-3 md:py-2" : "px-3 py-3 md:py-2",
                 active ? "bg-accent/15 text-accent-soft" : "text-fg-muted hover:bg-bg-elev hover:text-fg"
               )}
             >
               {active && <div className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full bg-accent-soft" />}
-              <Icon className="size-4" />
-              {item.label}
+              <Icon className="size-4 shrink-0" />
+              {!collapsed && <span>{item.label}</span>}
+              {showBadge && (
+                <span className="absolute right-1 top-1.5 size-2 rounded-full bg-accent-soft animate-pulse" />
+              )}
+              {showBadge && !collapsed && (
+                <span className="ml-auto text-[10px] mono text-accent-soft bg-accent/15 rounded-full px-1.5 tabular-nums">{runningCount}</span>
+              )}
             </Link>
           );
         })}
       </nav>
-      <div className="hidden border-t border-bd p-3 text-[10px] text-fg-dim md:block">
-        <div className="mono">v0.1.0</div>
-        <div className="mt-0.5">agents · graders · runs</div>
+      <div className="hidden border-t border-bd p-3 md:flex md:items-center md:justify-between">
+        {!collapsed && <div className="text-[10px] text-fg-dim mono">v0.1.0</div>}
+        <button
+          onClick={() => setCollapsed(!collapsed)}
+          className="min-h-8 min-w-8 flex items-center justify-center rounded text-fg-dim hover:text-fg hover:bg-bg-elev transition-colors"
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          {collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
+        </button>
       </div>
     </aside>
   );
