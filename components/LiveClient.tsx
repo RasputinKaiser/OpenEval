@@ -578,6 +578,32 @@ function SessionDrawer({
 }) {
   const [turns, setTurns] = useState<LiveTranscriptTurn[] | null>(null);
   const [transcriptError, setTranscriptError] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
+
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (closing) return;
+      setClosing(true);
+      setTimeout(() => onCloseRef.current(), 180);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [closing]);
+
+  const requestClose = () => {
+    if (closing) return;
+    setClosing(true);
+    setTimeout(() => onCloseRef.current(), 180);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -606,12 +632,22 @@ function SessionDrawer({
     return () => { cancelled = true; };
   }, [session, getTranscript, harness]);
 
+  const visible = mounted && !closing;
+
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} style={{ animation: "drawer-backdrop-enter 150ms ease-out" }} />
+      <div
+        className="absolute inset-0 bg-black/50 transition-opacity duration-200 ease-out"
+        onClick={requestClose}
+        style={{ opacity: visible ? 1 : 0 }}
+      />
       <div
         className="relative flex h-full w-full flex-col overflow-hidden border-l border-bd bg-bg-subtle shadow-2xl md:max-w-2xl"
-        style={{ animation: "drawer-panel-enter 200ms cubic-bezier(0.2, 0, 0, 1)" }}
+        style={{
+          transform: visible ? "translateX(0)" : "translateX(16px)",
+          opacity: visible ? 1 : 0,
+          transition: "transform 200ms cubic-bezier(0.2, 0, 0, 1), opacity 200ms cubic-bezier(0.2, 0, 0, 1)",
+        }}
       >
         <div className="border-b border-bd-subtle bg-bg-subtle px-5 py-4">
           <div className="flex items-start justify-between gap-3">
@@ -623,7 +659,7 @@ function SessionDrawer({
               </div>
               <p className="mono mt-1 break-all text-xs text-fg-muted">{displayText(session.sessionId, redact)}</p>
             </div>
-            <button type="button" onClick={onClose} className="rounded min-h-10 min-w-10 flex items-center justify-center hover:bg-bg-elev">
+            <button type="button" onClick={requestClose} className="rounded min-h-10 min-w-10 flex items-center justify-center hover:bg-bg-elev">
               <X className="size-5 text-fg-muted" />
             </button>
           </div>
