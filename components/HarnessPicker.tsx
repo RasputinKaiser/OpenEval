@@ -85,7 +85,7 @@ export default function HarnessPicker({ value, onChange }: Props) {
                 type="button"
                 title="Re-probe PATH"
                 onClick={() => load(true)}
-                className="p-1.5 rounded-md hover:bg-bg-elev text-fg-muted"
+                className="min-h-10 min-w-10 flex items-center justify-center rounded-md hover:bg-bg-elev text-fg-muted"
               >
                 <RefreshCw className={clsx("size-3.5", loading && "animate-spin")} />
               </button>

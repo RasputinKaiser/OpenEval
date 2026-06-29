@@ -77,7 +77,7 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
               <span className="mono text-fg">{completed}/{cases.length}</span>
             </div>
             <div className="mt-2 h-2 overflow-hidden rounded-full bg-bg-elev">
-              <div className="h-full rounded-full bg-accent-soft transition-all" style={{ width: `${cases.length ? (completed / cases.length) * 100 : 0}%` }} />
+              <div className="h-full rounded-full bg-accent-soft transition-[width] duration-300" style={{ width: `${cases.length ? (completed / cases.length) * 100 : 0}%` }} />
             </div>
             <div className="mt-3 grid grid-cols-4 gap-2 text-center">
               <RunMetric label="Pass" value={String(counts.passed)} tone="ok" />
@@ -98,7 +98,7 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
             </div>
             <div className="mt-2 h-2 overflow-hidden rounded-full bg-bg-elev">
               <div
-                className={clsx("h-full rounded-full transition-all", confidence.score >= 80 ? "bg-ok" : confidence.score >= 60 ? "bg-warn" : "bg-err")}
+                className={clsx("h-full rounded-full transition-[width] duration-300", confidence.score >= 80 ? "bg-ok" : confidence.score >= 60 ? "bg-warn" : "bg-err")}
                 style={{ width: `${confidence.score}%` }}
               />
             </div>

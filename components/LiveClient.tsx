@@ -620,7 +620,7 @@ function SessionDrawer({
               </div>
               <p className="mono mt-1 break-all text-xs text-fg-muted">{displayText(session.sessionId, redact)}</p>
             </div>
-            <button type="button" onClick={onClose} className="rounded p-1.5 hover:bg-bg-elev">
+            <button type="button" onClick={onClose} className="rounded min-h-10 min-w-10 flex items-center justify-center hover:bg-bg-elev">
               <X className="size-5 text-fg-muted" />
             </button>
           </div>
