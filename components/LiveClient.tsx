@@ -993,11 +993,16 @@ function LoadingSkeleton() {
         <div className="mb-2 h-8 w-64 animate-pulse rounded bg-bd-subtle" />
         <div className="h-4 w-96 animate-pulse rounded bg-bd-subtle" />
       </header>
-      <section className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
-        {Array.from({ length: 8 }).map((_, i) => (
-          <div key={i} className="card p-3">
-            <div className="mb-2 h-3 w-16 animate-pulse rounded bg-bd-subtle" />
-            <div className="h-6 w-20 animate-pulse rounded bg-bd-subtle" />
+      <section className="mb-6 grid grid-cols-1 gap-3 md:grid-cols-3">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="rounded-lg border border-bd-subtle bg-bg-subtle/30 p-3 space-y-2">
+            <div className="h-3 w-20 animate-pulse rounded bg-bd-subtle" />
+            {Array.from({ length: 3 }).map((_, j) => (
+              <div key={j} className="flex items-center justify-between gap-2">
+                <div className="h-3 w-24 animate-pulse rounded bg-bd-subtle" />
+                <div className="h-4 w-12 animate-pulse rounded bg-bd-subtle" />
+              </div>
+            ))}
           </div>
         ))}
       </section>

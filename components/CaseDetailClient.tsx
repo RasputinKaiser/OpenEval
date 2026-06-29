@@ -199,7 +199,7 @@ export default function CaseDetailClient({ caseId, runId, initial }: Props) {
 
 function RunSummary({ runner }: { runner: RunnerResult }) {
   return (
-    <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
+    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
       <Stat label="Turns" value={String(runner.numTurns)} icon={Hash} />
       <Stat label="Duration" value={runner.durationMs < 1000 ? `${runner.durationMs}ms` : `${(runner.durationMs / 1000).toFixed(1)}s`} icon={Clock} />
       <Stat label="tok/s" value={runner.durationMs > 0 ? (runner.usage.outputTokens / (runner.durationMs / 1000)).toFixed(1) : "0"} icon={Gauge} />
