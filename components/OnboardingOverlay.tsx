@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Check, Terminal, Activity, Radio } from "lucide-react";
+import { cachedFetch } from "@/lib/cached-fetch";
 
 export default function OnboardingOverlay() {
   const [show, setShow] = useState(false);
@@ -11,11 +12,8 @@ export default function OnboardingOverlay() {
     try {
       const dismissed = localStorage.getItem("neval-onboarding-dismissed");
       if (!dismissed) {
-        fetch("/api/runs")
-          .then((r) => r.ok ? r.json() : { runs: [] })
-          .then((d) => {
-            if ((d.runs ?? []).length === 0) setShow(true);
-          })
+        cachedFetch<{ runs: unknown[] }>("/api/runs")
+          .then((d) => { if ((d.runs ?? []).length === 0) setShow(true); })
           .catch(() => setShow(true));
       }
     } catch {}

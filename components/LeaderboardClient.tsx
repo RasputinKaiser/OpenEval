@@ -5,6 +5,7 @@ import Link from "next/link";
 import clsx from "clsx";
 import { Loader2, Trophy, GitCompareArrows, ArrowUp, ArrowDown } from "lucide-react";
 import HarnessBadge from "./HarnessBadge";
+import { cachedFetch } from "@/lib/cached-fetch";
 
 interface HarnessAggregate {
   harness: string;
@@ -38,8 +39,7 @@ export default function LeaderboardClient() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/harnesses/leaderboard")
-      .then((r) => r.json())
+    cachedFetch<{ harnesses: HarnessAggregate[] }>("/api/harnesses/leaderboard")
       .then((d) => { if (!cancelled) setRows(d.harnesses || []); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };

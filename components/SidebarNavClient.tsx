@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { useGotoNavigation } from "@/lib/use-goto-navigation";
+import { cachedFetch } from "@/lib/cached-fetch";
 
 const CommandPalette = dynamic(() => import("./CommandPalette"));
 const ShortcutsOverlay = dynamic(() => import("./ShortcutsOverlay"));
@@ -17,12 +18,8 @@ export default function SidebarNavClient() {
   const [runs, setRuns] = useState<RunLite[]>([]);
 
   useEffect(() => {
-    fetch("/api/runs")
-      .then((r) => r.ok ? r.json() : { runs: [] })
-      .then((d) => {
-        const allRuns = d.runs ?? d ?? [];
-        setRuns((allRuns as Array<{ id: string; name: string }>).slice(0, 10));
-      })
+    cachedFetch<{ runs: RunLite[] }>("/api/runs")
+      .then((d) => setRuns((d.runs ?? []).slice(0, 10)))
       .catch(() => {});
   }, []);
 

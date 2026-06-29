@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import clsx from "clsx";
 import { AlertCircle, CheckCircle2, Loader2, RefreshCw, Terminal, XCircle } from "lucide-react";
 import type { DiscoveredHarness } from "@/lib/adapters/discover";
+import { cachedFetch, invalidateCache } from "@/lib/cached-fetch";
 
 const STATUS_META: Record<string, { label: string; cls: string }> = {
   available: { label: "available", cls: "bg-ok/10 text-ok" },
@@ -19,8 +20,9 @@ export default function HarnessesClient() {
 
   function load(refresh = false) {
     setLoading(true);
-    fetch(`/api/harnesses${refresh ? "?refresh=1" : ""}`)
-      .then((r) => r.json())
+    if (refresh) invalidateCache("/api/harnesses");
+    const url = `/api/harnesses${refresh ? "?refresh=1" : ""}`;
+    cachedFetch<{ harnesses: DiscoveredHarness[] }>(url)
       .then((d) => {
         setHarnesses(d.harnesses || []);
         if (!selected && (d.harnesses || []).length > 0) {
