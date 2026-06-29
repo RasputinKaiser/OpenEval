@@ -2,6 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}
+
 :root {
   color-scheme: dark;
   --color-bg: #0a0a0b;
@@ -85,6 +90,7 @@ button:active:not(:disabled) { transform: scale(0.96); }
 .scroll-contain {
   contain: layout style;
   contain-intrinsic-size: auto 400px;
+  overscroll-behavior: contain;
 }
 
 .cv-auto {
