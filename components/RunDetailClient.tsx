@@ -165,10 +165,18 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
                   onClick={() => setSelectedIdx(i)}
                   onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setSelectedIdx(i); }}
                   className={clsx(
-                    "group w-full text-left px-3 py-2.5 flex items-center gap-3 transition-colors cursor-pointer",
+                    "group w-full text-left py-2.5 flex items-center gap-3 transition-colors cursor-pointer",
                     sel ? "bg-accent/10" : "hover:bg-bg-elev"
                   )}
                 >
+                  <div className={clsx(
+                    "ml-3 h-6 w-1 shrink-0 rounded-full",
+                    c.status === "passed" ? "bg-ok" :
+                    c.status === "failed" ? "bg-err" :
+                    c.status === "error" ? "bg-warn" :
+                    c.status === "running" || c.status === "grading" ? "bg-accent-soft animate-pulse" :
+                    "bg-bd-subtle"
+                  )} />
                   <span className="text-[10px] text-fg-dim mono w-6 shrink-0">{String(i + 1).padStart(2, "0")}</span>
                   <div className="min-w-0 flex-1">
                     <div className="flex min-w-0 items-center gap-2">
