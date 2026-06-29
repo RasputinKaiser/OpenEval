@@ -9,5 +9,8 @@ export async function GET(request: Request) {
   const parsedLimit = Number(searchParams.get("limit") || defaultLiveLimitForHarness(harness));
   const limit = Number.isFinite(parsedLimit) ? Math.max(1, Math.min(1000, parsedLimit)) : defaultLiveLimitForHarness(harness);
   const data = scanLiveSessions(limit, harness);
-  return NextResponse.json(data);
+  return NextResponse.json(
+    data,
+    { headers: { "Cache-Control": "private, max-age=5, stale-while-revalidate=15" } }
+  );
 }

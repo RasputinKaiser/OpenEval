@@ -32,7 +32,11 @@ export async function GET(
 
   try {
     const content = fs.readFileSync(fullPath, "utf8");
-    return NextResponse.json({ path: safeName, content });
+    const isTerminal = ["passed", "failed", "error", "skipped"].includes(rc.status);
+    const headers = isTerminal
+      ? { "Cache-Control": "private, max-age=300, stale-while-revalidate=600" }
+      : { "Cache-Control": "no-cache" };
+    return NextResponse.json({ path: safeName, content }, { headers });
   } catch {
     return NextResponse.json(
       { error: "Artifact not found. Run the case or oracle solve script first." },

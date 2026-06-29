@@ -8,11 +8,14 @@ export async function GET(request: Request) {
   const refresh = searchParams.get("refresh") === "1";
   const harnesses = await discoverHarnesses(refresh);
   const available = harnesses.filter((h) => h.status === "available");
-  return NextResponse.json({
-    harnesses,
-    defaultHarness: "ncode",
-    availableCount: available.length,
-  });
+  return NextResponse.json(
+    {
+      harnesses,
+      defaultHarness: "ncode",
+      availableCount: available.length,
+    },
+    { headers: { "Cache-Control": "private, max-age=30, stale-while-revalidate=120" } }
+  );
 }
 
 export async function POST(req: Request) {
