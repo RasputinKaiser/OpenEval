@@ -432,6 +432,8 @@ function TrustMeter({
   help: string;
   tone: "ok" | "warn" | "err";
 }) {
+  const numPct = parseInt(value, 10);
+  const hasPct = !isNaN(numPct) && value.includes("%");
   return (
     <div className="rounded-lg border border-bd-subtle bg-bg/60 p-3">
       <div className="flex items-start justify-between gap-3">
@@ -441,10 +443,18 @@ function TrustMeter({
           </div>
           <div className="mt-1 text-[11px] text-fg-dim">{help}</div>
         </div>
-        <div className={clsx("mono text-lg font-semibold", tone === "ok" && "text-ok", tone === "warn" && "text-warn", tone === "err" && "text-err")}>
+        <div className={clsx("mono text-lg font-semibold tabular-nums", tone === "ok" && "text-ok", tone === "warn" && "text-warn", tone === "err" && "text-err")}>
           {value}
         </div>
       </div>
+      {hasPct && (
+        <div className="mt-2 h-1 overflow-hidden rounded-full bg-bg-elev">
+          <div
+            className={clsx("h-full rounded-full transition-[width] duration-300", tone === "ok" ? "bg-ok" : tone === "warn" ? "bg-warn" : "bg-err")}
+            style={{ width: `${Math.min(100, Math.max(0, numPct))}%` }}
+          />
+        </div>
+      )}
     </div>
   );
 }
