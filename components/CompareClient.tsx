@@ -78,7 +78,7 @@ export default function CompareClient({ runs, initialA, initialB }: Props) {
       </div>
 
       {a && b && a !== b && summaryA && summaryB && (
-        <section className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+        <section className="stagger-grid grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
           <Delta label="Pass rate" a={`${(summaryA.passRate * 100).toFixed(0)}%`} b={`${(summaryB.passRate * 100).toFixed(0)}%`} higherIsBetter aVal={summaryA.passRate} bVal={summaryB.passRate} />
           <Delta label="pass@1" a={fmtPct(summaryA.passAt1)} b={fmtPct(summaryB.passAt1)} aVal={summaryA.passAt1} bVal={summaryB.passAt1} />
           <Delta label="pass@k" a={fmtPct(summaryA.passAtK)} b={fmtPct(summaryB.passAtK)} aVal={summaryA.passAtK} bVal={summaryB.passAtK} />
