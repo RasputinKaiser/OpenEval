@@ -10,7 +10,7 @@ export default function OnboardingOverlay() {
 
   useEffect(() => {
     try {
-      const dismissed = localStorage.getItem("neval-onboarding-dismissed");
+      const dismissed = localStorage.getItem("openeval-onboarding-dismissed");
       if (!dismissed) {
         cachedFetch<{ runs: unknown[] }>("/api/runs")
           .then((d) => { if ((d.runs ?? []).length === 0) setShow(true); })
@@ -20,7 +20,7 @@ export default function OnboardingOverlay() {
   }, []);
 
   function dismiss() {
-    try { localStorage.setItem("neval-onboarding-dismissed", "1"); } catch {}
+    try { localStorage.setItem("openeval-onboarding-dismissed", "1"); } catch {}
     setShow(false);
   }
 
@@ -34,7 +34,7 @@ export default function OnboardingOverlay() {
           <div className="mx-auto mb-4 size-12 rounded-lg bg-gradient-to-br from-accent to-accent-soft grid place-items-center">
             <Terminal className="size-6 text-white" />
           </div>
-          <h2 className="text-lg font-semibold mb-1">Welcome to NEval</h2>
+          <h2 className="text-lg font-semibold mb-1">Welcome to OpenEval</h2>
           <p className="text-sm text-fg-muted mb-6">
             Evaluate agent CLIs across SWE, single-tool, reasoning, and visual-code tasks. Here&apos;s how to get started:
           </p>

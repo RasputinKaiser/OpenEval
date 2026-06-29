@@ -6,13 +6,13 @@ cat > index.html <<'HTML'
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>NEval Run Report</title>
+    <title>OpenEval Run Report</title>
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
     <main data-testid="eval-dashboard" class="shell">
       <header class="masthead">
-        <h1>NEval Run Report</h1>
+        <h1>OpenEval Run Report</h1>
         <p>Deterministic evidence, known-bad rejection, and visual-code quality in one operator view.</p>
       </header>
       <section class="metrics" aria-label="run metrics">

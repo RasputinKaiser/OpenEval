@@ -1,14 +1,27 @@
-node_modules
-.next
-out
-dist
+node_modules/
+.next/
+out/
+dist/
+coverage/
 *.log
 .DS_Store
+
+# Local environment and machine-specific agent surfaces.
 .env
-.env.local
+.env.*
+!.env.example
 .codex/
+.ncode/
+state.yaml
+
+# Next/TypeScript generated state.
+tsconfig.tsbuildinfo
+
+# Runtime evaluation data. This contains local stats, transcripts, workdirs,
+# SQLite WAL files, and run artifacts that should stay on the operator machine.
 data/
-data/runs/
-fixtures/**/node_modules
-fixtures/**/.git
-fixtures/.DS_Store
+
+# Fixture runtime clutter.
+fixtures/**/node_modules/
+fixtures/**/.git/
+fixtures/**/.DS_Store

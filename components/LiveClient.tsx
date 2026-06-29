@@ -49,8 +49,8 @@ type LiveClientProps = {
 type FilterMode = "all" | "attention" | "stale" | "missing";
 type SortMode = "recent" | "quality" | "errors";
 
-const REDACT_STORAGE_KEY = "neval.live.redactUsernames";
-const HARNESS_STORAGE_KEY = "neval.live.harness";
+const REDACT_STORAGE_KEY = "openeval.live.redactUsernames";
+const HARNESS_STORAGE_KEY = "openeval.live.harness";
 
 function defaultLiveLimitForHarnessClient(harness: string): number {
   return harness === "codex" ? 50 : 200;

@@ -9,7 +9,7 @@ export default function ThemeToggle({ collapsed }: { collapsed?: boolean }) {
 
   useEffect(() => {
     try {
-      const stored = localStorage.getItem("neval-theme");
+      const stored = localStorage.getItem("openeval-theme");
       if (stored === "light") {
         document.documentElement.classList.add("light");
         setTheme("light");
@@ -26,7 +26,7 @@ export default function ThemeToggle({ collapsed }: { collapsed?: boolean }) {
   function toggle() {
     const next = theme === "dark" ? "light" : "dark";
     setTheme(next);
-    try { localStorage.setItem("neval-theme", next); } catch {}
+    try { localStorage.setItem("openeval-theme", next); } catch {}
     if (next === "light") document.documentElement.classList.add("light");
     else document.documentElement.classList.remove("light");
   }

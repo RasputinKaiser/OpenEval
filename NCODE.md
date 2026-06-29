@@ -4,7 +4,7 @@ This file provides guidance to NCode when working with code in this repository.
 
 ## What this is
 
-NEval — an evaluation suite that runs cases headless against **any** agent CLI harness (ncode, Claude Code, Codex, or descriptor-driven harnesses), grades each case with weighted multi-strategy graders, persists results to SQLite, and serves a live Next.js dashboard.
+OpenEval — an evaluation suite that runs cases headless against **any** agent CLI harness (ncode, Claude Code, Codex, or descriptor-driven harnesses), grades each case with weighted multi-strategy graders, persists results to SQLite, and serves a live Next.js dashboard.
 
 ## Commands
 

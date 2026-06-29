@@ -1,0 +1,49 @@
+name: Evaluation case request
+description: Propose a new OpenEval case, grader, or known-bad oracle.
+title: "[Case]: "
+labels: ["case", "evaluation"]
+body:
+  - type: input
+    id: category
+    attributes:
+      label: Category
+      placeholder: "agentic-swe, single-tool, reasoning, visual-code, or new category"
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Capability or failure mode to evaluate
+      description: What should this case measure?
+    validations:
+      required: true
+  - type: textarea
+    id: fixture
+    attributes:
+      label: Fixture idea
+      description: Describe the smallest public-safe fixture that can reproduce the task.
+    validations:
+      required: true
+  - type: textarea
+    id: graders
+    attributes:
+      label: Proposed graders
+      description: Prefer deterministic graders where possible.
+      placeholder: |
+        - tests_pass: npm test
+        - file_contains: ...
+        - files_unchanged: ...
+  - type: textarea
+    id: known_bad
+    attributes:
+      label: Known-bad oracle
+      description: How would a bad solution fail this case?
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Public-safety checklist
+      options:
+        - label: The proposed fixture does not require private code, private logs, credentials, or provider tokens.
+          required: true
+        - label: The case can be evaluated locally and repeatedly.
+          required: true

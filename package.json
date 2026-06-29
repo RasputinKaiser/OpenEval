@@ -1,7 +1,16 @@
 {
-  "name": "neval",
+  "name": "openeval",
   "version": "0.1.0",
   "private": true,
+  "description": "Local-first evaluation dashboard for agent CLIs with deterministic graders, live trace telemetry, and accuracy audits.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RasputinKaiser/OpenEval.git"
+  },
+  "bugs": {
+    "url": "https://github.com/RasputinKaiser/OpenEval/issues"
+  },
+  "homepage": "https://github.com/RasputinKaiser/OpenEval#readme",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

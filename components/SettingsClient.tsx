@@ -23,20 +23,20 @@ export default function SettingsClient() {
 
   useEffect(() => {
     try {
-      const stored = localStorage.getItem("neval-settings");
+      const stored = localStorage.getItem("openeval-settings");
       if (stored) setSettings({ ...DEFAULTS, ...JSON.parse(stored) });
     } catch {}
   }, []);
 
   function save() {
-    try { localStorage.setItem("neval-settings", JSON.stringify(settings)); } catch {}
+    try { localStorage.setItem("openeval-settings", JSON.stringify(settings)); } catch {}
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   }
 
   function reset() {
     setSettings(DEFAULTS);
-    try { localStorage.removeItem("neval-settings"); } catch {}
+    try { localStorage.removeItem("openeval-settings"); } catch {}
   }
 
   function update<K extends keyof Settings>(key: K, value: Settings[K]) {

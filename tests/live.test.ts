@@ -15,7 +15,7 @@ import { HARNESS_DESC_DIR } from "../lib/config";
 import { GET as liveGet } from "../app/api/live/route";
 
 function writeSession(lines: unknown[], extras: string[] = []): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "neval-live-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "openeval-live-"));
   const file = path.join(dir, "session.jsonl");
   fs.writeFileSync(
     file,
@@ -272,7 +272,7 @@ test("summarizeLiveSessionFile measures ncode assistant message usage", () => {
 });
 
 test("scanLiveSessions reads descriptor liveTrace usage without fabricating missing values", () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "neval-live-source-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "openeval-live-source-"));
   const descPath = path.join(HARNESS_DESC_DIR, `tmp-live-${Date.now()}.harness.json`);
   fs.mkdirSync(HARNESS_DESC_DIR, { recursive: true });
   fs.writeFileSync(path.join(root, "session.jsonl"), JSON.stringify({
@@ -573,8 +573,8 @@ test("redactSensitiveText hides local usernames while preserving useful suffixes
     "/Users/[redacted]/Documents/AgentEvals/data/session.jsonl",
   );
   assert.equal(
-    redactSensitiveText("/home/ralto/projects/neval/session.jsonl"),
-    "/home/[redacted]/projects/neval/session.jsonl",
+    redactSensitiveText("/home/ralto/projects/openeval/session.jsonl"),
+    "/home/[redacted]/projects/openeval/session.jsonl",
   );
   assert.equal(
     redactSensitiveText("/Users/ralto/.ncode/projects/-Users-ralto-Documents-AgentEvals/session.jsonl"),

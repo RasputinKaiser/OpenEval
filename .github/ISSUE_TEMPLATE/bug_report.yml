@@ -1,0 +1,57 @@
+name: Bug report
+description: Report a reproducible OpenEval bug using public-safe details.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please use synthetic examples and do not include secrets, private transcripts, local databases, or provider tokens.
+  - type: input
+    id: area
+    attributes:
+      label: Area
+      description: Route, script, adapter, grader, harness, or case category.
+      placeholder: "Example: /live, codex adapter, tests_pass grader"
+    validations:
+      required: true
+  - type: textarea
+    id: current
+    attributes:
+      label: What happened?
+      description: Describe the observed behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+      description: Describe the expected behavior or proof boundary.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+      description: Use synthetic fixtures or public-safe data only.
+      placeholder: |
+        1. Run ...
+        2. Open ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification output
+      description: Paste relevant public-safe output from typecheck, lint, tests, or audit commands.
+      render: shell
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Public-safety checklist
+      options:
+        - label: I did not include secrets, tokens, private transcripts, SQLite databases, or proprietary run output.
+          required: true
+        - label: I used synthetic paths/data when possible.
+          required: true

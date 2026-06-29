@@ -28,12 +28,12 @@ export default function Sidebar() {
 
   useEffect(() => {
     try {
-      setCollapsed(localStorage.getItem("neval-sidebar-collapsed") === "1");
+      setCollapsed(localStorage.getItem("openeval-sidebar-collapsed") === "1");
     } catch {}
   }, []);
 
   useEffect(() => {
-    try { localStorage.setItem("neval-sidebar-collapsed", collapsed ? "1" : "0"); } catch {}
+    try { localStorage.setItem("openeval-sidebar-collapsed", collapsed ? "1" : "0"); } catch {}
   }, [collapsed]);
 
   useEffect(() => {
@@ -64,8 +64,8 @@ export default function Sidebar() {
           </div>
           {!collapsed && (
             <div className="min-w-0">
-              <div className="text-sm font-semibold tracking-tight">NEval</div>
-              <div className="text-[10px] text-fg-dim uppercase tracking-wider">NEval Suite</div>
+              <div className="text-sm font-semibold tracking-tight">OpenEval</div>
+              <div className="text-[10px] text-fg-dim uppercase tracking-wider">OpenEval Suite</div>
             </div>
           )}
         </div>

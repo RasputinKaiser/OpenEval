@@ -2,11 +2,11 @@
 set -euo pipefail
 cat > status-card.svg <<'SVG'
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" role="img" aria-labelledby="title desc">
-  <title>NEval Accuracy Run status card</title>
+  <title>OpenEval Accuracy Run status card</title>
   <desc>Dark evaluation status card showing pass rate, known-bad rejection coverage, and visual-code artifact checks.</desc>
   <rect width="800" height="500" rx="28" fill="#0b0d12"/>
   <rect x="48" y="44" width="704" height="412" rx="24" fill="#141821" stroke="#2f3545"/>
-  <text x="84" y="104" fill="#f4f7fb" font-size="34" font-family="Inter, sans-serif">NEval Accuracy Run</text>
+  <text x="84" y="104" fill="#f4f7fb" font-size="34" font-family="Inter, sans-serif">OpenEval Accuracy Run</text>
   <text x="84" y="154" fill="#9aa4b2" font-size="18" font-family="Inter, sans-serif">Pass rate</text>
   <text x="84" y="202" fill="#7ee787" font-size="52" font-family="Inter, sans-serif">92%</text>
   <text x="342" y="154" fill="#9aa4b2" font-size="18" font-family="Inter, sans-serif">Known-bad rejected</text>

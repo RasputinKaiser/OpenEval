@@ -7,8 +7,8 @@ import MobileNav from "@/components/MobileNav";
 import OnboardingOverlay from "@/components/OnboardingOverlay";
 
 export const metadata: Metadata = {
-  title: "NEval",
-  description: "NEval — agent-CLI evaluation harness",
+  title: "OpenEval",
+  description: "OpenEval — agent-CLI evaluation harness",
   manifest: "/manifest.json",
   icons: { icon: "/icon.svg" },
 };
@@ -17,7 +17,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: "try{const t=localStorage.getItem('neval-theme');if(t==='light'||(!t&&matchMedia('(prefers-color-scheme: light)').matches))document.documentElement.classList.add('light')}catch(e){}" }} />
+        <script dangerouslySetInnerHTML={{ __html: "try{const t=localStorage.getItem('openeval-theme');if(t==='light'||(!t&&matchMedia('(prefers-color-scheme: light)').matches))document.documentElement.classList.add('light')}catch(e){}" }} />
       </head>
       <body className="min-h-screen bg-bg text-fg font-sans antialiased">
         <ToastProvider>

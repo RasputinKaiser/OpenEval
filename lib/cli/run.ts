@@ -57,7 +57,7 @@ function parseArgs(argv: string[]): ParsedArgs {
   return a;
 }
 
-const USAGE = `NEval — run evaluations against any agent CLI harness
+const USAGE = `OpenEval — run evaluations against any agent CLI harness
 
 Usage: npx tsx lib/cli/run.ts [options] [caseId]
 
