@@ -41,7 +41,7 @@ export default async function Page() {
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
-      <header className="mb-8">
+      <header className="mb-8 -mx-8 -mt-8 px-8 py-6 border-b border-bd-subtle bg-gradient-to-b from-bg-subtle/50 to-transparent">
         <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
         <p className="text-sm text-fg-muted mt-1">Evaluate agent CLIs across SWE, single-tool, reasoning, and visual-code tasks.</p>
       </header>
