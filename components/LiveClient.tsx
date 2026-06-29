@@ -891,14 +891,21 @@ function UsageTimeline({ session }: { session: LiveSession }) {
     <div className="space-y-2">
       {session.usageSegments.map((segment, index) => {
         const width = Math.max(4, Math.round((segment.cumulativeOutput / maxOutput) * 100));
+        const fastTok = segment.outTokPerSec > 50;
+        const slowTok = segment.outTokPerSec < 10 && segment.outTokPerSec > 0;
         return (
           <div key={`${segment.atMs}-${index}`} className="rounded border border-bd-subtle bg-bg/40 p-2">
             <div className="mb-1 flex items-center justify-between gap-3 text-[10px] text-fg-muted">
               <span className="mono tabular-nums">{new Date(segment.atMs).toLocaleTimeString()}</span>
-              <span className="mono tabular-nums">{fmt(segment.cumulativeOutput)} out · {segment.outTokPerSec.toFixed(1)} tok/s</span>
+              <span className={clsx("mono tabular-nums font-medium", fastTok ? "text-ok" : slowTok ? "text-warn" : "text-fg-muted")}>
+                {fmt(segment.cumulativeOutput)} out · {segment.outTokPerSec.toFixed(1)} tok/s
+              </span>
             </div>
             <div className="h-2 overflow-hidden rounded bg-bg-elev">
-              <div className="h-full rounded bg-accent-soft" style={{ width: `${width}%` }} />
+              <div
+                className={clsx("h-full rounded transition-[width] duration-300", fastTok ? "bg-ok" : slowTok ? "bg-warn" : "bg-accent-soft")}
+                style={{ width: `${width}%` }}
+              />
             </div>
             <div className="mt-1 text-[10px] text-fg-dim">
               +{fmt(segment.deltaInput)} input · +{fmt(segment.deltaOutput)} output
