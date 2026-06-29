@@ -934,9 +934,16 @@ function MetricCard({ label, value }: { label: string; value: string; source?: M
   );
 }
 
+const SOURCE_BORDER: Record<MetricSource, string> = {
+  measured: "border-ok/15 bg-ok/5",
+  inferred: "border-accent/15 bg-accent/5",
+  missing: "border-warn/15 bg-warn/5",
+  malformed: "border-err/15 bg-err/5",
+};
+
 function SourceCell({ label, source }: { label: string; source: MetricSource }) {
   return (
-    <div className="rounded bg-bg-elev/50 px-2 py-1.5">
+    <div className={clsx("rounded border px-2 py-1.5", SOURCE_BORDER[source])}>
       <div className="text-[9px] uppercase tracking-wider text-fg-dim">{label}</div>
       <SourceChip label={source} source={source} />
     </div>
