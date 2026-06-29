@@ -434,7 +434,7 @@ function UsageStrip({ data }: { data: LiveAggregate }) {
         <TinyMetric label="Cache read" value={usage.totalCacheReadTokens ? fmt(usage.totalCacheReadTokens) : "missing"} />
         <TinyMetric label="Cache create" value={usage.totalCacheCreateTokens ? fmt(usage.totalCacheCreateTokens) : "missing"} />
         <TinyMetric label="Cost" value={costMeasured ? `$${usage.totalCostUsd.toFixed(4)}` : "missing"} />
-        <TinyMetric label="Tok source" value={`${Math.round(usage.tokenCoverage * 100)}%`} />
+        <TinyMetric label="Coverage" value={`${Math.round(usage.tokenCoverage * 100)}%`} />
         <TinyMetric label="Out tok/s" value={usage.avgOutputTokPerSec ? usage.avgOutputTokPerSec.toFixed(1) : "missing"} />
       </div>
       {data.totalSessions > 0 && tokenMeasured === 0 && (
