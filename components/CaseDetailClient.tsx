@@ -297,9 +297,9 @@ function Transcript({ runner }: { runner: RunnerResult }) {
     <div className="font-mono text-[12px]">
       {runner.transcript.map((m, i) => (
         <div key={i} className="border-b border-bd-subtle last:border-0">
-          <div className="px-4 py-1.5 flex items-center gap-2 bg-bg-subtle/40">
+          <div className={clsx("px-4 py-1.5 flex items-center gap-2", m.role === "assistant" ? "bg-accent/5" : m.role === "system" ? "bg-warn/5" : "bg-bg-subtle/40")}>
             {m.role === "assistant" ? <User className="size-3 text-accent-soft" /> : <CornerDownRight className="size-3 text-fg-dim" />}
-            <span className="text-[10px] uppercase tracking-wider text-fg-dim">{m.role}</span>
+            <span className={clsx("text-[10px] uppercase tracking-wider", m.role === "assistant" ? "text-accent-soft" : "text-fg-dim")}>{m.role}</span>
           </div>
           {m.content.map((b, j) => {
             if (b.type === "text") {
@@ -316,7 +316,7 @@ function Transcript({ runner }: { runner: RunnerResult }) {
             }
             if (b.type === "tool_result") {
               return (
-                <pre key={j} className="px-4 py-2 text-fg-muted whitespace-pre-wrap border-l-2 border-bd-subtle ml-2">{b.content.slice(0, 4000)}</pre>
+                <pre key={j} className={clsx("px-4 py-2 whitespace-pre-wrap border-l-2 ml-2", b.is_error ? "border-err/50 text-err/80" : "border-bd-subtle text-fg-muted")}>{b.content.slice(0, 4000)}</pre>
               );
             }
             return null;
