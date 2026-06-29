@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Activity, FileText, GitCompareArrows, LayoutDashboard, Radio, Plus, ShieldCheck, Terminal, Plug, Trophy, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Activity, FileText, GitCompareArrows, LayoutDashboard, Radio, Plus, ShieldCheck, Terminal, Plug, Trophy, PanelLeftClose, PanelLeftOpen, Settings } from "lucide-react";
 import clsx from "clsx";
 
 const NAV = [
@@ -16,6 +16,7 @@ const NAV = [
   { href: "/live", label: "Live", icon: Radio },
   { href: "/cases", label: "Cases", icon: FileText },
   { href: "/runs/new", label: "New Run", icon: Plus },
+  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 export default function Sidebar() {

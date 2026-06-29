@@ -4,6 +4,7 @@ import Sidebar from "@/components/Sidebar";
 import SidebarNavClient from "@/components/SidebarNavClient";
 import MobileNav from "@/components/MobileNav";
 import { ToastProvider } from "@/components/ToastProvider";
+import OnboardingOverlay from "@/components/OnboardingOverlay";
 
 export const metadata: Metadata = {
   title: "NEval",
@@ -23,6 +24,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </div>
           <MobileNav />
           <SidebarNavClient />
+          <OnboardingOverlay />
         </ToastProvider>
       </body>
     </html>
