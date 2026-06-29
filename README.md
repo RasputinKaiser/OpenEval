@@ -6,6 +6,8 @@ The project is designed for people who want to compare agent behavior on practic
 
 Repository: [RasputinKaiser/OpenEval](https://github.com/RasputinKaiser/OpenEval)
 
+<video src="https://raw.githubusercontent.com/RasputinKaiser/OpenEval/main/media/openeval-launch/openeval-launch.mp4" controls width="100%" title="OpenEval launch video"></video>
+
 ## Highlights
 
 - **Agent CLI harnesses:** built-in adapters for `ncode`, Claude Code, and Codex, plus descriptor-driven harnesses under `harnesses/`.
