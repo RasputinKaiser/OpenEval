@@ -5,9 +5,14 @@ import os from "node:os";
 import path from "node:path";
 import {
   compactDisplayPath,
+  isPathInLiveSource,
   redactSensitiveText,
+  scanLiveSessions,
+  summarizeCodexSessionFile,
   summarizeLiveSessionFile,
 } from "../lib/live";
+import { HARNESS_DESC_DIR } from "../lib/config";
+import { GET as liveGet } from "../app/api/live/route";
 
 function writeSession(lines: unknown[], extras: string[] = []): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "neval-live-"));
@@ -112,7 +117,230 @@ test("summarizeLiveSessionFile reports malformed lines and measured result metri
   assert.equal(session.inputTokens, 100);
   assert.equal(session.outputTokens, 25);
   assert.equal(session.costUsd, 0.031);
+  assert.equal(session.cacheReadTokens, 10);
+  assert.equal(session.cacheCreateTokens, 0);
+  assert.equal(session.totalTokens, 135);
+  assert.equal(session.usageSegments.length, 1);
   assert.ok(session.parseWarnings.some((warning) => warning.includes("malformed")));
+});
+
+test("summarizeLiveSessionFile measures ncode assistant message usage", () => {
+  const file = writeSession([
+    {
+      type: "assistant",
+      sessionId: "ncode-usage",
+      cwd: "/Users/ralto/Documents/AgentEvals",
+      userType: "noumena",
+      entrypoint: "cli",
+      gitBranch: "codex/live-usage",
+      timestamp: "2026-06-28T20:00:10.000Z",
+      message: {
+        model: "/data/models/hf/zai-org__GLM-5.2-FP8",
+        content: [
+          { type: "text", text: "Measured usage is present." },
+          { type: "tool_use", id: "tool-1", name: "Bash", input: { command: "npm test" } },
+        ],
+        usage: {
+          input_tokens: 23634,
+          output_tokens: 3,
+          cache_read_input_tokens: 100,
+          cache_creation_input_tokens: 7,
+        },
+      },
+    },
+    {
+      type: "assistant",
+      sessionId: "ncode-usage",
+      cwd: "/Users/ralto/Documents/AgentEvals",
+      userType: "noumena",
+      timestamp: "2026-06-28T20:00:12.000Z",
+      message: {
+        content: [{ type: "text", text: "Second response." }],
+        usage: {
+          input_tokens: 10,
+          output_tokens: 5,
+          cache_read_input_tokens: 2,
+        },
+      },
+    },
+  ]);
+
+  const session = summarizeLiveSessionFile(file, "-Users-ralto-Documents-AgentEvals", Date.parse("2026-06-28T20:00:00.000Z"));
+
+  assert.ok(session);
+  assert.equal(session.sessionId, "ncode-usage");
+  assert.equal(session.project, "/Users/ralto/Documents/AgentEvals");
+  assert.equal(session.model, "/data/models/hf/zai-org__GLM-5.2-FP8");
+  assert.equal(session.metricSources.model, "measured");
+  assert.equal(session.metricSources.tokens, "measured");
+  assert.equal(session.inputTokens, 23644);
+  assert.equal(session.outputTokens, 8);
+  assert.equal(session.cacheReadTokens, 102);
+  assert.equal(session.cacheCreateTokens, 7);
+  assert.equal(session.totalTokens, 23761);
+  assert.equal(session.usageSegments.length, 2);
+  assert.equal(session.usageSegments[1].cumulativeOutput, 8);
+  assert.ok(!session.parseWarnings.some((warning) => warning.includes("token usage missing")));
+});
+
+test("scanLiveSessions reads descriptor liveTrace usage without fabricating missing values", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "neval-live-source-"));
+  const descPath = path.join(HARNESS_DESC_DIR, `tmp-live-${Date.now()}.harness.json`);
+  fs.mkdirSync(HARNESS_DESC_DIR, { recursive: true });
+  fs.writeFileSync(path.join(root, "session.jsonl"), JSON.stringify({
+    type: "done",
+    session_id: "descriptor-session",
+    model: "descriptor-model",
+    duration_ms: 2000,
+    num_turns: 4,
+    usage: {
+      input_tokens: 80,
+      output_tokens: 20,
+      cache_read_input_tokens: 5,
+      cache_creation_input_tokens: 7,
+      cost_usd: 0.0123,
+    },
+    stop_reason: "completed",
+    is_error: false,
+  }), "utf8");
+  fs.writeFileSync(descPath, JSON.stringify({
+    id: "tmp-live-source",
+    label: "Temporary Live Source",
+    binNames: ["tmp-live-source"],
+    output: "jsonl",
+    argTemplate: ["run"],
+    fields: {
+      sessionId: "session_id",
+      model: "model",
+      durationMs: "duration_ms",
+      numTurns: "num_turns",
+      inputTokens: "usage.input_tokens",
+      outputTokens: "usage.output_tokens",
+      cacheReadTokens: "usage.cache_read_input_tokens",
+      cacheCreateTokens: "usage.cache_creation_input_tokens",
+      costUsd: "usage.cost_usd",
+      stopReason: "stop_reason",
+      isError: "is_error",
+    },
+    liveTrace: {
+      roots: [root],
+      maxDepth: 1,
+    },
+  }), "utf8");
+
+  try {
+    const data = scanLiveSessions(10, "tmp-live-source");
+    assert.equal(data.sourceHarness, "tmp-live-source");
+    assert.equal(data.sourceStatus, "available");
+    assert.equal(data.totalSessions, 1);
+    assert.equal(data.usageSummary.totalInputTokens, 80);
+    assert.equal(data.usageSummary.totalOutputTokens, 20);
+    assert.equal(data.usageSummary.totalCacheReadTokens, 5);
+    assert.equal(data.usageSummary.totalCacheCreateTokens, 7);
+    assert.equal(data.usageSummary.totalTokens, 112);
+    assert.equal(data.usageSummary.totalCostUsd, 0.0123);
+    assert.equal(data.usageSummary.sessionsWithMeasuredUsage, 1);
+    assert.equal(data.usageSummary.sessionsWithMeasuredCost, 1);
+    assert.equal(data.usageSummary.tokenCoverage, 1);
+    assert.equal(data.sessions[0].usageSegments.length, 1);
+    assert.ok(isPathInLiveSource(path.join(root, "session.jsonl"), "tmp-live-source"));
+    assert.equal(isPathInLiveSource(path.join(os.tmpdir(), "outside.jsonl"), "tmp-live-source"), false);
+  } finally {
+    fs.rmSync(descPath, { force: true });
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("summarizeCodexSessionFile reads Codex App and CLI rollout usage", () => {
+  const file = writeSession([
+    {
+      timestamp: "2026-06-29T00:00:00.000Z",
+      type: "session_meta",
+      payload: {
+        id: "codex-session",
+        cwd: "/Users/ralto/Documents/AgentEvals",
+        originator: "Codex Desktop",
+        source: "vscode",
+        cli_version: "0.142.3",
+        model_provider: "openai",
+      },
+    },
+    {
+      timestamp: "2026-06-29T00:00:02.000Z",
+      type: "response_item",
+      payload: {
+        type: "function_call",
+        name: "exec_command",
+        arguments: "{\"cmd\":\"sed -n '1,20p' /Users/ralto/Documents/AgentEvals/lib/live.ts\"}",
+      },
+    },
+    {
+      timestamp: "2026-06-29T00:00:03.000Z",
+      type: "response_item",
+      payload: {
+        type: "function_call_output",
+        output: "Exit code: 0\n/Users/ralto/Documents/AgentEvals/lib/live.ts",
+      },
+    },
+    {
+      timestamp: "2026-06-29T00:00:04.000Z",
+      type: "event_msg",
+      payload: {
+        type: "token_count",
+        info: {
+          total_token_usage: {
+            input_tokens: 1000,
+            cached_input_tokens: 250,
+            output_tokens: 120,
+            reasoning_output_tokens: 30,
+            total_tokens: 1370,
+          },
+        },
+      },
+    },
+  ]);
+
+  const session = summarizeCodexSessionFile(file, "2026/06/29", Date.parse("2026-06-29T00:00:00.000Z"));
+
+  assert.ok(session);
+  assert.equal(session.sessionId, "codex-session");
+  assert.equal(session.project, "/Users/ralto/Documents/AgentEvals");
+  assert.equal(session.userType, "Codex Desktop");
+  assert.equal(session.modeSummary.entrypoint, "vscode");
+  assert.equal(session.metricSources.tokens, "measured");
+  assert.equal(session.inputTokens, 1000);
+  assert.equal(session.outputTokens, 120);
+  assert.equal(session.cacheReadTokens, 250);
+  assert.equal(session.totalTokens, 1370);
+  assert.equal(session.cacheCreateTokens, 0);
+  assert.equal(session.toolCalls, 1);
+  assert.ok(session.fileActivity.touchedFiles.includes("/Users/ralto/Documents/AgentEvals/lib/live.ts"));
+  assert.equal(session.usageSegments.length, 1);
+});
+
+test("scanLiveSessions reports unsupported harnesses honestly", () => {
+  const data = scanLiveSessions(10, "unknown-live-harness");
+  assert.equal(data.sourceHarness, "unknown-live-harness");
+  assert.equal(data.sourceStatus, "unavailable");
+  assert.equal(data.totalSessions, 0);
+  assert.equal(data.usageSummary.totalTokens, 0);
+  assert.ok(data.scanWarnings.some((warning) => warning.includes("does not have a registered live trace source")));
+});
+
+test("live API accepts harness query and unknown harnesses", async () => {
+  const ncodeResponse = await liveGet(new Request("http://localhost/api/live?harness=ncode&limit=1"));
+  assert.equal(ncodeResponse.status, 200);
+  const ncodeData = await ncodeResponse.json();
+  assert.equal(ncodeData.sourceHarness, "ncode");
+  assert.equal(ncodeData.sourceStatus, "available");
+  assert.ok(ncodeData.totalSessions <= 1);
+
+  const codexResponse = await liveGet(new Request("http://localhost/api/live?harness=codex&limit=1"));
+  assert.equal(codexResponse.status, 200);
+  const codexData = await codexResponse.json();
+  assert.equal(codexData.sourceHarness, "codex");
+  assert.equal(codexData.sourceStatus, "available");
+  assert.ok(codexData.totalSessions <= 1);
 });
 
 test("summarizeLiveSessionFile infers Noumena Code ncode model without pretending it is measured", () => {

@@ -1,7 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { HARNESS_DESC_DIR } from "./config";
 import { compactDisplayPath, redactSensitiveText } from "./redaction";
+import { getPath, type FieldMapping, type HarnessDescriptor } from "./adapters/generic";
+import { listAdapters } from "./adapters/registry";
 
 export type MetricSource = "measured" | "inferred" | "missing" | "malformed";
 
@@ -11,6 +14,31 @@ export interface LiveMetricSources {
   cost: MetricSource;
   duration: MetricSource;
   turns: MetricSource;
+}
+
+export type LiveSourceStatus = "available" | "unavailable" | "error";
+
+export interface LiveUsageSegment {
+  atMs: number;
+  cumulativeInput: number;
+  cumulativeOutput: number;
+  deltaInput: number;
+  deltaOutput: number;
+  outTokPerSec: number;
+}
+
+export interface LiveUsageSummary {
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalCacheReadTokens: number;
+  totalCacheCreateTokens: number;
+  totalTokens: number;
+  totalCostUsd: number;
+  sessionsWithMeasuredUsage: number;
+  sessionsWithMeasuredCost: number;
+  tokenCoverage: number;
+  costCoverage: number;
+  avgOutputTokPerSec: number;
 }
 
 export interface LiveToolSummary {
@@ -58,7 +86,10 @@ export interface LiveSession {
   inputTokens: number;
   outputTokens: number;
   cacheReadTokens: number;
+  cacheCreateTokens: number;
+  totalTokens: number;
   costUsd: number;
+  usageSegments: LiveUsageSegment[];
   toolCalls: number;
   toolErrors: number;
   numTurns: number;
@@ -91,6 +122,12 @@ export interface LiveSession {
 }
 
 export interface LiveAggregate {
+  sourceHarness: string;
+  sourceLabel: string;
+  sourceStatus: LiveSourceStatus;
+  sourceRoots: string[];
+  sourceMessage?: string;
+  usageSummary: LiveUsageSummary;
   totalSessions: number;
   totalProjects: number;
   totalCostUsd: number;
@@ -146,8 +183,113 @@ export { compactDisplayPath, redactSensitiveText };
 
 const NOUMENA_CODE_INFERRED_MODEL = "GLM 5.2 (1M)";
 
+interface LiveTraceSource {
+  id: string;
+  label: string;
+  status: LiveSourceStatus;
+  roots: string[];
+  message?: string;
+  fields?: FieldMapping;
+  projectMode: "ncode" | "codex" | "parent";
+  maxDepth: number;
+}
+
 export function ncodeProjectsDir(): string {
   return path.join(os.homedir(), ".ncode", "projects");
+}
+
+export function defaultLiveLimitForHarness(harness = "ncode"): number {
+  return harness === "codex" ? 50 : 200;
+}
+
+function expandHome(value: string): string {
+  if (value === "~") return os.homedir();
+  if (value.startsWith("~/")) return path.join(os.homedir(), value.slice(2));
+  return value;
+}
+
+function descriptorFiles(): string[] {
+  try {
+    return fs.readdirSync(HARNESS_DESC_DIR)
+      .filter((file) => file.endsWith(".harness.json"))
+      .map((file) => path.join(HARNESS_DESC_DIR, file));
+  } catch {
+    return [];
+  }
+}
+
+function loadLiveTraceDescriptor(harnessId: string): HarnessDescriptor | null {
+  for (const file of descriptorFiles()) {
+    try {
+      const desc = JSON.parse(fs.readFileSync(file, "utf8")) as HarnessDescriptor;
+      if (desc.id === harnessId && desc.liveTrace?.roots?.length) return desc;
+    } catch {}
+  }
+  return null;
+}
+
+function resolveLiveSource(harness = "ncode"): LiveTraceSource {
+  if (harness === "ncode") {
+    return {
+      id: "ncode",
+      label: "Noumena Code (ncode)",
+      status: "available",
+      roots: [ncodeProjectsDir()],
+      projectMode: "ncode",
+      maxDepth: 2,
+    };
+  }
+
+  if (harness === "codex") {
+    return {
+      id: "codex",
+      label: "Codex CLI / Codex App",
+      status: "available",
+      roots: [
+        path.join(os.homedir(), ".codex", "sessions"),
+        path.join(os.homedir(), ".codex", "archived_sessions"),
+      ],
+      projectMode: "codex",
+      maxDepth: 5,
+    };
+  }
+
+  const desc = loadLiveTraceDescriptor(harness);
+  if (desc?.liveTrace) {
+    return {
+      id: desc.id,
+      label: desc.label,
+      status: "available",
+      roots: desc.liveTrace.roots.map(expandHome),
+      fields: desc.liveTrace.fields ?? desc.fields,
+      projectMode: "parent",
+      maxDepth: desc.liveTrace.maxDepth ?? 4,
+    };
+  }
+
+  const adapter = listAdapters().find((candidate) => candidate.id === harness);
+  return {
+    id: harness,
+    label: adapter?.label ?? harness,
+    status: "unavailable",
+    roots: [],
+    projectMode: "parent",
+    maxDepth: 0,
+    message: adapter
+      ? `${adapter.label} does not declare a liveTrace source yet.`
+      : `Unknown harness "${harness}" does not have a registered live trace source.`,
+  };
+}
+
+export function isPathInLiveSource(filePath: string, harness = "ncode"): boolean {
+  const source = resolveLiveSource(harness);
+  if (source.status !== "available") return false;
+  const resolved = path.resolve(filePath);
+  return source.roots.some((root) => {
+    const rootPath = path.resolve(root);
+    const rel = path.relative(rootPath, resolved);
+    return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+  });
 }
 
 function decodeProjectDir(name: string): string {
@@ -212,47 +354,88 @@ function isNoumenaCodeTrace(userType: string | null, project: string, file: stri
   return normalizedUserType === "noumena" || project.includes("/.ncode") || file.includes(`${path.sep}.ncode${path.sep}projects${path.sep}`);
 }
 
-export function scanLiveSessions(limit = 200): LiveAggregate {
-  const dir = ncodeProjectsDir();
+export function scanLiveSessions(limit = 200, harness = "ncode"): LiveAggregate {
+  const source = resolveLiveSource(harness);
   const sessions: LiveSession[] = [];
   const scanWarnings: string[] = [];
 
-  let projectDirs: string[] = [];
-  try {
-    projectDirs = fs.readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
-  } catch (e) {
-    scanWarnings.push(`Could not read ${dir}: ${e instanceof Error ? e.message : String(e)}`);
-    return aggregate(sessions, scanWarnings);
+  if (source.status !== "available") {
+    if (source.message) scanWarnings.push(source.message);
+    return aggregate(sessions, scanWarnings, source);
   }
 
-  const files: Array<{ file: string; project: string; mtime: number }> = [];
-  for (const pd of projectDirs) {
-    const pdir = path.join(dir, pd);
-    let entries: fs.Dirent[] = [];
-    try {
-      entries = fs.readdirSync(pdir, { withFileTypes: true });
-    } catch {
-      continue;
-    }
-    for (const ent of entries) {
-      if (!ent.isFile() || !ent.name.endsWith(".jsonl")) continue;
-      const full = path.join(pdir, ent.name);
-      try {
-        const st = fs.statSync(full);
-        files.push({ file: full, project: pd, mtime: st.mtimeMs });
-      } catch {
-        continue;
-      }
-    }
-  }
+  const files = collectLiveTraceFiles(source, scanWarnings);
   files.sort((a, b) => b.mtime - a.mtime);
 
   for (const f of files.slice(0, limit)) {
-    const s = summarizeLiveSessionFile(f.file, f.project, f.mtime);
+    const s = source.projectMode === "codex"
+      ? summarizeCodexSessionFile(f.file, f.project, f.mtime)
+      : summarizeLiveSessionFile(f.file, f.project, f.mtime, { fields: source.fields });
     if (s) sessions.push(s);
   }
 
-  return aggregate(sessions, scanWarnings);
+  return aggregate(sessions, scanWarnings, source);
+}
+
+function collectLiveTraceFiles(source: LiveTraceSource, scanWarnings: string[]): Array<{ file: string; project: string; mtime: number }> {
+  const files: Array<{ file: string; project: string; mtime: number }> = [];
+  for (const root of source.roots) {
+    if (!fs.existsSync(root)) {
+      scanWarnings.push(`Could not read ${root}: path does not exist`);
+      continue;
+    }
+    if (source.projectMode === "ncode") {
+      let projectDirs: string[] = [];
+      try {
+        projectDirs = fs.readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
+      } catch (e) {
+        scanWarnings.push(`Could not read ${root}: ${e instanceof Error ? e.message : String(e)}`);
+        continue;
+      }
+      for (const pd of projectDirs) {
+        const pdir = path.join(root, pd);
+        let entries: fs.Dirent[] = [];
+        try {
+          entries = fs.readdirSync(pdir, { withFileTypes: true });
+        } catch {
+          continue;
+        }
+        for (const ent of entries) {
+          if (!ent.isFile() || !ent.name.endsWith(".jsonl")) continue;
+          const full = path.join(pdir, ent.name);
+          try {
+            const st = fs.statSync(full);
+            files.push({ file: full, project: pd, mtime: st.mtimeMs });
+          } catch {}
+        }
+      }
+    } else {
+      collectJsonlRecursive(root, source.maxDepth, files, root);
+    }
+  }
+  return files;
+}
+
+function collectJsonlRecursive(dir: string, depth: number, files: Array<{ file: string; project: string; mtime: number }>, root: string): void {
+  if (depth < 0) return;
+  let entries: fs.Dirent[] = [];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const ent of entries) {
+    const full = path.join(dir, ent.name);
+    if (ent.isDirectory()) {
+      collectJsonlRecursive(full, depth - 1, files, root);
+      continue;
+    }
+    if (!ent.isFile() || !ent.name.endsWith(".jsonl")) continue;
+    try {
+      const st = fs.statSync(full);
+      files.push({ file: full, project: path.dirname(path.relative(root, full)) || path.basename(root), mtime: st.mtimeMs });
+    } catch {}
+  }
 }
 
 export function parseSessionTranscript(filePath: string): TranscriptResult {
@@ -297,7 +480,7 @@ export function getErroringTurns(filePath: string): TranscriptResult {
   return { turns: [...keep].sort((a, b) => a - b).map((index) => parsed.turns[index]) };
 }
 
-export function summarizeLiveSessionFile(file: string, projectDir: string, mtime: number): LiveSession | null {
+export function summarizeLiveSessionFile(file: string, projectDir: string, mtime: number, opts: { fields?: FieldMapping } = {}): LiveSession | null {
   let model: string | null = null;
   let sessionId: string | null = null;
   let displayTitle: string | null = null;
@@ -306,6 +489,7 @@ export function summarizeLiveSessionFile(file: string, projectDir: string, mtime
   let inputTokens = 0;
   let outputTokens = 0;
   let cacheReadTokens = 0;
+  let cacheCreateTokens = 0;
   let costUsd = 0;
   let toolCalls = 0;
   let toolErrors = 0;
@@ -342,6 +526,7 @@ export function summarizeLiveSessionFile(file: string, projectDir: string, mtime
   const permissionModes: Record<string, number> = {};
   let readLikeOperations = 0;
   let writeLikeOperations = 0;
+  let usageSegments: LiveUsageSegment[] = [];
 
   const metricSources: LiveMetricSources = {
     model: "missing",
@@ -379,6 +564,9 @@ export function summarizeLiveSessionFile(file: string, projectDir: string, mtime
       if (typeof obj.gitBranch === "string" && obj.gitBranch) gitBranch = obj.gitBranch;
       if (typeof obj.entrypoint === "string" && obj.entrypoint) entrypoint = obj.entrypoint;
       if (typeof obj.permissionMode === "string") incrementRecord(permissionModes, obj.permissionMode);
+      if (typeof obj.sessionId === "string" && obj.sessionId) sessionId = obj.sessionId;
+      if (typeof obj.cwd === "string" && obj.cwd) project = obj.cwd;
+      if (typeof obj.userType === "string" && obj.userType) userType = obj.userType;
 
       if (obj.type === "system") {
         model = obj.model ?? model;
@@ -397,6 +585,32 @@ export function summarizeLiveSessionFile(file: string, projectDir: string, mtime
           metricSources.duration = "measured";
         }
       } else if (obj.type === "assistant" && Array.isArray(obj.message?.content)) {
+        if (typeof obj.message?.model === "string" && obj.message.model) model = obj.message.model;
+        const messageUsage = obj.message?.usage ?? {};
+        const messageInput = numericOrNull(messageUsage.input_tokens);
+        const messageOutput = numericOrNull(messageUsage.output_tokens);
+        const messageCacheRead = numericOrNull(messageUsage.cache_read_input_tokens);
+        const messageCacheCreate = numericOrNull(messageUsage.cache_creation_input_tokens);
+        if (messageInput != null || messageOutput != null || messageCacheRead != null || messageCacheCreate != null) {
+          const deltaInput = messageInput ?? 0;
+          const deltaOutput = messageOutput ?? 0;
+          inputTokens += deltaInput;
+          outputTokens += deltaOutput;
+          cacheReadTokens += messageCacheRead ?? 0;
+          cacheCreateTokens += messageCacheCreate ?? 0;
+          metricSources.tokens = "measured";
+          if (at) {
+            const elapsedSec = Math.max((at - startedAt) / 1000, 0.001);
+            usageSegments.push({
+              atMs: at,
+              cumulativeInput: inputTokens,
+              cumulativeOutput: outputTokens,
+              deltaInput,
+              deltaOutput,
+              outTokPerSec: outputTokens / elapsedSec,
+            });
+          }
+        }
         for (const b of obj.message.content) {
           if (b.type === "tool_use") {
             toolCalls++;
@@ -438,6 +652,7 @@ export function summarizeLiveSessionFile(file: string, projectDir: string, mtime
         inputTokens = usage.input_tokens ?? inputTokens;
         outputTokens = usage.output_tokens ?? outputTokens;
         cacheReadTokens = usage.cache_read_input_tokens ?? cacheReadTokens;
+        cacheCreateTokens = usage.cache_creation_input_tokens ?? cacheCreateTokens;
         costUsd = obj.total_cost_usd ?? costUsd;
         durationMs = obj.duration_ms ?? durationMs;
         numTurns = obj.num_turns ?? numTurns;
@@ -454,6 +669,41 @@ export function summarizeLiveSessionFile(file: string, projectDir: string, mtime
         if (typeof obj.customTitle === "string") displayTitle = obj.customTitle;
       } else if (obj.type === "agent-name") {
         if (!displayTitle && typeof obj.agentName === "string") displayTitle = obj.agentName;
+      }
+
+      if (opts.fields) {
+        const f = opts.fields;
+        model = coalesceString(getPath(obj, f.model), model);
+        sessionId = coalesceString(getPath(obj, f.sessionId), sessionId);
+        const genericDuration = numericOrNull(getPath(obj, f.durationMs));
+        if (genericDuration != null) {
+          durationMs = Math.max(durationMs, genericDuration);
+          metricSources.duration = "measured";
+        }
+        const genericInput = numericOrNull(getPath(obj, f.inputTokens));
+        const genericOutput = numericOrNull(getPath(obj, f.outputTokens));
+        const genericCacheRead = numericOrNull(getPath(obj, f.cacheReadTokens));
+        const genericCacheCreate = numericOrNull(getPath(obj, f.cacheCreateTokens));
+        if (genericInput != null || genericOutput != null || genericCacheRead != null || genericCacheCreate != null) {
+          inputTokens = genericInput ?? inputTokens;
+          outputTokens = genericOutput ?? outputTokens;
+          cacheReadTokens = genericCacheRead ?? cacheReadTokens;
+          cacheCreateTokens = genericCacheCreate ?? cacheCreateTokens;
+          metricSources.tokens = "measured";
+        }
+        const genericCost = numericOrNull(getPath(obj, f.costUsd));
+        if (genericCost != null) {
+          costUsd = genericCost;
+          metricSources.cost = "measured";
+        }
+        const genericTurns = numericOrNull(getPath(obj, f.numTurns));
+        if (genericTurns != null) {
+          numTurns = genericTurns;
+          metricSources.turns = "measured";
+        }
+        stopReason = coalesceString(getPath(obj, f.stopReason), stopReason);
+        const genericError = getPath(obj, f.isError);
+        if (genericError != null) isError = Boolean(genericError);
       }
     }
   } catch {
@@ -486,6 +736,10 @@ export function summarizeLiveSessionFile(file: string, projectDir: string, mtime
   const textAvailability = lineCount > 0 ? textBlocks / lineCount : 0;
   const staleMs = Math.max(0, Date.now() - lastEventAt);
   const orphanMessages = [...parentUuids].filter((parentUuid) => !seenUuids.has(parentUuid)).length;
+  const totalTokens = inputTokens + outputTokens + cacheReadTokens + cacheCreateTokens;
+  if (usageSegments.length === 0) {
+    usageSegments = buildUsageSegments(startedAt, durationMs, inputTokens, outputTokens);
+  }
   const toolSummaries = topEntries(toolCallsByName, 8).map(({ key, count }) => ({
     name: key,
     calls: count,
@@ -504,7 +758,10 @@ export function summarizeLiveSessionFile(file: string, projectDir: string, mtime
     inputTokens,
     outputTokens,
     cacheReadTokens,
+    cacheCreateTokens,
+    totalTokens,
     costUsd,
+    usageSegments,
     toolCalls,
     toolErrors,
     numTurns,
@@ -550,6 +807,218 @@ export function summarizeLiveSessionFile(file: string, projectDir: string, mtime
   };
 }
 
+export function summarizeCodexSessionFile(file: string, projectDir: string, mtime: number): LiveSession | null {
+  let sessionId: string | null = null;
+  let displayTitle: string | null = null;
+  let lastPromptPreview: string | null = null;
+  let project = projectDir;
+  let model: string | null = null;
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let cacheReadTokens = 0;
+  let cacheCreateTokens = 0;
+  let toolCalls = 0;
+  let toolErrors = 0;
+  let messageCount = 0;
+  let textBlocks = 0;
+  let thinkingBlocks = 0;
+  let startedAt = mtime;
+  let lastEventAt = mtime;
+  let pathBytes = 0;
+  let lineCount = 0;
+  let malformedLineCount = 0;
+  let originator: string | null = null;
+  let source: string | null = null;
+  let cliVersion: string | null = null;
+  const toolCallsByName = new Map<string, number>();
+  const toolErrorsByName = new Map<string, number>();
+  const touchedFiles = new Set<string>();
+  const usageSegments: LiveUsageSegment[] = [];
+  const metricSources: LiveMetricSources = {
+    model: "missing",
+    tokens: "missing",
+    cost: "missing",
+    duration: "inferred",
+    turns: "inferred",
+  };
+
+  try {
+    const content = fs.readFileSync(file, "utf8");
+    pathBytes = Buffer.byteLength(content);
+    let previousInput = 0;
+    let previousOutput = 0;
+    for (const line of content.split("\n")) {
+      if (!line.trim()) continue;
+      lineCount++;
+      let obj: any;
+      try {
+        obj = JSON.parse(line);
+      } catch {
+        malformedLineCount++;
+        continue;
+      }
+
+      const at = parseTimestamp(obj.timestamp) ?? parseTimestamp(obj.payload?.timestamp) ?? null;
+      if (at) {
+        startedAt = Math.min(startedAt, at);
+        lastEventAt = Math.max(lastEventAt, at);
+      }
+
+      if (obj.type === "session_meta") {
+        const payload = obj.payload ?? {};
+        sessionId = payload.id ?? payload.session_id ?? sessionId;
+        project = payload.cwd ?? project;
+        originator = payload.originator ?? originator;
+        source = payload.source ?? source;
+        cliVersion = payload.cli_version ?? cliVersion;
+        model = payload.model ?? payload.model_slug ?? model;
+        displayTitle = displayTitle ?? payload.thread_name ?? null;
+        if (payload.model || payload.model_slug) metricSources.model = "measured";
+      } else if (obj.type === "turn_context") {
+        const payload = obj.payload ?? {};
+        project = payload.cwd ?? project;
+        displayTitle = displayTitle ?? payload.thread_name ?? payload.title ?? null;
+      } else if (obj.type === "event_msg") {
+        const payload = obj.payload ?? {};
+        if (payload.type === "agent_message" && typeof payload.message === "string") {
+          textBlocks++;
+          messageCount++;
+          displayTitle = displayTitle ?? jsonPreview(payload.message, 80);
+        } else if (payload.type === "token_count") {
+          const usage = payload.info?.total_token_usage ?? payload.info?.last_token_usage ?? {};
+          const nextInput = Number(usage.input_tokens ?? 0) || 0;
+          const nextOutput = Number(usage.output_tokens ?? 0) || 0;
+          const nextCache = Number(usage.cached_input_tokens ?? 0) || 0;
+          const total = Number(usage.total_tokens ?? 0) || nextInput + nextOutput + nextCache;
+          inputTokens = Math.max(inputTokens, nextInput);
+          outputTokens = Math.max(outputTokens, nextOutput);
+          cacheReadTokens = Math.max(cacheReadTokens, nextCache);
+          metricSources.tokens = "measured";
+          if (at) {
+            const deltaInput = Math.max(0, nextInput - previousInput);
+            const deltaOutput = Math.max(0, nextOutput - previousOutput);
+            const elapsedSec = Math.max((at - startedAt) / 1000, 0.001);
+            usageSegments.push({
+              atMs: at,
+              cumulativeInput: nextInput,
+              cumulativeOutput: nextOutput,
+              deltaInput,
+              deltaOutput,
+              outTokPerSec: nextOutput / elapsedSec,
+            });
+            previousInput = nextInput;
+            previousOutput = nextOutput;
+          }
+          if (total > inputTokens + outputTokens + cacheReadTokens) {
+            cacheCreateTokens = Math.max(cacheCreateTokens, total - inputTokens - outputTokens - cacheReadTokens);
+          }
+        }
+      } else if (obj.type === "response_item") {
+        const payload = obj.payload ?? {};
+        if (payload.type === "reasoning") thinkingBlocks++;
+        if (payload.type === "message") {
+          textBlocks++;
+          messageCount++;
+          const text = Array.isArray(payload.content)
+            ? payload.content.map((item: any) => item.text).filter(Boolean).join(" ")
+            : "";
+          if (text) displayTitle = displayTitle ?? jsonPreview(text, 80);
+        }
+        if (payload.type === "function_call") {
+          toolCalls++;
+          const name = String(payload.name ?? "(unknown)");
+          increment(toolCallsByName, name);
+          extractFilePaths(payload.arguments, touchedFiles);
+        }
+        if (payload.type === "function_call_output") {
+          const output = String(payload.output ?? "");
+          extractFilePaths(output, touchedFiles);
+          if (/exit(ed)? with code [1-9]|error|traceback|failed/i.test(output)) {
+            toolErrors++;
+            increment(toolErrorsByName, "(unknown)");
+          }
+        }
+      } else if (obj.type === "user_msg" || obj.type === "user_message") {
+        const text = String(obj.payload?.message ?? obj.payload?.text ?? obj.message ?? obj.text ?? "");
+        if (text) lastPromptPreview = jsonPreview(text, 260);
+      }
+    }
+  } catch {
+    return null;
+  }
+
+  const durationMs = Math.max(0, lastEventAt - startedAt);
+  const totalTokens = inputTokens + outputTokens + cacheReadTokens + cacheCreateTokens;
+  const toolSummaries = topEntries(toolCallsByName, 8).map(({ key, count }) => ({
+    name: key,
+    calls: count,
+    errors: toolErrorsByName.get(key) ?? 0,
+  }));
+  const parseWarnings = buildWarnings(metricSources, malformedLineCount, lineCount, 0, true);
+  if (originator) parseWarnings.push(`source: ${originator}${source ? ` / ${source}` : ""}${cliVersion ? ` ${cliVersion}` : ""}`);
+  const toolErrorRate = toolCalls > 0 ? toolErrors / toolCalls : 0;
+
+  return {
+    sessionId: sessionId ?? path.basename(file, ".jsonl"),
+    displayTitle,
+    lastPromptPreview,
+    project,
+    model,
+    startedAt,
+    lastEventAt,
+    durationMs,
+    inputTokens,
+    outputTokens,
+    cacheReadTokens,
+    cacheCreateTokens,
+    totalTokens,
+    costUsd: 0,
+    usageSegments,
+    toolCalls,
+    toolErrors,
+    numTurns: Math.max(messageCount, 1),
+    stopReason: null,
+    isError: toolErrors > 0,
+    pathBytes,
+    path: file,
+    lineCount,
+    malformedLineCount,
+    thinkingBlocks,
+    textBlocks,
+    attachmentCount: 0,
+    queueOperationCount: 0,
+    snapshotCount: 0,
+    hookErrors: 0,
+    messageCount,
+    userType: originator ?? source,
+    dataQuality: scoreQuality(metricSources, malformedLineCount, lineCount, 0, toolErrorRate),
+    metricSources,
+    parseWarnings,
+    toolErrorRate,
+    toolCallsPerTurn: messageCount > 0 ? toolCalls / messageCount : toolCalls,
+    textAvailability: lineCount > 0 ? textBlocks / lineCount : 0,
+    staleMs: Math.max(0, Date.now() - lastEventAt),
+    traceGraph: {
+      rootMessages: messageCount,
+      sidechainMessages: 0,
+      agentCount: 0,
+      orphanMessages: 0,
+    },
+    toolSummaries,
+    queueSummary: { enqueue: 0, dequeue: 0, remove: 0, popAll: 0, preview: [] },
+    fileActivity: {
+      touchedFiles: [...touchedFiles].sort().slice(0, 12),
+      readLikeOperations: toolSummaries.filter((tool) => /read|grep|search|find|open/i.test(tool.name)).reduce((sum, tool) => sum + tool.calls, 0),
+      writeLikeOperations: toolSummaries.filter((tool) => /write|edit|patch|apply/i.test(tool.name)).reduce((sum, tool) => sum + tool.calls, 0),
+    },
+    modeSummary: {
+      permissionModes: {},
+      gitBranch: null,
+      entrypoint: source ?? originator,
+    },
+  };
+}
+
 function buildWarnings(sources: LiveMetricSources, malformedLineCount: number, lineCount: number, hookErrors: number, sawResult: boolean): string[] {
   const warnings: string[] = [];
   if (sources.model === "missing") warnings.push("model missing from trace");
@@ -562,6 +1031,30 @@ function buildWarnings(sources: LiveMetricSources, malformedLineCount: number, l
   if (malformedLineCount > 0) warnings.push(`${malformedLineCount}/${lineCount} malformed line(s) skipped`);
   if (hookErrors > 0) warnings.push(`${hookErrors} hook error(s) reported`);
   return warnings;
+}
+
+function coalesceString(value: unknown, fallback: string | null): string | null {
+  if (typeof value === "string" && value) return value;
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return fallback;
+}
+
+function numericOrNull(value: unknown): number | null {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function buildUsageSegments(startedAt: number, durationMs: number, inputTokens: number, outputTokens: number): LiveUsageSegment[] {
+  if (inputTokens <= 0 && outputTokens <= 0) return [];
+  const elapsedSec = Math.max(durationMs / 1000, 0.001);
+  return [{
+    atMs: startedAt + Math.max(durationMs, 0),
+    cumulativeInput: inputTokens,
+    cumulativeOutput: outputTokens,
+    deltaInput: inputTokens,
+    deltaOutput: outputTokens,
+    outTokPerSec: outputTokens / elapsedSec,
+  }];
 }
 
 function scoreQuality(sources: LiveMetricSources, malformedLineCount: number, lineCount: number, hookErrors: number, toolErrorRate: number): number {
@@ -582,6 +1075,55 @@ function toTranscriptTurn(obj: any, index: number): LiveTranscriptTurn {
   const type = typeof obj?.type === "string" ? obj.type : "unknown";
   const subtype = typeof obj?.subtype === "string" ? obj.subtype : undefined;
   const at = parseTimestamp(obj?.timestamp) ?? undefined;
+
+  if (type === "session_meta") {
+    return {
+      type,
+      subtype,
+      severity: "info",
+      at,
+      label: "Codex session",
+      preview: jsonPreview({
+        id: obj.payload?.id ?? obj.payload?.session_id,
+        cwd: obj.payload?.cwd,
+        originator: obj.payload?.originator,
+        source: obj.payload?.source,
+        cliVersion: obj.payload?.cli_version,
+        modelProvider: obj.payload?.model_provider,
+      }),
+    };
+  }
+
+  if (type === "event_msg") {
+    const payload = obj.payload ?? {};
+    return {
+      type,
+      subtype: payload.type,
+      severity: payload.type === "token_count" ? "info" : payload.type === "agent_message" ? "info" : "warning",
+      at,
+      label: payload.type === "token_count" ? "Codex usage" : payload.type === "agent_message" ? "Codex message" : `Codex event ${index}`,
+      preview: jsonPreview(payload.type === "token_count" ? payload.info?.total_token_usage ?? payload.info : payload.message ?? payload),
+    };
+  }
+
+  if (type === "response_item") {
+    const payload = obj.payload ?? {};
+    const errored = payload.type === "function_call_output" && /exit(ed)? with code [1-9]|error|traceback|failed/i.test(String(payload.output ?? ""));
+    return {
+      type,
+      subtype: payload.type,
+      severity: errored ? "error" : "info",
+      at,
+      label: payload.type === "function_call"
+        ? `Codex tool use: ${payload.name ?? "(unknown)"}`
+        : payload.type === "function_call_output"
+          ? "Codex tool output"
+          : payload.type === "reasoning"
+            ? "Codex reasoning"
+            : "Codex response",
+      preview: jsonPreview(payload.type === "function_call_output" ? payload.output : payload),
+    };
+  }
 
   if (type === "system") {
     const warnings = Number(obj.hookErrors ?? 0) || 0;
@@ -642,7 +1184,23 @@ function toTranscriptTurn(obj: any, index: number): LiveTranscriptTurn {
   };
 }
 
-function aggregate(sessions: LiveSession[], scanWarnings: string[] = []): LiveAggregate {
+function emptyUsageSummary(): LiveUsageSummary {
+  return {
+    totalInputTokens: 0,
+    totalOutputTokens: 0,
+    totalCacheReadTokens: 0,
+    totalCacheCreateTokens: 0,
+    totalTokens: 0,
+    totalCostUsd: 0,
+    sessionsWithMeasuredUsage: 0,
+    sessionsWithMeasuredCost: 0,
+    tokenCoverage: 0,
+    costCoverage: 0,
+    avgOutputTokPerSec: 0,
+  };
+}
+
+function aggregate(sessions: LiveSession[], scanWarnings: string[] = [], source: LiveTraceSource = resolveLiveSource("ncode")): LiveAggregate {
   const byModelMap = new Map<string, {
     model: string;
     sessions: number;
@@ -659,6 +1217,8 @@ function aggregate(sessions: LiveSession[], scanWarnings: string[] = []): LiveAg
   let totalCostUsd = 0;
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
+  let totalCacheReadTokens = 0;
+  let totalCacheCreateTokens = 0;
   let totalToolCalls = 0;
   let totalToolErrors = 0;
   let totalQuality = 0;
@@ -670,17 +1230,25 @@ function aggregate(sessions: LiveSession[], scanWarnings: string[] = []): LiveAg
   const queueTotals: LiveQueueSummary = { enqueue: 0, dequeue: 0, remove: 0, popAll: 0, preview: [] };
   let sidechainMessages = 0;
   let agentSessions = 0;
+  let outputTokPerSecTotal = 0;
+  let outputTokPerSecCount = 0;
 
   for (const s of sessions) {
     projects.add(s.project);
     totalCostUsd += s.costUsd;
     totalInputTokens += s.inputTokens;
     totalOutputTokens += s.outputTokens;
+    totalCacheReadTokens += s.cacheReadTokens;
+    totalCacheCreateTokens += s.cacheCreateTokens;
     totalToolCalls += s.toolCalls;
     totalToolErrors += s.toolErrors;
     totalQuality += s.dataQuality;
     sidechainMessages += s.traceGraph.sidechainMessages;
     if (s.traceGraph.agentCount > 0) agentSessions++;
+    if (s.metricSources.tokens === "measured" && s.outputTokens > 0 && s.durationMs > 0) {
+      outputTokPerSecTotal += s.outputTokens / Math.max(s.durationMs / 1000, 0.001);
+      outputTokPerSecCount++;
+    }
     if (s.modeSummary.gitBranch) increment(branchSessions, s.modeSummary.gitBranch);
     queueTotals.enqueue += s.queueSummary.enqueue;
     queueTotals.dequeue += s.queueSummary.dequeue;
@@ -721,7 +1289,26 @@ function aggregate(sessions: LiveSession[], scanWarnings: string[] = []): LiveAg
     missingCost: m.missingCost,
   })).sort((a, b) => b.errors - a.errors || a.avgDataQuality - b.avgDataQuality);
 
+  const usageSummary = emptyUsageSummary();
+  usageSummary.totalInputTokens = totalInputTokens;
+  usageSummary.totalOutputTokens = totalOutputTokens;
+  usageSummary.totalCacheReadTokens = totalCacheReadTokens;
+  usageSummary.totalCacheCreateTokens = totalCacheCreateTokens;
+  usageSummary.totalTokens = totalInputTokens + totalOutputTokens + totalCacheReadTokens + totalCacheCreateTokens;
+  usageSummary.totalCostUsd = totalCostUsd;
+  usageSummary.sessionsWithMeasuredUsage = sessions.filter((s) => s.metricSources.tokens === "measured").length;
+  usageSummary.sessionsWithMeasuredCost = sessions.filter((s) => s.metricSources.cost === "measured").length;
+  usageSummary.tokenCoverage = sessions.length ? usageSummary.sessionsWithMeasuredUsage / sessions.length : 0;
+  usageSummary.costCoverage = sessions.length ? usageSummary.sessionsWithMeasuredCost / sessions.length : 0;
+  usageSummary.avgOutputTokPerSec = outputTokPerSecCount ? outputTokPerSecTotal / outputTokPerSecCount : 0;
+
   return {
+    sourceHarness: source.id,
+    sourceLabel: source.label,
+    sourceStatus: source.status,
+    sourceRoots: source.roots,
+    sourceMessage: source.message,
+    usageSummary,
     totalSessions: sessions.length,
     totalProjects: projects.size,
     totalCostUsd,
