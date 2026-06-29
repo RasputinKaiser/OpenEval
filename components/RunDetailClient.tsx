@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import clsx from "clsx";
 import StatusBadge from "./StatusBadge";
@@ -941,7 +941,7 @@ const GRADER_TIER_COLOR: Record<string, string> = {
   manual: "bg-bg-elev text-fg-dim",
 };
 
-function GraderRow({ g }: { g: GraderResult }) {
+const GraderRow = memo(function GraderRow({ g }: { g: GraderResult }) {
   const summary = g.detail.length > 120 ? `${g.detail.slice(0, 120)}…` : g.detail;
   const expected = g.spec.type === "file_eq" ? g.spec.expected : g.spec.type === "file_contains" ? g.spec.pattern : undefined;
   const actual = g.output ?? "";
@@ -991,7 +991,7 @@ function Transcript({ transcript }: { transcript: TranscriptEntry[] }) {
       ))}
     </div>
   );
-}
+});
 
 function TranscriptEntryRow({ entry }: { entry: TranscriptEntry }) {
   const [showMore, setShowMore] = useState(false);
