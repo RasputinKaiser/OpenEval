@@ -979,7 +979,7 @@ const GraderRow = memo(function GraderRow({ g }: { g: GraderResult }) {
       </div>
     </details>
   );
-}
+});
 
 const MAX_ENTRY_LEN = 8000;
 
@@ -991,7 +991,7 @@ function Transcript({ transcript }: { transcript: TranscriptEntry[] }) {
       ))}
     </div>
   );
-});
+}
 
 function TranscriptEntryRow({ entry }: { entry: TranscriptEntry }) {
   const [showMore, setShowMore] = useState(false);
