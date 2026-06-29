@@ -70,8 +70,10 @@ export default async function Page() {
             </Link>
           </div>
           {runs.length === 0 ? (
-            <div className="text-sm text-fg-muted py-10 text-center">
-              No runs yet. <Link href="/runs/new" className="text-accent-soft hover:underline">Start one</Link>.
+            <div className="text-center py-12">
+              <Activity className="size-8 text-fg-dim mx-auto mb-3 opacity-50" />
+              <div className="text-sm text-fg-muted mb-1">No runs yet</div>
+              <Link href="/runs/new" className="text-sm text-accent-soft hover:underline">Start your first evaluation →</Link>
             </div>
           ) : (
             <div className="space-y-1.5">
