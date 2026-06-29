@@ -18,8 +18,8 @@ A dark operator-console launch film for OpenEval: precise, local-first, evidence
 
 ## Typography
 
-- Headlines: `Georgia`, 800-900 weight where available, tight but readable. Editorial weight against the technical UI.
-- Data, labels, and counters: `Menlo`, `Monaco`, or `ui-monospace`, 400-700 weight with tabular numbers.
+- Headlines: `EB Garamond`, 800-900 weight where available, tight but readable. Editorial weight against the technical UI.
+- Data, labels, and counters: `JetBrains Mono`, 400-700 weight with tabular numbers.
 - Supporting copy: system sans, 350-500 weight. Keep it secondary to the serif headline and mono data voice.
 
 ## Motion
