@@ -204,6 +204,11 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
                 </div>
               );
             })}
+            {visibleCases.length === 0 && (
+              <div className="px-4 py-8 text-center text-sm text-fg-muted">
+                No cases match the current filter.
+              </div>
+            )}
           </div>
         </section>
 
