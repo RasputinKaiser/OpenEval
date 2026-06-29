@@ -1,8 +1,15 @@
 import { NextResponse } from "next/server";
 import { createAndStartRun } from "@/lib/run";
+import { listRuns } from "@/lib/db";
 import type { RunnerKind } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
+
+export async function GET() {
+  const runs = listRuns(10);
+  const lite = runs.map((r) => ({ id: r.id, name: r.name }));
+  return NextResponse.json({ runs: lite });
+}
 
 export async function POST(req: Request) {
   try {

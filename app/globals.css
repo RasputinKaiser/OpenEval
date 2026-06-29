@@ -37,6 +37,21 @@ button:active:not(:disabled) { transform: scale(0.96); }
     0 8px 24px rgba(0, 0, 0, 0.18);
 }
 
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.shimmer {
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.04) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shimmer { animation: none; }
+}
+
 @keyframes menu-enter { from { transform: translateY(-4px) scale(0.98); opacity: 0; } to { transform: translateY(0) scale(1); opacity: 1; } }
 
 .icon-crossfade > * {
@@ -72,4 +87,11 @@ button:active:not(:disabled) { transform: scale(0.96); }
 
 @media (prefers-reduced-motion: reduce) {
   .stagger-grid > * { animation: none; }
+}
+
+@media print {
+  aside, .no-print { display: none !important; }
+  main { overflow: visible !important; }
+  .card { box-shadow: none !important; border: 1px solid #ddd !important; }
+  body { background: #fff !important; color: #000 !important; }
 }
