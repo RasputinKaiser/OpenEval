@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { listRuns, listRunCases } from "@/lib/db";
+import { listRuns, getRunCaseSummariesBatch } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -22,20 +22,23 @@ export interface HarnessAggregate {
 
 export async function GET() {
   const runs = listRuns(200);
+  const runIds = runs.map((r) => r.id);
+  const caseSummaries = getRunCaseSummariesBatch(runIds);
   const byHarness = new Map<string, HarnessAggregate>();
 
   for (const r of runs) {
     const h = r.params.harness || "ncode";
-    const cases = listRunCases(r.id);
+    const cases = caseSummaries.get(r.id) ?? [];
     const completed = cases.filter((c) => ["passed", "failed", "error"].includes(c.status));
     const passed = cases.filter((c) => c.status === "passed").length;
     const failed = cases.filter((c) => c.status === "failed").length;
     const errored = cases.filter((c) => c.status === "error").length;
     let cost = 0, tokIn = 0, tokOut = 0, dur = 0;
     for (const c of cases) {
-      const u = c.runner_result?.usage;
-      if (u) { cost += u.costUsd || 0; tokIn += u.inputTokens || 0; tokOut += u.outputTokens || 0; }
-      if (c.runner_result?.durationMs) dur += c.runner_result.durationMs;
+      cost += c.runner_cost_usd ?? 0;
+      tokIn += c.runner_input_tokens ?? 0;
+      tokOut += c.runner_output_tokens ?? 0;
+      dur += c.runner_duration_ms ?? 0;
     }
     const agg = byHarness.get(h) ?? {
       harness: h, runCount: 0, totalCases: 0, passed: 0, failed: 0, errored: 0, passRate: 0,

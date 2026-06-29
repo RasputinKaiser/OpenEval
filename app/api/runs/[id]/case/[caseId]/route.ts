@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getRun, listRunCases } from "@/lib/db";
+import { getRun, getRunCaseByCaseId } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -8,7 +8,7 @@ export async function GET(_request: Request, { params }: { params: { id: string;
   if (!run) {
     return NextResponse.json({ error: "Run not found" }, { status: 404 });
   }
-  const rc = listRunCases(params.id).find((item) => item.case_id === params.caseId || item.id === params.caseId);
+  const rc = getRunCaseByCaseId(params.id, params.caseId);
   if (!rc) {
     return NextResponse.json({ error: "Case not found" }, { status: 404 });
   }

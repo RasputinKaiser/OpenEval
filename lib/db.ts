@@ -121,6 +121,43 @@ export function listRunCases(runId: string): RunCaseRecord[] {
   return rows.map(rowToRunCase);
 }
 
+export interface RunCaseSummary {
+  status: string;
+  runner_cost_usd: number | null;
+  runner_input_tokens: number | null;
+  runner_output_tokens: number | null;
+  runner_duration_ms: number | null;
+}
+
+export function getRunCaseSummariesBatch(runIds: string[]): Map<string, RunCaseSummary[]> {
+  if (runIds.length === 0) return new Map();
+  const placeholders = runIds.map(() => "?").join(",");
+  const rows = getDb().prepare(
+    `SELECT run_id, status, runner_result_json FROM run_cases WHERE run_id IN (${placeholders}) ORDER BY seq ASC`
+  ).all(...runIds) as any[];
+  const result = new Map<string, RunCaseSummary[]>();
+  for (const row of rows) {
+    let parsed: any = null;
+    try { parsed = JSON.parse(row.runner_result_json); } catch {}
+    const summary: RunCaseSummary = {
+      status: row.status,
+      runner_cost_usd: parsed?.usage?.costUsd ?? null,
+      runner_input_tokens: parsed?.usage?.inputTokens ?? null,
+      runner_output_tokens: parsed?.usage?.outputTokens ?? null,
+      runner_duration_ms: parsed?.durationMs ?? null,
+    };
+    const list = result.get(row.run_id) ?? [];
+    list.push(summary);
+    result.set(row.run_id, list);
+  }
+  return result;
+}
+
+export function getRunCaseByCaseId(runId: string, caseId: string): RunCaseRecord | null {
+  const rows = getDb().prepare(`SELECT * FROM run_cases WHERE run_id = ? AND (case_id = ? OR id = ?) ORDER BY seq ASC LIMIT 1`).all(runId, caseId, caseId) as any[];
+  return rows.length ? rowToRunCase(rows[0]) : null;
+}
+
 export function getRunCase(id: string): RunCaseRecord | null {
   const r = getDb().prepare(`SELECT * FROM run_cases WHERE id = ?`).get(id) as any;
   return r ? rowToRunCase(r) : null;
