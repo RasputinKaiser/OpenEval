@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import clsx from "clsx";
 import { Check, ChevronDown, Cpu, EyeOff, Image as ImageIcon, Loader2, Search } from "lucide-react";
 import type { ModelInfo } from "@/lib/models";
+import { cachedFetch } from "@/lib/cached-fetch";
 
 interface Props {
   value?: string;
@@ -31,8 +32,7 @@ export default function ModelPicker({ value, onChange }: Props) {
   const [query, setQuery] = useState("");
 
   useEffect(() => {
-    fetch("/api/models")
-      .then((r) => r.json())
+    cachedFetch<{ models: ModelInfo[] }>("/api/models")
       .then((d) => setModels(d.models || []))
       .finally(() => setLoading(false));
   }, []);
