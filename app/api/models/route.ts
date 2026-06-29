@@ -5,7 +5,10 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   const models = discoverModels();
-  return NextResponse.json({ models, defaultModel: models[0]?.id ?? null });
+  return NextResponse.json(
+    { models, defaultModel: models[0]?.id ?? null },
+    { headers: { "Cache-Control": "private, max-age=60, stale-while-revalidate=300" } }
+  );
 }
 
 export async function POST(req: Request) {
