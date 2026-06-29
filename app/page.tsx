@@ -14,6 +14,8 @@ const CAT_COLORS: Record<string, string> = {
   "reasoning": "bg-warn",
   "visual-code": "bg-blue-500",
 };
+
+function fmtDuration(ms: number) {
   if (!ms) return "—";
   if (ms < 1000) return `${ms}ms`;
   if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
