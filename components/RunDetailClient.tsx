@@ -20,18 +20,20 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
   const [selectedIdx, setSelectedIdx] = useState<number | null>(initialCases.length ? 0 : null);
   const [live, setLive] = useState(running);
   const [caseSearch, setCaseSearch] = useState("");
+  const [caseFilter, setCaseFilter] = useState<string>("all");
 
   const visibleCases = useMemo(() => {
     const q = caseSearch.trim().toLowerCase();
-    if (!q) return cases.map((c, i) => ({ c, i }));
     return cases
       .map((c, i) => ({ c, i }))
-      .filter(({ c }) =>
-        c.case_name.toLowerCase().includes(q) ||
-        c.case_id.toLowerCase().includes(q) ||
-        c.category.toLowerCase().includes(q)
-      );
-  }, [cases, caseSearch]);
+      .filter(({ c }) => {
+        if (caseFilter !== "all" && c.status !== caseFilter) return false;
+        if (!q) return true;
+        return c.case_name.toLowerCase().includes(q) ||
+          c.case_id.toLowerCase().includes(q) ||
+          c.category.toLowerCase().includes(q);
+      });
+  }, [cases, caseSearch, caseFilter]);
 
   useEffect(() => {
     if (!live) return;
@@ -117,13 +119,14 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
             {live && <Loader2 className="size-3.5 text-accent-soft animate-spin" />}
           </div>
 
-          <div className="px-4 py-2 border-b border-bd-subtle flex flex-wrap items-center gap-3 text-[11px]">
-            <span className="text-ok">● {counts.passed}</span>
-            <span className="text-err">● {counts.failed}</span>
-            <span className="text-warn">! {counts.error}</span>
-            {counts.running > 0 && <span className="text-accent-soft">● {counts.running}</span>}
-            {counts.pending > 0 && <span className="text-fg-dim">● {counts.pending}</span>}
-            <span className="ml-auto mono text-fg-muted">{passRatio}% pass</span>
+          <div className="px-4 py-2 border-b border-bd-subtle flex flex-wrap items-center gap-2 text-[11px]">
+            <button onClick={() => setCaseFilter("all")} className={clsx("px-1.5 py-0.5 rounded transition-colors", caseFilter === "all" ? "bg-bg-elev text-fg" : "text-fg-muted hover:text-fg")}>All</button>
+            <button onClick={() => setCaseFilter("passed")} className={clsx("px-1.5 py-0.5 rounded transition-colors", caseFilter === "passed" ? "bg-ok/15 text-ok" : "text-ok hover:opacity-80")}>● {counts.passed}</button>
+            <button onClick={() => setCaseFilter("failed")} className={clsx("px-1.5 py-0.5 rounded transition-colors", caseFilter === "failed" ? "bg-err/15 text-err" : "text-err hover:opacity-80")}>● {counts.failed}</button>
+            <button onClick={() => setCaseFilter("error")} className={clsx("px-1.5 py-0.5 rounded transition-colors", caseFilter === "error" ? "bg-warn/15 text-warn" : "text-warn hover:opacity-80")}>! {counts.error}</button>
+            {counts.running > 0 && <button onClick={() => setCaseFilter("running")} className={clsx("px-1.5 py-0.5 rounded transition-colors", caseFilter === "running" ? "bg-accent/15 text-accent-soft" : "text-accent-soft hover:opacity-80")}>● {counts.running}</button>}
+            {counts.pending > 0 && <button onClick={() => setCaseFilter("pending")} className={clsx("px-1.5 py-0.5 rounded transition-colors", caseFilter === "pending" ? "bg-bg-elev text-fg" : "text-fg-dim hover:text-fg")}>● {counts.pending}</button>}
+            <span className="ml-auto mono text-fg-muted">{visibleCases.length}/{cases.length} · {passRatio}%</span>
           </div>
 
           {cases.length > 6 && (
