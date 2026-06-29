@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import clsx from "clsx";
 import { Gauge, Timer, Layers, AlertTriangle, Hash, Wrench, BarChart3, DollarSign, Bug, Shield, ShieldCheck, Activity } from "lucide-react";
@@ -44,19 +44,27 @@ export default function TelemetryStrip({ runId }: { runId: string }) {
           <BarChart3 className="size-3" /> Full bench
         </Link>
       </div>
-      <div className="grid grid-cols-3 md:grid-cols-6 lg:grid-cols-12 gap-2">
-        <Cell label="avg tok/s" value={t.avgTokPerSec.toFixed(1)} icon={Gauge} />
-        <Cell label="max tok/s" value={t.maxTokPerSec.toFixed(1)} icon={Gauge} />
-        <Cell label="p50 dur" value={fmtMs(t.p50DurationMs)} icon={Timer} />
-        <Cell label="p95 dur" value={fmtMs(t.p95DurationMs)} icon={Timer} />
-        <Cell label="cache" value={`${(t.cacheHitRate * 100).toFixed(0)}%`} icon={Layers} />
-        <Cell label="err rate" value={`${(t.errorRate * 100).toFixed(0)}%`} icon={AlertTriangle} tone={t.errorRate > 0 ? "warn" : undefined} />
-        <Cell label="forbidden" value={`${(t.forbiddenViolationRate * 100).toFixed(0)}%`} icon={Bug} tone={t.forbiddenViolationRate > 0 ? "warn" : undefined} />
-        <Cell label="fails safe" value={`${(t.failsSafelyRate * 100).toFixed(0)}%`} icon={t.failsSafelyRate >= 0.9 ? ShieldCheck : Shield} tone={t.failsSafelyRate >= 0.9 ? "ok" : undefined} />
-        <Cell label="cheapest" value={`$${t.cheapestPassUsd.toFixed(4)}`} icon={DollarSign} />
-        <Cell label="avg turns" value={t.avgTurns.toFixed(1)} icon={Hash} />
-        <Cell label="tool calls" value={String(t.totalToolCalls)} icon={Wrench} />
-        <Cell label="top tool" value={t.topTools[0]?.name ?? "—"} icon={Wrench} small />
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
+        <MetricGroup label="Throughput">
+          <Cell label="avg tok/s" value={t.avgTokPerSec.toFixed(1)} icon={Gauge} />
+          <Cell label="max tok/s" value={t.maxTokPerSec.toFixed(1)} icon={Gauge} />
+          <Cell label="cache hit" value={`${(t.cacheHitRate * 100).toFixed(0)}%`} icon={Layers} />
+        </MetricGroup>
+        <MetricGroup label="Latency">
+          <Cell label="p50" value={fmtMs(t.p50DurationMs)} icon={Timer} />
+          <Cell label="p95" value={fmtMs(t.p95DurationMs)} icon={Timer} />
+          <Cell label="avg turns" value={t.avgTurns.toFixed(1)} icon={Hash} />
+        </MetricGroup>
+        <MetricGroup label="Safety">
+          <Cell label="err rate" value={`${(t.errorRate * 100).toFixed(0)}%`} icon={AlertTriangle} tone={t.errorRate > 0 ? "warn" : undefined} />
+          <Cell label="forbidden" value={`${(t.forbiddenViolationRate * 100).toFixed(0)}%`} icon={Bug} tone={t.forbiddenViolationRate > 0 ? "warn" : undefined} />
+          <Cell label="safe-fail" value={`${(t.failsSafelyRate * 100).toFixed(0)}%`} icon={t.failsSafelyRate >= 0.9 ? ShieldCheck : Shield} tone={t.failsSafelyRate >= 0.9 ? "ok" : undefined} />
+        </MetricGroup>
+        <MetricGroup label="Cost & mix">
+          <Cell label="cheapest pass" value={`$${t.cheapestPassUsd.toFixed(4)}`} icon={DollarSign} />
+          <Cell label="tool calls" value={String(t.totalToolCalls)} icon={Wrench} />
+          <Cell label="top tool" value={t.topTools[0]?.name ?? "—"} icon={Wrench} small />
+        </MetricGroup>
       </div>
       <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-3">
         <QualityCell
@@ -103,17 +111,27 @@ function QualityCell({ label, value, detail, ok }: { label: string; value: strin
   );
 }
 
+function MetricGroup({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="space-y-1.5">
+      <div className="text-[10px] uppercase tracking-wider text-fg-dim px-1">{label}</div>
+      <div className="space-y-1.5">{children}</div>
+    </div>
+  );
+}
+
 function Cell({
   label, value, icon: Icon, small, tone,
 }: {
   label: string; value: string; icon: any; small?: boolean; tone?: "warn" | "ok";
 }) {
   return (
-    <div className="px-2 py-1.5 rounded bg-bg-elev/50">
-      <div className="flex items-center gap-1 text-[9px] uppercase tracking-wider text-fg-muted">
-        <Icon className="size-2.5" /> {label}
+    <div className="flex items-center justify-between gap-2 px-2 py-1.5 rounded bg-bg-elev/50">
+      <div className="flex items-center gap-1.5 text-[10px] text-fg-muted">
+        <Icon className="size-2.5 shrink-0" />
+        <span className="truncate">{label}</span>
       </div>
-      <div className={clsx("mono font-medium mt-0.5", small ? "text-[11px] truncate" : "text-sm", tone === "warn" && "text-warn", tone === "ok" && "text-ok")}>{value}</div>
+      <div className={clsx("mono tabular-nums font-medium text-xs", small ? "max-w-[80px] truncate" : "", tone === "warn" && "text-warn", tone === "ok" && "text-ok")}>{value}</div>
     </div>
   );
 }
