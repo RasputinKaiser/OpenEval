@@ -204,7 +204,7 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
             </div>
           )}
 
-          <div className="max-h-[calc(100vh-280px)] overflow-y-auto divide-y divide-bd-subtle">
+          <div className="scroll-contain max-h-[calc(100vh-280px)] overflow-y-auto divide-y divide-bd-subtle">
             {visibleCases.map(({ c, i }) => {
               const sel = selectedIdx === i;
               const runner = c.runner_result;

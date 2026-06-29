@@ -82,6 +82,11 @@ button:active:not(:disabled) { transform: scale(0.96); }
   animation: shimmer 1.5s ease-in-out infinite;
 }
 
+.scroll-contain {
+  contain: layout style;
+  contain-intrinsic-size: auto 400px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .shimmer { animation: none; }
 }

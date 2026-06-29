@@ -289,7 +289,7 @@ export default function LiveClient({ initialData, error: initialError, getTransc
             <div className="text-right">Status</div>
           </div>
 
-          <div className="max-h-[64vh] overflow-y-auto divide-y divide-bd-subtle">
+          <div className="scroll-contain max-h-[64vh] overflow-y-auto divide-y divide-bd-subtle">
             {visibleSessions.map((session) => (
               <SessionRow
                 key={session.sessionId + session.project}
