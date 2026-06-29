@@ -1,6 +1,6 @@
 
 *** This project is primarily a draft. There are issues I'm aware of with formatting and whatnot
-
+  Developed primarily with Noumena Code
 
 # OpenEval
 
