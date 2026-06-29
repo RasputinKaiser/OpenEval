@@ -312,7 +312,7 @@ function RunMetric({ label, value, tone }: { label: string; value: string; tone:
   }[tone];
   return (
     <div className="rounded border border-bd-subtle bg-bg-subtle/70 px-2 py-2">
-      <div className={clsx("mono text-base font-semibold", toneClass)}>{value}</div>
+      <div className={clsx("mono text-base font-semibold tabular-nums", toneClass)}>{value}</div>
       <div className="mt-0.5 text-[10px] uppercase tracking-wider text-fg-dim">{label}</div>
     </div>
   );
@@ -917,7 +917,7 @@ function Mini({ label, value, icon: Icon }: { label: string; value: string; icon
       <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-fg-muted mb-1">
         <Icon className="size-3" /> {label}
       </div>
-      <div className="text-sm font-medium mono">{value}</div>
+      <div className="text-sm font-medium mono tabular-nums">{value}</div>
     </div>
   );
 }
