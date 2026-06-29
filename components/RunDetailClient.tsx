@@ -55,7 +55,7 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
     <div>
       <TelemetryStrip runId={runId} />
       <section className="mb-4 overflow-hidden rounded-lg border border-bd bg-[linear-gradient(135deg,rgba(124,92,255,0.18),rgba(17,17,19,0.96)_42%,rgba(63,185,80,0.09))]">
-        <div className="stagger-grid grid gap-4 p-4 xl:grid-cols-[1fr_360px_340px] xl:items-end">
+        <div className="stagger-grid grid gap-4 p-4 xl:grid-cols-[1fr_360px] xl:items-end">
           <div>
             <div className="flex flex-wrap items-center gap-2 text-[11px] text-fg-muted">
               <span className="inline-flex items-center gap-1 rounded border border-accent-soft/30 bg-accent/15 px-2 py-1 text-accent-soft">
@@ -87,28 +87,6 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
               <RunMetric label="Fail" value={String(counts.failed)} tone="err" />
               <RunMetric label="Live" value={String(counts.running)} tone="accent" />
               <RunMetric label="Visual" value={String(visualCases.length)} tone="visual" />
-            </div>
-          </div>
-          <div className="rounded-lg border border-bd-subtle bg-bg/55 p-3">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                {confidence.score >= 80 ? <ShieldCheck className="size-4 text-ok" /> : <ShieldAlert className="size-4 text-warn" />}
-                <span className="text-xs font-medium">Confidence</span>
-              </div>
-              <span className={clsx("mono text-lg font-semibold", confidence.score >= 80 ? "text-ok" : confidence.score >= 60 ? "text-warn" : "text-err")}>
-                {confidence.score}
-              </span>
-            </div>
-            <div className="mt-2 h-2 overflow-hidden rounded-full bg-bg-elev">
-              <div
-                className={clsx("h-full rounded-full transition-[width] duration-300", confidence.score >= 80 ? "bg-ok" : confidence.score >= 60 ? "bg-warn" : "bg-err")}
-                style={{ width: `${confidence.score}%` }}
-              />
-            </div>
-            <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-              <RunMetric label="Proof" value={`${confidence.deterministicCoverage}%`} tone="ok" />
-              <RunMetric label="Bad rej." value={`${confidence.knownBadCoverage}%`} tone="accent" />
-              <RunMetric label="Weak" value={String(confidence.weakCaseCount)} tone={confidence.weakCaseCount ? "err" : "ok"} />
             </div>
           </div>
         </div>
@@ -232,7 +210,7 @@ function CaseSidePanel({ rc, runId }: { rc: RunCaseRecord; runId: string }) {
       </div>
 
       {(rc.status === "error" || rc.error_msg) && (
-        <div className="card p-4 border border-warn/30">
+        <div className="rounded-lg border border-warn/30 bg-warn/5 p-4">
           <div className="flex items-start gap-3">
             <AlertCircle className="size-4 text-warn shrink-0 mt-0.5" />
             <div className="min-w-0 flex-1">
@@ -251,9 +229,8 @@ function CaseSidePanel({ rc, runId }: { rc: RunCaseRecord; runId: string }) {
           <Mini label="Duration" value={runner.durationMs < 1000 ? `${runner.durationMs}ms` : `${(runner.durationMs / 1000).toFixed(1)}s`} icon={Clock} />
           <Mini label="tok/s" value={runner.durationMs > 0 ? (runner.usage.outputTokens / (runner.durationMs / 1000)).toFixed(1) : "0"} icon={Gauge} />
           <Mini label="Cost" value={`$${runner.usage.costUsd.toFixed(4)}`} icon={DollarSign} />
-          <Mini label="Tokens ↑" value={runner.usage.inputTokens.toLocaleString()} icon={Cpu} />
-          <Mini label="Tokens" value={runner.usage.outputTokens.toLocaleString()} icon={Cpu} />
-          <Mini label="Exit" value={String(runner.exitCode)} icon={Wrench} />
+          <Mini label="Tokens in" value={runner.usage.inputTokens.toLocaleString()} icon={Cpu} />
+          <Mini label="Tokens out" value={runner.usage.outputTokens.toLocaleString()} icon={Cpu} />
         </div>
       )}
 
