@@ -1,10 +1,8 @@
 import Link from "next/link";
 import { listRuns } from "@/lib/db";
-import StatusBadge from "@/components/StatusBadge";
-import HarnessBadge from "@/components/HarnessBadge";
+import RunsClient from "@/components/RunsClient";
 
 export const dynamic = "force-dynamic";
-
 
 export default async function Page() {
   const runs = listRuns(50);
@@ -22,33 +20,7 @@ export default async function Page() {
           No runs yet. <Link href="/runs/new" className="text-accent-soft hover:underline">Start one</Link>.
         </div>
       ) : (
-        <div className="card overflow-hidden">
-          {runs.map((r) => (
-            <Link
-              key={r.id}
-              href={`/runs/${r.id}`}
-              className="flex items-center justify-between gap-4 border-b border-bd-subtle px-4 py-3 transition-colors last:border-0 hover:bg-bg-elev"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="truncate font-medium">{r.name}</div>
-                <div className="text-[11px] text-fg-dim mono mt-0.5 flex items-center gap-1.5 flex-wrap">
-                  {new Date(r.created_at).toLocaleString()} · {r.params.runner}
-                  {r.params.harness && <HarnessBadge harness={r.params.harness} />}
-                  <span>· {r.params.parallel}×</span>
-                  {r.params.samples && r.params.samples > 1 ? <span>· {r.params.samples} samples</span> : null}
-                </div>
-              </div>
-              <div className="flex items-center gap-3 shrink-0">
-                {r.summary && (
-                  <span className={`text-sm mono font-semibold ${r.summary.passRate >= 1 ? "text-ok" : "text-err"}`}>
-                    {(r.summary.passRate * 100).toFixed(0)}%
-                  </span>
-                )}
-                <StatusBadge status={r.status} />
-              </div>
-            </Link>
-          ))}
-        </div>
+        <RunsClient runs={runs} />
       )}
     </div>
   );
