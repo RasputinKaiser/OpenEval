@@ -22,8 +22,38 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
   const [live, setLive] = useState(running);
   const [caseSearch, setCaseSearch] = useState("");
   const [caseFilter, setCaseFilter] = useState<string>("all");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const caseSearchRef = useRef<HTMLInputElement>(null);
   useFocusOnSlash(caseSearchRef);
+
+  function toggleSelect(caseId: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(caseId)) next.delete(caseId);
+      else next.add(caseId);
+      return next;
+    });
+  }
+
+  function toggleSelectAllVisible() {
+    if (visibleCases.every(({ c }) => selectedIds.has(c.id))) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        visibleCases.forEach(({ c }) => next.delete(c.id));
+        return next;
+      });
+    } else {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        visibleCases.forEach(({ c }) => next.add(c.id));
+        return next;
+      });
+    }
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
 
   const visibleCases = useMemo(() => {
     const q = caseSearch.trim().toLowerCase();
@@ -147,6 +177,35 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
             </div>
           )}
 
+          {selectedIds.size > 0 && (
+            <div className="px-4 py-2 border-b border-bd-subtle flex items-center gap-3 bg-accent/5">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={visibleCases.every(({ c }) => selectedIds.has(c.id)) && visibleCases.length > 0}
+                  onChange={toggleSelectAllVisible}
+                  className="accent-accent"
+                />
+                <span className="text-[11px] text-fg-muted">{selectedIds.size} selected</span>
+              </label>
+              <Link
+                href={`/runs/new?caseIds=${encodeURIComponent(Array.from(selectedIds).join(","))}${model ? `&model=${encodeURIComponent(model)}` : ""}`}
+                className="text-[11px] text-accent-soft hover:underline inline-flex items-center gap-1"
+              >
+                <PlayCircle className="size-3" /> Re-run selected
+              </Link>
+              <button
+                onClick={() => { navigator.clipboard?.writeText(Array.from(selectedIds).join(", ")); }}
+                className="text-[11px] text-fg-muted hover:text-fg"
+              >
+                Copy IDs
+              </button>
+              <button onClick={clearSelection} className="text-[11px] text-fg-dim hover:text-fg ml-auto">
+                Clear
+              </button>
+            </div>
+          )}
+
           <div className="max-h-[calc(100vh-280px)] overflow-y-auto divide-y divide-bd-subtle">
             {visibleCases.map(({ c, i }) => {
               const sel = selectedIdx === i;
@@ -177,6 +236,13 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
                     c.status === "running" || c.status === "grading" ? "bg-accent-soft animate-pulse" :
                     "bg-bd-subtle"
                   )} />
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(c.id)}
+                    onChange={() => toggleSelect(c.id)}
+                    onClick={(e) => e.stopPropagation()}
+                    className="accent-accent shrink-0 size-3"
+                  />
                   <span className="text-[10px] text-fg-dim mono w-6 shrink-0">{String(i + 1).padStart(2, "0")}</span>
                   <div className="min-w-0 flex-1">
                     <div className="flex min-w-0 items-center gap-2">
