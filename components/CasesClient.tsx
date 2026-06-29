@@ -7,6 +7,13 @@ import { Gauge, Wrench, Search, X } from "lucide-react";
 import type { CaseDefinition } from "@/lib/types";
 import { useFocusOnSlash } from "@/lib/use-focus-slash";
 
+const CAT_ACCENT: Record<string, string> = {
+  "agentic-swe": "bg-accent",
+  "single-tool": "bg-ok",
+  "reasoning": "bg-warn",
+  "visual-code": "bg-blue-500",
+};
+
 export default function CasesClient({ cases, activeCategory }: { cases: CaseDefinition[]; activeCategory?: string }) {
   const [query, setQuery] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
@@ -68,8 +75,9 @@ export default function CasesClient({ cases, activeCategory }: { cases: CaseDefi
                 <Link
                   key={c.id}
                   href={`/runs/new?caseIds=${encodeURIComponent(c.id)}`}
-                  className="card p-4 hover:bg-bg-elev active:scale-[0.96] transition-colors"
+                  className="relative overflow-hidden card p-4 pt-5 hover:bg-bg-elev active:scale-[0.96] transition-colors"
                 >
+                  <div className={clsx("absolute left-0 right-0 top-0 h-0.5", CAT_ACCENT[c.category] ?? "bg-accent")} />
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="text-sm font-medium">{c.name}</div>
