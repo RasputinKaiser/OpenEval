@@ -67,7 +67,7 @@ export default function BenchClient({ runId, runName }: Props) {
 
       {t && (
         <>
-          <section className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 mb-6">
+          <section className="stagger-grid grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 mb-6">
             <Stat label="Avg tok/s" value={t.avgTokPerSec.toFixed(1)} icon={Gauge} tone="accent" />
             <Stat label="P50 tok/s" value={t.p50TokPerSec.toFixed(1)} icon={Zap} />
             <Stat label="Max tok/s" value={t.maxTokPerSec.toFixed(1)} icon={Zap} />
@@ -133,7 +133,7 @@ export default function BenchClient({ runId, runName }: Props) {
                   <div key={tool.name} className="flex items-center gap-3">
                     <span className="text-xs mono w-40 shrink-0 text-fg-muted">{tool.name}</span>
                     <div className="flex-1 h-4 bg-bg-elev rounded overflow-hidden">
-                      <div className="h-full bg-accent/60" style={{ width: `${pct}%` }} />
+                      <div className="h-full bg-accent/60 transition-[width] duration-300" style={{ width: `${pct}%` }} />
                     </div>
                     <span className="text-xs mono w-16 text-right">{tool.count}</span>
                   </div>
