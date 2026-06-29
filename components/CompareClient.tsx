@@ -173,16 +173,44 @@ function RunSelect({ label, value, onChange, runs }: { label: string; value: str
 
 function StatusPill({ status }: { status: string | null }) {
   if (!status) return <span className="text-fg-dim text-xs">—</span>;
-  const c = status === "passed" ? "text-ok" : status === "failed" || status === "error" ? "text-err" : "text-fg-muted";
-  const sym = status === "passed" ? "" : status === "failed" || status === "error" ? "" : "•";
-  return <span className={clsx("text-xs mono", c)}>{sym} {status}</span>;
+  const colors: Record<string, string> = {
+    passed: "bg-ok/10 text-ok border-ok/20",
+    failed: "bg-err/10 text-err border-err/20",
+    error: "bg-err/10 text-err border-err/20",
+    running: "bg-accent/10 text-accent-soft border-accent/20",
+    grading: "bg-warn/10 text-warn border-warn/20",
+    pending: "bg-bg-elev text-fg-dim border-bd",
+    skipped: "bg-bg-elev text-fg-dim border-bd",
+  };
+  const cls = colors[status] ?? "bg-bg-elev text-fg-muted border-bd";
+  return (
+    <span className={clsx("inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] mono", cls)}>
+      <span className={clsx("size-1.5 rounded-full", status === "passed" ? "bg-ok" : status === "failed" || status === "error" ? "bg-err" : status === "running" ? "bg-accent-soft" : status === "grading" ? "bg-warn" : "bg-fg-dim")} />
+      {status}
+    </span>
+  );
 }
 
 function DeltaText({ value, digits, prefix = "", higherIsBetter, lowerIsBetter }: { value: number; digits: number; prefix?: string; higherIsBetter?: boolean; lowerIsBetter?: boolean }) {
   let tone = "text-fg-muted";
-  if (higherIsBetter) tone = value > 0 ? "text-ok" : value < 0 ? "text-err" : "text-fg-muted";
-  if (lowerIsBetter) tone = value < 0 ? "text-ok" : value > 0 ? "text-err" : "text-fg-muted";
-  return <span className={tone}>{value > 0 ? "+" : ""}{prefix}{value.toFixed(digits)}</span>;
+  let bg = "";
+  let arrow = "";
+  if (higherIsBetter) {
+    tone = value > 0 ? "text-ok" : value < 0 ? "text-err" : "text-fg-muted";
+    bg = value > 0 ? "bg-ok/10" : value < 0 ? "bg-err/10" : "";
+    arrow = value > 0 ? "▲" : value < 0 ? "▼" : "";
+  }
+  if (lowerIsBetter) {
+    tone = value < 0 ? "text-ok" : value > 0 ? "text-err" : "text-fg-muted";
+    bg = value < 0 ? "bg-ok/10" : value > 0 ? "bg-err/10" : "";
+    arrow = value < 0 ? "▼" : value > 0 ? "▲" : "";
+  }
+  return (
+    <span className={clsx("inline-flex items-center gap-1 rounded px-1.5 py-0.5 mono tabular-nums text-xs", tone, bg)}>
+      {arrow && <span className="text-[9px]">{arrow}</span>}
+      {value > 0 ? "+" : ""}{prefix}{value.toFixed(digits)}
+    </span>
+  );
 }
 
 function Delta({ label, a, b, aVal, bVal, higherIsBetter, lowerIsBetter }: { label: string; a: string; b: string; aVal: number; bVal: number; higherIsBetter?: boolean; lowerIsBetter?: boolean }) {
