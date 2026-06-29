@@ -14,6 +14,7 @@ import {
 import type { EvidenceTier, GraderResult, GraderSpec, RunCaseRecord, TranscriptEntry } from "@/lib/types";
 import { useFocusOnSlash } from "@/lib/use-focus-slash";
 import { useVisibilityPoll } from "@/lib/use-visibility-poll";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 
 interface Props { runId: string; runName?: string; initialCases: RunCaseRecord[]; running: boolean; model?: string; harness?: string; harnessInfo?: { id: string; bin: string | null; version: string | null }; }
 
@@ -22,6 +23,7 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
   const [selectedIdx, setSelectedIdx] = useState<number | null>(initialCases.length ? 0 : null);
   const [live, setLive] = useState(running);
   const [caseSearch, setCaseSearch] = useState("");
+  const debouncedCaseSearch = useDebouncedValue(caseSearch, 200);
   const [caseFilter, setCaseFilter] = useState<string>("all");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const caseSearchRef = useRef<HTMLInputElement>(null);
@@ -57,7 +59,7 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
   }
 
   const visibleCases = useMemo(() => {
-    const q = caseSearch.trim().toLowerCase();
+    const q = debouncedCaseSearch.trim().toLowerCase();
     return cases
       .map((c, i) => ({ c, i }))
       .filter(({ c }) => {
@@ -67,7 +69,7 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
           c.case_id.toLowerCase().includes(q) ||
           c.category.toLowerCase().includes(q);
       });
-  }, [cases, caseSearch, caseFilter]);
+  }, [cases, debouncedCaseSearch, caseFilter]);
 
   useVisibilityPoll(
     async () => {

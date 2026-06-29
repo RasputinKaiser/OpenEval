@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import CommandPalette from "./CommandPalette";
-import ShortcutsOverlay from "./ShortcutsOverlay";
+import dynamic from "next/dynamic";
 import { useGotoNavigation } from "@/lib/use-goto-navigation";
+
+const CommandPalette = dynamic(() => import("./CommandPalette"), { ssr: false });
+const ShortcutsOverlay = dynamic(() => import("./ShortcutsOverlay"), { ssr: false });
 
 interface RunLite {
   id: string;

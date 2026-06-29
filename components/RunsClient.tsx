@@ -8,6 +8,7 @@ import HarnessBadge from "./HarnessBadge";
 import { ChevronDown, Search, X } from "lucide-react";
 import type { RunRecord } from "@/lib/types";
 import { useFocusOnSlash } from "@/lib/use-focus-slash";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 
 type SortKey = "newest" | "oldest" | "pass-desc" | "pass-asc";
 type StatusFilter = "all" | "running" | "completed" | "failed" | "passed";
@@ -32,6 +33,7 @@ export default function RunsClient({ runs }: { runs: RunRecord[] }) {
   const [sort, setSort] = useState<SortKey>("newest");
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, 200);
   const [pageSize, setPageSize] = useState(50);
   const searchRef = useRef<HTMLInputElement>(null);
   useFocusOnSlash(searchRef);
@@ -69,7 +71,7 @@ export default function RunsClient({ runs }: { runs: RunRecord[] }) {
         filtered = runs.filter((r) => r.status === statusFilter);
       }
     }
-    const q = search.trim().toLowerCase();
+    const q = debouncedSearch.trim().toLowerCase();
     if (q) {
       filtered = filtered.filter((r) => r.name.toLowerCase().includes(q) || r.id.toLowerCase().includes(q) || (r.params.harness ?? "").toLowerCase().includes(q));
     }
@@ -83,7 +85,7 @@ export default function RunsClient({ runs }: { runs: RunRecord[] }) {
       return ap - bp;
     });
     return sorted;
-  }, [runs, statusFilter, sort, search]);
+  }, [runs, statusFilter, sort, debouncedSearch]);
 
   const dateSorted = sort === "newest" || sort === "oldest";
   const paged = visible.slice(0, pageSize);
