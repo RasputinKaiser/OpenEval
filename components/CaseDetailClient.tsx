@@ -256,10 +256,11 @@ function Section({ title, icon: Icon, count, open, onToggle, children }: { title
 function ToolCallItem({ tc, idx }: { tc: RunnerResult["toolCalls"][number]; idx: number }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="px-4 py-2.5">
+    <div className="relative px-4 py-2.5">
+      {tc.isError && <div className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full bg-err" />}
       <button onClick={() => setOpen(!open)} className="w-full flex items-start gap-2 text-left">
-        <span className="text-[10px] text-fg-dim mono mt-0.5">{String(idx + 1).padStart(3, "0")}</span>
-        <Wrench className="size-3.5 text-accent-soft mt-0.5 shrink-0" />
+        <span className="text-[10px] text-fg-dim mono mt-0.5 w-6 shrink-0 tabular-nums">{String(idx + 1).padStart(3, "0")}</span>
+        <Wrench className={clsx("size-3.5 mt-0.5 shrink-0", tc.isError ? "text-err" : "text-accent-soft")} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="font-mono text-xs font-medium">{tc.name}</span>
@@ -269,7 +270,7 @@ function ToolCallItem({ tc, idx }: { tc: RunnerResult["toolCalls"][number]; idx:
             {tc.output ? tc.output.slice(0, 120) : (tc.input ? JSON.stringify(tc.input).slice(0, 120) : "")}
           </div>
         </div>
-        <ChevronRight className={clsx("size-3.5 text-fg-dim mt-0.5", open && "rotate-90")} />
+        <ChevronRight className={clsx("size-3.5 text-fg-dim mt-0.5 transition-transform", open && "rotate-90")} />
       </button>
       {open && (
         <div className="mt-2 space-y-2 pl-6">
@@ -282,7 +283,7 @@ function ToolCallItem({ tc, idx }: { tc: RunnerResult["toolCalls"][number]; idx:
           {tc.output && (
             <div>
               <div className="text-[10px] uppercase text-fg-dim mb-1">Output</div>
-              <pre className="text-[11px] mono text-fg-muted bg-bg p-2 rounded border border-bd-subtle overflow-x-auto max-h-80 overflow-y-auto">{tc.output.slice(0, 8000)}</pre>
+              <pre className={clsx("text-[11px] mono p-2 rounded border overflow-x-auto max-h-80 overflow-y-auto", tc.isError ? "text-err/80 bg-err/5 border-err/15" : "text-fg-muted bg-bg border-bd-subtle")}>{tc.output.slice(0, 8000)}</pre>
             </div>
           )}
         </div>
