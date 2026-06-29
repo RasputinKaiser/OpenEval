@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import clsx from "clsx";
 import {
@@ -251,7 +251,7 @@ function Section({ title, icon: Icon, count, open, onToggle, children }: { title
   );
 }
 
-function ToolCallItem({ tc, idx }: { tc: RunnerResult["toolCalls"][number]; idx: number }) {
+const ToolCallItem = memo(function ToolCallItem({ tc, idx }: { tc: RunnerResult["toolCalls"][number]; idx: number }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="relative px-4 py-2.5">
@@ -288,7 +288,7 @@ function ToolCallItem({ tc, idx }: { tc: RunnerResult["toolCalls"][number]; idx:
       )}
     </div>
   );
-}
+});
 
 function Transcript({ runner }: { runner: RunnerResult }) {
   return (

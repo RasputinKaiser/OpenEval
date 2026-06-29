@@ -84,7 +84,7 @@ export default function HarnessesClient() {
             {Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="px-3 py-2.5 rounded-md border border-bd space-y-2">
                 <div className="flex items-center gap-2">
-                  <div className="size-3.5 rounded-full animate-pulse bg-bd-subtle" />
+                  <div className="size-3.5 rounded-full shimmer" />
                   <div className="h-4 w-24 animate-pulse rounded bg-bd-subtle" />
                 </div>
                 <div className="h-3 w-32 animate-pulse rounded bg-bd-subtle" />

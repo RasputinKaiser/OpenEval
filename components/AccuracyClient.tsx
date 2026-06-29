@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import { ShieldCheck, CheckCircle2, XCircle, Search, ArrowUpDown } from "lucide-react";
 import clsx from "clsx";
 import { evidenceLabel } from "@/lib/accuracy";
@@ -234,7 +234,7 @@ const TIER_COLORS: Record<EvidenceTier, string> = {
   manual: "bg-bg-elev text-fg-dim",
 };
 
-function CaseRow({ row }: { row: CaseAccuracyAudit }) {
+const CaseRow = memo(function CaseRow({ row }: { row: CaseAccuracyAudit }) {
   return (
     <tr className="hover:bg-bg-elev">
       <td className="px-4 py-2">
@@ -261,7 +261,7 @@ function CaseRow({ row }: { row: CaseAccuracyAudit }) {
       </td>
     </tr>
   );
-}
+});
 
 function Stat({ label, value, sub, tone, active, onClick }: { label: string; value: string; sub: string; tone?: "ok" | "warn"; active?: boolean; onClick?: () => void; }) {
   const c = tone === "ok" ? "text-ok" : tone === "warn" ? "text-warn" : "text-fg";

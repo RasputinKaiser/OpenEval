@@ -72,15 +72,15 @@ export default function BenchClient({ runId, runName }: Props) {
   if (loading && !telemetry) {
     return (
       <div className="p-8 max-w-7xl mx-auto">
-        <div className="mb-6 h-7 w-48 animate-pulse rounded bg-bd-subtle" />
+        <div className="mb-6 h-7 w-48 shimmer rounded" />
         <section className="mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
           {Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="rounded-lg border border-bd-subtle bg-bg-subtle/30 p-3 space-y-2">
-              <div className="h-3 w-20 animate-pulse rounded bg-bd-subtle" />
+              <div className="h-3 w-20 shimmer rounded" />
               {Array.from({ length: 3 }).map((_, j) => (
                 <div key={j} className="flex items-center justify-between gap-2">
-                  <div className="h-3 w-24 animate-pulse rounded bg-bd-subtle" />
-                  <div className="h-4 w-12 animate-pulse rounded bg-bd-subtle" />
+                  <div className="h-3 w-24 shimmer rounded" />
+                  <div className="h-4 w-12 shimmer rounded" />
                 </div>
               ))}
             </div>
@@ -89,9 +89,9 @@ export default function BenchClient({ runId, runName }: Props) {
         <div className="card p-5">
           {Array.from({ length: 5 }).map((_, i) => (
             <div key={i} className="flex items-center gap-3 py-3 border-b border-bd-subtle last:border-0">
-              <div className="h-3 w-32 animate-pulse rounded bg-bd-subtle" />
+              <div className="h-3 w-32 shimmer rounded" />
               <div className="flex-1 space-y-1">
-                <div className="h-3 w-full animate-pulse rounded bg-bd-subtle" />
+                <div className="h-3 w-full shimmer rounded" />
               </div>
             </div>
           ))}

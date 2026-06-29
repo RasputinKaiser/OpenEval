@@ -993,7 +993,7 @@ function Transcript({ transcript }: { transcript: TranscriptEntry[] }) {
   );
 }
 
-function TranscriptEntryRow({ entry }: { entry: TranscriptEntry }) {
+const TranscriptEntryRow = memo(function TranscriptEntryRow({ entry }: { entry: TranscriptEntry }) {
   const [showMore, setShowMore] = useState(false);
   let budget = showMore ? Infinity : MAX_ENTRY_LEN;
   let cut = false;
@@ -1052,7 +1052,7 @@ function TranscriptEntryRow({ entry }: { entry: TranscriptEntry }) {
       )}
     </div>
   );
-}
+});
 
 function Mini({ label, value, icon: Icon }: { label: string; value: string; icon: any }) {
   return (
