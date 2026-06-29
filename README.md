@@ -209,6 +209,19 @@ The repository includes public-facing GitHub scaffolding:
 
 No license is selected yet. Choose and add a `LICENSE` file before treating the project as open-source for reuse, because GitHub visibility alone does not grant reuse rights.
 
+## Launch Video Source
+
+The repository includes a HyperFrames source composition for an OpenEval launch/demo video:
+
+```bash
+cd media/openeval-launch
+npm install
+npm run check
+npm run dev
+```
+
+The composition lives in `media/openeval-launch/index.html`, with visual identity notes in `media/openeval-launch/DESIGN.md`. Generated preview, inspection, and render output should stay local.
+
 ## Project Layout
 
 ```text
@@ -229,6 +242,7 @@ cases/                       public case definitions and oracle scripts
 fixtures/                    tiny repositories and inputs copied into workdirs
 harnesses/                   descriptor-driven harness definitions
 scripts/                     maintenance and public-readiness helpers
+media/openeval-launch/       HyperFrames source for the OpenEval launch video
 data/                        ignored local SQLite DB, transcripts, workdirs, artifacts
 ```
 

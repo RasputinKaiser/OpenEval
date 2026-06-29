@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #0a0a0b;
+      }
+
+      body {
+        font-family: sans-serif;
+        color: #e8e8ea;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #0a0a0b;
+      }
+
+      .scene {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        background-color: #0a0a0b;
+      }
+
+      .scene-content {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        padding: 92px 120px;
+        display: flex;
+        flex-direction: column;
+        gap: 38px;
+        box-sizing: border-box;
+        z-index: 4;
+      }
+
+      .grid {
+        position: absolute;
+        inset: -80px;
+        opacity: 0.22;
+        background-image:
+          linear-gradient(rgba(124, 92, 255, 0.13) 1px, rgba(124, 92, 255, 0) 1px),
+          linear-gradient(90deg, rgba(124, 92, 255, 0.13) 1px, rgba(124, 92, 255, 0) 1px);
+        background-size: 80px 80px;
+        z-index: 0;
+      }
+
+      .glow {
+        position: absolute;
+        width: 720px;
+        height: 720px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(124, 92, 255, 0.42) 0%, rgba(124, 92, 255, 0.16) 34%, rgba(124, 92, 255, 0) 68%);
+        filter: blur(6px);
+        z-index: 1;
+      }
+
+      .glow.ok {
+        background: radial-gradient(circle, rgba(63, 185, 80, 0.28) 0%, rgba(63, 185, 80, 0.12) 36%, rgba(63, 185, 80, 0) 70%);
+      }
+
+      .kicker {
+        font-family: Menlo, Monaco, ui-monospace, monospace;
+        font-size: 22px;
+        line-height: 1;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: #a78bff;
+        font-weight: 700;
+      }
+
+      h1,
+      h2 {
+        font-family: Georgia, "Times New Roman", serif;
+        font-weight: 900;
+        letter-spacing: 0.01em;
+        line-height: 0.92;
+        max-width: 1280px;
+      }
+
+      h1 {
+        font-size: 154px;
+      }
+
+      h2 {
+        font-size: 118px;
+        line-height: 0.96;
+      }
+
+      .copy {
+        max-width: 880px;
+        font-size: 36px;
+        line-height: 1.22;
+        color: #c8c8cf;
+        font-weight: 350;
+      }
+
+      .mono,
+      .metric,
+      .badge,
+      .chip,
+      .table,
+      .terminal {
+        font-family: Menlo, Monaco, ui-monospace, monospace;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .topbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-family: Menlo, Monaco, ui-monospace, monospace;
+        color: #8b8b94;
+        font-size: 21px;
+        border-bottom: 1px solid #26262b;
+        padding-bottom: 24px;
+      }
+
+      .signal {
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .signal::before {
+        content: "";
+        width: 13px;
+        height: 13px;
+        border-radius: 50%;
+        background: #3fb950;
+        box-shadow: 0 0 28px rgba(63, 185, 80, 0.8);
+      }
+
+      .split {
+        display: grid;
+        grid-template-columns: minmax(0, 1.02fr) minmax(0, 0.98fr);
+        gap: 70px;
+        align-items: center;
+        flex: 1;
+        min-height: 0;
+      }
+
+      .panel {
+        border: 1px solid #26262b;
+        background: rgba(17, 17, 19, 0.88);
+        border-radius: 14px;
+        box-shadow: 0 28px 80px rgba(0, 0, 0, 0.36);
+      }
+
+      .table {
+        padding: 32px;
+        display: grid;
+        gap: 16px;
+      }
+
+      .row {
+        display: grid;
+        grid-template-columns: 1fr 0.8fr 0.85fr;
+        gap: 20px;
+        align-items: center;
+        min-height: 58px;
+        padding: 0 18px;
+        border: 1px solid #1d1d22;
+        border-radius: 10px;
+        color: #d8d8de;
+        font-size: 21px;
+      }
+
+      .row.header {
+        color: #8b8b94;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        font-size: 16px;
+        border-color: rgba(124, 92, 255, 0.28);
+      }
+
+      .status {
+        justify-self: start;
+        padding: 8px 12px;
+        border-radius: 999px;
+        font-size: 17px;
+        font-weight: 700;
+      }
+
+      .status.pass {
+        color: #3fb950;
+        background: rgba(63, 185, 80, 0.12);
+      }
+
+      .status.warn {
+        color: #d29922;
+        background: rgba(210, 153, 34, 0.12);
+      }
+
+      .status.fail {
+        color: #f85149;
+        background: rgba(248, 81, 73, 0.12);
+      }
+
+      .metric-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 18px;
+      }
+
+      .metric {
+        padding: 28px;
+        min-height: 148px;
+        border-radius: 14px;
+        border: 1px solid #26262b;
+        background: rgba(17, 17, 19, 0.9);
+      }
+
+      .metric .label {
+        font-size: 18px;
+        color: #8b8b94;
+        text-transform: uppercase;
+        letter-spacing: 0.09em;
+      }
+
+      .metric .value {
+        margin-top: 20px;
+        font-size: 58px;
+        font-weight: 700;
+        color: #e8e8ea;
+        line-height: 0.95;
+      }
+
+      .metric .value.ok {
+        color: #3fb950;
+      }
+
+      .metric .value.warn {
+        color: #d29922;
+      }
+
+      .metric .value.accent {
+        color: #a78bff;
+      }
+
+      .terminal {
+        padding: 34px;
+        font-size: 25px;
+        line-height: 1.55;
+        color: #c8c8cf;
+      }
+
+      .terminal .prompt {
+        color: #a78bff;
+      }
+
+      .terminal .ok {
+        color: #3fb950;
+      }
+
+      .terminal .muted {
+        color: #8b8b94;
+      }
+
+      .privacy-stack {
+        display: grid;
+        gap: 18px;
+      }
+
+      .privacy-card {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        align-items: center;
+        gap: 22px;
+        min-height: 108px;
+        padding: 0 28px;
+        border: 1px solid #26262b;
+        border-radius: 14px;
+        background: rgba(17, 17, 19, 0.9);
+      }
+
+      .icon-dot {
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        background: #7c5cff;
+        box-shadow: 0 0 36px rgba(124, 92, 255, 0.55);
+      }
+
+      .privacy-card strong {
+        display: block;
+        font-size: 28px;
+        line-height: 1.05;
+      }
+
+      .privacy-card span {
+        display: block;
+        margin-top: 8px;
+        color: #8b8b94;
+        font-size: 20px;
+      }
+
+      .lock {
+        font-family: Menlo, Monaco, ui-monospace, monospace;
+        color: #3fb950;
+        font-size: 20px;
+        font-weight: 700;
+      }
+
+      .github-card {
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        min-height: 600px;
+        padding: 38px;
+      }
+
+      .repo-line {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        color: #8b8b94;
+        font-family: Menlo, Monaco, ui-monospace, monospace;
+        font-size: 22px;
+        border-bottom: 1px solid #26262b;
+        padding-bottom: 26px;
+      }
+
+      .repo-title {
+        align-self: center;
+        display: grid;
+        gap: 26px;
+        max-width: 760px;
+      }
+
+      .repo-title h2 {
+        font-size: 94px;
+        max-width: 740px;
+      }
+
+      .repo-title p {
+        max-width: 740px;
+        color: #c8c8cf;
+        font-size: 29px;
+        line-height: 1.28;
+      }
+
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+
+      .chip {
+        padding: 10px 14px;
+        border: 1px solid #26262b;
+        border-radius: 999px;
+        color: #a78bff;
+        background: rgba(124, 92, 255, 0.11);
+        font-size: 18px;
+      }
+
+      .transition {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        z-index: 20;
+        overflow: hidden;
+      }
+
+      .wipe-band {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 25%;
+        background: #7c5cff;
+        transform: scaleX(0);
+        transform-origin: left center;
+      }
+
+      .wipe-band:nth-child(1) { left: 0; background: #7c5cff; }
+      .wipe-band:nth-child(2) { left: 25%; background: #6c52df; }
+      .wipe-band:nth-child(3) { left: 50%; background: #19191f; }
+      .wipe-band:nth-child(4) { left: 75%; background: #3fb950; }
+
+      .scanline {
+        position: absolute;
+        left: 120px;
+        right: 120px;
+        height: 2px;
+        background: #7c5cff;
+        opacity: 0.68;
+        box-shadow: 0 0 28px rgba(124, 92, 255, 0.8);
+        z-index: 3;
+      }
+
+      .scene-1 .glow { right: -170px; top: -190px; }
+      .scene-2 .glow { left: -180px; bottom: -210px; }
+      .scene-3 .glow { right: 190px; bottom: -260px; }
+      .scene-4 .glow { right: -120px; top: 230px; }
+
+      .scene-1 .copy {
+        max-width: 980px;
+      }
+
+      .hero-stack {
+        display: grid;
+        gap: 30px;
+      }
+
+      .headline-stack {
+        display: grid;
+        gap: 30px;
+      }
+
+      .scene-1 h1 {
+        max-width: 1180px;
+      }
+
+      .side-note {
+        align-self: end;
+        max-width: 520px;
+        color: #8b8b94;
+        font-size: 24px;
+        line-height: 1.35;
+        border-left: 2px solid #7c5cff;
+        padding-left: 24px;
+      }
+    </style>
+  </head>
+  <body>
+    <div data-hf-id="hf-ofop" id="root" data-composition-id="main" data-start="0" data-duration="14" data-width="1920" data-height="1080">
+      <div data-hf-id="hf-i5f9" id="scene-1" class="clip scene scene-1" data-start="0" data-duration="3.45" data-track-index="1">
+        <div data-hf-id="hf-2kcx" id="grid-1" class="grid" data-layout-ignore=""></div>
+        <div data-hf-id="hf-end9" id="glow-1" class="glow" data-layout-ignore=""></div>
+        <div data-hf-id="hf-5cya" class="scanline" id="scan-1"></div>
+        <div data-hf-id="hf-cn5c" class="scene-content">
+          <div data-hf-id="hf-mndw" class="topbar">
+            <div data-hf-id="hf-8dk4" class="signal">LOCAL EVAL SYSTEM</div>
+            <div data-hf-id="hf-x7bm">RasputinKaiser/OpenEval</div>
+          </div>
+          <div data-hf-id="hf-hgc8" class="split">
+            <div data-hf-id="hf-ymtn" class="hero-stack">
+              <div data-hf-id="hf-yruo" class="kicker">Agent CLI evaluations need evidence</div>
+              <h1 data-hf-id="hf-px3w">Stop trusting pretty pass rates.</h1>
+              <p data-hf-id="hf-y544" class="copy">OpenEval keeps the score, the trace, and the proof boundary visible in the same cockpit.</p>
+            </div>
+            <div data-hf-id="hf-z4ja" class="table panel">
+              <div data-hf-id="hf-03xv" class="row header"><span data-hf-id="hf-46ed">case</span><span data-hf-id="hf-tnnh">signal</span><span data-hf-id="hf-ahp1">proof</span></div>
+              <div data-hf-id="hf-thy4" class="row"><span data-hf-id="hf-0x7z">swe-fix-fizzbuzz</span><span data-hf-id="hf-1u4z" class="status pass">pass</span><span data-hf-id="hf-vsbu">npm test</span></div>
+              <div data-hf-id="hf-lt04" class="row"><span data-hf-id="hf-9xxg">visual-dashboard</span><span data-hf-id="hf-ik31" class="status warn">review</span><span data-hf-id="hf-o787">artifact</span></div>
+              <div data-hf-id="hf-km31" class="row"><span data-hf-id="hf-jbr9">config-lock</span><span data-hf-id="hf-p4mj" class="status fail">blocked</span><span data-hf-id="hf-six2">forbidden</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div data-hf-id="hf-qppg" id="wipe-1" class="clip transition" data-start="3.05" data-duration="0.58" data-track-index="7">
+        <div data-hf-id="hf-smvf" class="wipe-band"></div>
+        <div data-hf-id="hf-bzu3" class="wipe-band"></div>
+        <div data-hf-id="hf-blj2" class="wipe-band"></div>
+        <div data-hf-id="hf-b781" class="wipe-band"></div>
+      </div>
+
+      <div data-hf-id="hf-shh7" id="scene-2" class="clip scene scene-2" data-start="3.34" data-duration="3.55" data-track-index="2">
+        <div data-hf-id="hf-6igy" id="grid-2" class="grid" data-layout-ignore=""></div>
+        <div data-hf-id="hf-qc3u" id="glow-2" class="glow ok" data-layout-ignore=""></div>
+        <div data-hf-id="hf-o0eg" class="scene-content">
+          <div data-hf-id="hf-qwf0" class="topbar">
+            <div data-hf-id="hf-33qf" class="signal">DASHBOARD + CLI</div>
+            <div data-hf-id="hf-lxm7">runs · cases · harnesses · accuracy</div>
+          </div>
+          <div data-hf-id="hf-wu6o" class="split">
+            <div data-hf-id="hf-ix2r" class="headline-stack">
+              <div data-hf-id="hf-bomi" class="kicker">One suite, many harnesses</div>
+              <h2 data-hf-id="hf-kj1s" id="scene-2-title">Compare agents without losing the transcript.</h2>
+            </div>
+            <div data-hf-id="hf-3t5p" class="metric-grid">
+              <div data-hf-id="hf-dq4c" class="metric"><div data-hf-id="hf-qvml" class="label">case library</div><div data-hf-id="hf-zsai" class="value accent">18</div></div>
+              <div data-hf-id="hf-q6lw" class="metric"><div data-hf-id="hf-8mqb" class="label">usage measured</div><div data-hf-id="hf-n2kk" class="value ok">140/164</div></div>
+              <div data-hf-id="hf-ozot" class="metric"><div data-hf-id="hf-8kne" class="label">evidence tiers</div><div data-hf-id="hf-8noq" class="value">5</div></div>
+              <div data-hf-id="hf-pdzu" class="metric"><div data-hf-id="hf-vw4i" class="label">missing data</div><div data-hf-id="hf-0e4o" class="value warn">labeled</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div data-hf-id="hf-j3vx" id="wipe-2" class="clip transition" data-start="6.52" data-duration="0.58" data-track-index="8">
+        <div data-hf-id="hf-asx0" class="wipe-band"></div>
+        <div data-hf-id="hf-aelz" class="wipe-band"></div>
+        <div data-hf-id="hf-a0ay" class="wipe-band"></div>
+        <div data-hf-id="hf-9lzx" class="wipe-band"></div>
+      </div>
+
+      <div data-hf-id="hf-k93n" id="scene-3" class="clip scene scene-3" data-start="6.82" data-duration="3.65" data-track-index="3">
+        <div data-hf-id="hf-agkz" id="grid-3" class="grid" data-layout-ignore=""></div>
+        <div data-hf-id="hf-or73" id="glow-3" class="glow" data-layout-ignore=""></div>
+        <div data-hf-id="hf-mthd" class="scene-content">
+          <div data-hf-id="hf-pphx" class="topbar">
+            <div data-hf-id="hf-un01" class="signal">LOCAL FIRST</div>
+            <div data-hf-id="hf-qwn5">stats stay on your machine</div>
+          </div>
+          <div data-hf-id="hf-vn9l" class="split">
+            <div data-hf-id="hf-1e97" class="privacy-stack">
+              <div data-hf-id="hf-60mj" class="privacy-card"><div data-hf-id="hf-ogo1" class="icon-dot"></div><div data-hf-id="hf-yeow"><strong data-hf-id="hf-990f">SQLite run history</strong><span data-hf-id="hf-y2h1">Ignored under data/ with transcripts and workdirs.</span></div><div data-hf-id="hf-xoz4" class="lock">LOCAL</div></div>
+              <div data-hf-id="hf-ud1n" class="privacy-card"><div data-hf-id="hf-zfcl" class="icon-dot"></div><div data-hf-id="hf-y7yw"><strong data-hf-id="hf-zn3m">Trace provenance</strong><span data-hf-id="hf-es8c">Measured, inferred, missing, and malformed are separate claims.</span></div><div data-hf-id="hf-76p6" class="lock">CLEAR</div></div>
+              <div data-hf-id="hf-tyqm" class="privacy-card"><div data-hf-id="hf-0m9o" class="icon-dot"></div><div data-hf-id="hf-x11t"><strong data-hf-id="hf-j93z">Public upload audit</strong><span data-hf-id="hf-ny3c">Blocks private machine paths and local-only generated files.</span></div><div data-hf-id="hf-xn1c" class="lock">SAFE</div></div>
+            </div>
+            <div data-hf-id="hf-fosq" class="terminal panel">
+              <div data-hf-id="hf-0m16" class="terminal-line"><span data-hf-id="hf-99ip" class="prompt">$</span> bash scripts/public-upload-audit.sh</div>
+              <div data-hf-id="hf-sfby" class="terminal-line ok">ok: no local-only generated files are tracked</div>
+              <div data-hf-id="hf-9tqg" class="terminal-line ok">ok: private machine paths absent</div>
+              <div data-hf-id="hf-0gef" class="terminal-line muted">fixture secrets are synthetic test data</div>
+              <div data-hf-id="hf-9yl4" class="terminal-line ok">public upload audit passed</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div data-hf-id="hf-wq6b" id="wipe-3" class="clip transition" data-start="10.05" data-duration="0.62" data-track-index="9">
+        <div data-hf-id="hf-fklc" class="wipe-band"></div>
+        <div data-hf-id="hf-f6ab" class="wipe-band"></div>
+        <div data-hf-id="hf-82v5" class="wipe-band"></div>
+        <div data-hf-id="hf-8h66" class="wipe-band"></div>
+      </div>
+
+      <div data-hf-id="hf-v3mv" id="scene-4" class="clip scene scene-4" data-start="10.38" data-duration="3.62" data-track-index="4">
+        <div data-hf-id="hf-mz3g" id="grid-4" class="grid" data-layout-ignore=""></div>
+        <div data-hf-id="hf-6sqc" id="glow-4" class="glow ok" data-layout-ignore=""></div>
+        <div data-hf-id="hf-n7se" class="scene-content">
+          <div data-hf-id="hf-q3sy" class="topbar">
+            <div data-hf-id="hf-ww4g" class="signal">GITHUB READY</div>
+            <div data-hf-id="hf-77w1">private until you flip visibility</div>
+          </div>
+          <div data-hf-id="hf-w1km" class="split">
+            <div data-hf-id="hf-pwgm" class="github-card panel">
+              <div data-hf-id="hf-6yoz" class="repo-line"><span data-hf-id="hf-hey4">github.com/RasputinKaiser/OpenEval</span><span data-hf-id="hf-4res">main</span></div>
+              <div data-hf-id="hf-wa1t" class="repo-title">
+                <div data-hf-id="hf-x6sl" class="kicker">OpenEval</div>
+                <h2 data-hf-id="hf-vs50" id="scene-4-title">Local-first evals, public-ready repo.</h2>
+                <p data-hf-id="hf-zt5y">Docs, issue forms, security notes, contribution guide, labels, and proof gates are already wired.</p>
+              </div>
+              <div data-hf-id="hf-exrd" class="chips">
+                <div data-hf-id="hf-cb1c" class="chip">agent-evaluation</div>
+                <div data-hf-id="hf-bfx9" class="chip">typescript</div>
+                <div data-hf-id="hf-1rs8" class="chip">nextjs</div>
+                <div data-hf-id="hf-ihee" class="chip">sqlite</div>
+                <div data-hf-id="hf-8xc9" class="chip">evals</div>
+              </div>
+            </div>
+            <div data-hf-id="hf-4auq" class="side-note">OpenEval does not pretend local proof is public proof. It gives the operator a clean boundary before publishing.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      tl.from("#scene-1 .topbar", { y: -38, opacity: 0, duration: 0.46, ease: "power3.out" }, 0.18);
+      tl.from("#scene-1 .kicker", { x: -48, opacity: 0, duration: 0.38, ease: "expo.out" }, 0.34);
+      tl.from("#scene-1 h1", { y: 74, opacity: 0, scale: 0.98, duration: 0.72, ease: "power4.out" }, 0.46);
+      tl.from("#scene-1 .copy", { x: 46, opacity: 0, duration: 0.52, ease: "sine.out" }, 0.78);
+      tl.from("#scene-1 .table", { x: 90, opacity: 0, scale: 0.96, duration: 0.62, ease: "back.out(1.25)" }, 0.68);
+      tl.from("#scene-1 .row", { opacity: 0, x: 32, duration: 0.34, stagger: 0.09, ease: "power2.out" }, 0.92);
+      tl.to("#scan-1", { y: 900, duration: 2.8, repeat: 1, ease: "none" }, 0.2);
+      tl.to("#grid-1", { x: 40, y: 24, duration: 3.2, ease: "sine.inOut" }, 0.1);
+      tl.to("#glow-1", { scale: 1.08, opacity: 0.78, duration: 1.6, repeat: 2, yoyo: true, ease: "sine.inOut" }, 0.25);
+
+      tl.from("#wipe-1 .wipe-band", { scaleX: 0, duration: 0.28, stagger: 0.045, ease: "power4.inOut" }, 3.05);
+      tl.to("#wipe-1 .wipe-band", { xPercent: 420, duration: 0.28, stagger: 0.045, ease: "expo.inOut" }, 3.32);
+
+      tl.from("#scene-2 .topbar", { y: -30, opacity: 0, duration: 0.42, ease: "power3.out" }, 3.58);
+      tl.from("#scene-2 .kicker", { y: 42, opacity: 0, duration: 0.34, ease: "back.out(1.35)" }, 3.72);
+      tl.from("#scene-2-title", { x: -72, opacity: 0, duration: 0.68, ease: "expo.out" }, 3.86);
+      tl.from("#scene-2 .metric", { opacity: 0, y: 54, scale: 0.94, duration: 0.46, stagger: 0.08, ease: "power4.out" }, 4.02);
+      tl.from("#scene-2 .metric .value", { opacity: 0, y: 28, duration: 0.36, stagger: 0.07, ease: "sine.out" }, 4.28);
+      tl.to("#grid-2", { x: -34, y: 28, duration: 3.1, ease: "sine.inOut" }, 3.52);
+      tl.to("#glow-2", { scale: 1.1, opacity: 0.7, duration: 1.45, repeat: 2, yoyo: true, ease: "power1.inOut" }, 3.7);
+
+      tl.from("#wipe-2 .wipe-band", { scaleX: 0, duration: 0.3, stagger: 0.04, ease: "power4.inOut" }, 6.52);
+      tl.to("#wipe-2 .wipe-band", { xPercent: 420, duration: 0.3, stagger: 0.04, ease: "expo.inOut" }, 6.8);
+
+      tl.from("#scene-3 .topbar", { opacity: 0, y: -34, duration: 0.44, ease: "power2.out" }, 7.05);
+      tl.from("#scene-3 .privacy-card", { x: -64, opacity: 0, duration: 0.44, stagger: 0.12, ease: "expo.out" }, 7.23);
+      tl.from("#scene-3 .icon-dot", { scale: 0.35, opacity: 0, duration: 0.36, stagger: 0.12, ease: "back.out(1.7)" }, 7.34);
+      tl.from("#scene-3 .terminal", { x: 72, opacity: 0, scale: 0.97, duration: 0.58, ease: "power4.out" }, 7.4);
+      tl.from("#scene-3 .terminal-line", { opacity: 0, y: 24, duration: 0.32, stagger: 0.12, ease: "sine.out" }, 7.72);
+      tl.to("#grid-3", { x: 28, y: -36, duration: 3.2, ease: "sine.inOut" }, 6.96);
+      tl.to("#glow-3", { scale: 1.06, opacity: 0.74, duration: 1.6, repeat: 2, yoyo: true, ease: "sine.inOut" }, 7.1);
+
+      tl.from("#wipe-3 .wipe-band", { scaleX: 0, duration: 0.32, stagger: 0.045, ease: "power4.inOut" }, 10.05);
+      tl.to("#wipe-3 .wipe-band", { xPercent: 420, duration: 0.3, stagger: 0.045, ease: "expo.inOut" }, 10.36);
+
+      tl.from("#scene-4 .topbar", { y: -34, opacity: 0, duration: 0.42, ease: "power3.out" }, 10.68);
+      tl.from("#scene-4 .github-card", { x: -72, opacity: 0, scale: 0.96, duration: 0.62, ease: "expo.out" }, 10.82);
+      tl.from("#scene-4 .repo-line", { opacity: 0, y: 24, duration: 0.34, ease: "sine.out" }, 11.05);
+      tl.from("#scene-4 .kicker", { opacity: 0, x: -38, duration: 0.34, ease: "back.out(1.35)" }, 11.18);
+      tl.from("#scene-4-title", { opacity: 0, y: 58, duration: 0.58, ease: "power4.out" }, 11.28);
+      tl.from("#scene-4 .repo-title p", { opacity: 0, x: 42, duration: 0.42, ease: "power2.out" }, 11.58);
+      tl.from("#scene-4 .chip", { opacity: 0, y: 22, scale: 0.92, duration: 0.26, stagger: 0.055, ease: "back.out(1.4)" }, 11.78);
+      tl.from("#scene-4 .side-note", { opacity: 0, x: 60, duration: 0.58, ease: "sine.out" }, 11.94);
+      tl.to("#grid-4", { x: -26, y: 20, duration: 3.0, ease: "sine.inOut" }, 10.54);
+      tl.to("#glow-4", { scale: 1.1, opacity: 0.76, duration: 1.4, repeat: 2, yoyo: true, ease: "power1.inOut" }, 10.7);
+      tl.to("#scene-4", { opacity: 0, duration: 0.55, ease: "power2.in" }, 13.42);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>
