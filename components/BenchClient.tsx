@@ -222,7 +222,7 @@ export default function BenchClient({ runId, runName }: Props) {
                 </thead>
                 <tbody className="divide-y divide-bd-subtle">
                   {cases.map((c) => (
-                    <tr key={c.caseId} className="hover:bg-bg-elev">
+                    <tr key={c.caseId} className={clsx("hover:bg-bg-elev", c.status === "failed" && "bg-err/5", c.status === "error" && "bg-warn/5")}>
                       <td className="px-4 py-2">
                         <Link href={`/runs/${runId}/case/${c.caseId}`} className="hover:text-accent-soft">
                           {c.caseName}
