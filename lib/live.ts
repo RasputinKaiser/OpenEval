@@ -13,8 +13,43 @@ export interface LiveMetricSources {
   turns: MetricSource;
 }
 
+export interface LiveToolSummary {
+  name: string;
+  calls: number;
+  errors: number;
+}
+
+export interface LiveTraceGraph {
+  rootMessages: number;
+  sidechainMessages: number;
+  agentCount: number;
+  orphanMessages: number;
+}
+
+export interface LiveQueueSummary {
+  enqueue: number;
+  dequeue: number;
+  remove: number;
+  popAll: number;
+  preview: string[];
+}
+
+export interface LiveFileActivity {
+  touchedFiles: string[];
+  readLikeOperations: number;
+  writeLikeOperations: number;
+}
+
+export interface LiveModeSummary {
+  permissionModes: Record<string, number>;
+  gitBranch: string | null;
+  entrypoint: string | null;
+}
+
 export interface LiveSession {
   sessionId: string;
+  displayTitle: string | null;
+  lastPromptPreview: string | null;
   project: string;
   model: string | null;
   startedAt: number;
@@ -47,6 +82,11 @@ export interface LiveSession {
   toolCallsPerTurn: number;
   textAvailability: number;
   staleMs: number;
+  traceGraph: LiveTraceGraph;
+  toolSummaries: LiveToolSummary[];
+  queueSummary: LiveQueueSummary;
+  fileActivity: LiveFileActivity;
+  modeSummary: LiveModeSummary;
   path?: string;
 }
 
@@ -79,6 +119,12 @@ export interface LiveAggregate {
     missingTokens: number;
     missingCost: number;
   }>;
+  byTool: LiveToolSummary[];
+  queueTotals: LiveQueueSummary;
+  sidechainMessages: number;
+  agentSessions: number;
+  topBranches: Array<{ branch: string; sessions: number }>;
+  topFiles: Array<{ file: string; sessions: number }>;
   sessions: LiveSession[];
 }
 
@@ -125,6 +171,40 @@ function jsonPreview(value: unknown, max = 420): string {
 
 function metricMissing(source: MetricSource): boolean {
   return source === "missing" || source === "malformed";
+}
+
+function increment(map: Map<string, number>, key: string | null | undefined, amount = 1): void {
+  if (!key) return;
+  map.set(key, (map.get(key) ?? 0) + amount);
+}
+
+function incrementRecord(record: Record<string, number>, key: string | null | undefined, amount = 1): void {
+  if (!key) return;
+  record[key] = (record[key] ?? 0) + amount;
+}
+
+function topEntries(map: Map<string, number>, limit: number): Array<{ key: string; count: number }> {
+  return [...map.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, limit)
+    .map(([key, count]) => ({ key, count }));
+}
+
+function extractFilePaths(value: unknown, out = new Set<string>()): Set<string> {
+  if (typeof value === "string") {
+    const pathLike = value.match(/(?:\/Users\/[^\s"'<>`]+|\/home\/[^\s"'<>`]+|\/private\/tmp\/[^\s"'<>`]+|\/tmp\/[^\s"'<>`]+|\.{1,2}\/[A-Za-z0-9._/-]+)/g) ?? [];
+    for (const candidate of pathLike) {
+      const cleaned = candidate.replace(/[),.;:]+$/, "");
+      if (cleaned.includes("://") || cleaned.startsWith("//")) continue;
+      if (/[\[\]\^\?\*\|\\`]/.test(cleaned)) continue;
+      if (cleaned.includes("/") && !cleaned.endsWith("/")) out.add(cleaned);
+    }
+  } else if (Array.isArray(value)) {
+    for (const item of value) extractFilePaths(item, out);
+  } else if (value && typeof value === "object") {
+    for (const item of Object.values(value as Record<string, unknown>)) extractFilePaths(item, out);
+  }
+  return out;
 }
 
 function isNoumenaCodeTrace(userType: string | null, project: string, file: string): boolean {
@@ -220,6 +300,8 @@ export function getErroringTurns(filePath: string): TranscriptResult {
 export function summarizeLiveSessionFile(file: string, projectDir: string, mtime: number): LiveSession | null {
   let model: string | null = null;
   let sessionId: string | null = null;
+  let displayTitle: string | null = null;
+  let lastPromptPreview: string | null = null;
   let project = decodeProjectDir(projectDir);
   let inputTokens = 0;
   let outputTokens = 0;
@@ -245,6 +327,21 @@ export function summarizeLiveSessionFile(file: string, projectDir: string, mtime
   let messageCount = 0;
   let userType: string | null = null;
   let sawResult = false;
+  let rootMessages = 0;
+  let sidechainMessages = 0;
+  let gitBranch: string | null = null;
+  let entrypoint: string | null = null;
+  const seenUuids = new Set<string>();
+  const parentUuids = new Set<string>();
+  const agentIds = new Set<string>();
+  const toolNameById = new Map<string, string>();
+  const toolCallsByName = new Map<string, number>();
+  const toolErrorsByName = new Map<string, number>();
+  const queueSummary: LiveQueueSummary = { enqueue: 0, dequeue: 0, remove: 0, popAll: 0, preview: [] };
+  const touchedFiles = new Set<string>();
+  const permissionModes: Record<string, number> = {};
+  let readLikeOperations = 0;
+  let writeLikeOperations = 0;
 
   const metricSources: LiveMetricSources = {
     model: "missing",
@@ -274,6 +371,15 @@ export function summarizeLiveSessionFile(file: string, projectDir: string, mtime
         lastEventAt = Math.max(lastEventAt, at);
       }
 
+      if (typeof obj.uuid === "string") seenUuids.add(obj.uuid);
+      if (typeof obj.parentUuid === "string" && obj.parentUuid) parentUuids.add(obj.parentUuid);
+      if (obj.isSidechain === true) sidechainMessages++;
+      if (obj.isSidechain === false) rootMessages++;
+      if (typeof obj.agentId === "string") agentIds.add(obj.agentId);
+      if (typeof obj.gitBranch === "string" && obj.gitBranch) gitBranch = obj.gitBranch;
+      if (typeof obj.entrypoint === "string" && obj.entrypoint) entrypoint = obj.entrypoint;
+      if (typeof obj.permissionMode === "string") incrementRecord(permissionModes, obj.permissionMode);
+
       if (obj.type === "system") {
         model = obj.model ?? model;
         sessionId = obj.sessionId ?? obj.session_id ?? sessionId;
@@ -292,20 +398,40 @@ export function summarizeLiveSessionFile(file: string, projectDir: string, mtime
         }
       } else if (obj.type === "assistant" && Array.isArray(obj.message?.content)) {
         for (const b of obj.message.content) {
-          if (b.type === "tool_use") toolCalls++;
+          if (b.type === "tool_use") {
+            toolCalls++;
+            if (typeof b.id === "string" && typeof b.name === "string") toolNameById.set(b.id, b.name);
+            if (typeof b.name === "string") increment(toolCallsByName, b.name);
+            for (const filePath of extractFilePaths(b.input)) touchedFiles.add(filePath);
+            const name = String(b.name ?? "").toLowerCase();
+            if (["read", "grep", "glob", "webfetch", "websearch"].some((tool) => name.includes(tool))) readLikeOperations++;
+            if (["write", "edit", "multiedit"].some((tool) => name.includes(tool))) writeLikeOperations++;
+          }
           if (b.type === "thinking") thinkingBlocks++;
           if (b.type === "text") textBlocks++;
         }
       } else if (obj.type === "user" && Array.isArray(obj.message?.content)) {
         for (const b of obj.message.content) {
-          if (b.type === "tool_result" && b.is_error) toolErrors++;
+          if (b.type === "tool_result" && b.is_error) {
+            toolErrors++;
+            increment(toolErrorsByName, toolNameById.get(b.tool_use_id) ?? "(unknown)");
+          }
         }
       } else if (obj.type === "attachment") {
         attachmentCount++;
+        for (const filePath of extractFilePaths(obj.attachment)) touchedFiles.add(filePath);
+        const attachmentType = obj.attachment?.type;
+        if (attachmentType === "edited_text_file") writeLikeOperations++;
       } else if (obj.type === "queue-operation") {
         queueOperationCount++;
+        if (obj.operation === "enqueue") queueSummary.enqueue++;
+        else if (obj.operation === "dequeue") queueSummary.dequeue++;
+        else if (obj.operation === "remove") queueSummary.remove++;
+        else if (obj.operation === "popAll") queueSummary.popAll++;
+        if (typeof obj.content === "string" && queueSummary.preview.length < 3) queueSummary.preview.push(jsonPreview(obj.content, 220));
       } else if (obj.type === "file-history-snapshot") {
         snapshotCount++;
+        for (const filePath of extractFilePaths(obj.snapshot)) touchedFiles.add(filePath);
       } else if (obj.type === "result") {
         sawResult = true;
         const usage = obj.usage || {};
@@ -322,6 +448,12 @@ export function summarizeLiveSessionFile(file: string, projectDir: string, mtime
         if (obj.total_cost_usd != null) metricSources.cost = "measured";
         if (obj.duration_ms != null) metricSources.duration = "measured";
         if (obj.num_turns != null) metricSources.turns = "measured";
+      } else if (obj.type === "last-prompt") {
+        if (typeof obj.lastPrompt === "string") lastPromptPreview = jsonPreview(obj.lastPrompt, 260);
+      } else if (obj.type === "custom-title") {
+        if (typeof obj.customTitle === "string") displayTitle = obj.customTitle;
+      } else if (obj.type === "agent-name") {
+        if (!displayTitle && typeof obj.agentName === "string") displayTitle = obj.agentName;
       }
     }
   } catch {
@@ -353,9 +485,17 @@ export function summarizeLiveSessionFile(file: string, projectDir: string, mtime
   const toolCallsPerTurn = numTurns > 0 ? toolCalls / numTurns : 0;
   const textAvailability = lineCount > 0 ? textBlocks / lineCount : 0;
   const staleMs = Math.max(0, Date.now() - lastEventAt);
+  const orphanMessages = [...parentUuids].filter((parentUuid) => !seenUuids.has(parentUuid)).length;
+  const toolSummaries = topEntries(toolCallsByName, 8).map(({ key, count }) => ({
+    name: key,
+    calls: count,
+    errors: toolErrorsByName.get(key) ?? 0,
+  }));
 
   return {
     sessionId: sessionId ?? path.basename(file, ".jsonl"),
+    displayTitle,
+    lastPromptPreview,
     project,
     model,
     startedAt,
@@ -389,6 +529,24 @@ export function summarizeLiveSessionFile(file: string, projectDir: string, mtime
     toolCallsPerTurn,
     textAvailability,
     staleMs,
+    traceGraph: {
+      rootMessages,
+      sidechainMessages,
+      agentCount: agentIds.size,
+      orphanMessages,
+    },
+    toolSummaries,
+    queueSummary,
+    fileActivity: {
+      touchedFiles: [...touchedFiles].sort().slice(0, 12),
+      readLikeOperations,
+      writeLikeOperations,
+    },
+    modeSummary: {
+      permissionModes,
+      gitBranch,
+      entrypoint,
+    },
   };
 }
 
@@ -505,6 +663,13 @@ function aggregate(sessions: LiveSession[], scanWarnings: string[] = []): LiveAg
   let totalToolErrors = 0;
   let totalQuality = 0;
   const projects = new Set<string>();
+  const toolCallsByName = new Map<string, number>();
+  const toolErrorsByName = new Map<string, number>();
+  const branchSessions = new Map<string, number>();
+  const fileSessions = new Map<string, number>();
+  const queueTotals: LiveQueueSummary = { enqueue: 0, dequeue: 0, remove: 0, popAll: 0, preview: [] };
+  let sidechainMessages = 0;
+  let agentSessions = 0;
 
   for (const s of sessions) {
     projects.add(s.project);
@@ -514,6 +679,19 @@ function aggregate(sessions: LiveSession[], scanWarnings: string[] = []): LiveAg
     totalToolCalls += s.toolCalls;
     totalToolErrors += s.toolErrors;
     totalQuality += s.dataQuality;
+    sidechainMessages += s.traceGraph.sidechainMessages;
+    if (s.traceGraph.agentCount > 0) agentSessions++;
+    if (s.modeSummary.gitBranch) increment(branchSessions, s.modeSummary.gitBranch);
+    queueTotals.enqueue += s.queueSummary.enqueue;
+    queueTotals.dequeue += s.queueSummary.dequeue;
+    queueTotals.remove += s.queueSummary.remove;
+    queueTotals.popAll += s.queueSummary.popAll;
+    if (queueTotals.preview.length < 5) queueTotals.preview.push(...s.queueSummary.preview.slice(0, 5 - queueTotals.preview.length));
+    for (const tool of s.toolSummaries) {
+      increment(toolCallsByName, tool.name, tool.calls);
+      increment(toolErrorsByName, tool.name, tool.errors);
+    }
+    for (const file of s.fileActivity.touchedFiles) increment(fileSessions, file);
     const key = s.model || "unknown";
     const cur = byModelMap.get(key) || { model: key, sessions: 0, costUsd: 0, inputTokens: 0, outputTokens: 0, toolCalls: 0, errors: 0, totalDur: 0, totalQuality: 0, missingTokens: 0, missingCost: 0 };
     cur.sessions++;
@@ -560,6 +738,16 @@ function aggregate(sessions: LiveSession[], scanWarnings: string[] = []): LiveAg
     avgDataQuality: sessions.length ? totalQuality / sessions.length : 0,
     scanWarnings,
     byModel,
+    byTool: topEntries(toolCallsByName, 10).map(({ key, count }) => ({
+      name: key,
+      calls: count,
+      errors: toolErrorsByName.get(key) ?? 0,
+    })),
+    queueTotals,
+    sidechainMessages,
+    agentSessions,
+    topBranches: topEntries(branchSessions, 8).map(({ key, count }) => ({ branch: key, sessions: count })),
+    topFiles: topEntries(fileSessions, 10).map(({ key, count }) => ({ file: key, sessions: count })),
     sessions: sessions.slice(0, 100),
   };
 }

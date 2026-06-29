@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import clsx from "clsx";
 import {
   Activity,
@@ -14,9 +15,12 @@ import {
   DollarSign,
   Eye,
   EyeOff,
+  FileText,
   Filter,
   FolderGit2,
   Gauge,
+  GitBranch,
+  GitFork,
   Inbox,
   Layers,
   Loader2,
@@ -237,6 +241,8 @@ export default function LiveClient({ initialData, error: initialError, getTransc
         </section>
       </section>
 
+      <TraceIntelligencePanels data={data} redact={redact} />
+
       {selected && (
         <SessionDrawer
           session={selected}
@@ -294,6 +300,120 @@ function ModelPanel({ data }: { data: LiveAggregate }) {
   );
 }
 
+function TraceIntelligencePanels({ data, redact }: { data: LiveAggregate; redact: boolean }) {
+  const queueTotal = data.queueTotals.enqueue + data.queueTotals.dequeue + data.queueTotals.remove + data.queueTotals.popAll;
+  return (
+    <section className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-2 2xl:grid-cols-4">
+      <section className="card overflow-hidden">
+        <PanelHeader icon={GitFork} title="Execution graph" subtitle="Root thread, sidechains, and agents." />
+        <div className="grid grid-cols-3 gap-2 p-4">
+          <TinyMetric label="Sidechain msgs" value={fmt(data.sidechainMessages)} />
+          <TinyMetric label="Agent sessions" value={fmt(data.agentSessions)} />
+          <TinyMetric label="Projects" value={fmt(data.totalProjects)} />
+        </div>
+        <div className="border-t border-bd-subtle px-4 py-3">
+          <div className="mb-2 text-[10px] uppercase tracking-wider text-fg-muted">Top branches</div>
+          <ListStack items={data.topBranches.map((branch) => ({
+            key: branch.branch,
+            label: branch.branch,
+            value: `${branch.sessions} sessions`,
+          }))} redact={redact} empty="No branch metadata found." />
+        </div>
+      </section>
+
+      <section className="card overflow-hidden">
+        <PanelHeader icon={Wrench} title="Tool reliability" subtitle="Tool mix and error concentration." />
+        <div className="divide-y divide-bd-subtle">
+          {data.byTool.slice(0, 6).map((tool) => (
+            <div key={tool.name} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 px-4 py-2 text-sm">
+              <span className="truncate">{tool.name}</span>
+              <span className="mono text-xs text-fg-muted">{tool.calls}</span>
+              <span className={clsx("mono text-xs", tool.errors ? "text-err" : "text-fg-dim")}>{tool.errors} err</span>
+            </div>
+          ))}
+          {data.byTool.length === 0 && <div className="p-4 text-sm text-fg-muted">No tool calls found.</div>}
+        </div>
+      </section>
+
+      <section className="card overflow-hidden">
+        <PanelHeader icon={Zap} title="Operator queue" subtitle="Queued prompts and interruption flow." />
+        <div className="grid grid-cols-4 gap-2 p-4">
+          <TinyMetric label="Total" value={fmt(queueTotal)} />
+          <TinyMetric label="Enq" value={fmt(data.queueTotals.enqueue)} />
+          <TinyMetric label="Deq" value={fmt(data.queueTotals.dequeue)} />
+          <TinyMetric label="Drop" value={fmt(data.queueTotals.remove + data.queueTotals.popAll)} />
+        </div>
+        <div className="border-t border-bd-subtle px-4 py-3">
+          <ListStack items={data.queueTotals.preview.map((preview, index) => ({
+            key: `${index}-${preview}`,
+            label: preview,
+          }))} redact={redact} empty="No queued prompt previews." />
+        </div>
+      </section>
+
+      <section className="card overflow-hidden">
+        <PanelHeader icon={FileText} title="File / repo impact" subtitle="Touched files inferred from tools and snapshots." />
+        <div className="border-b border-bd-subtle px-4 py-3">
+          <div className="flex items-center gap-2 text-xs text-fg-muted">
+            <GitBranch className="size-3.5" />
+            {data.topBranches[0]?.branch ?? "branch missing"}
+          </div>
+        </div>
+        <div className="px-4 py-3">
+          <ListStack items={data.topFiles.slice(0, 6).map((file) => ({
+            key: file.file,
+            label: compactDisplayPath(file.file, redact),
+            value: `${file.sessions} sessions`,
+          }))} redact={false} empty="No touched files inferred." />
+        </div>
+      </section>
+    </section>
+  );
+}
+
+function PanelHeader({ icon: Icon, title, subtitle }: { icon: any; title: string; subtitle: string }) {
+  return (
+    <div className="border-b border-bd-subtle px-4 py-3">
+      <div className="flex items-center gap-2 text-sm font-medium">
+        <Icon className="size-4 text-fg-muted" /> {title}
+      </div>
+      <div className="mt-1 text-xs text-fg-muted">{subtitle}</div>
+    </div>
+  );
+}
+
+function TinyMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded border border-bd-subtle bg-bg/40 px-2 py-2">
+      <div className="text-[9px] uppercase tracking-wider text-fg-dim">{label}</div>
+      <div className="mono mt-1 text-sm font-semibold">{value}</div>
+    </div>
+  );
+}
+
+function DetailPanel({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="rounded-lg border border-bd bg-bg/45 p-4">
+      <div className="mb-3 text-sm font-medium">{title}</div>
+      {children}
+    </section>
+  );
+}
+
+function ListStack({ items, redact, empty }: { items: Array<{ key: string; label: string; value?: string }>; redact: boolean; empty: string }) {
+  if (items.length === 0) return <div className="text-sm text-fg-muted">{empty}</div>;
+  return (
+    <div className="space-y-2">
+      {items.map((item) => (
+        <div key={item.key} className="flex min-w-0 items-center justify-between gap-3 text-xs">
+          <span className="truncate text-fg-muted">{displayText(item.label, redact)}</span>
+          {item.value ? <span className="mono shrink-0 text-[10px] text-fg-dim">{item.value}</span> : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function SessionRow({ session, redact, onClick }: { session: LiveSession; redact: boolean; onClick: () => void }) {
   const attention = needsAttention(session);
   return (
@@ -313,7 +433,16 @@ function SessionRow({ session, redact, onClick }: { session: LiveSession; redact
         <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-fg-dim">
           <span className="mono">{shortId(session.sessionId)}</span>
           <span>·</span>
+          {session.displayTitle ? (
+            <>
+              <span>{displayText(session.displayTitle, redact)}</span>
+              <span>·</span>
+            </>
+          ) : null}
           <span>{session.model || "model missing"}</span>
+          {session.traceGraph.sidechainMessages > 0 ? <span className="rounded bg-accent/10 px-1.5 py-0.5 text-accent-soft">{session.traceGraph.sidechainMessages} side</span> : null}
+          {session.traceGraph.agentCount > 0 ? <span className="rounded bg-bg-elev px-1.5 py-0.5 text-fg-muted">{session.traceGraph.agentCount} agent</span> : null}
+          {session.modeSummary.gitBranch ? <span className="rounded bg-bg-elev px-1.5 py-0.5 text-fg-muted">{displayText(session.modeSummary.gitBranch, redact)}</span> : null}
           {session.parseWarnings.slice(0, 2).map((warning) => (
             <span key={warning} className="rounded bg-warn/10 px-1.5 py-0.5 text-warn">{displayText(warning, redact)}</span>
           ))}
@@ -409,6 +538,18 @@ function SessionDrawer({
             <MetricCard label="Tokens" value={session.metricSources.tokens === "missing" ? "missing" : fmt(session.inputTokens + session.outputTokens)} source={session.metricSources.tokens} />
           </section>
 
+          {(session.displayTitle || session.lastPromptPreview) && (
+            <section className="rounded-lg border border-bd bg-bg/45 p-4">
+              <div className="mb-2 text-sm font-medium">Session intent</div>
+              {session.displayTitle ? <div className="text-sm text-fg">{displayText(session.displayTitle, redact)}</div> : null}
+              {session.lastPromptPreview ? (
+                <pre className="mono mt-2 max-h-28 overflow-auto whitespace-pre-wrap text-[11px] leading-5 text-fg-muted">
+                  {displayText(session.lastPromptPreview, redact)}
+                </pre>
+              ) : null}
+            </section>
+          )}
+
           <section className="rounded-lg border border-bd bg-bg/45 p-4">
             <div className="mb-3 flex items-center justify-between gap-3">
               <div className="text-sm font-medium">Metric provenance</div>
@@ -440,6 +581,63 @@ function SessionDrawer({
             <MiniStat label="Snapshots" value={String(session.snapshotCount)} icon={FolderGit2} />
             <MiniStat label="Hook errors" value={String(session.hookErrors)} icon={ShieldAlert} tone={session.hookErrors ? "err" : undefined} />
           </section>
+
+          <section className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <DetailPanel title="Execution graph">
+              <div className="grid grid-cols-2 gap-2">
+                <TinyMetric label="Root msgs" value={fmt(session.traceGraph.rootMessages)} />
+                <TinyMetric label="Side msgs" value={fmt(session.traceGraph.sidechainMessages)} />
+                <TinyMetric label="Agents" value={fmt(session.traceGraph.agentCount)} />
+                <TinyMetric label="Orphans" value={fmt(session.traceGraph.orphanMessages)} />
+              </div>
+            </DetailPanel>
+            <DetailPanel title="Modes / repo">
+              <div className="space-y-2 text-xs text-fg-muted">
+                <div className="flex justify-between gap-3"><span>Branch</span><span className="mono truncate">{displayText(session.modeSummary.gitBranch ?? "missing", redact)}</span></div>
+                <div className="flex justify-between gap-3"><span>Entrypoint</span><span className="mono">{session.modeSummary.entrypoint ?? "missing"}</span></div>
+                <div className="flex flex-wrap gap-1.5">
+                  {Object.entries(session.modeSummary.permissionModes).map(([mode, count]) => (
+                    <span key={mode} className="rounded bg-bg-elev px-1.5 py-0.5 text-[10px]">{mode}: {count}</span>
+                  ))}
+                </div>
+              </div>
+            </DetailPanel>
+          </section>
+
+          <section className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <DetailPanel title="Tool reliability">
+              <ListStack items={session.toolSummaries.map((tool) => ({
+                key: tool.name,
+                label: tool.name,
+                value: `${tool.calls} calls / ${tool.errors} err`,
+              }))} redact={false} empty="No tool summary found." />
+            </DetailPanel>
+            <DetailPanel title="Operator queue">
+              <div className="mb-3 grid grid-cols-4 gap-2">
+                <TinyMetric label="Enq" value={fmt(session.queueSummary.enqueue)} />
+                <TinyMetric label="Deq" value={fmt(session.queueSummary.dequeue)} />
+                <TinyMetric label="Rem" value={fmt(session.queueSummary.remove)} />
+                <TinyMetric label="All" value={fmt(session.queueSummary.popAll)} />
+              </div>
+              <ListStack items={session.queueSummary.preview.map((preview, index) => ({
+                key: `${index}-${preview}`,
+                label: preview,
+              }))} redact={redact} empty="No queued prompt previews." />
+            </DetailPanel>
+          </section>
+
+          <DetailPanel title="File / repo impact">
+            <div className="mb-3 grid grid-cols-2 gap-2 md:grid-cols-4">
+              <TinyMetric label="Touched" value={fmt(session.fileActivity.touchedFiles.length)} />
+              <TinyMetric label="Read-ish" value={fmt(session.fileActivity.readLikeOperations)} />
+              <TinyMetric label="Write-ish" value={fmt(session.fileActivity.writeLikeOperations)} />
+              <TinyMetric label="Snapshots" value={fmt(session.snapshotCount)} />
+            </div>
+            <ListStack items={session.fileActivity.touchedFiles.map((filePath) => ({
+              key: filePath,
+              label: compactDisplayPath(filePath, redact),
+            }))} redact={false} empty="No file paths inferred from tools or snapshots." />
+          </DetailPanel>
 
           <section>
             <div className="mb-3 flex items-center gap-2 text-sm font-medium">

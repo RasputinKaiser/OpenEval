@@ -43,6 +43,12 @@ export default function LivePage() {
       avgDataQuality: 0,
       scanWarnings: [],
       byModel: [],
+      byTool: [],
+      queueTotals: { enqueue: 0, dequeue: 0, remove: 0, popAll: 0, preview: [] },
+      sidechainMessages: 0,
+      agentSessions: 0,
+      topBranches: [],
+      topFiles: [],
       sessions: [],
     };
   }

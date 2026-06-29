@@ -1,4 +1,4 @@
-updated_at: "2026-06-28T20:15:49-04:00"
+updated_at: "2026-06-28T20:30:26-04:00"
 active_task: "live-sessions-accuracy-privacy-polish"
 status: "completed"
 notes:
@@ -7,6 +7,7 @@ notes:
   - "Live Sessions UI now uses an operator dashboard layout with quality/source badges, summary cards, filters, sorting, a richer session drawer, and responsive stacked rows."
   - "Live Sessions infers missing ncode/Noumena Code model metadata as GLM 5.2 (1M) with inferred provenance, not measured provenance."
   - "Live Sessions client polling now catches failed /api/live fetches and aborts in-flight polls on unmount so transient dev-server or navigation states do not trigger a Next runtime overlay."
+  - "Live Sessions now extracts trace intelligence from ncode JSONL: execution graph counts, tool reliability, queue/interruption flow, prompt/title metadata, modes/branches, and touched-file signals."
   - "Harness/rubric branch is being merged into the actual AgentEvals git history on branch codex/merge-neval-harness-rubric."
   - "Harness selection, harness discovery pages, cross-harness leaderboard surfaces, adapter-backed execution, and decoupled rubric_llm judging are being integrated on top of the telemetry integrity UI layer."
   - "rubric_llm judging now routes through a separate judge harness adapter instead of reusing the harness under test."
@@ -20,6 +21,14 @@ notes:
   - "UX pass mounted advertised routes instead of leaving sidebar links as 404s."
   - "Visual-code is now part of the active case universe, not just files on disk."
 receipts:
+  - "npm run test:live passed: 5 tests now cover trace intelligence extraction from graph, tools, queue, files, and modes"
+  - "npm run lint -- --max-warnings=0 passed after Live trace intelligence implementation"
+  - "npm run typecheck passed after Live trace intelligence implementation"
+  - "npm run build passed after Live trace intelligence implementation"
+  - "npm run selftest passed after Live trace intelligence implementation: 18 pass, 0 fail, 0 no-oracle skip, 6 LLM-judge gated skips"
+  - "API QA on localhost:3002/api/live reported totalSessions=147, byTool=10, queue enqueue=545, topBranches=8, topFiles=10"
+  - "Browser QA on localhost:3002/live verified Execution graph, Tool reliability, Operator queue, and File / repo impact panels render with REDACT ON, no visible raw username, and no console errors"
+  - "Browser drawer QA verified Session intent, Execution graph, Modes / repo, Tool reliability, Operator queue, and File / repo impact sections render with REDACT ON and no console errors"
   - "npm run lint -- --max-warnings=0 passed after LiveClient failed-fetch poll fix"
   - "npm run typecheck passed after LiveClient failed-fetch poll fix"
   - "npm run test:live passed after LiveClient failed-fetch poll fix"
