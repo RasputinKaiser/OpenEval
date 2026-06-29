@@ -34,7 +34,7 @@ import {
 } from "lucide-react";
 import HarnessPicker from "./HarnessPicker";
 import { compactDisplayPath, redactSensitiveText } from "@/lib/redaction";
-import type { LiveAggregate, LiveMetricSources, LiveSession, LiveTranscriptTurn, MetricSource, TranscriptResult } from "@/lib/live";
+import type { LiveAggregate, LiveMetricSources, LiveSession, LiveSessionToolDuration, LiveTranscriptTurn, MetricSource, TranscriptResult } from "@/lib/live";
 
 type LiveClientProps = {
   initialData?: LiveAggregate | null;
@@ -316,14 +316,14 @@ function ModelPanel({ data }: { data: LiveAggregate }) {
                 <td className="px-4 py-2">
                   <span className="mono text-xs">{model.model}</span>
                 </td>
-                <td className="px-4 py-2 text-right mono">{model.sessions}</td>
+                <td className="px-4 py-2 text-right mono tabular-nums">{model.sessions}</td>
                 <td className="px-4 py-2 text-right">
                   <QualityBadge value={model.avgDataQuality} />
                 </td>
                 <td className="px-4 py-2 text-right text-xs text-fg-muted">
                   {model.missingTokens + model.missingCost ? `${model.missingTokens} token / ${model.missingCost} cost` : "—"}
                 </td>
-                <td className={clsx("px-4 py-2 text-right mono", model.errors > 0 && "text-err")}>{model.errors}</td>
+                <td className={clsx("px-4 py-2 text-right mono tabular-nums", model.errors > 0 && "text-err")}>{model.errors}</td>
               </tr>
             ))}
           </tbody>
@@ -360,8 +360,8 @@ function TraceIntelligencePanels({ data, redact }: { data: LiveAggregate; redact
           {data.byTool.slice(0, 6).map((tool) => (
             <div key={tool.name} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 px-4 py-2 text-sm">
               <span className="truncate">{tool.name}</span>
-              <span className="mono text-xs text-fg-muted">{tool.calls}</span>
-              <span className={clsx("mono text-xs", tool.errors ? "text-err" : "text-fg-dim")}>{tool.errors} err</span>
+              <span className="mono tabular-nums text-xs text-fg-muted">{tool.calls}</span>
+              <span className={clsx("mono tabular-nums text-xs", tool.errors ? "text-err" : "text-fg-dim")}>{tool.errors} err</span>
             </div>
           ))}
           {data.byTool.length === 0 && <div className="p-4 text-sm text-fg-muted">No tool calls found.</div>}
@@ -461,7 +461,7 @@ function TinyMetric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded border border-bd-subtle bg-bg/40 px-2 py-2">
       <div className="text-[9px] uppercase tracking-wider text-fg-dim">{label}</div>
-      <div className="mono mt-1 text-sm font-semibold">{value}</div>
+      <div className="mono mt-1 text-sm font-semibold tabular-nums">{value}</div>
     </div>
   );
 }
@@ -485,6 +485,19 @@ function ListStack({ items, redact, empty }: { items: Array<{ key: string; label
           {item.value ? <span className="mono shrink-0 text-[10px] text-fg-dim">{item.value}</span> : null}
         </div>
       ))}
+    </div>
+  );
+}
+
+function ToolDurationRow({ tool }: { tool: LiveSessionToolDuration }) {
+  const errAppetite = tool.errors > 0;
+  return (
+    <div className="grid grid-cols-[1fr_56px_56px_56px_28px] items-center gap-2 py-1.5 text-xs">
+      <span className="truncate mono text-[11px] text-fg" title={tool.name}>{tool.name}</span>
+      <span className="mono text-right tabular-nums text-fg-muted">{fmtMs(tool.p50Ms)}</span>
+      <span className="mono text-right tabular-nums text-fg-muted">{fmtMs(tool.p95Ms)}</span>
+      <span className="mono text-right tabular-nums text-fg-dim">{fmtMs(tool.maxMs)}</span>
+      <span className={clsx("mono text-right tabular-nums", errAppetite ? "text-err" : "text-fg-dim")}>{tool.errors}</span>
     </div>
   );
 }
@@ -519,7 +532,7 @@ function SessionRow({ session, redact, onClick }: { session: LiveSession; redact
           {session.traceGraph.agentCount > 0 ? <span className="rounded bg-bg-elev px-1.5 py-0.5 text-fg-muted">{session.traceGraph.agentCount} agent</span> : null}
           {session.modeSummary.gitBranch ? <span className="rounded bg-bg-elev px-1.5 py-0.5 text-fg-muted">{displayText(session.modeSummary.gitBranch, redact)}</span> : null}
           <span className={clsx(
-            "rounded px-1.5 py-0.5",
+            "rounded px-1.5 py-0.5 tabular-nums",
             session.metricSources.tokens === "measured" ? "bg-ok/10 text-ok" : "bg-warn/10 text-warn"
           )}>
             {session.metricSources.tokens === "measured" ? `${fmt(session.totalTokens)} tok` : "usage missing"}
@@ -531,7 +544,7 @@ function SessionRow({ session, redact, onClick }: { session: LiveSession; redact
       </div>
       <div className="text-xs text-fg-muted md:text-left">
         <div>{relativeTime(session.lastEventAt)}</div>
-        <div className="mono text-[10px] text-fg-dim">{fmtMs(session.durationMs)}</div>
+        <div className="mono text-[10px] tabular-nums text-fg-dim">{fmtMs(session.durationMs)}</div>
       </div>
       <QualityBadge value={session.dataQuality} />
       <div className="flex flex-wrap gap-1">
@@ -726,6 +739,23 @@ function SessionDrawer({
             </DetailPanel>
           </section>
 
+          {session.toolDurations.length > 0 ? (
+            <DetailPanel title="Tool timing">
+              <div className="mb-3 grid grid-cols-[1fr_56px_56px_56px_28px] gap-2 text-[9px] uppercase tracking-wider text-fg-dim">
+                <span>Tool</span>
+                <span className="text-right">p50</span>
+                <span className="text-right">p95</span>
+                <span className="text-right">max</span>
+                <span className="text-right">err</span>
+              </div>
+              <div className="space-y-1.5">
+                {session.toolDurations.map((tool) => (
+                  <ToolDurationRow key={tool.name} tool={tool} />
+                ))}
+              </div>
+            </DetailPanel>
+          ) : null}
+
           <DetailPanel title="File / repo impact">
             <div className="mb-3 grid grid-cols-2 gap-2 md:grid-cols-4">
               <TinyMetric label="Touched" value={fmt(session.fileActivity.touchedFiles.length)} />
@@ -791,8 +821,8 @@ function UsageTimeline({ session }: { session: LiveSession }) {
         return (
           <div key={`${segment.atMs}-${index}`} className="rounded border border-bd-subtle bg-bg/40 p-2">
             <div className="mb-1 flex items-center justify-between gap-3 text-[10px] text-fg-muted">
-              <span className="mono">{new Date(segment.atMs).toLocaleTimeString()}</span>
-              <span className="mono">{fmt(segment.cumulativeOutput)} out · {segment.outTokPerSec.toFixed(1)} tok/s</span>
+              <span className="mono tabular-nums">{new Date(segment.atMs).toLocaleTimeString()}</span>
+              <span className="mono tabular-nums">{fmt(segment.cumulativeOutput)} out · {segment.outTokPerSec.toFixed(1)} tok/s</span>
             </div>
             <div className="h-2 overflow-hidden rounded bg-bg-elev">
               <div className="h-full rounded bg-accent-soft" style={{ width: `${width}%` }} />
@@ -826,7 +856,7 @@ function MetricCard({ label, value, source }: { label: string; value: string; so
   return (
     <div className="rounded-lg border border-bd bg-bg/45 p-3">
       <div className="mb-1 text-[10px] uppercase tracking-wider text-fg-muted">{label}</div>
-      <div className="mono truncate text-sm text-fg">{value}</div>
+      <div className="mono truncate text-sm tabular-nums text-fg">{value}</div>
       {source ? <div className="mt-1"><SourceChip label={source} source={source} /></div> : null}
     </div>
   );
