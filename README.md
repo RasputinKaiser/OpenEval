@@ -217,7 +217,7 @@ The repository includes public-facing GitHub scaffolding:
 - `.github/ISSUE_TEMPLATE/bug_report.yml` for public-safe bug reports.
 - `.github/ISSUE_TEMPLATE/evaluation_case.yml` for case and grader proposals.
 
-No license is selected yet. Choose and add a `LICENSE` file before treating the project as open-source for reuse, because GitHub visibility alone does not grant reuse rights.
+OpenEval is open source under the [MIT License](LICENSE).
 
 ## Launch Video Source
 
