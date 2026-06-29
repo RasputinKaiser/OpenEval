@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Activity, FileText, GitCompareArrows, LayoutDashboard, Radio, Plus, ShieldCheck, Terminal, Plug, Trophy, PanelLeftClose, PanelLeftOpen, Settings } from "lucide-react";
 import clsx from "clsx";
+import ThemeToggle from "./ThemeToggle";
 
 const NAV = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -101,13 +102,16 @@ export default function Sidebar() {
       </nav>
       <div className="hidden border-t border-bd p-3 md:flex md:items-center md:justify-between">
         {!collapsed && <div className="text-[10px] text-fg-dim mono">v0.1.0</div>}
-        <button
-          onClick={() => setCollapsed(!collapsed)}
-          className="min-h-8 min-w-8 flex items-center justify-center rounded text-fg-dim hover:text-fg hover:bg-bg-elev transition-colors"
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-        >
-          {collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
-        </button>
+        <div className="flex items-center gap-1">
+          <ThemeToggle collapsed={collapsed} />
+          <button
+            onClick={() => setCollapsed(!collapsed)}
+            className="min-h-8 min-w-8 flex items-center justify-center rounded text-fg-dim hover:text-fg hover:bg-bg-elev transition-colors"
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
+          </button>
+        </div>
       </div>
     </aside>
   );

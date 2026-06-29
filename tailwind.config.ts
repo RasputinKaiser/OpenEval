@@ -9,13 +9,13 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        bg: { DEFAULT: "#0a0a0b", subtle: "#111113", elev: "#16161a" },
-        bd: { DEFAULT: "#26262b", subtle: "#1d1d22" },
-        fg: { DEFAULT: "#e8e8ea", muted: "#8b8b94", dim: "#5a5a63" },
-        accent: { DEFAULT: "#7c5cff", soft: "#a78bff" },
-        ok: "#3fb950",
-        warn: "#d29922",
-        err: "#f85149",
+        bg: { DEFAULT: "var(--color-bg)", subtle: "var(--color-bg-subtle)", elev: "var(--color-bg-elev)" },
+        bd: { DEFAULT: "var(--color-bd)", subtle: "var(--color-bd-subtle)" },
+        fg: { DEFAULT: "var(--color-fg)", muted: "var(--color-fg-muted)", dim: "var(--color-fg-dim)" },
+        accent: { DEFAULT: "var(--color-accent)", soft: "var(--color-accent-soft)" },
+        ok: "var(--color-ok)",
+        warn: "var(--color-warn)",
+        err: "var(--color-err)",
       },
       fontFamily: {
         sans: ["ui-sans-serif", "system-ui", "-apple-system", "Segoe UI", "Roboto"],

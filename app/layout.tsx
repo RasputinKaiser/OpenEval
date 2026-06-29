@@ -15,7 +15,10 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: "try{const t=localStorage.getItem('neval-theme');if(t==='light'||(!t&&matchMedia('(prefers-color-scheme: light)').matches))document.documentElement.classList.add('light')}catch(e){}" }} />
+      </head>
       <body className="min-h-screen bg-bg text-fg font-sans antialiased">
         <ToastProvider>
           <div className="flex min-h-screen flex-col md:flex-row">
