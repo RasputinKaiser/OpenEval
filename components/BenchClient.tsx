@@ -205,7 +205,7 @@ export default function BenchClient({ runId, runName }: Props) {
             <div className="px-4 py-2.5 border-b border-bd-subtle text-sm font-medium">Per-case breakdown</div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="text-[11px] uppercase tracking-wider text-fg-muted bg-bg-subtle">
+                <thead className="sticky top-0 z-10 text-[11px] uppercase tracking-wider text-fg-muted bg-bg-subtle border-b border-bd-subtle">
                   <tr>
                     <th className="text-left px-4 py-2 font-medium"><SortBtn label="Case" k="caseName" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="left" /></th>
                     <th className="text-right px-4 py-2 font-medium"><SortBtn label="tok/s" k="tokPerSec" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} /></th>

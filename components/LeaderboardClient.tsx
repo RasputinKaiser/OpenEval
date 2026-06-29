@@ -99,7 +99,7 @@ export default function LeaderboardClient() {
           <section className="card overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="text-[11px] uppercase tracking-wider text-fg-muted bg-bg-subtle">
+                <thead className="sticky top-0 z-10 text-[11px] uppercase tracking-wider text-fg-muted bg-bg-subtle border-b border-bd-subtle">
                   <tr>
                     <th className="text-center px-2 py-2 font-medium w-8">#</th>
                     <th className="text-left px-4 py-2 font-medium">

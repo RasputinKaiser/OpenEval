@@ -118,7 +118,7 @@ export default function CompareClient({ runs, initialA, initialB }: Props) {
           <section className="card overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="text-[11px] uppercase tracking-wider text-fg-muted bg-bg-subtle">
+                <thead className="sticky top-0 z-10 text-[11px] uppercase tracking-wider text-fg-muted bg-bg-subtle border-b border-bd-subtle">
                   <tr>
                     <th className="text-left px-4 py-2 font-medium">Case</th>
                     <th className="text-left px-4 py-2 font-medium">A</th>
