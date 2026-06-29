@@ -27,7 +27,7 @@ export default async function Page() {
             <Link
               key={r.id}
               href={`/runs/${r.id}`}
-              className="flex items-center justify-between gap-4 border-b border-bd-subtle px-4 py-3 transition-colors last:border-0 hover:bg-bg-elev active:scale-[0.99]"
+              className="flex items-center justify-between gap-4 border-b border-bd-subtle px-4 py-3 transition-colors last:border-0 hover:bg-bg-elev"
             >
               <div className="min-w-0 flex-1">
                 <div className="truncate font-medium">{r.name}</div>

@@ -24,7 +24,7 @@ export default function ErrorBoundaryClient({ error, reset, title }: Props) {
         )}
         <button
           onClick={reset}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-bg-elev hover:bg-bg-subtle transition-colors text-sm font-medium"
+          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-bg-elev hover:bg-bg-subtle transition-colors text-sm font-medium"
         >
           <RefreshCw className="size-4" />
           Reload
