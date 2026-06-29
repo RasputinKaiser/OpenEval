@@ -38,7 +38,7 @@ export default async function Page() {
         <p className="text-sm text-fg-muted mt-1">Evaluate agent CLIs across SWE, single-tool, reasoning, and visual-code tasks.</p>
       </header>
 
-      <section className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+      <section className="stagger-grid grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
         {stats.map((s) => {
           const Icon = s.icon;
           return (
@@ -128,7 +128,7 @@ export default async function Page() {
       {summary && (
         <section className="card p-5 mt-4">
           <h2 className="text-sm font-medium mb-4">Last run breakdown</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="stagger-grid grid grid-cols-2 md:grid-cols-4 gap-3">
             <Mini label="Total duration" value={fmtDuration(summary.totalDurationMs)} icon={Timer} />
             <Mini label="Total cost" value={`$${summary.totalCostUsd.toFixed(4)}`} icon={DollarSign} />
             <Mini label="Tokens in" value={summary.totalTokensIn.toLocaleString()} icon={Cpu} />
