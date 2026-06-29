@@ -10,6 +10,23 @@ import {
 } from "lucide-react";
 import type { RunCaseRecord, RunnerResult } from "@/lib/types";
 
+const GRADER_TIER: Record<string, string> = {
+  exit_code: "bg-ok/10 text-ok",
+  tests_pass: "bg-ok/10 text-ok",
+  file_contains: "bg-ok/10 text-ok",
+  file_exists: "bg-ok/10 text-ok",
+  file_eq: "bg-ok/10 text-ok",
+  regex_match: "bg-ok/10 text-ok",
+  json_path: "bg-ok/10 text-ok",
+  files_unchanged: "bg-ok/10 text-ok",
+  git_diff_contains: "bg-ok/10 text-ok",
+  checksum: "bg-ok/10 text-ok",
+  file_deleted: "bg-ok/10 text-ok",
+  step: "bg-accent/10 text-accent-soft",
+  rubric_llm: "bg-warn/10 text-warn",
+  manual: "bg-bg-elev text-fg-dim",
+};
+
 interface Props { caseId: string; runId: string; initial: RunCaseRecord | null; }
 
 export default function CaseDetailClient({ caseId, runId, initial }: Props) {
@@ -153,14 +170,15 @@ export default function CaseDetailClient({ caseId, runId, initial }: Props) {
         <Section title="Grader results" icon={CheckCircle2} count={grader.results.length} open={true} onToggle={() => {}}>
           <div className="divide-y divide-bd-subtle">
             {grader.results.map((g, i) => (
-              <div key={i} className="px-4 py-3">
+              <div key={i} className="relative pl-4 px-4 py-3">
+                <div className={clsx("absolute left-0 top-3 bottom-3 w-0.5 rounded-full", g.passed ? "bg-ok" : "bg-err")} />
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
                     {g.passed ? <CheckCircle2 className="size-4 text-ok" /> : <XCircle className="size-4 text-err" />}
-                    <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-bg-elev">{g.spec.type}</span>
+                    <span className={clsx("font-mono text-xs px-1.5 py-0.5 rounded", GRADER_TIER[g.spec.type] ?? "bg-bg-elev")}>{g.spec.type}</span>
                     <span className="text-xs text-fg-muted">{g.detail}</span>
                   </div>
-                  <span className="text-[10px] text-fg-dim mono">{g.durationMs}ms</span>
+                  <span className="text-[10px] text-fg-dim mono tabular-nums">{g.durationMs}ms</span>
                 </div>
                 {g.output && (
                   <details className="mt-2 group">
