@@ -82,11 +82,21 @@ export default async function Page() {
                     <Link href={`/runs/${r.id}`} className="flex items-center gap-3 shrink-0 hover:text-accent-soft transition-colors" aria-label={`Open ${r.name}`}>
                       {r.summary && (
                         <div className="text-right">
-                          <div className="text-sm font-semibold mono">
+                          <div className="text-sm font-semibold mono tabular-nums">
                             {r.summary.passed}/{r.summary.total}
                           </div>
-                          <div className="text-[10px] text-fg-dim">
-                            {(r.summary.passRate * 100).toFixed(0)}%
+                          <div className="mt-1 h-1.5 w-20 overflow-hidden rounded-full bg-bg-elev">
+                            {r.summary.total > 0 && (
+                              <div className="h-full flex">
+                                <div className="bg-ok" style={{ width: `${(r.summary.passed / r.summary.total) * 100}%` }} />
+                                {(r.summary.failed > 0 || r.summary.errored > 0) && (
+                                  <div className="bg-err" style={{ width: `${(r.summary.failed / r.summary.total) * 100}%` }} />
+                                )}
+                                {r.summary.errored > 0 && (
+                                  <div className="bg-warn" style={{ width: `${(r.summary.errored / r.summary.total) * 100}%` }} />
+                                )}
+                              </div>
+                            )}
                           </div>
                         </div>
                       )}
