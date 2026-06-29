@@ -172,7 +172,8 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
                   <Link
                     href={rerunHref}
                     onClick={(e) => e.stopPropagation()}
-                    className="shrink-0 inline-flex items-center gap-1 text-[10px] text-accent-soft opacity-0 group-hover:opacity-100 transition-opacity hover:underline"
+                    aria-label={`Re-run ${c.case_name}`}
+                    className="shrink-0 inline-flex min-h-8 items-center gap-1 rounded px-1.5 text-[10px] text-accent-soft opacity-60 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft/40 transition-opacity hover:underline"
                   >
                     <PlayCircle className="size-3.5" /> Re-run
                   </Link>

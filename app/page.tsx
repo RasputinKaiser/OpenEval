@@ -68,7 +68,7 @@ export default async function Page() {
           ) : (
             <div className="space-y-1.5">
               {runs.map((r) => (
-                <div key={r.id} className="px-3 py-2.5 rounded-md hover:bg-bg-elev transition-colors">
+                <div key={r.id} className="px-3 py-2.5 rounded-md border border-transparent hover:border-bd-subtle transition-colors">
                   <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3">
                     <div className="min-w-0">
                       <Link href={`/runs/${r.id}`} className="font-medium text-sm truncate block hover:text-accent-soft">{r.name}</Link>
@@ -79,7 +79,7 @@ export default async function Page() {
                         {r.params.samples && r.params.samples > 1 ? <span>· {r.params.samples} samples</span> : null}
                       </div>
                     </div>
-                    <div className="flex items-center gap-3 shrink-0">
+                    <Link href={`/runs/${r.id}`} className="flex items-center gap-3 shrink-0 hover:text-accent-soft transition-colors" aria-label={`Open ${r.name}`}>
                       {r.summary && (
                         <div className="text-right">
                           <div className="text-sm font-semibold mono">
@@ -91,8 +91,8 @@ export default async function Page() {
                         </div>
                       )}
                       <StatusBadge status={r.status} />
-                    </div>
-                    <Link href={`/runs/${r.id}/bench`} className="text-fg-dim hover:text-accent-soft" aria-label={`Open bench for ${r.name}`}>
+                    </Link>
+                    <Link href={`/runs/${r.id}/bench`} className="min-h-8 min-w-8 flex items-center justify-center text-fg-dim hover:text-accent-soft transition-colors" aria-label={`Open bench for ${r.name}`}>
                       <BarChart3 className="size-4" />
                     </Link>
                   </div>

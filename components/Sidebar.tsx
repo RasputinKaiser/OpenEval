@@ -41,7 +41,7 @@ export default function Sidebar() {
               key={item.href}
               href={item.href}
               className={clsx(
-                "flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors",
+                "flex shrink-0 items-center gap-2 rounded-md px-3 py-3 md:py-2 text-sm transition-colors",
                 active ? "bg-accent/15 text-accent-soft" : "text-fg-muted hover:bg-bg-elev hover:text-fg"
               )}
             >
