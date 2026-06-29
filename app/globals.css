@@ -36,3 +36,6 @@ button:active:not(:disabled) { transform: scale(0.96); }
     0 1px 1px rgba(0, 0, 0, 0.18),
     0 8px 24px rgba(0, 0, 0, 0.18);
 }
+
+@keyframes drawer-backdrop-enter { from { opacity: 0; } to { opacity: 1; } }
+@keyframes drawer-panel-enter { from { transform: translateX(16px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }

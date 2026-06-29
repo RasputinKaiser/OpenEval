@@ -608,8 +608,11 @@ function SessionDrawer({
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative flex h-full w-full flex-col overflow-hidden border-l border-bd bg-bg-subtle shadow-2xl md:max-w-2xl">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} style={{ animation: "drawer-backdrop-enter 150ms ease-out" }} />
+      <div
+        className="relative flex h-full w-full flex-col overflow-hidden border-l border-bd bg-bg-subtle shadow-2xl md:max-w-2xl"
+        style={{ animation: "drawer-panel-enter 200ms cubic-bezier(0.2, 0, 0, 1)" }}
+      >
         <div className="border-b border-bd-subtle bg-bg-subtle px-5 py-4">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
