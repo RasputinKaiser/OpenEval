@@ -188,17 +188,27 @@ function DeltaText({ value, digits, prefix = "", higherIsBetter, lowerIsBetter }
 function Delta({ label, a, b, aVal, bVal, higherIsBetter, lowerIsBetter }: { label: string; a: string; b: string; aVal: number; bVal: number; higherIsBetter?: boolean; lowerIsBetter?: boolean }) {
   const diff = bVal - aVal;
   let tone = "text-fg-muted";
-  if (higherIsBetter) tone = diff > 0 ? "text-ok" : diff < 0 ? "text-err" : "text-fg-muted";
-  if (lowerIsBetter) tone = diff < 0 ? "text-ok" : diff > 0 ? "text-err" : "text-fg-muted";
+  let bgTone = "";
+  let arrow = "";
+  if (higherIsBetter) {
+    tone = diff > 0 ? "text-ok" : diff < 0 ? "text-err" : "text-fg-muted";
+    bgTone = diff > 0 ? "bg-ok/5" : diff < 0 ? "bg-err/5" : "";
+    arrow = diff > 0 ? "▲" : diff < 0 ? "▼" : "";
+  }
+  if (lowerIsBetter) {
+    tone = diff < 0 ? "text-ok" : diff > 0 ? "text-err" : "text-fg-muted";
+    bgTone = diff < 0 ? "bg-ok/5" : diff > 0 ? "bg-err/5" : "";
+    arrow = diff < 0 ? "▼" : diff > 0 ? "▲" : "";
+  }
   return (
-    <div className="card p-3">
+    <div className={clsx("card p-3", bgTone)}>
       <div className="text-[10px] uppercase tracking-wider text-fg-muted mb-1">{label}</div>
       <div className="flex items-baseline gap-2">
-        <span className="text-sm mono text-fg-muted">{a}</span>
+        <span className="text-sm mono text-fg-muted tabular-nums">{a}</span>
         <span className="text-fg-dim">→</span>
-        <span className="text-sm mono font-medium">{b}</span>
+        <span className="text-sm mono font-medium tabular-nums">{b}</span>
       </div>
-      <div className={`text-[11px] mono mt-0.5 ${tone}`}>{diff > 0 ? "+" : ""}{diff.toFixed(2)}</div>
+      <div className={clsx("text-[11px] mono mt-0.5 tabular-nums", tone)}>{arrow} {diff > 0 ? "+" : ""}{diff.toFixed(2)}</div>
     </div>
   );
 }
