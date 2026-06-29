@@ -55,7 +55,7 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
     <div>
       <TelemetryStrip runId={runId} />
       <section className="mb-4 overflow-hidden rounded-lg border border-bd bg-[linear-gradient(135deg,rgba(124,92,255,0.18),rgba(17,17,19,0.96)_42%,rgba(63,185,80,0.09))]">
-        <div className="grid gap-4 p-4 xl:grid-cols-[1fr_360px_340px] xl:items-end">
+        <div className="stagger-grid grid gap-4 p-4 xl:grid-cols-[1fr_360px_340px] xl:items-end">
           <div>
             <div className="flex flex-wrap items-center gap-2 text-[11px] text-fg-muted">
               <span className="inline-flex items-center gap-1 rounded border border-accent-soft/30 bg-accent/15 px-2 py-1 text-accent-soft">
