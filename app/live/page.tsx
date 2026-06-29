@@ -36,6 +36,7 @@ export default function LivePage() {
       totalToolErrors: 0,
       sessionsWithMeasuredDuration: 0,
       sessionsWithMissingModel: 0,
+      sessionsWithInferredModel: 0,
       sessionsWithMissingTokens: 0,
       sessionsWithMalformedLines: 0,
       staleSessions: 0,

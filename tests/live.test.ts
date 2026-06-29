@@ -115,6 +115,26 @@ test("summarizeLiveSessionFile reports malformed lines and measured result metri
   assert.ok(session.parseWarnings.some((warning) => warning.includes("malformed")));
 });
 
+test("summarizeLiveSessionFile infers Noumena Code ncode model without pretending it is measured", () => {
+  const file = writeSession([
+    {
+      type: "system",
+      sessionId: "noumena-session",
+      cwd: "/Users/ralto/Documents/AgentEvals",
+      userType: "noumena",
+      timestamp: "2026-06-28T20:00:00.000Z",
+    },
+  ]);
+
+  const session = summarizeLiveSessionFile(file, "-Users-ralto-Documents-AgentEvals", Date.parse("2026-06-28T20:01:00.000Z"));
+
+  assert.ok(session);
+  assert.equal(session.model, "GLM 5.2 (1M)");
+  assert.equal(session.metricSources.model, "inferred");
+  assert.ok(session.parseWarnings.some((warning) => warning.includes("model inferred as GLM 5.2")));
+  assert.ok(!session.parseWarnings.some((warning) => warning === "model missing from trace"));
+});
+
 test("redactSensitiveText hides local usernames while preserving useful suffixes", () => {
   assert.equal(
     redactSensitiveText("/Users/ralto/Documents/AgentEvals/data/session.jsonl"),

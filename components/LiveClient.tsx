@@ -119,6 +119,9 @@ export default function LiveClient({ initialData, error: initialError, getTransc
   }
 
   const toolErrorRate = data.totalToolCalls > 0 ? data.totalToolErrors / data.totalToolCalls : 0;
+  const modelEvidenceLabel = data.sessionsWithMissingModel ? "Unknown model" : "Inferred model";
+  const modelEvidenceValue = data.sessionsWithMissingModel ? data.sessionsWithMissingModel : data.sessionsWithInferredModel;
+  const modelEvidenceTone = data.sessionsWithMissingModel ? "warn" : undefined;
 
   return (
     <div className="mx-auto max-w-7xl p-4 md:p-8">
@@ -164,7 +167,7 @@ export default function LiveClient({ initialData, error: initialError, getTransc
         <Stat label="Sessions" value={String(data.totalSessions)} icon={Activity} />
         <Stat label="Quality" value={`${Math.round(data.avgDataQuality)}%`} icon={Gauge} tone={qualityTone(data.avgDataQuality)} />
         <Stat label="Measured dur" value={`${data.sessionsWithMeasuredDuration}/${data.totalSessions}`} icon={Timer} />
-        <Stat label="Unknown model" value={String(data.sessionsWithMissingModel)} icon={Cpu} tone={data.sessionsWithMissingModel ? "warn" : undefined} />
+        <Stat label={modelEvidenceLabel} value={String(modelEvidenceValue)} icon={Cpu} tone={modelEvidenceTone} />
         <Stat label="Tokens missing" value={String(data.sessionsWithMissingTokens)} icon={Layers} tone={data.sessionsWithMissingTokens ? "warn" : undefined} />
         <Stat label="Tool err rate" value={`${Math.round(toolErrorRate * 100)}%`} icon={AlertTriangle} tone={toolErrorRate ? "err" : undefined} />
         <Stat label="Stale" value={String(data.staleSessions)} icon={Clock3} tone={data.staleSessions ? "warn" : undefined} />
@@ -242,7 +245,9 @@ function ModelPanel({ data }: { data: LiveAggregate }) {
         <div className="flex items-center gap-2 text-sm font-medium">
           <BarChart3 className="size-4 text-fg-muted" /> Model evidence
         </div>
-        <div className="mt-1 text-xs text-fg-muted">Unknown rows mean the trace did not report model metadata.</div>
+        <div className="mt-1 text-xs text-fg-muted">
+          Inferred rows use the Noumena Code/ncode default; unknown rows mean the trace did not report model metadata.
+        </div>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">

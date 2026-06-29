@@ -60,6 +60,7 @@ export interface LiveAggregate {
   totalToolErrors: number;
   sessionsWithMeasuredDuration: number;
   sessionsWithMissingModel: number;
+  sessionsWithInferredModel: number;
   sessionsWithMissingTokens: number;
   sessionsWithMalformedLines: number;
   staleSessions: number;
@@ -97,6 +98,8 @@ export interface TranscriptResult {
 
 export { compactDisplayPath, redactSensitiveText };
 
+const NOUMENA_CODE_INFERRED_MODEL = "GLM 5.2 (1M)";
+
 export function ncodeProjectsDir(): string {
   return path.join(os.homedir(), ".ncode", "projects");
 }
@@ -122,6 +125,11 @@ function jsonPreview(value: unknown, max = 420): string {
 
 function metricMissing(source: MetricSource): boolean {
   return source === "missing" || source === "malformed";
+}
+
+function isNoumenaCodeTrace(userType: string | null, project: string, file: string): boolean {
+  const normalizedUserType = userType?.toLowerCase();
+  return normalizedUserType === "noumena" || project.includes("/.ncode") || file.includes(`${path.sep}.ncode${path.sep}projects${path.sep}`);
 }
 
 export function scanLiveSessions(limit = 200): LiveAggregate {
@@ -320,7 +328,12 @@ export function summarizeLiveSessionFile(file: string, projectDir: string, mtime
     return null;
   }
 
-  if (model) metricSources.model = "measured";
+  if (model) {
+    metricSources.model = "measured";
+  } else if (isNoumenaCodeTrace(userType, project, file)) {
+    model = NOUMENA_CODE_INFERRED_MODEL;
+    metricSources.model = "inferred";
+  }
   if (numTurns === 0 && messageCount > 0) {
     numTurns = messageCount;
     metricSources.turns = "inferred";
@@ -382,6 +395,7 @@ export function summarizeLiveSessionFile(file: string, projectDir: string, mtime
 function buildWarnings(sources: LiveMetricSources, malformedLineCount: number, lineCount: number, hookErrors: number, sawResult: boolean): string[] {
   const warnings: string[] = [];
   if (sources.model === "missing") warnings.push("model missing from trace");
+  if (sources.model === "inferred") warnings.push(`model inferred as ${NOUMENA_CODE_INFERRED_MODEL} from Noumena Code/ncode default`);
   if (sources.tokens === "missing") warnings.push("token usage missing from trace");
   if (sources.cost === "missing") warnings.push("cost missing from trace");
   if (sources.duration === "missing") warnings.push("duration missing from trace");
@@ -539,6 +553,7 @@ function aggregate(sessions: LiveSession[], scanWarnings: string[] = []): LiveAg
     totalToolErrors,
     sessionsWithMeasuredDuration: sessions.filter((s) => s.metricSources.duration === "measured").length,
     sessionsWithMissingModel: sessions.filter((s) => s.metricSources.model === "missing").length,
+    sessionsWithInferredModel: sessions.filter((s) => s.metricSources.model === "inferred").length,
     sessionsWithMissingTokens: sessions.filter((s) => s.metricSources.tokens === "missing").length,
     sessionsWithMalformedLines: sessions.filter((s) => s.malformedLineCount > 0).length,
     staleSessions: sessions.filter((s) => s.staleMs > 1000 * 60 * 60 * 12).length,
