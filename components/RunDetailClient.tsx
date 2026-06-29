@@ -59,8 +59,11 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
           <div>
             <div className="flex flex-wrap items-center gap-2 text-[11px] text-fg-muted">
               <span className="inline-flex items-center gap-1 rounded border border-accent-soft/30 bg-accent/15 px-2 py-1 text-accent-soft">
-                {live ? <Loader2 className="size-3 animate-spin" /> : <CircleDot className="size-3" />}
-                {live ? "Running eval" : "Eval complete"}
+                <span className="icon-crossfade relative inline-flex size-3">
+                <CircleDot className={clsx("absolute inset-0 size-3", live && "opacity-0")} />
+                <Loader2 className={clsx("absolute inset-0 size-3 animate-spin", live ? "opacity-100" : "opacity-0")} />
+              </span>
+              {live ? "Running eval" : "Eval complete"}
               </span>
               {harness && <HarnessBadge harness={harness} bin={harnessInfo?.bin} version={harnessInfo?.version} />}
               <span className="mono">{runId}</span>

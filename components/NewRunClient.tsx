@@ -262,7 +262,10 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
               disabled={submitting || (selectedCount === 0 && visible.length === 0)}
               className="mt-4 w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-md bg-accent hover:bg-accent/90 active:scale-[0.96] disabled:active:scale-100 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium"
             >
-              {submitting ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
+              <span className="icon-crossfade relative inline-flex size-4">
+                <Play className={clsx("absolute inset-0 size-4", submitting ? "opacity-0" : "opacity-100")} />
+                <Loader2 className={clsx("absolute inset-0 size-4 animate-spin", submitting ? "opacity-100" : "opacity-0")} />
+              </span>
               {submitting ? "Starting…" : "Start run"}
             </button>
             {error && <div className="mt-2 text-[11px] text-err">{error}</div>}

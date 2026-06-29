@@ -119,7 +119,10 @@ export default function HarnessesClient() {
                   disabled={probing === active.id}
                   className="flex items-center gap-2 px-3 py-2 text-xs rounded-md border border-bd hover:bg-bg-elev text-fg-muted disabled:opacity-50"
                 >
-                  {probing === active.id ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+                  <span className="icon-crossfade relative inline-flex size-3.5">
+                    <RefreshCw className={clsx("absolute inset-0 size-3.5", probing === active.id && "opacity-0")} />
+                    <Loader2 className={clsx("absolute inset-0 size-3.5 animate-spin", probing === active.id ? "opacity-100" : "opacity-0")} />
+                  </span>
                   Probe
                 </button>
               </div>

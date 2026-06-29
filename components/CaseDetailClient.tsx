@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import clsx from "clsx";
 import {
-  ChevronRight, ChevronDown, Hash, Wrench, Terminal, FileText,
+  ChevronRight, Hash, Wrench, Terminal, FileText,
   CornerDownRight, Clock, User, Cpu, DollarSign, AlertTriangle, CheckCircle2, XCircle,
   Eye, FileCode,
 } from "lucide-react";
@@ -228,7 +228,7 @@ function Section({ title, icon: Icon, count, open, onToggle, children }: { title
           <span className="text-sm font-medium">{title}</span>
           {typeof count === "number" && <span className="text-[10px] text-fg-dim mono px-1.5 py-0.5 rounded bg-bg-elev">{count}</span>}
         </div>
-        {open ? <ChevronDown className="size-4 text-fg-dim" /> : <ChevronRight className="size-4 text-fg-dim" />}
+        <ChevronRight className={clsx("size-4 text-fg-dim", open && "rotate-90")} />
       </button>
       {open && <div>{children}</div>}
     </div>
@@ -251,7 +251,7 @@ function ToolCallItem({ tc, idx }: { tc: RunnerResult["toolCalls"][number]; idx:
             {tc.output ? tc.output.slice(0, 120) : (tc.input ? JSON.stringify(tc.input).slice(0, 120) : "")}
           </div>
         </div>
-        {open ? <ChevronDown className="size-3.5 text-fg-dim mt-0.5" /> : <ChevronRight className="size-3.5 text-fg-dim mt-0.5" />}
+        <ChevronRight className={clsx("size-3.5 text-fg-dim mt-0.5", open && "rotate-90")} />
       </button>
       {open && (
         <div className="mt-2 space-y-2 pl-6">
