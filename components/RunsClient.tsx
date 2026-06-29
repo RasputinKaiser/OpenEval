@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import clsx from "clsx";
 import StatusBadge from "./StatusBadge";
@@ -32,8 +32,31 @@ export default function RunsClient({ runs }: { runs: RunRecord[] }) {
   const [sort, setSort] = useState<SortKey>("newest");
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [pageSize, setPageSize] = useState(50);
   const searchRef = useRef<HTMLInputElement>(null);
   useFocusOnSlash(searchRef);
+
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("status")) setStatusFilter(params.get("status") as StatusFilter);
+      if (params.get("sort")) setSort(params.get("sort") as SortKey);
+      if (params.get("q")) setSearch(params.get("q") ?? "");
+      if (params.get("limit")) setPageSize(Number(params.get("limit")) || 50);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams();
+      if (statusFilter !== "all") params.set("status", statusFilter);
+      if (sort !== "newest") params.set("sort", sort);
+      if (search) params.set("q", search);
+      if (pageSize !== 50) params.set("limit", String(pageSize));
+      const qs = params.toString();
+      window.history.replaceState(null, "", qs ? `?${qs}` : window.location.pathname);
+    } catch {}
+  }, [statusFilter, sort, search, pageSize]);
 
   const visible = useMemo(() => {
     let filtered = runs;
@@ -63,15 +86,16 @@ export default function RunsClient({ runs }: { runs: RunRecord[] }) {
   }, [runs, statusFilter, sort, search]);
 
   const dateSorted = sort === "newest" || sort === "oldest";
+  const paged = visible.slice(0, pageSize);
   const groups = useMemo(() => {
-    if (!dateSorted) return [{ label: "", items: visible }];
+    if (!dateSorted) return [{ label: "", items: paged }];
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
     const dayMs = 86_400_000;
     const result: { label: string; items: typeof visible }[] = [];
     let currentLabel = "";
     let bucket: typeof visible = [];
-    for (const r of visible) {
+    for (const r of paged) {
       const created = new Date(r.created_at);
       const dayStart = new Date(created.getFullYear(), created.getMonth(), created.getDate()).getTime();
       const daysAgo = Math.floor((today - dayStart) / dayMs);
@@ -90,7 +114,7 @@ export default function RunsClient({ runs }: { runs: RunRecord[] }) {
     }
     if (bucket.length) result.push({ label: currentLabel, items: bucket });
     return result;
-  }, [visible, dateSorted]);
+  }, [paged, dateSorted]);
 
   return (
     <div>
@@ -159,8 +183,18 @@ export default function RunsClient({ runs }: { runs: RunRecord[] }) {
               </button>
             )}
           </div>
-          <span className="ml-auto text-xs text-fg-dim mono">
-            {visible.length}/{runs.length} shown
+          <span className="ml-auto flex items-center gap-2 text-xs text-fg-dim mono">
+            <select
+              value={pageSize}
+              onChange={(e) => setPageSize(Number(e.target.value))}
+              className="text-[11px] bg-bg border border-bd rounded-md px-1.5 py-1 focus:outline-none focus:border-accent"
+            >
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+              <option value={200}>200</option>
+            </select>
+            <span className="tabular-nums">{Math.min(visible.length, pageSize)}/{runs.length}</span>
           </span>
         </div>
       )}
