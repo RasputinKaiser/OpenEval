@@ -1,0 +1,67 @@
+import { runGrader } from "../lib/grader";
+import type { RunnerResult, GraderSpec } from "../lib/types";
+
+function mockRunner(finalText: string): RunnerResult {
+  return {
+    exitCode: 0,
+    durationMs: 100,
+    startedAt: Date.now(),
+    endedAt: Date.now() + 100,
+    transcript: [],
+    toolCalls: [],
+    finalText,
+    resultText: finalText,
+    usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreateTokens: 0, costUsd: 0 },
+    numTurns: 1,
+    stopReason: "end_turn",
+    sessionId: "verify-judge",
+    model: "test",
+    isError: false,
+    rawJson: null,
+    tokenSegments: [],
+    toolCallCounts: {},
+  };
+}
+
+const rubricSpec: Extract<GraderSpec, { type: "rubric_llm" }> = {
+  type: "rubric_llm",
+  rubric: "The agent must produce a complete FizzBuzz from 1 to 15. Output must contain '1 2 Fizz 4 Buzz Fizz 7 8 Fizz Buzz 11 Fizz 13 14 FizzBuzz'.",
+  min_score: 0.7,
+  model: "glm-5.2",
+};
+
+const goodAnswer = "1 2 Fizz 4 Buzz Fizz 7 8 Fizz Buzz 11 Fizz 13 14 FizzBuzz";
+const badAnswer = "1 2 3 4 5";
+
+async function main() {
+  console.log("=== Testing rubric_llm grader with glm-5.2 ===\n");
+
+  console.log("Good answer:");
+  const goodResult = await runGrader(rubricSpec, {
+    workdir: "/tmp",
+    runner: mockRunner(goodAnswer),
+    transcriptText: goodAnswer,
+  });
+  console.log(`  passed: ${goodResult.passed}`);
+  console.log(`  score:  ${goodResult.score}`);
+  console.log(`  detail: ${goodResult.detail}\n`);
+
+  console.log("Bad answer:");
+  const badResult = await runGrader(rubricSpec, {
+    workdir: "/tmp",
+    runner: mockRunner(badAnswer),
+    transcriptText: badAnswer,
+  });
+  console.log(`  passed: ${badResult.passed}`);
+  console.log(`  score:  ${badResult.score}`);
+  console.log(`  detail: ${badResult.detail}\n`);
+
+  if (goodResult.passed && !badResult.passed) {
+    console.log("PASS: Judge correctly distinguished good from bad.");
+  } else {
+    console.log("FAIL: Judge did not distinguish correctly.");
+    process.exit(1);
+  }
+}
+
+main().catch((e) => { console.error(e); process.exit(1); });
