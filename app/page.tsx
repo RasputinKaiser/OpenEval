@@ -1,4 +1,5 @@
 import Link from "next/link";
+import clsx from "clsx";
 import { countRuns, listRuns } from "@/lib/db";
 import { loadCases } from "@/lib/cases";
 import StatusBadge from "@/components/StatusBadge";
@@ -7,7 +8,12 @@ import { Activity, ArrowRight, BarChart3, CheckCircle2, Cpu, DollarSign, FileTex
 
 export const dynamic = "force-dynamic";
 
-function fmtDuration(ms: number) {
+const CAT_COLORS: Record<string, string> = {
+  "agentic-swe": "bg-accent",
+  "single-tool": "bg-ok",
+  "reasoning": "bg-warn",
+  "visual-code": "bg-blue-500",
+};
   if (!ms) return "—";
   if (ms < 1000) return `${ms}ms`;
   if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
@@ -122,7 +128,7 @@ export default async function Page() {
                   <span className="text-xs text-fg-muted mono">{count}</span>
                 </div>
                 <div className="mt-1.5 h-1.5 bg-bg-elev rounded-full overflow-hidden">
-                  <div className="h-full bg-accent" style={{ width: `${(count / cases.length) * 100}%` }} />
+                  <div className={clsx("h-full transition-[width] duration-300", CAT_COLORS[cat] ?? "bg-accent")} style={{ width: `${(count / cases.length) * 100}%` }} />
                 </div>
               </Link>
             ))}
