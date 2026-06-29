@@ -79,7 +79,31 @@ export default function HarnessesClient() {
       </header>
 
       {loading ? (
-        <div className="flex items-center gap-2 text-sm text-fg-muted"><Loader2 className="size-4 animate-spin" /> Probing binaries…</div>
+        <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4">
+          <div className="space-y-1">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="px-3 py-2.5 rounded-md border border-bd space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className="size-3.5 rounded-full animate-pulse bg-bd-subtle" />
+                  <div className="h-4 w-24 animate-pulse rounded bg-bd-subtle" />
+                </div>
+                <div className="h-3 w-32 animate-pulse rounded bg-bd-subtle" />
+              </div>
+            ))}
+          </div>
+          <div className="card p-5 space-y-4">
+            <div className="h-6 w-40 animate-pulse rounded bg-bd-subtle" />
+            <div className="h-3 w-32 animate-pulse rounded bg-bd-subtle" />
+            <div className="mt-4 grid grid-cols-2 gap-4">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="space-y-1.5">
+                  <div className="h-3 w-16 animate-pulse rounded bg-bd-subtle" />
+                  <div className="h-4 w-24 animate-pulse rounded bg-bd-subtle" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4">
           <div className="space-y-1">

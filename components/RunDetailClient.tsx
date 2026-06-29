@@ -835,6 +835,23 @@ function confidenceGrade(score: number) {
   return "Weak proof";
 }
 
+const GRADER_TIER_COLOR: Record<string, string> = {
+  exit_code: "bg-ok/10 text-ok",
+  tests_pass: "bg-ok/10 text-ok",
+  file_contains: "bg-ok/10 text-ok",
+  file_exists: "bg-ok/10 text-ok",
+  file_eq: "bg-ok/10 text-ok",
+  regex_match: "bg-ok/10 text-ok",
+  json_path: "bg-ok/10 text-ok",
+  files_unchanged: "bg-ok/10 text-ok",
+  git_diff_contains: "bg-ok/10 text-ok",
+  checksum: "bg-ok/10 text-ok",
+  file_deleted: "bg-ok/10 text-ok",
+  step: "bg-accent/10 text-accent-soft",
+  rubric_llm: "bg-warn/10 text-warn",
+  manual: "bg-bg-elev text-fg-dim",
+};
+
 function GraderRow({ g }: { g: GraderResult }) {
   const summary = g.detail.length > 120 ? `${g.detail.slice(0, 120)}…` : g.detail;
   const expected = g.spec.type === "file_eq" ? g.spec.expected : g.spec.type === "file_contains" ? g.spec.pattern : undefined;
@@ -842,16 +859,17 @@ function GraderRow({ g }: { g: GraderResult }) {
   const showDiff = (g.spec.type === "file_eq" || g.spec.type === "file_contains") && !g.passed && actual;
 
   return (
-    <details className="group">
-      <summary className="px-4 py-2.5 cursor-pointer hover:bg-bg-elev flex items-start gap-2 list-none">
+    <details className="group relative">
+      <summary className="relative pl-4 pr-4 py-2.5 cursor-pointer hover:bg-bg-elev flex items-start gap-2 list-none">
+        <div className={clsx("absolute left-0 top-2 bottom-2 w-0.5 rounded-full", g.passed ? "bg-ok" : "bg-err")} />
         <ChevronRight className="size-3.5 text-fg-dim mt-0.5 group-open:rotate-90 transition-transform" />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-[11px] px-1.5 py-0.5 rounded bg-bg-elev">{g.spec.type}</span>
+            <span className={clsx("font-mono text-[11px] px-1.5 py-0.5 rounded", GRADER_TIER_COLOR[g.spec.type] ?? "bg-bg-elev")}>{g.spec.type}</span>
             <span className={clsx("text-[10px] px-1.5 py-0.5 rounded-full border", g.passed ? "text-ok border-ok/30 bg-ok/10" : "text-err border-err/30 bg-err/10")}>
               {g.passed ? "passed" : "failed"}
             </span>
-            <span className="text-[10px] text-fg-dim mono">{g.durationMs}ms</span>
+            <span className="text-[10px] text-fg-dim mono tabular-nums">{g.durationMs}ms</span>
           </div>
           <div className={clsx("text-[11px] mt-1 break-words", g.passed ? "text-fg-muted" : "text-fg")}>{summary}</div>
         </div>
