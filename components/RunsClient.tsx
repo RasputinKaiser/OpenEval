@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import clsx from "clsx";
 import StatusBadge from "./StatusBadge";
 import HarnessBadge from "./HarnessBadge";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Search, X } from "lucide-react";
 import type { RunRecord } from "@/lib/types";
+import { useFocusOnSlash } from "@/lib/use-focus-slash";
 
 type SortKey = "newest" | "oldest" | "pass-desc" | "pass-asc";
 type StatusFilter = "all" | "running" | "completed" | "failed" | "passed";
@@ -30,6 +31,9 @@ export default function RunsClient({ runs }: { runs: RunRecord[] }) {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [sort, setSort] = useState<SortKey>("newest");
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+  useFocusOnSlash(searchRef);
 
   const visible = useMemo(() => {
     let filtered = runs;
@@ -42,6 +46,10 @@ export default function RunsClient({ runs }: { runs: RunRecord[] }) {
         filtered = runs.filter((r) => r.status === statusFilter);
       }
     }
+    const q = search.trim().toLowerCase();
+    if (q) {
+      filtered = filtered.filter((r) => r.name.toLowerCase().includes(q) || r.id.toLowerCase().includes(q) || (r.params.harness ?? "").toLowerCase().includes(q));
+    }
     const sorted = [...filtered];
     sorted.sort((a, b) => {
       if (sort === "newest") return b.created_at - a.created_at;
@@ -52,7 +60,7 @@ export default function RunsClient({ runs }: { runs: RunRecord[] }) {
       return ap - bp;
     });
     return sorted;
-  }, [runs, statusFilter, sort]);
+  }, [runs, statusFilter, sort, search]);
 
   return (
     <div>
@@ -104,6 +112,21 @@ export default function RunsClient({ runs }: { runs: RunRecord[] }) {
                   ))}
                 </div>
               </>
+            )}
+          </div>
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3 text-fg-dim" />
+            <input
+              ref={searchRef}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search runs…"
+              className="w-32 lg:w-44 pl-8 pr-2 py-1.5 text-[11px] bg-bg border border-bd rounded-md focus:outline-none focus:border-accent focus:w-40 lg:focus:w-52 transition-all placeholder:text-fg-dim"
+            />
+            {search && (
+              <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-fg-dim hover:text-fg" aria-label="Clear search">
+                <X className="size-3" />
+              </button>
             )}
           </div>
           <span className="ml-auto text-xs text-fg-dim mono">
