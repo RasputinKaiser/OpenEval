@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import clsx from "clsx";
 import { Check, ChevronDown, Loader2, Search, Terminal, RefreshCw, AlertCircle, CheckCircle2 } from "lucide-react";
 import type { DiscoveredHarness } from "@/lib/adapters/discover";
+import { cachedFetch, invalidateCache } from "@/lib/cached-fetch";
 
 interface Props {
   value?: string;
@@ -24,8 +25,9 @@ export default function HarnessPicker({ value, onChange }: Props) {
 
   function load(refresh = false) {
     setLoading(true);
-    fetch(`/api/harnesses${refresh ? "?refresh=1" : ""}`)
-      .then((r) => r.json())
+    if (refresh) invalidateCache("/api/harnesses");
+    const url = `/api/harnesses${refresh ? "?refresh=1" : ""}`;
+    cachedFetch<{ harnesses: DiscoveredHarness[] }>(url)
       .then((d) => setHarnesses(d.harnesses || []))
       .finally(() => setLoading(false));
   }
