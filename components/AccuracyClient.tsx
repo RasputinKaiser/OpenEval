@@ -226,6 +226,14 @@ function FilterChip({ active, onClick, children }: { active: boolean; onClick: (
   );
 }
 
+const TIER_COLORS: Record<EvidenceTier, string> = {
+  deterministic: "bg-ok/10 text-ok",
+  trace: "bg-accent/10 text-accent-soft",
+  visual: "bg-blue-500/10 text-blue-400",
+  llm_judge: "bg-warn/10 text-warn",
+  manual: "bg-bg-elev text-fg-dim",
+};
+
 function CaseRow({ row }: { row: CaseAccuracyAudit }) {
   return (
     <tr className="hover:bg-bg-elev">
@@ -238,7 +246,7 @@ function CaseRow({ row }: { row: CaseAccuracyAudit }) {
       <td className="px-4 py-2">
         <div className="flex flex-wrap gap-1">
           {Object.entries(row.tiers).filter(([, count]) => count > 0).map(([tier, count]) => (
-            <span key={tier} className="text-[10px] mono px-1.5 py-0.5 rounded bg-bg-elev text-fg-muted">
+            <span key={tier} className={clsx("text-[10px] mono px-1.5 py-0.5 rounded", TIER_COLORS[tier as EvidenceTier] ?? "bg-bg-elev text-fg-muted")}>
               {evidenceLabel(tier as EvidenceTier)} {count}
             </span>
           ))}
