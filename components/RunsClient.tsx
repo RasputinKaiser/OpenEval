@@ -194,12 +194,27 @@ export default function RunsClient({ runs }: { runs: RunRecord[] }) {
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
                       {r.summary && (
-                        <span className={clsx(
-                          "text-sm mono font-semibold tabular-nums",
-                          r.summary.passRate >= 1 ? "text-ok" : r.summary.passRate >= 0.5 ? "text-warn" : "text-err"
-                        )}>
-                          {(r.summary.passRate * 100).toFixed(0)}%
-                        </span>
+                        <div className="text-right">
+                          <span className={clsx(
+                            "text-sm mono font-semibold tabular-nums",
+                            r.summary.passRate >= 1 ? "text-ok" : r.summary.passRate >= 0.5 ? "text-warn" : "text-err"
+                          )}>
+                            {(r.summary.passRate * 100).toFixed(0)}%
+                          </span>
+                          <div className="mt-1 h-1.5 w-16 overflow-hidden rounded-full bg-bg-elev">
+                            {r.summary.total > 0 && (
+                              <div className="h-full flex">
+                                <div className="bg-ok" style={{ width: `${(r.summary.passed / r.summary.total) * 100}%` }} />
+                                {(r.summary.failed > 0 || r.summary.errored > 0) && (
+                                  <div className="bg-err" style={{ width: `${(r.summary.failed / r.summary.total) * 100}%` }} />
+                                )}
+                                {r.summary.errored > 0 && (
+                                  <div className="bg-warn" style={{ width: `${(r.summary.errored / r.summary.total) * 100}%` }} />
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       )}
                       <StatusBadge status={r.status} />
                     </div>
