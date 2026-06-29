@@ -38,6 +38,7 @@ import { compactDisplayPath, redactSensitiveText } from "@/lib/redaction";
 import { Sparkline } from "@/components/Sparkline";
 import type { LiveAggregate, LiveMetricSources, LiveSession, LiveTranscriptTurn, MetricSource, TranscriptResult } from "@/lib/live";
 import { useFocusOnSlash } from "@/lib/use-focus-slash";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 
 type LiveClientProps = {
   initialData?: LiveAggregate | null;
@@ -66,6 +67,7 @@ export default function LiveClient({ initialData, error: initialError, getTransc
   const [filter, setFilter] = useState<FilterMode>("all");
   const [sort, setSort] = useState<SortMode>("recent");
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, 200);
   const searchRef = useRef<HTMLInputElement>(null);
   useFocusOnSlash(searchRef);
 
@@ -146,7 +148,7 @@ export default function LiveClient({ initialData, error: initialError, getTransc
 
   const visibleSessions = useMemo(() => {
     const sessions = data?.sessions ?? [];
-    const q = search.trim().toLowerCase();
+    const q = debouncedSearch.trim().toLowerCase();
     const filtered = sessions.filter((session) => {
       if (filter === "attention" && !needsAttention(session)) return false;
       if (filter === "stale" && !(session.staleMs > staleThresholdMs())) return false;
@@ -162,7 +164,7 @@ export default function LiveClient({ initialData, error: initialError, getTransc
       if (sort === "errors") return b.toolErrors - a.toolErrors || b.hookErrors - a.hookErrors || b.lastEventAt - a.lastEventAt;
       return b.lastEventAt - a.lastEventAt;
     });
-  }, [data, filter, sort, search]);
+  }, [data, filter, sort, debouncedSearch]);
 
   if (loading && !data) return <LoadingSkeleton />;
   if (!data) return error ? <ErrorCard message={error} /> : <EmptyCard warnings={[]} />;

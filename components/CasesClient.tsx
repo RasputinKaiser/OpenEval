@@ -6,6 +6,7 @@ import clsx from "clsx";
 import { Gauge, Wrench, Search, X } from "lucide-react";
 import type { CaseDefinition } from "@/lib/types";
 import { useFocusOnSlash } from "@/lib/use-focus-slash";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 
 const CAT_ACCENT: Record<string, string> = {
   "agentic-swe": "bg-accent",
@@ -16,15 +17,16 @@ const CAT_ACCENT: Record<string, string> = {
 
 export default function CasesClient({ cases, activeCategory }: { cases: CaseDefinition[]; activeCategory?: string }) {
   const [query, setQuery] = useState("");
+  const debouncedQuery = useDebouncedValue(query, 200);
   const searchRef = useRef<HTMLInputElement>(null);
   useFocusOnSlash(searchRef);
 
   const grouped = useMemo(() => {
     const filtered = activeCategory ? cases.filter((c) => c.category === activeCategory) : cases;
-    if (!query.trim()) {
+    if (!debouncedQuery.trim()) {
       return filtered.reduce<Record<string, CaseDefinition[]>>((a, c) => { (a[c.category] ||= []).push(c); return a; }, {});
     }
-    const q = query.toLowerCase();
+    const q = debouncedQuery.toLowerCase();
     const matching = filtered.filter((c) =>
       c.name.toLowerCase().includes(q) ||
       c.id.toLowerCase().includes(q) ||
@@ -32,7 +34,7 @@ export default function CasesClient({ cases, activeCategory }: { cases: CaseDefi
       (c.tags?.some((t) => t.toLowerCase().includes(q)) ?? false)
     );
     return matching.reduce<Record<string, CaseDefinition[]>>((a, c) => { (a[c.category] ||= []).push(c); return a; }, {});
-  }, [cases, query, activeCategory]);
+  }, [cases, debouncedQuery, activeCategory]);
 
   const total = Object.values(grouped).reduce((sum, list) => sum + list.length, 0);
 

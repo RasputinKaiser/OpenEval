@@ -6,6 +6,7 @@ import { Loader2, Play, Check, Filter, Cpu, Search } from "lucide-react";
 import clsx from "clsx";
 import type { CaseDefinition } from "@/lib/types";
 import { useFocusOnSlash } from "@/lib/use-focus-slash";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import ModelPicker from "./ModelPicker";
 import HarnessPicker from "./HarnessPicker";
 
@@ -30,6 +31,7 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
   const allTags = Array.from(new Set(cases.flatMap((c) => c.tags ?? []))).sort();
   const [filterTags, setFilterTags] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, 200);
   const searchRef = useRef<HTMLInputElement>(null);
   useFocusOnSlash(searchRef);
 
@@ -37,7 +39,7 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
     if (!filterCats.has(c.category)) return false;
     if (filterDiff.size && !filterDiff.has(c.difficulty || "untiered")) return false;
     if (filterTags.size && !(c.tags ?? []).some((t) => filterTags.has(t))) return false;
-    const q = search.trim().toLowerCase();
+    const q = debouncedSearch.trim().toLowerCase();
     if (q) {
       const hay = `${c.name} ${c.id} ${c.description ?? ""} ${(c.tags ?? []).join(" ")}`.toLowerCase();
       if (!hay.includes(q)) return false;
