@@ -226,10 +226,10 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
 
         <section>
           {selectedIdx === null || !activeCase ? (
-            <div className="card p-12 text-center">
-              <CircleDot className="size-8 text-fg-dim mx-auto mb-2" />
+            <div className="card p-12 text-center border-dashed">
+              <CircleDot className="size-10 text-fg-dim mx-auto mb-3 opacity-50" />
               <div className="text-sm text-fg-muted">Select a case to view details</div>
-              <div className="text-[11px] text-fg-dim mt-1">Live transcript and grading results available after completion</div>
+              <div className="text-[11px] text-fg-dim mt-1">Press <kbd className="px-1 py-0.5 rounded bg-bg-elev text-fg-muted text-[10px]">/</kbd> to search cases</div>
             </div>
           ) : (
             <CaseSidePanel key={activeCase.id} rc={activeCase} runId={runId} />
