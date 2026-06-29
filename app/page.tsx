@@ -128,12 +128,15 @@ export default async function Page() {
           <h2 className="text-sm font-medium mb-4">Case library</h2>
           <div className="space-y-3">
             {Object.entries(byCat).map(([cat, count]) => (
-              <Link key={cat} href={`/cases?category=${cat}`} className="block">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm">{cat}</span>
-                  <span className="text-xs text-fg-muted mono">{count}</span>
+              <Link key={cat} href={`/cases?category=${cat}`} className="group block rounded-md px-2 py-1.5 transition-colors hover:bg-bg-elev">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className={clsx("size-2 rounded-full", CAT_COLORS[cat] ?? "bg-accent")} />
+                    <span className="text-sm group-hover:text-accent-soft transition-colors">{cat}</span>
+                  </div>
+                  <span className="text-xs text-fg-muted mono tabular-nums">{count}</span>
                 </div>
-                <div className="mt-1.5 h-1.5 bg-bg-elev rounded-full overflow-hidden">
+                <div className="mt-1.5 h-1 bg-bg-elev rounded-full overflow-hidden">
                   <div className={clsx("h-full transition-[width] duration-300", CAT_COLORS[cat] ?? "bg-accent")} style={{ width: `${(count / cases.length) * 100}%` }} />
                 </div>
               </Link>
