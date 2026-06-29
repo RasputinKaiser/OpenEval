@@ -34,7 +34,7 @@ import {
 } from "lucide-react";
 import HarnessPicker from "./HarnessPicker";
 import { compactDisplayPath, redactSensitiveText } from "@/lib/redaction";
-import type { LiveAggregate, LiveMetricSources, LiveSession, LiveSessionToolDuration, LiveTranscriptTurn, MetricSource, TranscriptResult } from "@/lib/live";
+import type { LiveAggregate, LiveMetricSources, LiveSession, LiveTranscriptTurn, MetricSource, TranscriptResult } from "@/lib/live";
 
 type LiveClientProps = {
   initialData?: LiveAggregate | null;
@@ -489,19 +489,6 @@ function ListStack({ items, redact, empty }: { items: Array<{ key: string; label
   );
 }
 
-function ToolDurationRow({ tool }: { tool: LiveSessionToolDuration }) {
-  const errAppetite = tool.errors > 0;
-  return (
-    <div className="grid grid-cols-[1fr_56px_56px_56px_28px] items-center gap-2 py-1.5 text-xs">
-      <span className="truncate mono text-[11px] text-fg" title={tool.name}>{tool.name}</span>
-      <span className="mono text-right tabular-nums text-fg-muted">{fmtMs(tool.p50Ms)}</span>
-      <span className="mono text-right tabular-nums text-fg-muted">{fmtMs(tool.p95Ms)}</span>
-      <span className="mono text-right tabular-nums text-fg-dim">{fmtMs(tool.maxMs)}</span>
-      <span className={clsx("mono text-right tabular-nums", errAppetite ? "text-err" : "text-fg-dim")}>{tool.errors}</span>
-    </div>
-  );
-}
-
 function SessionRow({ session, redact, onClick }: { session: LiveSession; redact: boolean; onClick: () => void }) {
   const attention = needsAttention(session);
   return (
@@ -633,6 +620,7 @@ function SessionDrawer({
   }, [session, getTranscript, harness]);
 
   const visible = mounted && !closing;
+  const durationByName = new Map(session.toolDurations.map((d) => [d.name, d] as const));
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -756,44 +744,50 @@ function SessionDrawer({
             </DetailPanel>
           </section>
 
-          <section className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <DetailPanel title="Tool reliability">
-              <ListStack items={session.toolSummaries.map((tool) => ({
-                key: tool.name,
-                label: tool.name,
-                value: `${tool.calls} calls / ${tool.errors} err`,
-              }))} redact={false} empty="No tool summary found." />
-            </DetailPanel>
-            <DetailPanel title="Operator queue">
-              <div className="mb-3 grid grid-cols-4 gap-2">
-                <TinyMetric label="Enq" value={fmt(session.queueSummary.enqueue)} />
-                <TinyMetric label="Deq" value={fmt(session.queueSummary.dequeue)} />
-                <TinyMetric label="Rem" value={fmt(session.queueSummary.remove)} />
-                <TinyMetric label="All" value={fmt(session.queueSummary.popAll)} />
-              </div>
-              <ListStack items={session.queueSummary.preview.map((preview, index) => ({
-                key: `${index}-${preview}`,
-                label: preview,
-              }))} redact={redact} empty="No queued prompt previews." />
-            </DetailPanel>
-          </section>
+          <DetailPanel title="Operator queue">
+            <div className="mb-3 grid grid-cols-4 gap-2">
+              <TinyMetric label="Enq" value={fmt(session.queueSummary.enqueue)} />
+              <TinyMetric label="Deq" value={fmt(session.queueSummary.dequeue)} />
+              <TinyMetric label="Rem" value={fmt(session.queueSummary.remove)} />
+              <TinyMetric label="All" value={fmt(session.queueSummary.popAll)} />
+            </div>
+            <ListStack items={session.queueSummary.preview.map((preview, index) => ({
+              key: `${index}-${preview}`,
+              label: preview,
+            }))} redact={redact} empty="No queued prompt previews." />
+          </DetailPanel>
 
-          {session.toolDurations.length > 0 ? (
-            <DetailPanel title="Tool timing">
-              <div className="mb-3 grid grid-cols-[1fr_56px_56px_56px_28px] gap-2 text-[9px] uppercase tracking-wider text-fg-dim">
-                <span>Tool</span>
-                <span className="text-right">p50</span>
-                <span className="text-right">p95</span>
-                <span className="text-right">max</span>
-                <span className="text-right">err</span>
-              </div>
-              <div className="space-y-1.5">
-                {session.toolDurations.map((tool) => (
-                  <ToolDurationRow key={tool.name} tool={tool} />
-                ))}
-              </div>
-            </DetailPanel>
-          ) : null}
+          <DetailPanel title="Tool breakdown">
+            {session.toolSummaries.length === 0 ? (
+              <div className="text-sm text-fg-muted">No tool calls found.</div>
+            ) : (
+              <>
+                <div className="mb-3 grid grid-cols-[1fr_56px_56px_56px_56px_28px] gap-2 text-[9px] uppercase tracking-wider text-fg-dim">
+                  <span>Tool</span>
+                  <span className="text-right">calls</span>
+                  <span className="text-right">p50</span>
+                  <span className="text-right">p95</span>
+                  <span className="text-right">max</span>
+                  <span className="text-right">err</span>
+                </div>
+                <div className="space-y-1.5">
+                  {session.toolSummaries.map((tool) => {
+                    const dur = durationByName.get(tool.name);
+                    return (
+                      <div key={tool.name} className="grid grid-cols-[1fr_56px_56px_56px_56px_28px] items-center gap-2 py-1.5 text-xs">
+                        <span className="truncate mono text-[11px] text-fg" title={tool.name}>{tool.name}</span>
+                        <span className="mono tabular-nums text-right text-fg-muted">{tool.calls}</span>
+                        <span className="mono tabular-nums text-right text-fg-muted">{dur ? fmtMs(dur.p50Ms) : "—"}</span>
+                        <span className="mono tabular-nums text-right text-fg-muted">{dur ? fmtMs(dur.p95Ms) : "—"}</span>
+                        <span className="mono tabular-nums text-right text-fg-dim">{dur ? fmtMs(dur.maxMs) : "—"}</span>
+                        <span className={clsx("mono tabular-nums text-right", tool.errors > 0 ? "text-err" : "text-fg-dim")}>{tool.errors}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </DetailPanel>
 
           <DetailPanel title="File / repo impact">
             <div className="mb-3 grid grid-cols-2 gap-2 md:grid-cols-4">
