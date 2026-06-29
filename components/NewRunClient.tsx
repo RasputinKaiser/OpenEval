@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Play, Check, Filter, Cpu } from "lucide-react";
+import { Loader2, Play, Check, Filter, Cpu, Search } from "lucide-react";
 import clsx from "clsx";
 import type { CaseDefinition } from "@/lib/types";
 import ModelPicker from "./ModelPicker";
@@ -28,8 +28,19 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
 
   const allTags = Array.from(new Set(cases.flatMap((c) => c.tags ?? []))).sort();
   const [filterTags, setFilterTags] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState("");
 
-  const visible = cases.filter((c) => filterCats.has(c.category) && (!filterDiff.size || filterDiff.has(c.difficulty || "untiered")) && (!filterTags.size || (c.tags ?? []).some((t) => filterTags.has(t))));
+  const visible = cases.filter((c) => {
+    if (!filterCats.has(c.category)) return false;
+    if (filterDiff.size && !filterDiff.has(c.difficulty || "untiered")) return false;
+    if (filterTags.size && !(c.tags ?? []).some((t) => filterTags.has(t))) return false;
+    const q = search.trim().toLowerCase();
+    if (q) {
+      const hay = `${c.name} ${c.id} ${c.description ?? ""} ${(c.tags ?? []).join(" ")}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
   const allSelected = visible.length > 0 && visible.every((c) => selected[c.id]);
   const selectedCount = Object.values(selected).filter(Boolean).length;
   const plannedCaseCount = selectedCount > 0 ? selectedCount : visible.length;
@@ -209,13 +220,25 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
                   key={t}
                   onClick={() => toggleTag(t)}
                   className={clsx(
-                    "text-[11px] px-2 py-1 rounded-md border",
+                    "text-[11px] px-2.5 py-1.5 rounded-md border",
                     filterTags.has(t) ? "border-accent bg-accent/10 text-accent-soft" : "border-bd text-fg-muted hover:bg-bg-elev"
                   )}
                 >
                   #{t}
                 </button>
               ))}
+            </div>
+
+            <div className="px-4 py-2 border-b border-bd-subtle">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3 text-fg-dim" />
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search cases…"
+                  className="w-full pl-8 pr-2 py-1.5 text-xs bg-bg border border-bd rounded-md focus:outline-none focus:border-accent placeholder:text-fg-dim"
+                />
+              </div>
             </div>
 
             <div className="max-h-[400px] overflow-y-auto divide-y divide-bd-subtle">
