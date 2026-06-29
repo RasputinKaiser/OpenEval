@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import clsx from "clsx";
-import { AlertCircle, CheckCircle2, Loader2, RefreshCw, Terminal } from "lucide-react";
+import { AlertCircle, CheckCircle2, Loader2, RefreshCw, Terminal, XCircle } from "lucide-react";
 import type { DiscoveredHarness } from "@/lib/adapters/discover";
 
 const STATUS_META: Record<string, { label: string; cls: string }> = {
@@ -151,7 +151,7 @@ export default function HarnessesClient() {
                 </button>
               </div>
 
-              <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+              <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm border-l-2 border-bd-subtle pl-4">
                 <Field label="Status">
                   {(() => { const m = STATUS_META[active.status]; return m ? <span className={clsx("text-[10px] uppercase tracking-wider mono px-1.5 py-0.5 rounded", m.cls)}>{m.label}</span> : active.status; })()}
                 </Field>
@@ -159,12 +159,30 @@ export default function HarnessesClient() {
                 <Field label="Version">{active.version ?? "—"}</Field>
                 <Field label="Source">{active.source}</Field>
                 <Field label="Output format">{active.capabilities.outputFormat}</Field>
-                <Field label="Reports cost">{active.capabilities.reportsCost ? "yes" : "no"}</Field>
-                <Field label="Reports tokens">{active.capabilities.reportsTokens ? "yes" : "no"}</Field>
-                <Field label="Reports turns">{active.capabilities.reportsTurns ? "yes" : "no"}</Field>
                 <Field label="Vision input">{active.capabilities.supportsVisionInput ? "yes" : "no"}</Field>
-                <Field label="Bin names">{active.binNames.join(", ")}</Field>
               </dl>
+
+              <div className="mt-4">
+                <div className="text-[11px] uppercase tracking-wider text-fg-muted mb-1.5">Capabilities</div>
+                <div className="flex flex-wrap gap-1.5">
+                  <span className={clsx("inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] mono", active.capabilities.reportsCost ? "bg-ok/10 text-ok" : "bg-bg-elev text-fg-dim")}>
+                    {active.capabilities.reportsCost ? <CheckCircle2 className="size-2.5" /> : <XCircle className="size-2.5" />} cost
+                  </span>
+                  <span className={clsx("inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] mono", active.capabilities.reportsTokens ? "bg-ok/10 text-ok" : "bg-bg-elev text-fg-dim")}>
+                    {active.capabilities.reportsTokens ? <CheckCircle2 className="size-2.5" /> : <XCircle className="size-2.5" />} tokens
+                  </span>
+                  <span className={clsx("inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] mono", active.capabilities.reportsTurns ? "bg-ok/10 text-ok" : "bg-bg-elev text-fg-dim")}>
+                    {active.capabilities.reportsTurns ? <CheckCircle2 className="size-2.5" /> : <XCircle className="size-2.5" />} turns
+                  </span>
+                  <span className={clsx("inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] mono", active.capabilities.supportsVisionInput ? "bg-ok/10 text-ok" : "bg-bg-elev text-fg-dim")}>
+                    {active.capabilities.supportsVisionInput ? <CheckCircle2 className="size-2.5" /> : <XCircle className="size-2.5" />} vision
+                  </span>
+                </div>
+              </div>
+
+              <div className="mt-3 text-[11px] mono text-fg-dim">
+                Bin names: <span className="text-fg-muted">{active.binNames.join(", ")}</span>
+              </div>
 
               <div className="mt-4">
                 <div className="text-[11px] uppercase tracking-wider text-fg-muted mb-1.5">Sample command</div>
