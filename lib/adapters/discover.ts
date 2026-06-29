@@ -43,7 +43,8 @@ function expand(p: string): string {
 
 function isExecutable(file: string): boolean {
   try {
-    return fs.existsSync(file) && fs.statSync(file).isFile() && (fs.statSync(file).mode & 0o111) !== 0;
+    const stat = fs.statSync(file);
+    return stat.isFile() && (stat.mode & 0o111) !== 0;
   } catch {
     return false;
   }

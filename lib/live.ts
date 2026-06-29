@@ -380,10 +380,6 @@ export function scanLiveSessions(limit = 200, harness = "ncode"): LiveAggregate 
 function collectLiveTraceFiles(source: LiveTraceSource, scanWarnings: string[]): Array<{ file: string; project: string; mtime: number }> {
   const files: Array<{ file: string; project: string; mtime: number }> = [];
   for (const root of source.roots) {
-    if (!fs.existsSync(root)) {
-      scanWarnings.push(`Could not read ${root}: path does not exist`);
-      continue;
-    }
     if (source.projectMode === "ncode") {
       let projectDirs: string[] = [];
       try {

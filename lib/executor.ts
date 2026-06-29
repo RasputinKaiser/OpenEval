@@ -9,6 +9,25 @@ import { getAdapter } from "./adapters/registry";
 import { discoverHarnesses } from "./adapters/discover";
 import type { CaseDefinition, RunCaseRecord, RunnerKind, RunnerResult } from "./types";
 
+const harnessInfoCache = new Map<string, { id: string; bin: string | null; version: string | null }>();
+
+async function loadHarnessInfo(harness: string | undefined, adapterId: string): Promise<{ id: string; bin: string | null; version: string | null } | undefined> {
+  if (!harness) return undefined;
+  const cached = harnessInfoCache.get(adapterId);
+  if (cached) return cached;
+  try {
+    const discovered = await discoverHarnesses();
+    const hit = discovered.find((h) => h.id === adapterId);
+    const info = hit ? { id: adapterId, bin: hit.bin, version: hit.version } : { id: adapterId, bin: null, version: null };
+    harnessInfoCache.set(adapterId, info);
+    return info;
+  } catch {
+    const info = { id: adapterId, bin: null, version: null };
+    harnessInfoCache.set(adapterId, info);
+    return info;
+  }
+}
+
 export async function prepareWorkdir(runId: string, caseId: string, def: CaseDefinition, sample: number): Promise<{ dir: string; fixtureSrc?: string }> {
   const dir = path.join(WORKDIRS_DIR, runId, `${caseId}__s${sample}`);
   await fs.mkdir(dir, { recursive: true });
@@ -104,16 +123,7 @@ export async function executeCase(
   const runner = getRunner(runnerKind);
   const runnerCfg = def.runner || {};
   const adapter = getAdapter(harness);
-  let harnessInfo: { id: string; bin: string | null; version: string | null } | undefined;
-  if (harness) {
-    try {
-      const discovered = await discoverHarnesses();
-      const hit = discovered.find((h) => h.id === adapter.id);
-      harnessInfo = hit ? { id: adapter.id, bin: hit.bin, version: hit.version } : { id: adapter.id, bin: null, version: null };
-    } catch {
-      harnessInfo = { id: adapter.id, bin: null, version: null };
-    }
-  }
+  const harnessInfo = await loadHarnessInfo(harness, adapter.id);
   rec.harness_info = harnessInfo;
   const ctx = {
     caseId: def.id,
