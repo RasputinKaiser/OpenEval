@@ -183,7 +183,7 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
                   key={c}
                   onClick={() => toggleCat(c)}
                   className={clsx(
-                    "text-[11px] px-2 py-1 rounded-md border mono",
+                    "text-[11px] px-2.5 py-1.5 rounded-md border mono",
                     filterCats.has(c) ? "border-accent bg-accent/10 text-accent-soft" : "border-bd text-fg-muted hover:bg-bg-elev"
                   )}
                 >
@@ -196,7 +196,7 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
                   key={d}
                   onClick={() => toggleDiff(d)}
                   className={clsx(
-                    "text-[11px] px-2 py-1 rounded-md border",
+                    "text-[11px] px-2.5 py-1.5 rounded-md border",
                     filterDiff.has(d) ? "border-accent bg-accent/10 text-accent-soft" : "border-bd text-fg-muted hover:bg-bg-elev"
                   )}
                 >

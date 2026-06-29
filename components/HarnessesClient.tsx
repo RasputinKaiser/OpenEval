@@ -72,7 +72,7 @@ export default function HarnessesClient() {
         </div>
         <button
           onClick={() => load(true)}
-          className="flex items-center gap-2 px-3 py-1.5 text-xs rounded-md border border-bd hover:bg-bg-elev text-fg-muted"
+          className="flex items-center gap-2 px-3 py-2 text-xs rounded-md border border-bd hover:bg-bg-elev text-fg-muted"
         >
           <RefreshCw className={clsx("size-3.5", loading && "animate-spin")} /> Re-probe PATH
         </button>
@@ -117,7 +117,7 @@ export default function HarnessesClient() {
                 <button
                   onClick={() => probe(active.id)}
                   disabled={probing === active.id}
-                  className="flex items-center gap-2 px-3 py-1.5 text-xs rounded-md border border-bd hover:bg-bg-elev text-fg-muted disabled:opacity-50"
+                  className="flex items-center gap-2 px-3 py-2 text-xs rounded-md border border-bd hover:bg-bg-elev text-fg-muted disabled:opacity-50"
                 >
                   {probing === active.id ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
                   Probe

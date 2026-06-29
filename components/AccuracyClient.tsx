@@ -209,7 +209,7 @@ function FilterChip({ active, onClick, children }: { active: boolean; onClick: (
     <button
       onClick={onClick}
       className={clsx(
-        "text-[11px] px-2 py-1 rounded-md border mono transition-colors",
+        "text-[11px] px-2.5 py-1.5 rounded-md border mono transition-colors",
         active ? "border-accent bg-accent/10 text-accent-soft" : "border-bd text-fg-muted hover:bg-bg-elev"
       )}
     >
