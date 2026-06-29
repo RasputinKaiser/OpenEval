@@ -8,7 +8,10 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const runs = listRuns(10);
   const lite = runs.map((r) => ({ id: r.id, name: r.name }));
-  return NextResponse.json({ runs: lite });
+  return NextResponse.json(
+    { runs: lite },
+    { headers: { "Cache-Control": "private, max-age=10, stale-while-revalidate=30" } }
+  );
 }
 
 export async function POST(req: Request) {

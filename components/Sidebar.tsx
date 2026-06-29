@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { Activity, FileText, GitCompareArrows, LayoutDashboard, Radio, Plus, ShieldCheck, Terminal, Plug, Trophy, PanelLeftClose, PanelLeftOpen, Settings } from "lucide-react";
 import clsx from "clsx";
 import ThemeToggle from "./ThemeToggle";
+import { cachedFetch } from "@/lib/cached-fetch";
 
 const NAV = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -39,13 +40,9 @@ export default function Sidebar() {
     let cancelled = false;
     async function checkRunning() {
       try {
-        const res = await fetch("/api/runs");
-        if (res.ok) {
-          const d = await res.json();
-          const runs = d.runs ?? [];
-          const running = runs.filter((r: any) => r.status === "running").length;
-          if (!cancelled) setRunningCount(running);
-        }
+        const d = await cachedFetch<{ runs: Array<{ status: string }> }>("/api/runs");
+        const running = (d.runs ?? []).filter((r) => r.status === "running").length;
+        if (!cancelled) setRunningCount(running);
       } catch {}
     }
     checkRunning();
