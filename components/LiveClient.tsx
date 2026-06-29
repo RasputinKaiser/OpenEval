@@ -889,7 +889,7 @@ function MetricCard({ label, value }: { label: string; value: string; source?: M
   return (
     <div className="rounded-lg border border-bd bg-bg/45 p-3">
       <div className="mb-1 text-[10px] uppercase tracking-wider text-fg-muted">{label}</div>
-      <div className="mono truncate text-sm tabular-nums text-fg">{value}</div>
+      <div className="mono truncate text-base font-medium tabular-nums text-fg">{value}</div>
     </div>
   );
 }
