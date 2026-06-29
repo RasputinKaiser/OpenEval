@@ -20,6 +20,7 @@ export default function CompareClient({ runs, initialA, initialB }: Props) {
   const [summaryA, setSummaryA] = useState<any>(null);
   const [summaryB, setSummaryB] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [viewMode, setViewMode] = useState<"all" | "regressions" | "improvements">("all");
 
   useEffect(() => { setA(initialA || runs[0]?.id || ""); setB(initialB || runs[1]?.id || ""); }, [initialA, initialB, runs]);
 
@@ -107,9 +108,12 @@ export default function CompareClient({ runs, initialA, initialB }: Props) {
 
       {a && b && a !== b && rows.length > 0 && (
         <>
-          <div className="flex gap-3 mb-3 text-xs">
-            <span className="text-err">▼ {regressions.length} regression(s)</span>
-            <span className="text-ok">▲ {improvements.length} improvement(s)</span>
+          <div className="flex flex-wrap gap-3 mb-3 text-xs items-center">
+            <div className="flex gap-1">
+              <button onClick={() => setViewMode("all")} className={clsx("px-2.5 py-1 rounded-md border transition-colors", viewMode === "all" ? "border-accent bg-accent/10 text-accent-soft" : "border-bd text-fg-muted hover:bg-bg-elev")}>All</button>
+              <button onClick={() => setViewMode("regressions")} className={clsx("px-2.5 py-1 rounded-md border transition-colors", viewMode === "regressions" ? "border-err bg-err/10 text-err" : "border-bd text-fg-muted hover:bg-bg-elev")}>▼ {regressions.length} regression{regressions.length !== 1 ? "s" : ""}</button>
+              <button onClick={() => setViewMode("improvements")} className={clsx("px-2.5 py-1 rounded-md border transition-colors", viewMode === "improvements" ? "border-ok bg-ok/10 text-ok" : "border-bd text-fg-muted hover:bg-bg-elev")}>▲ {improvements.length} improvement{improvements.length !== 1 ? "s" : ""}</button>
+            </div>
           </div>
           <section className="card overflow-hidden">
             <div className="overflow-x-auto">
@@ -125,7 +129,7 @@ export default function CompareClient({ runs, initialA, initialB }: Props) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-bd-subtle">
-                  {rows.map((r) => {
+                  {(viewMode === "regressions" ? regressions : viewMode === "improvements" ? improvements : rows).map((r) => {
                     const regressed = r.aStatus === "passed" && r.bStatus && r.bStatus !== "passed";
                     const improved = r.aStatus && r.aStatus !== "passed" && r.bStatus === "passed";
                     return (
