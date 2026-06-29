@@ -36,8 +36,7 @@ export default function HarnessesClient() {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    fetch(`/api/harnesses`)
-      .then((r) => r.json())
+    cachedFetch<{ harnesses: DiscoveredHarness[] }>("/api/harnesses")
       .then((d) => {
         if (cancelled) return;
         const list: DiscoveredHarness[] = d.harnesses || [];
