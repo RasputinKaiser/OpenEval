@@ -479,9 +479,9 @@ function CaseTrustPanel({ trust, rc }: { trust: CaseTrustSummary; rc: RunCaseRec
         </div>
       </div>
       <div className="grid gap-2 p-3 sm:grid-cols-3">
-        <MiniProof label="Deterministic" value={`${trust.evidence.deterministic.passed}/${trust.evidence.deterministic.total}`} icon={BadgeCheck} />
-        <MiniProof label="Trace" value={`${trust.evidence.trace.passed}/${trust.evidence.trace.total}`} icon={Boxes} />
-        <MiniProof label="Visual" value={trust.hasVisualContract ? "contracted" : "none"} icon={Eye} />
+        <MiniProof label="Deterministic" value={`${trust.evidence.deterministic.passed}/${trust.evidence.deterministic.total}`} icon={BadgeCheck} ok={trust.evidence.deterministic.total > 0} />
+        <MiniProof label="Trace" value={`${trust.evidence.trace.passed}/${trust.evidence.trace.total}`} icon={Boxes} ok={trust.evidence.trace.total > 0} />
+        <MiniProof label="Visual" value={trust.hasVisualContract ? "contracted" : "none"} icon={Eye} ok={trust.hasVisualContract} />
       </div>
       {trust.weaknesses.length ? (
         <div className="border-t border-bd-subtle px-4 py-3">
@@ -511,13 +511,16 @@ function TrustChip({ ok, label }: { ok: boolean; label: string }) {
   );
 }
 
-function MiniProof({ label, value, icon: Icon }: { label: string; value: string; icon: any }) {
+function MiniProof({ label, value, icon: Icon, ok }: { label: string; value: string; icon: any; ok?: boolean }) {
   return (
-    <div className="rounded border border-bd-subtle bg-bg/50 p-2">
-      <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-fg-muted">
-        <Icon className="size-3" /> {label}
+    <div className={clsx("rounded border p-2", ok ? "border-ok/15 bg-ok/5" : "border-bd-subtle bg-bg/50")}>
+      <div className="flex items-center justify-between gap-1 text-[10px] uppercase tracking-wider text-fg-muted">
+        <div className="flex items-center gap-1">
+          <Icon className="size-3" /> {label}
+        </div>
+        {ok !== undefined && <div className={clsx("size-1.5 rounded-full", ok ? "bg-ok" : "bg-warn")} />}
       </div>
-      <div className="mt-1 text-xs mono text-fg">{value}</div>
+      <div className="mt-1 text-xs mono text-fg tabular-nums">{value}</div>
     </div>
   );
 }
