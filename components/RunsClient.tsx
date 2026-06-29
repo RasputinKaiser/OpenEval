@@ -62,6 +62,36 @@ export default function RunsClient({ runs }: { runs: RunRecord[] }) {
     return sorted;
   }, [runs, statusFilter, sort, search]);
 
+  const dateSorted = sort === "newest" || sort === "oldest";
+  const groups = useMemo(() => {
+    if (!dateSorted) return [{ label: "", items: visible }];
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const dayMs = 86_400_000;
+    const result: { label: string; items: typeof visible }[] = [];
+    let currentLabel = "";
+    let bucket: typeof visible = [];
+    for (const r of visible) {
+      const created = new Date(r.created_at);
+      const dayStart = new Date(created.getFullYear(), created.getMonth(), created.getDate()).getTime();
+      const daysAgo = Math.floor((today - dayStart) / dayMs);
+      let label: string;
+      if (daysAgo === 0) label = "Today";
+      else if (daysAgo === 1) label = "Yesterday";
+      else if (daysAgo < 7) label = "This week";
+      else if (daysAgo < 30) label = "This month";
+      else label = "Older";
+      if (label !== currentLabel) {
+        if (bucket.length) result.push({ label: currentLabel, items: bucket });
+        currentLabel = label;
+        bucket = [];
+      }
+      bucket.push(r);
+    }
+    if (bucket.length) result.push({ label: currentLabel, items: bucket });
+    return result;
+  }, [visible, dateSorted]);
+
   return (
     <div>
       {runs.length > 3 && (
@@ -140,34 +170,43 @@ export default function RunsClient({ runs }: { runs: RunRecord[] }) {
           No runs match. <Link href="/runs/new" className="text-accent-soft hover:underline">Start one</Link>.
         </div>
       ) : (
-        <div className="card overflow-hidden">
-          {visible.map((r) => (
-            <Link
-              key={r.id}
-              href={`/runs/${r.id}`}
-              className="flex items-center justify-between gap-4 border-b border-bd-subtle px-4 py-3 transition-colors last:border-0 hover:bg-bg-elev"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="truncate font-medium">{r.name}</div>
-                <div className="text-[11px] text-fg-dim mono mt-0.5 flex items-center gap-1.5 flex-wrap">
-                  {new Date(r.created_at).toLocaleString()} · {r.params.runner}
-                  {r.params.harness && <HarnessBadge harness={r.params.harness} />}
-                  <span>· {r.params.parallel}×</span>
-                  {r.params.samples && r.params.samples > 1 ? <span>· {r.params.samples} samples</span> : null}
-                </div>
+        <div className="space-y-3">
+          {groups.map((group) => (
+            <div key={group.label}>
+              {dateSorted && group.label && (
+                <div className="px-1 pb-1.5 pt-2 text-[10px] uppercase tracking-wider text-fg-dim">{group.label}</div>
+              )}
+              <div className="card overflow-hidden">
+                {group.items.map((r) => (
+                  <Link
+                    key={r.id}
+                    href={`/runs/${r.id}`}
+                    className="flex items-center justify-between gap-4 border-b border-bd-subtle px-4 py-3 transition-colors last:border-0 hover:bg-bg-elev"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate font-medium">{r.name}</div>
+                      <div className="text-[11px] text-fg-dim mono mt-0.5 flex items-center gap-1.5 flex-wrap">
+                        {new Date(r.created_at).toLocaleString()} · {r.params.runner}
+                        {r.params.harness && <HarnessBadge harness={r.params.harness} />}
+                        <span>· {r.params.parallel}×</span>
+                        {r.params.samples && r.params.samples > 1 ? <span>· {r.params.samples} samples</span> : null}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      {r.summary && (
+                        <span className={clsx(
+                          "text-sm mono font-semibold tabular-nums",
+                          r.summary.passRate >= 1 ? "text-ok" : r.summary.passRate >= 0.5 ? "text-warn" : "text-err"
+                        )}>
+                          {(r.summary.passRate * 100).toFixed(0)}%
+                        </span>
+                      )}
+                      <StatusBadge status={r.status} />
+                    </div>
+                  </Link>
+                ))}
               </div>
-              <div className="flex items-center gap-3 shrink-0">
-                {r.summary && (
-                  <span className={clsx(
-                    "text-sm mono font-semibold tabular-nums",
-                    r.summary.passRate >= 1 ? "text-ok" : r.summary.passRate >= 0.5 ? "text-warn" : "text-err"
-                  )}>
-                    {(r.summary.passRate * 100).toFixed(0)}%
-                  </span>
-                )}
-                <StatusBadge status={r.status} />
-              </div>
-            </Link>
+            </div>
           ))}
         </div>
       )}
