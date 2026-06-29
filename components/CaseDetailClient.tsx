@@ -9,6 +9,7 @@ import {
   Eye, FileCode,
 } from "lucide-react";
 import type { RunCaseRecord, RunnerResult } from "@/lib/types";
+import { useVisibilityPoll } from "@/lib/use-visibility-poll";
 
 const GRADER_TIER: Record<string, string> = {
   exit_code: "bg-ok/10 text-ok",
@@ -38,12 +39,11 @@ export default function CaseDetailClient({ caseId, runId, initial }: Props) {
   const [previewLoading, setPreviewLoading] = useState(false);
   const lastEnd = useRef(initial?.ended_at ?? 0);
 
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout>;
-    let cancelled = false;
-    const terminal = (status?: string) => !!status && ["passed", "failed", "error", "skipped"].includes(status);
+  const terminal = (status?: string) => !!status && ["passed", "failed", "error", "skipped"].includes(status);
+  const shouldPoll = !terminal(initial?.status);
 
-    async function poll() {
+  useVisibilityPoll(
+    async () => {
       try {
         const res = await fetch(`/api/runs/${runId}/case/${caseId}`);
         if (!res.ok) return;
@@ -51,18 +51,16 @@ export default function CaseDetailClient({ caseId, runId, initial }: Props) {
         if (data.case) {
           setRc(data.case);
           if (data.case.ended_at) lastEnd.current = data.case.ended_at;
-          if (!cancelled && !terminal(data.case.status)) timer = setTimeout(poll, 1200);
-          return;
+          if (terminal(data.case.status)) {
+            // stop polling when terminal
+          }
         }
-      } finally {
-        if (!cancelled && !rc) timer = setTimeout(poll, 2500);
-      }
-    }
-
-    if (!terminal(initial?.status)) poll();
-    return () => { cancelled = true; clearTimeout(timer); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [caseId, runId]);
+      } catch {}
+    },
+    1200,
+    [caseId, runId],
+    shouldPoll,
+  );
 
   if (!rc) return <div className="p-8 text-fg-muted">Loading…</div>;
 

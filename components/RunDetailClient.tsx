@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import type { EvidenceTier, GraderResult, GraderSpec, RunCaseRecord, TranscriptEntry } from "@/lib/types";
 import { useFocusOnSlash } from "@/lib/use-focus-slash";
+import { useVisibilityPoll } from "@/lib/use-visibility-poll";
 
 interface Props { runId: string; runName?: string; initialCases: RunCaseRecord[]; running: boolean; model?: string; harness?: string; harnessInfo?: { id: string; bin: string | null; version: string | null }; }
 
@@ -68,23 +69,18 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
       });
   }, [cases, caseSearch, caseFilter]);
 
-  useEffect(() => {
-    if (!live) return;
-    let cancelled = false;
-    let t: ReturnType<typeof setTimeout>;
-    const poll = async () => {
+  useVisibilityPoll(
+    async () => {
       try {
         const res = await fetch(`/api/runs/${runId}`).then((r) => r.json());
-        if (cancelled) return;
         if (res.cases) setCases(res.cases);
         if (res.run?.status !== "running") setLive(false);
-      } finally {
-        if (!cancelled && live) t = setTimeout(poll, 1500);
-      }
-    };
-    poll();
-    return () => { cancelled = true; clearTimeout(t); };
-  }, [runId, live]);
+      } catch {}
+    },
+    1500,
+    [runId],
+    live,
+  );
 
   const counts = {
     passed: cases.filter((c) => c.status === "passed").length,

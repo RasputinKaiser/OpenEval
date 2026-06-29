@@ -1,27 +1,25 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import clsx from "clsx";
 import { Gauge, Timer, Layers, AlertTriangle, Hash, Wrench, BarChart3, DollarSign, Bug, Shield, ShieldCheck, Activity } from "lucide-react";
 import type { RunTelemetry } from "@/lib/types";
+import { useVisibilityPoll } from "@/lib/use-visibility-poll";
 
 export default function TelemetryStrip({ runId }: { runId: string }) {
   const [t, setT] = useState<RunTelemetry | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout>;
-    const poll = async () => {
+  useVisibilityPoll(
+    async () => {
       try {
-        const r = await fetch(`/api/runs/${runId}/telemetry`).then((r) => r.json());
-        if (!cancelled) setT(r.telemetry);
+        const r = await fetch(`/api/runs/${runId}/telemetry`).then((res) => res.json());
+        if (r.telemetry) setT(r.telemetry);
       } catch {}
-      if (!cancelled) timer = setTimeout(poll, 2500);
-    };
-    poll();
-    return () => { cancelled = true; clearTimeout(timer); };
-  }, [runId]);
+    },
+    2500,
+    [runId],
+  );
 
   if (!t) return null;
 

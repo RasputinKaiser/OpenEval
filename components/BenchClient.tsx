@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import clsx from "clsx";
 import {
@@ -8,6 +8,7 @@ import {
   ArrowUp, ArrowDown,
 } from "lucide-react";
 import type { RunTelemetry } from "@/lib/types";
+import { useVisibilityPoll } from "@/lib/use-visibility-poll";
 
 interface PerCase {
   caseId: string; caseName: string; category: string; status: string;
@@ -41,23 +42,19 @@ export default function BenchClient({ runId, runName }: Props) {
     }
   }
 
-  useEffect(() => {
-    let cancelled = false;
-    let t: ReturnType<typeof setTimeout>;
-    const poll = async () => {
+  useVisibilityPoll(
+    async () => {
       try {
-        const r = await fetch(`/api/runs/${runId}/telemetry`).then((r) => r.json());
-        if (cancelled) return;
+        const r = await fetch(`/api/runs/${runId}/telemetry`).then((res) => res.json());
         setTelemetry(r.telemetry);
         setPerCase(r.perCase || []);
       } finally {
-        if (!cancelled) setLoading(false);
-        if (!cancelled) t = setTimeout(poll, 3000);
+        setLoading(false);
       }
-    };
-    poll();
-    return () => { cancelled = true; clearTimeout(t); };
-  }, [runId]);
+    },
+    3000,
+    [runId],
+  );
 
   const cases = useMemo(() => {
     const sorted = [...perCase].sort((a, b) => {

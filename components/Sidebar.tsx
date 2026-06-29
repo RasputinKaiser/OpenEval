@@ -49,8 +49,10 @@ export default function Sidebar() {
       } catch {}
     }
     checkRunning();
-    const interval = setInterval(checkRunning, 5000);
-    return () => { cancelled = true; clearInterval(interval); };
+    const interval = setInterval(checkRunning, 15000);
+    function onVis() { if (document.visibilityState === "visible") checkRunning(); }
+    document.addEventListener("visibilitychange", onVis);
+    return () => { cancelled = true; clearInterval(interval); document.removeEventListener("visibilitychange", onVis); };
   }, []);
 
   return (

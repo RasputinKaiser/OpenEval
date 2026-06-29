@@ -127,13 +127,17 @@ export default function LiveClient({ initialData, error: initialError, getTransc
         if (activeController === controller) activeController = null;
         if (!cancelled) {
           setLoading(false);
-          t = setTimeout(poll, 10000);
+          const delay = (typeof document !== "undefined" && document.visibilityState !== "visible") ? 30000 : 10000;
+          t = setTimeout(poll, delay);
         }
       }
     };
+    function onVis() { if (document.visibilityState === "visible" && !cancelled) { if (t) clearTimeout(t); poll(); } }
+    document.addEventListener("visibilitychange", onVis);
     poll();
     return () => {
       cancelled = true;
+      document.removeEventListener("visibilitychange", onVis);
       activeController?.abort();
       clearTimeout(t);
     };
