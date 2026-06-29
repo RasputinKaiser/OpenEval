@@ -208,11 +208,19 @@ function expandHome(value: string): string {
   return value;
 }
 
+let descriptorFileCache: { at: number; files: string[] } | null = null;
+const DESCRIPTOR_FILE_TTL_MS = 5000;
+
 function descriptorFiles(): string[] {
+  if (descriptorFileCache && Date.now() - descriptorFileCache.at < DESCRIPTOR_FILE_TTL_MS) {
+    return descriptorFileCache.files;
+  }
   try {
-    return fs.readdirSync(HARNESS_DESC_DIR)
+    const files = fs.readdirSync(HARNESS_DESC_DIR)
       .filter((file) => file.endsWith(".harness.json"))
       .map((file) => path.join(HARNESS_DESC_DIR, file));
+    descriptorFileCache = { at: Date.now(), files };
+    return files;
   } catch {
     return [];
   }
@@ -477,6 +485,39 @@ export function getErroringTurns(filePath: string): TranscriptResult {
 }
 
 export function summarizeLiveSessionFile(file: string, projectDir: string, mtime: number, opts: { fields?: FieldMapping } = {}): LiveSession | null {
+  return summarizeWithCache(file, projectDir, mtime, (f, content, pd, mt) => parseLiveSession(f, content, pd, mt, opts.fields));
+}
+
+const sessionCache = new Map<string, { mtimeMs: number; size: number; session: LiveSession | null }>();
+const SESSION_CACHE_LIMIT = 500;
+
+function summarizeWithCache(
+  file: string,
+  projectDir: string,
+  mtime: number,
+  parser: (file: string, content: string, projectDir: string, mtime: number) => LiveSession | null,
+): LiveSession | null {
+  let st: fs.Stats;
+  try {
+    st = fs.statSync(file);
+  } catch {
+    return null;
+  }
+  const cached = sessionCache.get(file);
+  if (cached && cached.mtimeMs === st.mtimeMs && cached.size === st.size) {
+    return cached.session;
+  }
+  const content = fs.readFileSync(file, "utf8");
+  const session = parser(file, content, projectDir, mtime);
+  if (sessionCache.size >= SESSION_CACHE_LIMIT) {
+    const oldest = sessionCache.keys().next().value;
+    if (oldest !== undefined) sessionCache.delete(oldest);
+  }
+  sessionCache.set(file, { mtimeMs: st.mtimeMs, size: st.size, session });
+  return session;
+}
+
+function parseLiveSession(file: string, content: string, projectDir: string, mtime: number, fields?: FieldMapping): LiveSession | null {
   let model: string | null = null;
   let sessionId: string | null = null;
   let displayTitle: string | null = null;
@@ -533,7 +574,6 @@ export function summarizeLiveSessionFile(file: string, projectDir: string, mtime
   };
 
   try {
-    const content = fs.readFileSync(file, "utf8");
     pathBytes = Buffer.byteLength(content);
     for (const line of content.split("\n")) {
       if (!line.trim()) continue;
@@ -667,8 +707,8 @@ export function summarizeLiveSessionFile(file: string, projectDir: string, mtime
         if (!displayTitle && typeof obj.agentName === "string") displayTitle = obj.agentName;
       }
 
-      if (opts.fields) {
-        const f = opts.fields;
+      if (fields) {
+        const f = fields;
         model = coalesceString(getPath(obj, f.model), model);
         sessionId = coalesceString(getPath(obj, f.sessionId), sessionId);
         const genericDuration = numericOrNull(getPath(obj, f.durationMs));
@@ -804,6 +844,10 @@ export function summarizeLiveSessionFile(file: string, projectDir: string, mtime
 }
 
 export function summarizeCodexSessionFile(file: string, projectDir: string, mtime: number): LiveSession | null {
+  return summarizeWithCache(file, projectDir, mtime, parseCodexSession);
+}
+
+function parseCodexSession(file: string, content: string, projectDir: string, mtime: number): LiveSession | null {
   let sessionId: string | null = null;
   let displayTitle: string | null = null;
   let lastPromptPreview: string | null = null;
@@ -839,7 +883,6 @@ export function summarizeCodexSessionFile(file: string, projectDir: string, mtim
   };
 
   try {
-    const content = fs.readFileSync(file, "utf8");
     pathBytes = Buffer.byteLength(content);
     let previousInput = 0;
     let previousOutput = 0;

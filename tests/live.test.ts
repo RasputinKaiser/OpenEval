@@ -124,6 +124,32 @@ test("summarizeLiveSessionFile reports malformed lines and measured result metri
   assert.ok(session.parseWarnings.some((warning) => warning.includes("malformed")));
 });
 
+test("summarizeLiveSessionFile caches summaries across calls for unchanged files", () => {
+  const file = writeSession([
+    {
+      type: "system",
+      sessionId: "cache-hit",
+      cwd: "/Users/ralto/Documents/AgentEvals",
+      timestamp: "2026-06-28T20:00:00.000Z",
+    },
+    {
+      type: "result",
+      duration_ms: 1500,
+      num_turns: 2,
+      stop_reason: "stop",
+      total_cost_usd: 0.02,
+      usage: { input_tokens: 50, output_tokens: 10, cache_read_input_tokens: 5 },
+    },
+  ]);
+
+  const first = summarizeLiveSessionFile(file, "-Users-ralto-Documents-AgentEvals", Date.parse("2026-06-28T20:00:00.000Z"));
+  const second = summarizeLiveSessionFile(file, "-Users-ralto-Documents-AgentEvals", Date.parse("2026-06-28T20:00:00.000Z"));
+  assert.ok(first);
+  assert.ok(second);
+  assert.equal(first, second, "expected the cache to return the same object reference for an unchanged file");
+  assert.equal(second.inputTokens, 50);
+});
+
 test("summarizeLiveSessionFile measures ncode assistant message usage", () => {
   const file = writeSession([
     {
