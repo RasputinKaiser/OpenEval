@@ -210,15 +210,21 @@ export default function LiveClient({ initialData, error: initialError, getTransc
 
       <UsageStrip data={data} />
 
-      <section className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
-        <Stat label="Sessions" value={String(data.totalSessions)} icon={Activity} />
-        <Stat label="Quality" value={`${Math.round(data.avgDataQuality)}%`} icon={Gauge} tone={qualityTone(data.avgDataQuality)} />
-        <Stat label="Measured dur" value={`${data.sessionsWithMeasuredDuration}/${data.totalSessions}`} icon={Timer} />
-        <Stat label={modelEvidenceLabel} value={String(modelEvidenceValue)} icon={Cpu} tone={modelEvidenceTone} />
-        <Stat label="Tokens missing" value={String(data.sessionsWithMissingTokens)} icon={Layers} tone={data.sessionsWithMissingTokens ? "warn" : undefined} />
-        <Stat label="Tool err rate" value={`${Math.round(toolErrorRate * 100)}%`} icon={AlertTriangle} tone={toolErrorRate ? "err" : undefined} />
-        <Stat label="Stale" value={String(data.staleSessions)} icon={Clock3} tone={data.staleSessions ? "warn" : undefined} />
-        <Stat label="Malformed" value={String(data.sessionsWithMalformedLines)} icon={ShieldAlert} tone={data.sessionsWithMalformedLines ? "err" : undefined} />
+      <section className="mb-6 grid grid-cols-1 gap-3 md:grid-cols-3">
+        <MetricGroup label="Population">
+          <Stat label="Sessions" value={String(data.totalSessions)} icon={Activity} />
+          <Stat label="Measured dur" value={`${data.sessionsWithMeasuredDuration}/${data.totalSessions}`} icon={Timer} />
+        </MetricGroup>
+        <MetricGroup label="Quality">
+          <Stat label="Quality" value={`${Math.round(data.avgDataQuality)}%`} icon={Gauge} tone={qualityTone(data.avgDataQuality)} />
+          <Stat label={modelEvidenceLabel} value={String(modelEvidenceValue)} icon={Cpu} tone={modelEvidenceTone} />
+          <Stat label="Tokens missing" value={String(data.sessionsWithMissingTokens)} icon={Layers} tone={data.sessionsWithMissingTokens ? "warn" : undefined} />
+        </MetricGroup>
+        <MetricGroup label="Health">
+          <Stat label="Tool err rate" value={`${Math.round(toolErrorRate * 100)}%`} icon={AlertTriangle} tone={toolErrorRate ? "err" : undefined} />
+          <Stat label="Stale" value={String(data.staleSessions)} icon={Clock3} tone={data.staleSessions ? "warn" : undefined} />
+          <Stat label="Malformed" value={String(data.sessionsWithMalformedLines)} icon={ShieldAlert} tone={data.sessionsWithMalformedLines ? "err" : undefined} />
+        </MetricGroup>
       </section>
 
       <section className="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-[1.1fr_1.8fr]">
@@ -427,15 +433,21 @@ function UsageStrip({ data }: { data: LiveAggregate }) {
           {tokenMeasured}/{data.totalSessions} usage measured
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-2 p-4 md:grid-cols-4 xl:grid-cols-8">
-        <TinyMetric label="Total tok" value={usage.totalTokens ? fmt(usage.totalTokens) : "missing"} />
-        <TinyMetric label="Input" value={usage.totalInputTokens ? fmt(usage.totalInputTokens) : "missing"} />
-        <TinyMetric label="Output" value={usage.totalOutputTokens ? fmt(usage.totalOutputTokens) : "missing"} />
-        <TinyMetric label="Cache read" value={usage.totalCacheReadTokens ? fmt(usage.totalCacheReadTokens) : "missing"} />
-        <TinyMetric label="Cache create" value={usage.totalCacheCreateTokens ? fmt(usage.totalCacheCreateTokens) : "missing"} />
-        <TinyMetric label="Cost" value={costMeasured ? `$${usage.totalCostUsd.toFixed(4)}` : "missing"} />
-        <TinyMetric label="Coverage" value={`${Math.round(usage.tokenCoverage * 100)}%`} />
-        <TinyMetric label="Out tok/s" value={usage.avgOutputTokPerSec ? usage.avgOutputTokPerSec.toFixed(1) : "missing"} />
+      <div className="grid grid-cols-1 gap-3 p-4 md:grid-cols-2 lg:grid-cols-3">
+        <MetricGroup label="Volume">
+          <TinyMetric label="Total tok" value={usage.totalTokens ? fmt(usage.totalTokens) : "missing"} />
+          <TinyMetric label="Input" value={usage.totalInputTokens ? fmt(usage.totalInputTokens) : "missing"} />
+          <TinyMetric label="Output" value={usage.totalOutputTokens ? fmt(usage.totalOutputTokens) : "missing"} />
+        </MetricGroup>
+        <MetricGroup label="Cache">
+          <TinyMetric label="Cache read" value={usage.totalCacheReadTokens ? fmt(usage.totalCacheReadTokens) : "missing"} />
+          <TinyMetric label="Cache create" value={usage.totalCacheCreateTokens ? fmt(usage.totalCacheCreateTokens) : "missing"} />
+          <TinyMetric label="Coverage" value={`${Math.round(usage.tokenCoverage * 100)}%`} />
+        </MetricGroup>
+        <MetricGroup label="Cost & rate">
+          <TinyMetric label="Cost" value={costMeasured ? `$${usage.totalCostUsd.toFixed(4)}` : "missing"} />
+          <TinyMetric label="Out tok/s" value={usage.avgOutputTokPerSec ? usage.avgOutputTokPerSec.toFixed(1) : "missing"} />
+        </MetricGroup>
       </div>
       {data.totalSessions > 0 && tokenMeasured === 0 && (
         <div className="border-t border-bd-subtle px-4 py-3 text-xs text-warn">
@@ -459,9 +471,9 @@ function PanelHeader({ icon: Icon, title, subtitle }: { icon: any; title: string
 
 function TinyMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded border border-bd-subtle bg-bg/40 px-2 py-2">
-      <div className="text-[9px] uppercase tracking-wider text-fg-dim">{label}</div>
-      <div className="mono mt-1 text-sm font-semibold tabular-nums">{value}</div>
+    <div className="flex items-center justify-between gap-2">
+      <span className="text-[10px] text-fg-muted truncate">{label}</span>
+      <span className="mono text-xs font-semibold tabular-nums text-fg">{value}</span>
     </div>
   );
 }
@@ -662,7 +674,7 @@ function SessionDrawer({
           </section>
 
           <DetailPanel title="Usage">
-            <div className="mb-3 grid grid-cols-2 gap-2 md:grid-cols-5">
+            <div className="mb-3 grid grid-cols-2 gap-x-4 gap-y-2">
               <TinyMetric label="Input" value={session.metricSources.tokens === "measured" ? fmt(session.inputTokens) : "missing"} />
               <TinyMetric label="Output" value={session.metricSources.tokens === "measured" ? fmt(session.outputTokens) : "missing"} />
               <TinyMetric label="Cache read" value={session.metricSources.tokens === "measured" ? fmt(session.cacheReadTokens) : "missing"} />
@@ -695,7 +707,7 @@ function SessionDrawer({
               <div className="text-sm font-medium">Metric provenance</div>
               <div className="text-xs text-fg-muted">{session.lineCount} parsed lines · {fmtBytes(session.pathBytes)}</div>
             </div>
-            <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2 md:grid-cols-3">
               {Object.entries(session.metricSources).map(([name, source]) => (
                 <SourceCell key={name} label={name} source={source} />
               ))}
@@ -711,15 +723,21 @@ function SessionDrawer({
             )}
           </section>
 
-          <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <MiniStat label="Tool calls" value={String(session.toolCalls)} icon={Wrench} />
-            <MiniStat label="Tool errors" value={String(session.toolErrors)} icon={AlertTriangle} tone={session.toolErrors ? "err" : undefined} />
-            <MiniStat label="Thinking" value={String(session.thinkingBlocks)} icon={Sparkles} />
-            <MiniStat label="Text blocks" value={String(session.textBlocks)} icon={MessageSquareText} />
-            <MiniStat label="Attachments" value={String(session.attachmentCount)} icon={Layers} />
-            <MiniStat label="Queue ops" value={String(session.queueOperationCount)} icon={Zap} tone={session.queueOperationCount ? "warn" : undefined} />
-            <MiniStat label="Snapshots" value={String(session.snapshotCount)} icon={FolderGit2} />
-            <MiniStat label="Hook errors" value={String(session.hookErrors)} icon={ShieldAlert} tone={session.hookErrors ? "err" : undefined} />
+          <section className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            <MetricGroup label="Tooling">
+              <MiniStat label="Tool calls" value={String(session.toolCalls)} icon={Wrench} />
+              <MiniStat label="Tool errors" value={String(session.toolErrors)} icon={AlertTriangle} tone={session.toolErrors ? "err" : undefined} />
+              <MiniStat label="Hook errors" value={String(session.hookErrors)} icon={ShieldAlert} tone={session.hookErrors ? "err" : undefined} />
+            </MetricGroup>
+            <MetricGroup label="Messages">
+              <MiniStat label="Thinking" value={String(session.thinkingBlocks)} icon={Sparkles} />
+              <MiniStat label="Text blocks" value={String(session.textBlocks)} icon={MessageSquareText} />
+              <MiniStat label="Attachments" value={String(session.attachmentCount)} icon={Layers} />
+            </MetricGroup>
+            <MetricGroup label="History">
+              <MiniStat label="Queue ops" value={String(session.queueOperationCount)} icon={Zap} tone={session.queueOperationCount ? "warn" : undefined} />
+              <MiniStat label="Snapshots" value={String(session.snapshotCount)} icon={FolderGit2} />
+            </MetricGroup>
           </section>
 
           <section className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -937,24 +955,33 @@ function StatusPill({ session }: { session: LiveSession }) {
   return <span className="w-fit rounded bg-ok/10 px-2 py-1 text-[10px] mono text-ok">ok</span>;
 }
 
+function MetricGroup({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="rounded-lg border border-bd-subtle bg-bg-subtle/30 p-3 space-y-2">
+      <div className="text-[10px] uppercase tracking-wider text-fg-dim">{label}</div>
+      {children}
+    </div>
+  );
+}
+
 function Stat({ label, value, icon: Icon, tone }: { label: string; value: string; icon: any; tone?: "err" | "warn" | "ok" }) {
   return (
-    <div className="card p-3">
-      <div className="mb-1 flex items-center gap-1 text-[10px] uppercase tracking-wider text-fg-muted">
+    <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-fg-muted">
         <Icon className="size-3" /> {label}
       </div>
-      <div className={clsx("mono text-lg font-semibold", tone === "err" && "text-err", tone === "warn" && "text-warn", tone === "ok" && "text-ok")}>{value}</div>
+      <div className={clsx("mono text-base font-semibold tabular-nums", tone === "err" && "text-err", tone === "warn" && "text-warn", tone === "ok" && "text-ok")}>{value}</div>
     </div>
   );
 }
 
 function MiniStat({ label, value, icon: Icon, tone }: { label: string; value: string; icon: any; tone?: "err" | "warn" }) {
   return (
-    <div className="rounded-lg border border-bd bg-bg/45 p-3">
-      <div className="mb-1 flex items-center gap-1 text-[10px] uppercase tracking-wider text-fg-muted">
+    <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-fg-muted">
         <Icon className="size-3" /> {label}
       </div>
-      <div className={clsx("mono text-base font-semibold", tone === "err" && "text-err", tone === "warn" && "text-warn")}>{value}</div>
+      <div className={clsx("mono text-sm font-semibold tabular-nums", tone === "err" && "text-err", tone === "warn" && "text-warn")}>{value}</div>
     </div>
   );
 }
