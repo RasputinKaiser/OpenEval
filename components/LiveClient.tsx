@@ -35,6 +35,7 @@ import {
 } from "lucide-react";
 import HarnessPicker from "./HarnessPicker";
 import { compactDisplayPath, redactSensitiveText } from "@/lib/redaction";
+import { Sparkline } from "@/components/Sparkline";
 import type { LiveAggregate, LiveMetricSources, LiveSession, LiveTranscriptTurn, MetricSource, TranscriptResult } from "@/lib/live";
 import { useFocusOnSlash } from "@/lib/use-focus-slash";
 
@@ -558,6 +559,9 @@ function SessionRow({ session, redact, onClick }: { session: LiveSession; redact
           )}>
             {session.metricSources.tokens === "measured" ? `${fmt(session.totalTokens)} tok` : "usage missing"}
           </span>
+          {session.usageSegments.length > 1 && (
+            <Sparkline data={session.usageSegments.map((s) => s.outTokPerSec)} width={36} height={14} color="#a78bff" />
+          )}
           {session.parseWarnings.slice(0, 2).map((warning) => (
             <span key={warning} className="rounded bg-warn/10 px-1.5 py-0.5 text-warn">{displayText(warning, redact)}</span>
           ))}
