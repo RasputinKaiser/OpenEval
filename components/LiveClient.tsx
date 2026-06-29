@@ -537,7 +537,7 @@ const SessionRow = React.memo(function SessionRow({ session, redact, onSelect }:
       type="button"
       onClick={() => onSelect(session)}
       className={clsx(
-        "relative grid w-full gap-3 pl-4 pr-4 py-3 text-left transition-colors hover:bg-bg-elev md:grid-cols-[minmax(220px,1.7fr)_90px_100px_100px_90px_80px] md:items-center",
+        "cv-auto relative grid w-full gap-3 pl-4 pr-4 py-3 text-left transition-colors hover:bg-bg-elev md:grid-cols-[minmax(220px,1.7fr)_90px_100px_100px_90px_80px] md:items-center",
         attention && "bg-warn/5"
       )}
     >

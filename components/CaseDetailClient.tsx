@@ -149,6 +149,7 @@ export default function CaseDetailClient({ caseId, runId, initial }: Props) {
             {previewContent && previewContent.kind === "html" && (
               <iframe
                 sandbox=""
+                loading="lazy"
                 srcDoc={previewContent.content}
                 className="w-full rounded-lg ring-1 ring-white/10"
                 style={{ minHeight: "400px", background: "#fff" }}

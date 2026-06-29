@@ -87,6 +87,11 @@ button:active:not(:disabled) { transform: scale(0.96); }
   contain-intrinsic-size: auto 400px;
 }
 
+.cv-auto {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 48px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .shimmer { animation: none; }
 }
