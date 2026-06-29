@@ -74,6 +74,15 @@ export interface LiveModeSummary {
   entrypoint: string | null;
 }
 
+export interface LiveSessionToolDuration {
+  name: string;
+  count: number;
+  p50Ms: number;
+  p95Ms: number;
+  maxMs: number;
+  errors: number;
+}
+
 export interface LiveSession {
   sessionId: string;
   displayTitle: string | null;
@@ -115,6 +124,7 @@ export interface LiveSession {
   staleMs: number;
   traceGraph: LiveTraceGraph;
   toolSummaries: LiveToolSummary[];
+  toolDurations: LiveSessionToolDuration[];
   queueSummary: LiveQueueSummary;
   fileActivity: LiveFileActivity;
   modeSummary: LiveModeSummary;
@@ -557,6 +567,8 @@ function parseLiveSession(file: string, content: string, projectDir: string, mti
   const agentIds = new Set<string>();
   const toolNameById = new Map<string, string>();
   const toolCallsByName = new Map<string, number>();
+  const toolStartByIdMs = new Map<string, number>();
+  const toolDurationMs = new Map<string, number[]>();
   const toolErrorsByName = new Map<string, number>();
   const queueSummary: LiveQueueSummary = { enqueue: 0, dequeue: 0, remove: 0, popAll: 0, preview: [] };
   const touchedFiles = new Set<string>();
@@ -650,7 +662,10 @@ function parseLiveSession(file: string, content: string, projectDir: string, mti
         for (const b of obj.message.content) {
           if (b.type === "tool_use") {
             toolCalls++;
-            if (typeof b.id === "string" && typeof b.name === "string") toolNameById.set(b.id, b.name);
+            if (typeof b.id === "string" && typeof b.name === "string") {
+              toolNameById.set(b.id, b.name);
+              if (at != null) toolStartByIdMs.set(b.id, at);
+            }
             if (typeof b.name === "string") increment(toolCallsByName, b.name);
             for (const filePath of extractFilePaths(b.input)) touchedFiles.add(filePath);
             const name = String(b.name ?? "").toLowerCase();
@@ -662,6 +677,17 @@ function parseLiveSession(file: string, content: string, projectDir: string, mti
         }
       } else if (obj.type === "user" && Array.isArray(obj.message?.content)) {
         for (const b of obj.message.content) {
+          if (b.type === "tool_result") {
+            const startMs = typeof b.tool_use_id === "string" ? toolStartByIdMs.get(b.tool_use_id) : undefined;
+            if (startMs != null && at != null) {
+              const delta = Math.max(0, at - startMs);
+              const nm = toolNameById.get(b.tool_use_id as string) ?? "(unknown)";
+              const list = toolDurationMs.get(nm) ?? [];
+              list.push(delta);
+              toolDurationMs.set(nm, list);
+            }
+            if (typeof b.tool_use_id === "string") toolStartByIdMs.delete(b.tool_use_id);
+          }
           if (b.type === "tool_result" && b.is_error) {
             toolErrors++;
             increment(toolErrorsByName, toolNameById.get(b.tool_use_id) ?? "(unknown)");
@@ -781,6 +807,21 @@ function parseLiveSession(file: string, content: string, projectDir: string, mti
     calls: count,
     errors: toolErrorsByName.get(key) ?? 0,
   }));
+  const toolDurations = [...toolDurationMs.entries()]
+    .map(([name, durations]) => {
+      const sorted = durations.slice().sort((a, b) => a - b);
+      const pct = (p: number) => sorted.length === 0 ? 0 : sorted[Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length))];
+      return {
+        name,
+        count: sorted.length,
+        p50Ms: pct(50),
+        p95Ms: pct(95),
+        maxMs: sorted[sorted.length - 1] ?? 0,
+        errors: toolErrorsByName.get(name) ?? 0,
+      };
+    })
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
 
   return {
     sessionId: sessionId ?? path.basename(file, ".jsonl"),
@@ -829,6 +870,7 @@ function parseLiveSession(file: string, content: string, projectDir: string, mti
       orphanMessages,
     },
     toolSummaries,
+    toolDurations,
     queueSummary,
     fileActivity: {
       touchedFiles: [...touchedFiles].sort().slice(0, 12),
@@ -1044,6 +1086,7 @@ function parseCodexSession(file: string, content: string, projectDir: string, mt
       orphanMessages: 0,
     },
     toolSummaries,
+    toolDurations: [],
     queueSummary: { enqueue: 0, dequeue: 0, remove: 0, popAll: 0, preview: [] },
     fileActivity: {
       touchedFiles: [...touchedFiles].sort().slice(0, 12),

@@ -150,6 +150,68 @@ test("summarizeLiveSessionFile caches summaries across calls for unchanged files
   assert.equal(second.inputTokens, 50);
 });
 
+test("summarizeLiveSessionFile pairs tool_use with tool_result to measure durations", () => {
+  const file = writeSession([
+    {
+      type: "assistant",
+      sessionId: "durations",
+      cwd: "/Users/ralto/Documents/AgentEvals",
+      timestamp: "2026-06-28T20:00:00.000Z",
+      message: {
+        content: [
+          { type: "tool_use", id: "t-fast", name: "Read", input: { file_path: "/x" } },
+        ],
+      },
+    },
+    {
+      type: "user",
+      sessionId: "durations",
+      timestamp: "2026-06-28T20:00:01.000Z",
+      message: {
+        content: [
+          { type: "tool_result", tool_use_id: "t-fast", content: "ok" },
+        ],
+      },
+    },
+    {
+      type: "assistant",
+      sessionId: "durations",
+      timestamp: "2026-06-28T20:00:02.000Z",
+      message: {
+        content: [
+          { type: "tool_use", id: "t-slow", name: "Bash", input: { command: "npm test" } },
+        ],
+      },
+    },
+    {
+      type: "user",
+      sessionId: "durations",
+      timestamp: "2026-06-28T20:00:10.000Z",
+      message: {
+        content: [
+          { type: "tool_result", tool_use_id: "t-slow", content: "boom", is_error: true },
+        ],
+      },
+    },
+  ]);
+
+  const session = summarizeLiveSessionFile(file, "-Users-ralto-Documents-AgentEvals", Date.parse("2026-06-28T20:00:00.000Z"));
+  assert.ok(session);
+  assert.equal(session.toolDurations.length, 2);
+
+  const readRow = session.toolDurations.find((row) => row.name === "Read");
+  assert.ok(readRow);
+  assert.equal(readRow!.count, 1);
+  assert.equal(readRow!.p50Ms, 1000);
+  assert.equal(readRow!.maxMs, 1000);
+
+  const bashRow = session.toolDurations.find((row) => row.name === "Bash");
+  assert.ok(bashRow);
+  assert.equal(bashRow!.count, 1);
+  assert.equal(bashRow!.p50Ms, 8000);
+  assert.equal(bashRow!.errors, 1);
+});
+
 test("summarizeLiveSessionFile measures ncode assistant message usage", () => {
   const file = writeSession([
     {
