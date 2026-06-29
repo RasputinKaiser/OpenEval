@@ -41,10 +41,11 @@ export default function Sidebar() {
               key={item.href}
               href={item.href}
               className={clsx(
-                "flex shrink-0 items-center gap-2 rounded-md px-3 py-3 md:py-2 text-sm transition-colors",
+                "relative flex shrink-0 items-center gap-2 rounded-md px-3 py-3 md:py-2 text-sm transition-colors",
                 active ? "bg-accent/15 text-accent-soft" : "text-fg-muted hover:bg-bg-elev hover:text-fg"
               )}
             >
+              {active && <div className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full bg-accent-soft" />}
               <Icon className="size-4" />
               {item.label}
             </Link>
