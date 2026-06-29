@@ -101,6 +101,7 @@ export default function LeaderboardClient() {
               <table className="w-full text-sm">
                 <thead className="text-[11px] uppercase tracking-wider text-fg-muted bg-bg-subtle">
                   <tr>
+                    <th className="text-center px-2 py-2 font-medium w-8">#</th>
                     <th className="text-left px-4 py-2 font-medium">
                       <SortBtn label="Harness" k="harness" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="left" />
                     </th>
@@ -136,6 +137,15 @@ export default function LeaderboardClient() {
                 <tbody className="divide-y divide-bd-subtle">
                   {sortedRows.map((r, idx) => (
                     <tr key={r.harness} className={clsx("hover:bg-bg-elev", idx === 0 && sortKey === "passRate" && sortDir === "desc" && "bg-ok/5")}>
+                      <td className="px-2 py-2.5 text-center">
+                        <span className={clsx(
+                          "inline-flex items-center justify-center size-5 rounded-full text-[10px] mono font-semibold tabular-nums",
+                          idx === 0 ? "bg-yellow-500/15 text-yellow-400" :
+                          idx === 1 ? "bg-gray-400/15 text-gray-300" :
+                          idx === 2 ? "bg-amber-700/15 text-amber-600" :
+                          "text-fg-dim"
+                        )}>{idx + 1}</span>
+                      </td>
                       <td className="px-4 py-2.5"><HarnessBadge harness={r.harness} /></td>
                       <td className="px-4 py-2.5 text-right mono">{r.runCount}</td>
                       <td className="px-4 py-2.5 text-right mono">{r.totalCases}</td>
