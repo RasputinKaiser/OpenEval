@@ -1,12 +1,10 @@
 import type { Metadata } from "next";
-import dynamic from "next/dynamic";
 import "./globals.css";
 import Sidebar from "@/components/Sidebar";
 import { ToastProvider } from "@/components/ToastProvider";
-
-const SidebarNavClient = dynamic(() => import("@/components/SidebarNavClient"), { ssr: false });
-const MobileNav = dynamic(() => import("@/components/MobileNav"), { ssr: false });
-const OnboardingOverlay = dynamic(() => import("@/components/OnboardingOverlay"), { ssr: false });
+import SidebarNavClient from "@/components/SidebarNavClient";
+import MobileNav from "@/components/MobileNav";
+import OnboardingOverlay from "@/components/OnboardingOverlay";
 
 export const metadata: Metadata = {
   title: "NEval",
