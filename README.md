@@ -1,3 +1,7 @@
+
+
+
+
 # OpenEval
 
 OpenEval is a local-first evaluation dashboard for agent CLIs. It runs repeatable cases against a harness such as `ncode`, Claude Code, Codex, or a descriptor-defined JSONL harness, grades the result with deterministic and rubric-based checks, persists run history to SQLite, and turns the results into an operator-friendly Next.js dashboard.
@@ -8,9 +12,9 @@ Repository: [RasputinKaiser/OpenEval](https://github.com/RasputinKaiser/OpenEval
 
 ## Launch Video
 
-[Watch the OpenEval launch video](https://github.com/RasputinKaiser/OpenEval/blob/main/media/openeval-launch/openeval-launch.mp4)
+[Watch the OpenEval launch video](https://github.com/user-attachments/assets/2353204b-81c9-4d63-9c22-fb7c1c19017e)
 
-[![OpenEval launch video poster](media/openeval-launch/openeval-launch-poster.jpg)](https://github.com/RasputinKaiser/OpenEval/blob/main/media/openeval-launch/openeval-launch.mp4)
+[![OpenEval launch video poster](https://github.com/user-attachments/assets/2353204b-81c9-4d63-9c22-fb7c1c19017e)
 
 ## Highlights
 
