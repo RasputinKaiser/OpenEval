@@ -177,11 +177,19 @@ export default function AccuracyClient({ audit }: Props) {
             <table className="w-full text-sm">
               <thead className="text-[11px] uppercase tracking-wider text-fg-muted bg-bg-subtle">
                 <tr>
-                  <th className="text-left px-4 py-2 font-medium">Case</th>
+                  <th className="text-left px-4 py-2 font-medium">
+                    <button onClick={() => setSort(sort === "name" ? "weaknesses" : "name")} className={clsx("inline-flex items-center gap-1 hover:text-fg transition-colors", sort === "name" && "text-accent-soft")}>
+                      Case {sort === "name" ? "↑" : ""}
+                    </button>
+                  </th>
                   <th className="text-left px-4 py-2 font-medium">Oracle</th>
                   <th className="text-left px-4 py-2 font-medium">Known bad</th>
                   <th className="text-left px-4 py-2 font-medium">Evidence</th>
-                  <th className="text-left px-4 py-2 font-medium">Weaknesses</th>
+                  <th className="text-left px-4 py-2 font-medium">
+                    <button onClick={() => setSort(sort === "weaknesses" ? "name" : "weaknesses")} className={clsx("inline-flex items-center gap-1 hover:text-fg transition-colors", sort === "weaknesses" && "text-accent-soft")}>
+                      Weaknesses {sort === "weaknesses" ? "↓" : ""}
+                    </button>
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-bd-subtle">
