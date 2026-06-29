@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import clsx from "clsx";
-import { Loader2, Trophy, GitCompareArrows } from "lucide-react";
+import { Loader2, Trophy, GitCompareArrows, ArrowUp, ArrowDown } from "lucide-react";
 import HarnessBadge from "./HarnessBadge";
 
 interface HarnessAggregate {
@@ -33,6 +33,8 @@ function fmtDur(ms: number) {
 export default function LeaderboardClient() {
   const [rows, setRows] = useState<HarnessAggregate[]>([]);
   const [loading, setLoading] = useState(true);
+  const [sortKey, setSortKey] = useState<keyof HarnessAggregate>("passRate");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
   useEffect(() => {
     let cancelled = false;
@@ -43,7 +45,28 @@ export default function LeaderboardClient() {
     return () => { cancelled = true; };
   }, []);
 
-  const best = rows[0];
+  const sortedRows = useMemo(() => {
+    const sorted = [...rows].sort((a, b) => {
+      const av = a[sortKey] ?? 0;
+      const bv = b[sortKey] ?? 0;
+      if (typeof av === "string" && typeof bv === "string") {
+        return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+      }
+      return sortDir === "asc" ? (av as number) - (bv as number) : (bv as number) - (av as number);
+    });
+    return sorted;
+  }, [rows, sortKey, sortDir]);
+
+  const best = sortedRows[0];
+
+  function toggleSort(key: keyof HarnessAggregate) {
+    if (sortKey === key) {
+      setSortDir(sortDir === "asc" ? "desc" : "asc");
+    } else {
+      setSortKey(key);
+      setSortDir(typeof sortedRows[0]?.[key] === "string" ? "asc" : "desc");
+    }
+  }
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
@@ -78,21 +101,41 @@ export default function LeaderboardClient() {
               <table className="w-full text-sm">
                 <thead className="text-[11px] uppercase tracking-wider text-fg-muted bg-bg-subtle">
                   <tr>
-                    <th className="text-left px-4 py-2 font-medium">Harness</th>
-                    <th className="text-right px-4 py-2 font-medium">Runs</th>
-                    <th className="text-right px-4 py-2 font-medium">Cases</th>
-                    <th className="text-right px-4 py-2 font-medium">Pass rate</th>
-                    <th className="text-right px-4 py-2 font-medium">Pass / Fail</th>
-                    <th className="text-right px-4 py-2 font-medium">Cost</th>
-                    <th className="text-right px-4 py-2 font-medium">Tokens (in/out)</th>
-                    <th className="text-right px-4 py-2 font-medium">Avg tok/s</th>
-                    <th className="text-right px-4 py-2 font-medium">Total time</th>
-                    <th className="text-left px-4 py-2 font-medium">Model</th>
+                    <th className="text-left px-4 py-2 font-medium">
+                      <SortBtn label="Harness" k="harness" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="left" />
+                    </th>
+                    <th className="text-right px-4 py-2 font-medium">
+                      <SortBtn label="Runs" k="runCount" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} />
+                    </th>
+                    <th className="text-right px-4 py-2 font-medium">
+                      <SortBtn label="Cases" k="totalCases" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} />
+                    </th>
+                    <th className="text-right px-4 py-2 font-medium">
+                      <SortBtn label="Pass rate" k="passRate" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} />
+                    </th>
+                    <th className="text-right px-4 py-2 font-medium">
+                      <SortBtn label="Passed" k="passed" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} />
+                    </th>
+                    <th className="text-right px-4 py-2 font-medium">
+                      <SortBtn label="Cost" k="totalCostUsd" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} />
+                    </th>
+                    <th className="text-right px-4 py-2 font-medium">
+                      <SortBtn label="Tokens out" k="totalTokensOut" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} />
+                    </th>
+                    <th className="text-right px-4 py-2 font-medium">
+                      <SortBtn label="Avg tok/s" k="avgTokPerSec" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} />
+                    </th>
+                    <th className="text-right px-4 py-2 font-medium">
+                      <SortBtn label="Total time" k="totalDurationMs" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} />
+                    </th>
+                    <th className="text-left px-4 py-2 font-medium">
+                      <SortBtn label="Model" k="model" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="left" />
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-bd-subtle">
-                  {rows.map((r, idx) => (
-                    <tr key={r.harness} className={clsx("hover:bg-bg-elev", idx === 0 && "bg-ok/5")}>
+                  {sortedRows.map((r, idx) => (
+                    <tr key={r.harness} className={clsx("hover:bg-bg-elev", idx === 0 && sortKey === "passRate" && sortDir === "desc" && "bg-ok/5")}>
                       <td className="px-4 py-2.5"><HarnessBadge harness={r.harness} /></td>
                       <td className="px-4 py-2.5 text-right mono">{r.runCount}</td>
                       <td className="px-4 py-2.5 text-right mono">{r.totalCases}</td>
@@ -126,5 +169,36 @@ export default function LeaderboardClient() {
         </>
       )}
     </div>
+  );
+}
+
+function SortBtn({
+  label,
+  k,
+  sortKey,
+  sortDir,
+  onClick,
+  align = "right",
+}: {
+  label: string;
+  k: keyof HarnessAggregate;
+  sortKey: keyof HarnessAggregate;
+  sortDir: "asc" | "desc";
+  onClick: (k: keyof HarnessAggregate) => void;
+  align?: "left" | "right";
+}) {
+  const active = sortKey === k;
+  return (
+    <button
+      onClick={() => onClick(k)}
+      className={clsx(
+        "inline-flex items-center gap-1 hover:text-fg transition-colors",
+        active && "text-accent-soft"
+      )}
+    >
+      {align === "left" ? label : null}
+      {active && (sortDir === "asc" ? <ArrowUp className="size-2.5" /> : <ArrowDown className="size-2.5" />)}
+      {align === "right" ? label : null}
+    </button>
   );
 }
