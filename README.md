@@ -220,7 +220,7 @@ npm run check
 npm run dev
 ```
 
-The composition lives in `media/openeval-launch/index.html`, with visual identity notes in `media/openeval-launch/DESIGN.md`. Generated preview, inspection, and render output should stay local.
+The composition lives in `media/openeval-launch/index.html`, with visual identity notes in `media/openeval-launch/DESIGN.md`. Its npm scripts pin project-local FFmpeg/FFprobe binaries so renders do not depend on a machine-specific Homebrew encoder install. Generated preview, inspection, and render output should stay local.
 
 ## Project Layout
 
