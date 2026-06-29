@@ -275,8 +275,11 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
 
         <div className="space-y-4">
           <section className="card p-5 sticky top-4">
-            <div className="text-xs text-fg-muted mb-3">Run summary</div>
-            <dl className="space-y-2 text-sm">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-xs text-fg-muted">Run summary</div>
+              <span className="text-[10px] text-fg-dim mono px-1.5 py-0.5 rounded bg-bg-elev tabular-nums">{plannedCaseCount * samples} run{plannedCaseCount * samples !== 1 ? "s" : ""}</span>
+            </div>
+            <dl className="space-y-1.5 text-sm border-l border-bd-subtle pl-3">
               <Row label="Cases" value={samples > 1 ? `${plannedCaseCount} × ${samples} = ${plannedCaseCount * samples}` : selectedCount > 0 ? `${selectedCount} selected` : `${visible.length} filtered`} />
               <Row label="Runner" value={runner} />
               <Row label="Harness" value={harness || "ncode"} />
