@@ -1,13 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import clsx from "clsx";
 import { Gauge, Wrench, Search, X } from "lucide-react";
 import type { CaseDefinition } from "@/lib/types";
+import { useFocusOnSlash } from "@/lib/use-focus-slash";
 
 export default function CasesClient({ cases, activeCategory }: { cases: CaseDefinition[]; activeCategory?: string }) {
   const [query, setQuery] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+  useFocusOnSlash(searchRef);
 
   const grouped = useMemo(() => {
     const filtered = activeCategory ? cases.filter((c) => c.category === activeCategory) : cases;
@@ -32,6 +35,7 @@ export default function CasesClient({ cases, activeCategory }: { cases: CaseDefi
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-fg-dim" />
           <input
+            ref={searchRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search cases by name, id, tag…"

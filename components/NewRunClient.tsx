@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Play, Check, Filter, Cpu, Search } from "lucide-react";
 import clsx from "clsx";
 import type { CaseDefinition } from "@/lib/types";
+import { useFocusOnSlash } from "@/lib/use-focus-slash";
 import ModelPicker from "./ModelPicker";
 import HarnessPicker from "./HarnessPicker";
 
@@ -29,6 +30,8 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
   const allTags = Array.from(new Set(cases.flatMap((c) => c.tags ?? []))).sort();
   const [filterTags, setFilterTags] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+  useFocusOnSlash(searchRef);
 
   const visible = cases.filter((c) => {
     if (!filterCats.has(c.category)) return false;
@@ -233,6 +236,7 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
               <div className="relative">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3 text-fg-dim" />
                 <input
+                  ref={searchRef}
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search cases…"

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import clsx from "clsx";
 import StatusBadge from "./StatusBadge";
@@ -12,6 +12,7 @@ import {
   SearchCheck, BadgeCheck, Scale, Fingerprint, Search,
 } from "lucide-react";
 import type { EvidenceTier, GraderResult, GraderSpec, RunCaseRecord, TranscriptEntry } from "@/lib/types";
+import { useFocusOnSlash } from "@/lib/use-focus-slash";
 
 interface Props { runId: string; runName?: string; initialCases: RunCaseRecord[]; running: boolean; model?: string; harness?: string; harnessInfo?: { id: string; bin: string | null; version: string | null }; }
 
@@ -21,6 +22,8 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
   const [live, setLive] = useState(running);
   const [caseSearch, setCaseSearch] = useState("");
   const [caseFilter, setCaseFilter] = useState<string>("all");
+  const caseSearchRef = useRef<HTMLInputElement>(null);
+  useFocusOnSlash(caseSearchRef);
 
   const visibleCases = useMemo(() => {
     const q = caseSearch.trim().toLowerCase();
@@ -134,6 +137,7 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
               <div className="relative">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3 text-fg-dim" />
                 <input
+                  ref={caseSearchRef}
                   value={caseSearch}
                   onChange={(e) => setCaseSearch(e.target.value)}
                   placeholder="Filter cases…"

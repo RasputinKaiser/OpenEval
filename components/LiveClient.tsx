@@ -36,6 +36,7 @@ import {
 import HarnessPicker from "./HarnessPicker";
 import { compactDisplayPath, redactSensitiveText } from "@/lib/redaction";
 import type { LiveAggregate, LiveMetricSources, LiveSession, LiveTranscriptTurn, MetricSource, TranscriptResult } from "@/lib/live";
+import { useFocusOnSlash } from "@/lib/use-focus-slash";
 
 type LiveClientProps = {
   initialData?: LiveAggregate | null;
@@ -63,6 +64,8 @@ export default function LiveClient({ initialData, error: initialError, getTransc
   const [filter, setFilter] = useState<FilterMode>("all");
   const [sort, setSort] = useState<SortMode>("recent");
   const [search, setSearch] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+  useFocusOnSlash(searchRef);
 
   const lastSigRef = useRef("");
 
@@ -261,6 +264,7 @@ export default function LiveClient({ initialData, error: initialError, getTransc
               <div className="relative">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3 text-fg-dim" />
                 <input
+                  ref={searchRef}
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search…"
