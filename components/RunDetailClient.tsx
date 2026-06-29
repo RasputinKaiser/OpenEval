@@ -824,6 +824,18 @@ function ratio(passed: number, total: number) {
   return total > 0 ? passed / total : 0;
 }
 
+const ROLE_TINT: Record<string, string> = {
+  assistant: "bg-accent/5",
+  user: "bg-bg-subtle/40",
+  system: "bg-warn/5",
+};
+
+const ROLE_LABEL: Record<string, string> = {
+  assistant: "text-accent-soft",
+  user: "text-fg-dim",
+  system: "text-warn",
+};
+
 function clampScore(value: number) {
   return Math.max(0, Math.min(100, Math.round(value)));
 }
@@ -950,7 +962,7 @@ function TranscriptEntryRow({ entry }: { entry: TranscriptEntry }) {
             <ChevronRight className="size-3 group-open:rotate-90 transition-transform" /> Tool result
             {block.is_error && <span className="ml-1 text-err">(error)</span>}
           </summary>
-          <pre className="mt-1 pl-5 text-[11px] mono text-fg-muted whitespace-pre-wrap border-l-2 border-bd-subtle break-words max-h-96 overflow-auto">{text}</pre>
+          <pre className={clsx("mt-1 pl-5 text-[11px] mono whitespace-pre-wrap border-l-2 break-words max-h-96 overflow-auto", block.is_error ? "border-err/50 text-err/80" : "border-bd-subtle text-fg-muted")}>{text}</pre>
         </details>
       );
     }
@@ -959,9 +971,9 @@ function TranscriptEntryRow({ entry }: { entry: TranscriptEntry }) {
 
   return (
     <div className="border-b border-bd-subtle last:border-0">
-      <div className="px-4 py-1.5 flex items-center gap-2 bg-bg-subtle/40">
-        <span className="text-[10px] uppercase tracking-wider text-fg-dim">{entry.role}</span>
-        {entry.atMs !== undefined && <span className="text-[10px] text-fg-dim mono">@ {entry.atMs}ms</span>}
+      <div className={clsx("px-4 py-1.5 flex items-center gap-2", ROLE_TINT[entry.role] ?? "bg-bg-subtle/40")}>
+        <span className={clsx("text-[10px] uppercase tracking-wider", ROLE_LABEL[entry.role] ?? "text-fg-dim")}>{entry.role}</span>
+        {entry.atMs !== undefined && <span className="text-[10px] text-fg-dim mono tabular-nums">@ {entry.atMs}ms</span>}
       </div>
       {blocks}
       {(cut || showMore) && (
