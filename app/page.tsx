@@ -53,9 +53,11 @@ export default async function Page() {
             <div key={s.label} className="card p-4">
               <div className="flex items-center justify-between">
                 <span className="text-xs text-fg-muted">{s.label}</span>
-                <Icon className="size-4 text-fg-dim" />
+                <div className="grid place-items-center size-7 rounded-md bg-accent/10">
+                  <Icon className="size-3.5 text-accent-soft" />
+                </div>
               </div>
-              <div className="text-2xl font-semibold mt-2 mono">{s.value}</div>
+              <div className="text-2xl font-semibold mt-2 mono tabular-nums">{s.value}</div>
             </div>
           );
         })}
