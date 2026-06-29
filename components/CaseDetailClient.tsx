@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import clsx from "clsx";
 import {
-  ChevronRight, Hash, Wrench, Terminal, FileText,
+  ChevronRight, Hash, Wrench, Terminal, FileText, Gauge,
   CornerDownRight, Clock, User, Cpu, DollarSign, AlertTriangle, CheckCircle2, XCircle,
   Eye, FileCode,
 } from "lucide-react";
@@ -202,10 +202,10 @@ function RunSummary({ runner }: { runner: RunnerResult }) {
     <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
       <Stat label="Turns" value={String(runner.numTurns)} icon={Hash} />
       <Stat label="Duration" value={runner.durationMs < 1000 ? `${runner.durationMs}ms` : `${(runner.durationMs / 1000).toFixed(1)}s`} icon={Clock} />
+      <Stat label="tok/s" value={runner.durationMs > 0 ? (runner.usage.outputTokens / (runner.durationMs / 1000)).toFixed(1) : "0"} icon={Gauge} />
       <Stat label="Tokens in" value={runner.usage.inputTokens.toLocaleString()} icon={Cpu} />
       <Stat label="Tokens out" value={runner.usage.outputTokens.toLocaleString()} icon={Cpu} />
       <Stat label="Cost" value={`$${runner.usage.costUsd.toFixed(4)}`} icon={DollarSign} />
-      <Stat label="Exit" value={String(runner.exitCode)} icon={Terminal} />
     </div>
   );
 }
