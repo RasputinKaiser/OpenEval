@@ -358,6 +358,7 @@ test("summarizeCodexSessionFile reads Codex App and CLI rollout usage", () => {
       type: "response_item",
       payload: {
         type: "function_call",
+        call_id: "call-1",
         name: "exec_command",
         arguments: "{\"cmd\":\"sed -n '1,20p' /Users/ralto/Documents/AgentEvals/lib/live.ts\"}",
       },
@@ -367,6 +368,7 @@ test("summarizeCodexSessionFile reads Codex App and CLI rollout usage", () => {
       type: "response_item",
       payload: {
         type: "function_call_output",
+        call_id: "call-1",
         output: "Exit code: 0\n/Users/ralto/Documents/AgentEvals/lib/live.ts",
       },
     },
@@ -404,6 +406,13 @@ test("summarizeCodexSessionFile reads Codex App and CLI rollout usage", () => {
   assert.equal(session.toolCalls, 1);
   assert.ok(session.fileActivity.touchedFiles.includes("/Users/ralto/Documents/AgentEvals/lib/live.ts"));
   assert.equal(session.usageSegments.length, 1);
+  assert.equal(session.toolDurations.length, 1);
+  const execDur = session.toolDurations[0];
+  assert.equal(execDur.name, "exec_command");
+  assert.equal(execDur.count, 1);
+  assert.equal(execDur.p50Ms, 1000);
+  assert.equal(execDur.maxMs, 1000);
+  assert.equal(execDur.errors, 0);
 });
 
 test("scanLiveSessions reports unsupported harnesses honestly", () => {

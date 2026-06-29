@@ -329,6 +329,33 @@ function jsonPreview(value: unknown, max = 420): string {
   return text.length > max ? `${text.slice(0, max)}...` : text;
 }
 
+function percentile(sortedAsc: number[], p: number): number {
+  if (sortedAsc.length === 0) return 0;
+  const idx = Math.min(sortedAsc.length - 1, Math.floor((p / 100) * sortedAsc.length));
+  return sortedAsc[idx];
+}
+
+function summarizeToolDurations(
+  durationMs: Map<string, number[]>,
+  toolErrorsByName: Map<string, number>,
+  limit = 10,
+): LiveSessionToolDuration[] {
+  return [...durationMs.entries()]
+    .map(([name, durations]) => {
+      const sorted = durations.slice().sort((a, b) => a - b);
+      return {
+        name,
+        count: sorted.length,
+        p50Ms: percentile(sorted, 50),
+        p95Ms: percentile(sorted, 95),
+        maxMs: sorted[sorted.length - 1] ?? 0,
+        errors: toolErrorsByName.get(name) ?? 0,
+      };
+    })
+    .sort((a, b) => b.count - a.count)
+    .slice(0, limit);
+}
+
 function metricMissing(source: MetricSource): boolean {
   return source === "missing" || source === "malformed";
 }
@@ -807,21 +834,7 @@ function parseLiveSession(file: string, content: string, projectDir: string, mti
     calls: count,
     errors: toolErrorsByName.get(key) ?? 0,
   }));
-  const toolDurations = [...toolDurationMs.entries()]
-    .map(([name, durations]) => {
-      const sorted = durations.slice().sort((a, b) => a - b);
-      const pct = (p: number) => sorted.length === 0 ? 0 : sorted[Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length))];
-      return {
-        name,
-        count: sorted.length,
-        p50Ms: pct(50),
-        p95Ms: pct(95),
-        maxMs: sorted[sorted.length - 1] ?? 0,
-        errors: toolErrorsByName.get(name) ?? 0,
-      };
-    })
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 10);
+  const toolDurations = summarizeToolDurations(toolDurationMs, toolErrorsByName);
 
   return {
     sessionId: sessionId ?? path.basename(file, ".jsonl"),
@@ -914,6 +927,9 @@ function parseCodexSession(file: string, content: string, projectDir: string, mt
   let cliVersion: string | null = null;
   const toolCallsByName = new Map<string, number>();
   const toolErrorsByName = new Map<string, number>();
+  const toolStartByCallIdMs = new Map<string, number>();
+  const toolNameByCallIdMs = new Map<string, string>();
+  const toolDurationMs = new Map<string, number[]>();
   const touchedFiles = new Set<string>();
   const usageSegments: LiveUsageSegment[] = [];
   const metricSources: LiveMetricSources = {
@@ -1010,11 +1026,31 @@ function parseCodexSession(file: string, content: string, projectDir: string, mt
           const name = String(payload.name ?? "(unknown)");
           increment(toolCallsByName, name);
           extractFilePaths(payload.arguments, touchedFiles);
+          if (typeof payload.call_id === "string" && at != null) {
+            toolStartByCallIdMs.set(payload.call_id, at);
+            toolNameByCallIdMs.set(payload.call_id, name);
+          }
         }
         if (payload.type === "function_call_output") {
           const output = String(payload.output ?? "");
           extractFilePaths(output, touchedFiles);
-          if (/exit(ed)? with code [1-9]|error|traceback|failed/i.test(output)) {
+          const errored = /exit(ed)? with code [1-9]|error|traceback|failed/i.test(output);
+          if (typeof payload.call_id === "string") {
+            const startMs = toolStartByCallIdMs.get(payload.call_id);
+            if (startMs != null && at != null) {
+              const delta = Math.max(0, at - startMs);
+              const nm = toolNameByCallIdMs.get(payload.call_id) ?? "(unknown)";
+              const list = toolDurationMs.get(nm) ?? [];
+              list.push(delta);
+              toolDurationMs.set(nm, list);
+            }
+            if (errored) {
+              toolErrors++;
+              increment(toolErrorsByName, toolNameByCallIdMs.get(payload.call_id) ?? "(unknown)");
+            }
+            toolStartByCallIdMs.delete(payload.call_id);
+            toolNameByCallIdMs.delete(payload.call_id);
+          } else if (errored) {
             toolErrors++;
             increment(toolErrorsByName, "(unknown)");
           }
@@ -1035,6 +1071,7 @@ function parseCodexSession(file: string, content: string, projectDir: string, mt
     calls: count,
     errors: toolErrorsByName.get(key) ?? 0,
   }));
+  const toolDurations = summarizeToolDurations(toolDurationMs, toolErrorsByName);
   const parseWarnings = buildWarnings(metricSources, malformedLineCount, lineCount, 0, true);
   if (originator) parseWarnings.push(`source: ${originator}${source ? ` / ${source}` : ""}${cliVersion ? ` ${cliVersion}` : ""}`);
   const toolErrorRate = toolCalls > 0 ? toolErrors / toolCalls : 0;
@@ -1086,7 +1123,7 @@ function parseCodexSession(file: string, content: string, projectDir: string, mt
       orphanMessages: 0,
     },
     toolSummaries,
-    toolDurations: [],
+    toolDurations,
     queueSummary: { enqueue: 0, dequeue: 0, remove: 0, popAll: 0, preview: [] },
     fileActivity: {
       touchedFiles: [...touchedFiles].sort().slice(0, 12),
