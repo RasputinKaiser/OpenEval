@@ -583,7 +583,7 @@ function ArtifactStage({
               key={artifact}
               onClick={() => setSelected(artifact)}
               className={clsx(
-                "inline-flex items-center gap-1 rounded border px-2 py-1 text-[11px] mono",
+                "inline-flex items-center gap-1 rounded border px-2.5 py-1.5 text-[11px] mono",
                 selected === artifact
                   ? "border-accent-soft bg-accent-soft/10 text-accent-soft"
                   : "border-bd-subtle bg-bg text-fg-muted hover:text-fg"

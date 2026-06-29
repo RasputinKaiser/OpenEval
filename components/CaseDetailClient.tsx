@@ -114,7 +114,7 @@ export default function CaseDetailClient({ caseId, runId, initial }: Props) {
                   key={art}
                   onClick={() => loadPreview(art)}
                   className={clsx(
-                    "text-xs mono px-2 py-1 rounded border transition-colors",
+                    "text-xs mono px-2.5 py-1.5 rounded border transition-colors",
                     previewContent?.path === art
                       ? "border-accent-soft text-accent-soft bg-accent-soft/10"
                       : "border-bd-subtle text-fg-muted hover:text-fg hover:border-fg-dim"
