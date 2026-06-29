@@ -971,18 +971,7 @@ function GraderRow({ g }: { g: GraderResult }) {
           <pre className="text-[11px] mono text-fg-muted whitespace-pre-wrap break-words">{g.detail}</pre>
         </div>
         {showDiff ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-            {expected !== undefined && (
-              <div>
-                <div className="text-[10px] uppercase text-fg-dim mb-1">Expected</div>
-                <pre className="text-[10px] mono text-fg bg-bg p-2 rounded border border-bd-subtle overflow-auto max-h-96 whitespace-pre-wrap break-words">{String(expected)}</pre>
-              </div>
-            )}
-            <div className={expected === undefined ? "md:col-span-2" : ""}>
-              <div className="text-[10px] uppercase text-fg-dim mb-1">Actual</div>
-              <pre className="text-[10px] mono text-fg bg-bg p-2 rounded border border-bd-subtle overflow-auto max-h-96 whitespace-pre-wrap break-words">{actual}</pre>
-            </div>
-          </div>
+          <DiffView expected={expected !== undefined ? String(expected) : ""} actual={actual} />
         ) : g.output ? (
           <div>
             <div className="text-[10px] uppercase text-fg-dim mb-1">Output</div>
@@ -1074,6 +1063,43 @@ function Mini({ label, value, icon: Icon }: { label: string; value: string; icon
         <Icon className="size-3" /> {label}
       </div>
       <div className="text-sm font-medium mono tabular-nums">{value}</div>
+    </div>
+  );
+}
+
+function DiffView({ expected, actual }: { expected: string; actual: string }) {
+  const expLines = expected.split("\n");
+  const actLines = actual.split("\n");
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+      <div>
+        <div className="text-[10px] uppercase text-fg-dim mb-1">Expected</div>
+        <div className="rounded border border-bd-subtle overflow-auto max-h-96 bg-bg">
+          {expLines.map((line, i) => {
+            const changed = i >= actLines.length || actLines[i] !== line;
+            return (
+              <div key={i} className={clsx("flex", changed && "bg-err/5")}>
+                <span className="text-fg-dim mono text-[9px] w-6 shrink-0 text-right pr-2 select-none">{i + 1}</span>
+                <span className={clsx("text-[10px] mono whitespace-pre-wrap break-all flex-1", changed ? "text-err/80" : "text-fg-muted")}>{line || " "}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div>
+        <div className="text-[10px] uppercase text-fg-dim mb-1">Actual</div>
+        <div className="rounded border border-bd-subtle overflow-auto max-h-96 bg-bg">
+          {actLines.map((line, i) => {
+            const changed = i >= expLines.length || expLines[i] !== line;
+            return (
+              <div key={i} className={clsx("flex", changed && "bg-err/5")}>
+                <span className="text-fg-dim mono text-[9px] w-6 shrink-0 text-right pr-2 select-none">{i + 1}</span>
+                <span className={clsx("text-[10px] mono whitespace-pre-wrap break-all flex-1", changed ? "text-err/80" : "text-fg-muted")}>{line || " "}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
