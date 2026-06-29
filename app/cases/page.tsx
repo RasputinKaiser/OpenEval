@@ -19,9 +19,9 @@ export default async function CasesPage({ searchParams }: { searchParams: { cate
 
       {!filterCat && (
         <nav className="flex flex-wrap gap-2 mb-6">
-          <Link href="/cases" className="text-[11px] px-2 py-1 rounded-md border border-bd text-fg-muted hover:bg-bg-elev mono">all</Link>
+          <Link href="/cases" className="text-[11px] px-2.5 py-1.5 rounded-md border border-bd text-fg-muted hover:bg-bg-elev mono">all</Link>
           {Object.entries(grouped).map(([cat, list]) => (
-            <Link key={cat} href={`/cases?category=${cat}`} className="text-[11px] px-2 py-1 rounded-md border border-bd text-fg-muted hover:bg-bg-elev mono">
+            <Link key={cat} href={`/cases?category=${cat}`} className="text-[11px] px-2.5 py-1.5 rounded-md border border-bd text-fg-muted hover:bg-bg-elev mono">
               {cat} · {list.length}
             </Link>
           ))}
@@ -35,9 +35,13 @@ export default async function CasesPage({ searchParams }: { searchParams: { cate
               <h2 className="text-sm font-medium uppercase tracking-wider text-fg-muted">{cat}</h2>
               <span className="text-[11px] text-fg-dim mono">{list.length}</span>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            <div className="stagger-grid grid grid-cols-1 md:grid-cols-2 gap-2">
               {list.map((c) => (
-                <div key={c.id} className="card p-4 hover:bg-bg-elev transition-colors">
+                <Link
+                  key={c.id}
+                  href={`/runs/new?caseIds=${encodeURIComponent(c.id)}`}
+                  className="card p-4 hover:bg-bg-elev active:scale-[0.96] transition-colors"
+                >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="text-sm font-medium">{c.name}</div>
@@ -61,7 +65,7 @@ export default async function CasesPage({ searchParams }: { searchParams: { cate
                     <span>timeout {c.runner?.timeout_seconds ?? 300}s</span>
                     {c.budget?.max_cost_usd != null && <span>budget ${c.budget.max_cost_usd.toFixed(2)}</span>}
                   </div>
-                </div>
+                </Link>
               ))}
             </div>
           </section>

@@ -24,9 +24,13 @@ export default async function Page() {
       ) : (
         <div className="card overflow-hidden">
           {runs.map((r) => (
-            <div key={r.id} className="px-4 py-3 border-b border-bd-subtle last:border-0 flex items-center justify-between gap-4">
+            <Link
+              key={r.id}
+              href={`/runs/${r.id}`}
+              className="flex items-center justify-between gap-4 border-b border-bd-subtle px-4 py-3 transition-colors last:border-0 hover:bg-bg-elev active:scale-[0.99]"
+            >
               <div className="min-w-0 flex-1">
-                <Link href={`/runs/${r.id}`} className="font-medium hover:text-accent-soft truncate block">{r.name}</Link>
+                <div className="truncate font-medium">{r.name}</div>
                 <div className="text-[11px] text-fg-dim mono mt-0.5 flex items-center gap-1.5 flex-wrap">
                   {new Date(r.created_at).toLocaleString()} · {r.params.runner}
                   {r.params.harness && <HarnessBadge harness={r.params.harness} />}
@@ -42,7 +46,7 @@ export default async function Page() {
                 )}
                 <StatusBadge status={r.status} />
               </div>
-            </div>
+            </Link>
           ))}
         </div>
       )}
