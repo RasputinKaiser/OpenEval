@@ -74,7 +74,7 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
   useVisibilityPoll(
     async () => {
       try {
-        const res = await fetch(`/api/runs/${runId}`).then((r) => r.json());
+        const res = await fetch(`/api/runs/${runId}?lite=1`).then((r) => r.json());
         if (res.cases) setCases(res.cases);
         if (res.run?.status !== "running") setLive(false);
       } catch {}
