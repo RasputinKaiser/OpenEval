@@ -101,10 +101,12 @@ export default function TelemetryStrip({ runId }: { runId: string }) {
 
 function QualityCell({ label, value, detail, ok }: { label: string; value: string; detail: string; ok: boolean }) {
   return (
-    <div className="rounded bg-bg-elev/35 px-2 py-1.5">
+    <div className={clsx("rounded px-2 py-1.5 border", ok ? "border-ok/15 bg-ok/5" : "border-warn/15 bg-warn/5")}>
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[9px] uppercase tracking-wider text-fg-muted">{label}</span>
-        <span className={clsx("mono text-xs", ok ? "text-ok" : "text-warn")}>{value}</span>
+        <span className="flex items-center gap-1.5 text-[9px] uppercase tracking-wider text-fg-muted">
+          <span className={clsx("size-1.5 rounded-full", ok ? "bg-ok" : "bg-warn")} />{label}
+        </span>
+        <span className={clsx("mono text-xs tabular-nums", ok ? "text-ok" : "text-warn")}>{value}</span>
       </div>
       <div className="mt-0.5 text-[10px] text-fg-dim">{detail}</div>
     </div>
