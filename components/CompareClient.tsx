@@ -134,7 +134,10 @@ export default function CompareClient({ runs, initialA, initialB }: Props) {
                     const improved = r.aStatus && r.aStatus !== "passed" && r.bStatus === "passed";
                     return (
                       <tr key={r.caseId} className={clsx(regressed && "bg-err/5", improved && "bg-ok/5", "hover:bg-bg-elev")}>
-                        <td className="px-4 py-2">
+                        <td className="px-4 py-2 pl-3 relative">
+                          {(regressed || improved) && (
+                            <div className={clsx("absolute left-0 top-0 bottom-0 w-0.5", regressed ? "bg-err" : "bg-ok")} />
+                          )}
                           <Link href={`/runs/${b}/case/${r.caseId}`} className="hover:text-accent-soft">{r.caseName}</Link>
                           <div className="text-[10px] text-fg-dim mono">{r.caseId} · {r.category}{r.difficulty ? ` · ${r.difficulty}` : ""}</div>
                         </td>
