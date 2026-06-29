@@ -28,8 +28,8 @@ export default function CompareClient({ runs, initialA, initialB }: Props) {
     if (!a || !b || a === b) { setRows([]); return; }
     setLoading(true);
     Promise.all([
-      fetch(`/api/runs/${a}`).then((r) => r.json()),
-      fetch(`/api/runs/${b}`).then((r) => r.json()),
+      fetch(`/api/runs/${a}?lite=1`).then((r) => r.json()),
+      fetch(`/api/runs/${b}?lite=1`).then((r) => r.json()),
     ]).then(([da, db]: [any, any]) => {
       setSummaryA(da.run?.summary);
       setSummaryB(db.run?.summary);
