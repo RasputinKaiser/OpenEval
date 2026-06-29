@@ -267,8 +267,11 @@ function Stat({ label, value, sub, tone, active, onClick }: { label: string; val
   const c = tone === "ok" ? "text-ok" : tone === "warn" ? "text-warn" : "text-fg";
   const body = (
     <>
-      <div className="text-[10px] uppercase tracking-wider text-fg-muted mb-1">{label}</div>
-      <div className={`text-xl font-semibold mono ${c}`}>{value}</div>
+      <div className="flex items-center justify-between mb-1">
+        <div className="text-[10px] uppercase tracking-wider text-fg-muted">{label}</div>
+        {tone && <div className={clsx("size-1.5 rounded-full", tone === "ok" ? "bg-ok" : "bg-warn")} />}
+      </div>
+      <div className={clsx("text-xl font-semibold mono tabular-nums", c)}>{value}</div>
       <div className="text-[11px] text-fg-dim mt-0.5">{sub}</div>
     </>
   );
@@ -276,8 +279,9 @@ function Stat({ label, value, sub, tone, active, onClick }: { label: string; val
   return (
     <button
       onClick={onClick}
-      className={clsx("card p-4 text-left transition-colors", active ? "border-accent bg-accent/10" : "hover:bg-bg-elev")}
+      className={clsx("card p-4 text-left transition-colors relative overflow-hidden", active ? "border-accent bg-accent/10" : "hover:bg-bg-elev")}
     >
+      {active && <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-accent-soft" />}
       {body}
     </button>
   );
