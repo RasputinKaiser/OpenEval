@@ -1,6 +1,7 @@
 
 *** This project is primarily a draft. There are issues I'm aware of with formatting and whatnot
   Developed primarily with Noumena Code
+  [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/W7W7C9TC7)
 
 # OpenEval
 
