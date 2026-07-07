@@ -1,4 +1,4 @@
-Developed primarily with Noumena Code
+Developed primarily with Noumena Code, Claude Code (Fable 5, Sonnet 5), OpenAI Codex (GPT-5.5)
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/W7W7C9TC7)
 
