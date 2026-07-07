@@ -1,20 +1,5 @@
-import type { PermissionMode, RunnerContext, RunnerEvent } from "../types";
-import type { BuiltCommand, HarnessAdapter, ParseAccumulator } from "./types";
-
-function buildCodexCommand(ctx: RunnerContext, bin: string): BuiltCommand {
-  const args = ["exec", "--json", "--skip-git-repo-check"];
-  const pm = ctx.permissionMode;
-  if (pm === "bypassPermissions") {
-    args.push("--dangerously-bypass-approvals-and-sandbox");
-  } else {
-    const sandbox = pm === "default" ? "read-only" : "workspace-write";
-    args.push("-s", sandbox);
-  }
-  if (ctx.model) args.push("-m", ctx.model);
-  args.push(...ctx.extraArgs);
-  args.push(ctx.prompt);
-  return { bin, args, env: {} };
-}
+import type { RunnerEvent } from "../types";
+import type { ParseAccumulator } from "./types";
 
 const EMPTY_USAGE = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreateTokens: 0, costUsd: 0 };
 
@@ -110,29 +95,6 @@ export function parseCodexLine(line: string, into: ParseAccumulator): RunnerEven
 
   return events;
 }
-
-export const codexAdapter: HarnessAdapter = {
-  id: "codex",
-  label: "Codex CLI",
-  binNames: ["codex"],
-  defaultBin: process.env.CODEX_BIN || "codex",
-  wellKnownPaths: ["~/.local/bin/codex", "~/.codex/bin/codex"],
-  versionArgs: ["--version"],
-  capabilities: {
-    outputFormat: "jsonl",
-    reportsCost: false,
-    reportsTokens: true,
-    reportsTurns: true,
-    permissionModes: ["bypassPermissions", "default", "acceptEdits", "dontAsk", "plan", "auto"],
-    supportsVisionInput: false,
-  },
-  buildCommand(ctx) {
-    return buildCodexCommand(ctx, process.env.CODEX_BIN || "codex");
-  },
-  parseLine(line, acc) {
-    return parseCodexLine(line, acc);
-  },
-};
 
 export const CODEX_SAMPLE_LINES: string[] = [
   '{"type":"thread.started","thread_id":"thread_abc"}',

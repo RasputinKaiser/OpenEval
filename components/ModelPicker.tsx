@@ -9,6 +9,8 @@ import { cachedFetch } from "@/lib/cached-fetch";
 interface Props {
   value?: string;
   onChange: (model: string | undefined) => void;
+  /** Restrict the model list to this harness's descriptor-declared models. */
+  harness?: string;
 }
 
 const FAMILY_COLORS: Record<string, string> = {
@@ -25,17 +27,18 @@ const FAMILY_COLORS: Record<string, string> = {
   other: "#5a5a63",
 };
 
-export default function ModelPicker({ value, onChange }: Props) {
+export default function ModelPicker({ value, onChange, harness }: Props) {
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
 
   useEffect(() => {
-    cachedFetch<{ models: ModelInfo[] }>("/api/models")
+    setLoading(true);
+    cachedFetch<{ models: ModelInfo[] }>(`/api/models${harness ? `?harness=${encodeURIComponent(harness)}` : ""}`)
       .then((d) => setModels(d.models || []))
       .finally(() => setLoading(false));
-  }, []);
+  }, [harness]);
 
   const filtered = models.filter((m) => {
     if (!query.trim()) return true;
@@ -57,7 +60,7 @@ export default function ModelPicker({ value, onChange }: Props) {
           <Cpu className="size-4 text-fg-muted shrink-0" />
           {loading ? <Loader2 className="size-3.5 animate-spin text-fg-dim" /> : null}
           <span className={clsx("truncate", usingDefault && "text-fg-muted")}>
-            {selected ? selected.label : value || "Default (ncode auto)"}
+            {selected ? selected.label : value || "Default (harness auto)"}
           </span>
           {selected && (
             <span className="text-[10px] text-fg-dim mono px-1.5 py-0.5 rounded bg-bg-elev shrink-0">{selected.family}</span>
@@ -97,7 +100,7 @@ export default function ModelPicker({ value, onChange }: Props) {
               >
                 <div>
                   <div className="text-sm">Default</div>
-                  <div className="text-[10px] text-fg-dim">Let ncode pick the model</div>
+                  <div className="text-[10px] text-fg-dim">Let the harness pick the model</div>
                 </div>
                 {usingDefault && <Check className="size-3.5 text-accent-soft" />}
               </button>

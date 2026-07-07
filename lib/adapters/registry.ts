@@ -1,33 +1,73 @@
-import { ncodeAdapter, claudeCodeAdapter } from "./stream-json";
-import { codexAdapter } from "./codex";
-import { loadDescriptorAdapters } from "./loader";
+import { BUILTIN_DESCRIPTORS } from "./builtin";
+import { makeGenericAdapter } from "./generic";
+import { loadDescriptorAdapters, getDescriptorIssues } from "./loader";
+import { validateDescriptor, type DescriptorIssue } from "./schema";
 import type { HarnessAdapter, HarnessId } from "./types";
 
-const REGISTRY = new Map<HarnessId, HarnessAdapter>();
-const ORDER: HarnessId[] = [];
+/**
+ * Every harness — bundled or user-defined — is a descriptor. User descriptors
+ * in `harnesses/` override bundled ones with the same id. No harness is
+ * privileged: the default is configurable, not hardcoded.
+ */
 
-function register(a: HarnessAdapter): void {
-  if (!REGISTRY.has(a.id)) ORDER.push(a.id);
-  REGISTRY.set(a.id, a);
+let registry: Map<HarnessId, HarnessAdapter> | null = null;
+let order: HarnessId[] = [];
+let builtinIssues: DescriptorIssue[] = [];
+
+function buildRegistry(): Map<HarnessId, HarnessAdapter> {
+  if (registry) return registry;
+  const map = new Map<HarnessId, HarnessAdapter>();
+  order = [];
+  builtinIssues = [];
+
+  const register = (a: HarnessAdapter) => {
+    if (!map.has(a.id)) order.push(a.id);
+    map.set(a.id, a);
+  };
+
+  for (const raw of BUILTIN_DESCRIPTORS) {
+    const { descriptor, issues } = validateDescriptor(raw, `builtin:${(raw as any)?.id ?? "?"}`);
+    builtinIssues.push(...issues);
+    if (descriptor) register(makeGenericAdapter(descriptor));
+  }
+  for (const a of loadDescriptorAdapters()) register(a);
+
+  registry = map;
+  return map;
 }
 
-register(ncodeAdapter);
-register(claudeCodeAdapter);
-register(codexAdapter);
+export function invalidateRegistry(): void {
+  registry = null;
+}
 
-for (const a of loadDescriptorAdapters()) register(a);
-
-export const DEFAULT_HARNESS: HarnessId = "ncode";
+export function getDefaultHarness(): HarnessId {
+  const map = buildRegistry();
+  const fromEnv = process.env.OPENEVAL_DEFAULT_HARNESS;
+  if (fromEnv && map.has(fromEnv)) return fromEnv;
+  return order[0];
+}
 
 export function getAdapter(id?: HarnessId): HarnessAdapter {
-  if (id && REGISTRY.has(id)) return REGISTRY.get(id)!;
-  return REGISTRY.get(DEFAULT_HARNESS)!;
+  const map = buildRegistry();
+  if (id == null || id === "") return map.get(getDefaultHarness())!;
+  const adapter = map.get(id);
+  if (!adapter) {
+    throw new Error(`Unknown harness "${id}". Registered harnesses: ${[...map.keys()].join(", ")}`);
+  }
+  return adapter;
 }
 
 export function listAdapters(): HarnessAdapter[] {
-  return ORDER.map((id) => REGISTRY.get(id)!);
+  const map = buildRegistry();
+  return order.map((id) => map.get(id)!);
 }
 
 export function hasAdapter(id: HarnessId): boolean {
-  return REGISTRY.has(id);
+  return buildRegistry().has(id);
+}
+
+/** All descriptor problems — bundled and user-dir — for surfacing in UI/CLI. */
+export function getAllDescriptorIssues(): DescriptorIssue[] {
+  buildRegistry();
+  return [...builtinIssues, ...getDescriptorIssues()];
 }

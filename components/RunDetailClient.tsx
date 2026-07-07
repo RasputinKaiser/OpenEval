@@ -1,11 +1,12 @@
 "use client";
 
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import clsx from "clsx";
 import StatusBadge from "./StatusBadge";
 import HarnessBadge from "./HarnessBadge";
 import TelemetryStrip from "./TelemetryStrip";
+import RunTimeline from "./RunTimeline";
 import {
   ChevronRight, Wrench, Clock, Hash, Cpu, DollarSign, Loader2, CircleDot, Gauge, AlertCircle, PlayCircle,
   Eye, FileCode, Palette, Sparkles, ShieldCheck, ShieldAlert, CheckCircle2, XCircle, Boxes, FlaskConical,
@@ -15,6 +16,7 @@ import type { EvidenceTier, GraderResult, GraderSpec, RunCaseRecord, TranscriptE
 import { useFocusOnSlash } from "@/lib/use-focus-slash";
 import { useVisibilityPoll } from "@/lib/use-visibility-poll";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { useRunEvents } from "@/lib/use-run-events";
 
 interface Props { runId: string; runName?: string; initialCases: RunCaseRecord[]; running: boolean; model?: string; harness?: string; harnessInfo?: { id: string; bin: string | null; version: string | null }; }
 
@@ -71,18 +73,37 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
       });
   }, [cases, debouncedCaseSearch, caseFilter]);
 
-  useVisibilityPoll(
-    async () => {
+  const fetchInFlight = useRef<Promise<void> | null>(null);
+  const refetchLite = useCallback(async () => {
+    if (fetchInFlight.current) return fetchInFlight.current;
+    fetchInFlight.current = (async () => {
       try {
         const res = await fetch(`/api/runs/${runId}?lite=1`).then((r) => r.json());
         if (res.cases) setCases(res.cases);
         if (res.run?.status !== "running") setLive(false);
-      } catch {}
+      } catch {
+        // transient
+      } finally {
+        fetchInFlight.current = null;
+      }
+    })();
+    return fetchInFlight.current;
+  }, [runId]);
+
+  // SSE-driven refetch: case state transitions invalidate the lite snapshot.
+  useRunEvents(runId, {
+    enabled: live,
+    onEvent: (ev) => {
+      if (ev.kind === "case_started" || ev.kind === "case_grading" || ev.kind === "case_finished" || ev.kind === "grader_result") {
+        refetchLite();
+      } else if (ev.kind === "run_completed" || ev.kind === "run_fatal") {
+        setLive(false);
+      }
     },
-    1500,
-    [runId],
-    live,
-  );
+  });
+
+  // Fallback poll in case SSE stalls — every 8s when live, visibility-aware.
+  useVisibilityPoll(refetchLite, 8000, [runId], live);
 
   const counts = {
     passed: cases.filter((c) => c.status === "passed").length,
@@ -100,6 +121,14 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
   return (
     <div>
       <TelemetryStrip runId={runId} />
+      {cases.length > 0 && (
+        <RunTimeline
+          cases={cases}
+          selectedIndex={selectedIdx}
+          onSelect={setSelectedIdx}
+          live={live}
+        />
+      )}
       <section className="mb-4 overflow-hidden rounded-lg border border-bd bg-[linear-gradient(135deg,rgba(124,92,255,0.18),rgba(17,17,19,0.96)_42%,rgba(63,185,80,0.09))]">
         <div className="stagger-grid grid gap-4 p-4 xl:grid-cols-[1fr_360px] xl:items-end">
           <div>
@@ -114,6 +143,13 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
               {harness && <HarnessBadge harness={harness} bin={harnessInfo?.bin} version={harnessInfo?.version} />}
               <span className="mono">{runId}</span>
               {model && <span className="mono">{model}</span>}
+              <a
+                href={`/api/runs/${runId}/report?redact=1`}
+                className="inline-flex items-center gap-1 rounded border border-bd-subtle bg-bg/60 px-2 py-1 text-fg-muted hover:text-fg"
+                title="Download a redacted Markdown report of this run"
+              >
+                Report .md
+              </a>
             </div>
             <h1 className="mt-3 text-2xl font-semibold tracking-normal text-fg md:text-3xl">{runName || "Run output"}</h1>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-fg-muted">
@@ -983,13 +1019,48 @@ const GraderRow = memo(function GraderRow({ g }: { g: GraderResult }) {
 });
 
 const MAX_ENTRY_LEN = 8000;
+const TRANSCRIPT_INITIAL = 60;
+const TRANSCRIPT_PAGE = 60;
 
 function Transcript({ transcript }: { transcript: TranscriptEntry[] }) {
+  const [visible, setVisible] = useState(TRANSCRIPT_INITIAL);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const total = transcript.length;
+
+  useEffect(() => {
+    const node = sentinelRef.current;
+    if (!node || visible >= total) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          setVisible((v) => Math.min(v + TRANSCRIPT_PAGE, total));
+        }
+      },
+      { rootMargin: "200px" },
+    );
+    io.observe(node);
+    return () => io.disconnect();
+  }, [visible, total]);
+
+  // Reset pagination when transcript identity changes (new case selected)
+  useEffect(() => { setVisible(TRANSCRIPT_INITIAL); }, [transcript]);
+
+  const shown = transcript.slice(0, visible);
+  const remaining = total - visible;
+
   return (
     <div className="font-mono text-[12px]">
-      {transcript.map((entry, i) => (
+      {shown.map((entry, i) => (
         <TranscriptEntryRow key={entry.uuid || i} entry={entry} />
       ))}
+      {remaining > 0 && (
+        <div ref={sentinelRef} className="py-3 text-center text-[11px] text-fg-dim">
+          <span className="inline-flex items-center gap-1.5">
+            <Loader2 className="size-3 animate-spin" />
+            {remaining} more entr{remaining === 1 ? "y" : "ies"}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

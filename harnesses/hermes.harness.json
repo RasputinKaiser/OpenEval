@@ -6,7 +6,7 @@
   "versionArgs": ["--version"],
   "output": "jsonl",
   "argTemplate": ["run", "--json", "--workdir", "{workdir}"],
-  "promptPlaceholder": "--prompt",
+  "prompt": { "mode": "flag", "flag": "--prompt" },
   "extraEnv": {},
   "fields": {
     "finalText": "message.text",

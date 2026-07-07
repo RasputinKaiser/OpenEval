@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { getAdapter, hasAdapter, listAdapters } from "./adapters/registry";
+import { getPath } from "./adapters/generic";
 
 export interface ModelInfo {
   id: string;
@@ -14,25 +16,6 @@ export interface ModelInfo {
     notes?: string;
   };
   isAlias?: boolean;
-}
-
-const KNOWN_ALIASES: Array<{ id: string; label: string; family: string }> = [
-  { id: "opus", label: "Opus", family: "opus" },
-  { id: "opus[1m]", label: "Opus 1M", family: "opus" },
-  { id: "sonnet", label: "Sonnet", family: "sonnet" },
-  { id: "sonnet[1m]", label: "Sonnet 1M", family: "sonnet" },
-  { id: "haiku", label: "Haiku", family: "haiku" },
-  { id: "best", label: "Best (auto)", family: "auto" },
-  { id: "glm-5.2", label: "GLM-5.2", family: "glm" },
-  { id: "glm-5.2[1m]", label: "GLM-5.2 1M", family: "glm" },
-  { id: "deepseek-v4", label: "DeepSeek V4", family: "deepseek" },
-  { id: "deepseek-v4-flash", label: "DeepSeek V4 Flash", family: "deepseek" },
-];
-
-function ncodeConfigPath(): string | null {
-  const home = os.homedir();
-  const p = path.join(home, ".ncode", ".config.json");
-  return fs.existsSync(p) ? p : null;
 }
 
 function familyFromId(id: string): string {
@@ -56,8 +39,6 @@ function labelFromId(id: string): string {
   return noSuffix.replace(/[-_]/g, " ").replace(/\s+/g, " ").trim();
 }
 
-let cache: ModelInfo[] | null = null;
-
 function capabilitiesForFamily(family: string, id: string): ModelInfo["capabilities"] {
   const l = id.toLowerCase();
   if (family === "glm") {
@@ -77,55 +58,96 @@ function modelInfo(input: Omit<ModelInfo, "capabilities">): ModelInfo {
   return { ...input, capabilities: capabilitiesForFamily(input.family, input.id) };
 }
 
-export function discoverModels(): ModelInfo[] {
-  if (cache) return cache;
+function expandHome(p: string): string {
+  if (p === "~") return os.homedir();
+  if (p.startsWith("~/")) return path.join(os.homedir(), p.slice(2));
+  return p;
+}
+
+/**
+ * Walk a dotted json path where `*` matches every key at that level, returning
+ * all objects found. Used for descriptor `models.discovery.jsonPath`.
+ */
+function collectAtPath(obj: unknown, parts: string[]): unknown[] {
+  if (obj == null) return [];
+  if (parts.length === 0) return [obj];
+  const [head, ...rest] = parts;
+  if (head === "*") {
+    if (typeof obj !== "object") return [];
+    return Object.values(obj as Record<string, unknown>).flatMap((v) => collectAtPath(v, rest));
+  }
+  return collectAtPath(getPath(obj, head), rest);
+}
+
+const cache = new Map<string, ModelInfo[]>();
+
+/**
+ * Models offered for a harness come from its descriptor: a static alias list
+ * plus optional discovery of previously-used model ids from a local config
+ * file. Nothing here is harness-specific code — it's all descriptor data.
+ */
+export function discoverModels(harnessId?: string): ModelInfo[] {
+  const key = harnessId && hasAdapter(harnessId) ? harnessId : "*";
+  const hit = cache.get(key);
+  if (hit) return hit;
+
+  const adapters = key === "*" ? listAdapters() : [getAdapter(key)];
   const found = new Map<string, ModelInfo>();
 
-  for (const a of KNOWN_ALIASES) {
-    found.set(a.id, modelInfo({ id: a.id, label: a.label, family: a.family, source: "alias", isAlias: true }));
+  for (const adapter of adapters) {
+    const models = adapter.descriptor.models;
+    if (!models) continue;
+
+    for (const a of models.aliases ?? []) {
+      if (!found.has(a.id)) {
+        found.set(a.id, modelInfo({ id: a.id, label: a.label, family: a.family, source: "alias", isAlias: true }));
+      }
+    }
+
+    const discovery = models.discovery;
+    if (discovery) {
+      const file = expandHome(discovery.file);
+      if (fs.existsSync(file)) {
+        try {
+          const data = JSON.parse(fs.readFileSync(file, "utf8"));
+          for (const usage of collectAtPath(data, discovery.jsonPath.split("."))) {
+            if (!usage || typeof usage !== "object") continue;
+            for (const [modelId, stats] of Object.entries(usage as Record<string, unknown>)) {
+              if (found.has(modelId)) continue;
+              const s = (stats || {}) as any;
+              found.set(modelId, modelInfo({
+                id: modelId,
+                label: labelFromId(modelId),
+                family: familyFromId(modelId),
+                source: "config",
+                contextWindow: typeof s.contextWindow === "number" ? s.contextWindow : undefined,
+              }));
+            }
+          }
+        } catch {}
+      }
+    }
+
+    if (models.default && !found.has(models.default)) {
+      found.set(models.default, modelInfo({
+        id: models.default,
+        label: labelFromId(models.default),
+        family: familyFromId(models.default),
+        source: "default",
+      }));
+    }
   }
 
-  const cfg = ncodeConfigPath();
-  if (cfg) {
-    try {
-      const data = JSON.parse(fs.readFileSync(cfg, "utf8")) as any;
-      const projects = data.projects || {};
-      for (const [, proj] of Object.entries(projects) as Array<[string, any]>) {
-        const usage = proj.lastModelUsage;
-        if (!usage || typeof usage !== "object") continue;
-        for (const [modelId, stats] of Object.entries(usage)) {
-          const s = (stats || {}) as any;
-          if (found.has(modelId)) continue;
-          found.set(modelId, modelInfo({
-            id: modelId,
-            label: labelFromId(modelId),
-            family: familyFromId(modelId),
-            source: "config",
-            contextWindow: s.contextWindow,
-          }));
-        }
-      }
-      const teammateDefault = data.teammateDefaultModel;
-      if (teammateDefault && !found.has(teammateDefault)) {
-        found.set(teammateDefault, modelInfo({
-          id: teammateDefault,
-          label: labelFromId(teammateDefault),
-          family: familyFromId(teammateDefault),
-          source: "default",
-        }));
-      }
-    } catch {}
-  }
-
-  const order = ["opus", "sonnet", "haiku", "best", "glm", "deepseek", "openai", "gemini", "llama", "qwen", "other"];
-  cache = Array.from(found.values()).sort((a, b) => {
+  const order = ["opus", "sonnet", "haiku", "auto", "glm", "deepseek", "openai", "gemini", "llama", "qwen", "other"];
+  const result = Array.from(found.values()).sort((a, b) => {
     const fa = order.indexOf(a.family);
     const fb = order.indexOf(b.family);
     if (fa !== fb) return (fa < 0 ? 99 : fa) - (fb < 0 ? 99 : fb);
     if (a.isAlias !== b.isAlias) return a.isAlias ? -1 : 1;
     return a.label.localeCompare(b.label);
   });
-  return cache;
+  cache.set(key, result);
+  return result;
 }
 
 export function isValidModelId(id: string | undefined | null): boolean {

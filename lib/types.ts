@@ -258,6 +258,8 @@ export interface RunRecord {
     filter?: { caseIds?: string[]; categories?: string[]; tags?: string[]; difficulty?: string[] };
   };
   summary: RunSummary | null;
+  /** Captured run environment. Shape matches RunManifest in lib/manifest.ts. */
+  manifest?: unknown;
 }
 
 export interface Runner {

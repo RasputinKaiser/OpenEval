@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { listAdapters, getAdapter } from "./registry";
+import { listAdapters, hasAdapter, getAdapter } from "./registry";
 import type { AdapterCapabilities, HarnessAdapter } from "./types";
 import type { RunnerContext } from "../types";
 
@@ -127,8 +127,8 @@ export async function discoverHarnesses(force = false): Promise<DiscoveredHarnes
 }
 
 export async function probeHarness(id: string): Promise<DiscoveredHarness | null> {
+  if (!hasAdapter(id)) return null;
   const adapter = getAdapter(id);
-  if (!adapter || adapter.id !== id) return null;
   const result = await probe(adapter);
   if (cache) {
     const idx = cache.findIndex((h) => h.id === id);

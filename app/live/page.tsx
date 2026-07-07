@@ -4,7 +4,7 @@ import { defaultLiveLimitForHarness, scanLiveSessions, isPathInLiveSource, getEr
 
 export const dynamic = "force-dynamic";
 
-async function getSessionTranscript(filePath: string, harness = "ncode"): Promise<TranscriptResult> {
+async function getSessionTranscript(filePath: string, harness?: string): Promise<TranscriptResult> {
   "use server";
   const normalized = path.resolve(filePath);
   if (!normalized.endsWith(".jsonl") || !isPathInLiveSource(normalized, harness)) {
@@ -20,7 +20,7 @@ async function getSessionTranscript(filePath: string, harness = "ncode"): Promis
 export default function LivePage({ searchParams }: { searchParams?: { harness?: string; limit?: string } }) {
   let data: LiveAggregate;
   let error: string | undefined;
-  const harness = searchParams?.harness || "ncode";
+  const harness = searchParams?.harness || undefined;
   const parsedLimit = Number(searchParams?.limit || defaultLiveLimitForHarness(harness));
   const limit = Number.isFinite(parsedLimit) ? Math.max(1, Math.min(1000, parsedLimit)) : defaultLiveLimitForHarness(harness);
 
@@ -29,8 +29,8 @@ export default function LivePage({ searchParams }: { searchParams?: { harness?: 
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
     data = {
-      sourceHarness: harness,
-      sourceLabel: harness,
+      sourceHarness: harness ?? "",
+      sourceLabel: harness ?? "unknown",
       sourceStatus: "error",
       sourceRoots: [],
       sourceMessage: error,

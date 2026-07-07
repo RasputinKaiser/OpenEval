@@ -19,6 +19,7 @@ const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
 
 export default function HarnessPicker({ value, onChange }: Props) {
   const [harnesses, setHarnesses] = useState<DiscoveredHarness[]>([]);
+  const [defaultHarness, setDefaultHarness] = useState<string>("");
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
@@ -27,8 +28,11 @@ export default function HarnessPicker({ value, onChange }: Props) {
     setLoading(true);
     if (refresh) invalidateCache("/api/harnesses");
     const url = `/api/harnesses${refresh ? "?refresh=1" : ""}`;
-    cachedFetch<{ harnesses: DiscoveredHarness[] }>(url)
-      .then((d) => setHarnesses(d.harnesses || []))
+    cachedFetch<{ harnesses: DiscoveredHarness[]; defaultHarness?: string }>(url)
+      .then((d) => {
+        setHarnesses(d.harnesses || []);
+        setDefaultHarness(d.defaultHarness || "");
+      })
       .finally(() => setLoading(false));
   }
 
@@ -54,7 +58,7 @@ export default function HarnessPicker({ value, onChange }: Props) {
           <Terminal className="size-4 text-fg-muted shrink-0" />
           {loading ? <Loader2 className="size-3.5 animate-spin text-fg-dim" /> : null}
           <span className={clsx("truncate", usingDefault && "text-fg-muted")}>
-            {selected ? selected.label : value || "Default (ncode)"}
+            {selected ? selected.label : value || `Default${defaultHarness ? ` (${defaultHarness})` : ""}`}
           </span>
           {selected?.version && (
             <span className="text-[10px] text-fg-dim mono px-1.5 py-0.5 rounded bg-bg-elev shrink-0">{selected.version}</span>
@@ -101,7 +105,7 @@ export default function HarnessPicker({ value, onChange }: Props) {
                 )}
               >
                 <div>
-                  <div className="text-sm">Default (ncode)</div>
+                  <div className="text-sm">Default{defaultHarness ? ` (${defaultHarness})` : ""}</div>
                   <div className="text-[10px] text-fg-dim">Use the default harness adapter</div>
                 </div>
                 {usingDefault && <Check className="size-3.5 text-accent-soft" />}

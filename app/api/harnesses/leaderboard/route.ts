@@ -27,7 +27,7 @@ export async function GET() {
   const byHarness = new Map<string, HarnessAggregate>();
 
   for (const r of runs) {
-    const h = r.params.harness || "ncode";
+    const h = r.params.harness || "unknown";
     const cases = caseSummaries.get(r.id) ?? [];
     const completed = cases.filter((c) => ["passed", "failed", "error"].includes(c.status));
     const passed = cases.filter((c) => c.status === "passed").length;

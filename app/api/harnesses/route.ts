@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { discoverHarnesses, probeHarness } from "@/lib/adapters/discover";
+import { getDefaultHarness, getAllDescriptorIssues } from "@/lib/adapters/registry";
 
 export const dynamic = "force-dynamic";
 
@@ -11,8 +12,9 @@ export async function GET(request: Request) {
   return NextResponse.json(
     {
       harnesses,
-      defaultHarness: "ncode",
+      defaultHarness: getDefaultHarness(),
       availableCount: available.length,
+      descriptorIssues: getAllDescriptorIssues(),
     },
     { headers: { "Cache-Control": "private, max-age=30, stale-while-revalidate=120" } }
   );

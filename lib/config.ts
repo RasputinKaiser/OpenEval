@@ -9,7 +9,6 @@ export const WORKDIRS_DIR = path.join(ROOT, "data", "workdirs");
 export const TRANSCRIPTS_DIR = path.join(ROOT, "data", "transcripts");
 export const HARNESS_DESC_DIR = path.join(ROOT, "harnesses");
 
-export const NCODE_BIN = process.env.NCODE_BIN || "ncode";
 
 export function ensureDirs() {
   for (const dir of [WORKDIRS_DIR, TRANSCRIPTS_DIR, path.dirname(DB_PATH)]) {
