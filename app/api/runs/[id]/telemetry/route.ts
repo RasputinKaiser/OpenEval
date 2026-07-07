@@ -8,7 +8,8 @@ interface TelemetryCacheEntry { caseSig: string; telemetry: any; perCase: any[];
 const telemetryCache = new Map<string, TelemetryCacheEntry>();
 const TELEMETRY_TTL = 10_000;
 
-export async function GET(_request: Request, { params }: { params: { id: string } }) {
+export async function GET(_request: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const run = getRun(params.id);
   if (!run) {
     return NextResponse.json({ error: "Run not found" }, { status: 404 });

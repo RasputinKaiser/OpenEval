@@ -1,3 +1,7 @@
+Developed primarily with Noumena Code
+
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/W7W7C9TC7)
+
 # OpenEval
 
 OpenEval is a local-first, harness-agnostic evaluation dashboard for agent CLIs. Every harness is a JSON descriptor; the bundled Claude Code, Codex, and ncode adapters use the same format as user descriptors under `harnesses/`. OpenEval runs repeatable cases, grades results with deterministic and rubric-based checks, persists run history to SQLite, and turns the results into an operator-friendly Next.js dashboard.

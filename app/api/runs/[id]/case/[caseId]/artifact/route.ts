@@ -5,8 +5,9 @@ import { getRunCaseByCaseId } from "@/lib/db";
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string; caseId: string } }
+  props: { params: Promise<{ id: string; caseId: string }> }
 ) {
+  const params = await props.params;
   const { id: runId, caseId } = params;
   const artifactPath = req.nextUrl.searchParams.get("path");
 

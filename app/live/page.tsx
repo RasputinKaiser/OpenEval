@@ -17,7 +17,8 @@ async function getSessionTranscript(filePath: string, harness?: string): Promise
   }
 }
 
-export default function LivePage({ searchParams }: { searchParams?: { harness?: string; limit?: string } }) {
+export default async function LivePage(props: { searchParams?: Promise<{ harness?: string; limit?: string }> }) {
+  const searchParams = await props.searchParams;
   let data: LiveAggregate;
   let error: string | undefined;
   const harness = searchParams?.harness || undefined;

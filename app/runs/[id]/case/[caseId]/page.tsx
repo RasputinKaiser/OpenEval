@@ -4,7 +4,8 @@ import CaseDetailClient from "@/components/CaseDetailClient";
 
 export const dynamic = "force-dynamic";
 
-export default async function Page({ params }: { params: { id: string; caseId: string } }) {
+export default async function Page(props: { params: Promise<{ id: string; caseId: string }> }) {
+  const params = await props.params;
   const cases = listRunCases(params.id);
   const rc = cases.find((item) => item.case_id === params.caseId || item.id === params.caseId) ?? null;
   if (!rc) notFound();

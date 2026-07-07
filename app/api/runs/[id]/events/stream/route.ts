@@ -5,7 +5,8 @@ export const runtime = "nodejs";
 
 const terminar = (run: any) => run?.status === "completed" || run?.status === "failed" || run?.status === "canceled" || run?.status === "error";
 
-export async function GET(request: Request, { params }: { params: { id: string } }) {
+export async function GET(request: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const run = getRun(params.id);
   if (!run) {
     return new Response("Run not found", { status: 404 });

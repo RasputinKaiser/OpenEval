@@ -3,7 +3,8 @@ import CompareClient from "@/components/CompareClient";
 
 export const dynamic = "force-dynamic";
 
-export default async function Page({ searchParams }: { searchParams: { a?: string; b?: string } }) {
+export default async function Page(props: { searchParams: Promise<{ a?: string; b?: string }> }) {
+  const searchParams = await props.searchParams;
   const runs = listRuns(50).map((run) => ({
     id: run.id,
     name: run.name,

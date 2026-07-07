@@ -24,7 +24,8 @@ function stripHeavyFields(cases: RunCaseRecord[]): RunCaseRecord[] {
   });
 }
 
-export async function GET(request: Request, { params }: { params: { id: string } }) {
+export async function GET(request: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const run = getRun(params.id);
   if (!run) {
     return NextResponse.json({ error: "Run not found" }, { status: 404 });
