@@ -25,7 +25,8 @@ CREATE TABLE IF NOT EXISTS runs (
   created_at INTEGER NOT NULL,
   ended_at INTEGER,
   params_json TEXT NOT NULL,
-  summary_json TEXT
+  summary_json TEXT,
+  manifest_json TEXT
 );
 
 CREATE TABLE IF NOT EXISTS run_cases (
@@ -67,6 +68,12 @@ CREATE INDEX IF NOT EXISTS idx_events_run ON events(run_id, at);
 `;
 
 function migrate(conn: Database.Database) {
+  const runCols = conn.prepare("PRAGMA table_info(runs)").all() as Array<{ name: string }>;
+  const runNames = new Set(runCols.map((c) => c.name));
+  if (!runNames.has("manifest_json")) {
+    try { conn.exec("ALTER TABLE runs ADD COLUMN manifest_json TEXT"); } catch {}
+  }
+
   const cols = conn.prepare("PRAGMA table_info(run_cases)").all() as Array<{ name: string }>;
   const names = new Set(cols.map((c) => c.name));
   const add = (col: string, decl: string) => {
@@ -92,14 +99,27 @@ export interface RunQuery {
 
 export function insertRun(run: RunRecord): void {
   getDb().prepare(
-    `INSERT INTO runs (id, name, status, created_at, ended_at, params_json, summary_json) VALUES (?, ?, ?, ?, ?, ?, ?)`
-  ).run(run.id, run.name, run.status, run.created_at, run.ended_at ?? null, JSON.stringify(run.params), run.summary ? JSON.stringify(run.summary) : null);
+    `INSERT INTO runs (id, name, status, created_at, ended_at, params_json, summary_json, manifest_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    run.id,
+    run.name,
+    run.status,
+    run.created_at,
+    run.ended_at ?? null,
+    JSON.stringify(run.params),
+    run.summary ? JSON.stringify(run.summary) : null,
+    run.manifest ? JSON.stringify(run.manifest) : null
+  );
 }
 
 export function updateRunStatus(id: string, status: RunRecord["status"], endedAt: number | null, summary: RunSummary | null): void {
   getDb().prepare(
     `UPDATE runs SET status = ?, ended_at = ?, summary_json = ? WHERE id = ?`
   ).run(status, endedAt, summary ? JSON.stringify(summary) : null, id);
+}
+
+export function updateRunManifest(id: string, manifest: unknown): void {
+  getDb().prepare(`UPDATE runs SET manifest_json = ? WHERE id = ?`).run(JSON.stringify(manifest), id);
 }
 
 export function listRuns(limit = 100): RunRecord[] {
@@ -217,6 +237,7 @@ function rowToRun(r: any): RunRecord {
     ended_at: r.ended_at,
     params: JSON.parse(r.params_json),
     summary: r.summary_json ? JSON.parse(r.summary_json) : null,
+    manifest: r.manifest_json ? JSON.parse(r.manifest_json) : undefined,
   };
 }
 

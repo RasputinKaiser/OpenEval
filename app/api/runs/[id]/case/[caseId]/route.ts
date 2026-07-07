@@ -3,7 +3,11 @@ import { getRun, getRunCaseByCaseId } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(_request: Request, { params }: { params: { id: string; caseId: string } }) {
+export async function GET(
+  _request: Request,
+  props: { params: Promise<{ id: string; caseId: string }> }
+) {
+  const params = await props.params;
   const run = getRun(params.id);
   if (!run) {
     return NextResponse.json({ error: "Run not found" }, { status: 404 });

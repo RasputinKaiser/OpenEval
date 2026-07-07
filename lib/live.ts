@@ -1,10 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { HARNESS_DESC_DIR } from "./config";
 import { compactDisplayPath, redactSensitiveText } from "./redaction";
-import { getPath, type FieldMapping, type HarnessDescriptor } from "./adapters/generic";
-import { listAdapters } from "./adapters/registry";
+import { getPath, type FieldMapping } from "./adapters/generic";
+import { listAdapters, hasAdapter, getAdapter, getDefaultHarness, invalidateRegistry } from "./adapters/registry";
+import { invalidateDescriptorCache } from "./adapters/loader";
 
 export type MetricSource = "measured" | "inferred" | "missing" | "malformed";
 
@@ -191,7 +191,7 @@ export interface TranscriptResult {
 
 export { compactDisplayPath, redactSensitiveText };
 
-const NOUMENA_CODE_INFERRED_MODEL = "GLM 5.2 (1M)";
+type LiveTraceFormat = "claude-projects" | "codex-sessions" | "jsonl-dir";
 
 interface LiveTraceSource {
   id: string;
@@ -200,16 +200,14 @@ interface LiveTraceSource {
   roots: string[];
   message?: string;
   fields?: FieldMapping;
-  projectMode: "ncode" | "codex" | "parent";
+  format: LiveTraceFormat;
   maxDepth: number;
+  inferredModel?: string;
 }
 
-export function ncodeProjectsDir(): string {
-  return path.join(os.homedir(), ".ncode", "projects");
-}
-
-export function defaultLiveLimitForHarness(harness = "ncode"): number {
-  return harness === "codex" ? 50 : 200;
+export function defaultLiveLimitForHarness(harness?: string): number {
+  const source = resolveLiveSource(harness);
+  return source.format === "codex-sessions" ? 50 : 200;
 }
 
 function expandHome(value: string): string {
@@ -218,88 +216,55 @@ function expandHome(value: string): string {
   return value;
 }
 
-let descriptorFileCache: { at: number; files: string[] } | null = null;
-const DESCRIPTOR_FILE_TTL_MS = 5000;
-
-function descriptorFiles(): string[] {
-  if (descriptorFileCache && Date.now() - descriptorFileCache.at < DESCRIPTOR_FILE_TTL_MS) {
-    return descriptorFileCache.files;
+/**
+ * Live trace sources come from harness descriptors (`liveTrace`) — bundled and
+ * user-defined alike. If the harness isn't in the registry yet (e.g. a
+ * descriptor file was just added), the registry is refreshed once.
+ */
+function resolveLiveSource(harness?: string): LiveTraceSource {
+  const id = harness || getDefaultHarness();
+  if (!hasAdapter(id)) {
+    invalidateDescriptorCache();
+    invalidateRegistry();
   }
-  try {
-    const files = fs.readdirSync(HARNESS_DESC_DIR)
-      .filter((file) => file.endsWith(".harness.json"))
-      .map((file) => path.join(HARNESS_DESC_DIR, file));
-    descriptorFileCache = { at: Date.now(), files };
-    return files;
-  } catch {
-    return [];
-  }
-}
-
-function loadLiveTraceDescriptor(harnessId: string): HarnessDescriptor | null {
-  for (const file of descriptorFiles()) {
-    try {
-      const desc = JSON.parse(fs.readFileSync(file, "utf8")) as HarnessDescriptor;
-      if (desc.id === harnessId && desc.liveTrace?.roots?.length) return desc;
-    } catch {}
-  }
-  return null;
-}
-
-function resolveLiveSource(harness = "ncode"): LiveTraceSource {
-  if (harness === "ncode") {
+  if (hasAdapter(id)) {
+    const adapter = getAdapter(id);
+    const lt = adapter.descriptor.liveTrace;
+    if (lt) {
+      const format: LiveTraceFormat = lt.format ?? "jsonl-dir";
+      return {
+        id: adapter.id,
+        label: adapter.label,
+        status: "available",
+        roots: lt.roots.map(expandHome),
+        fields: lt.fields ?? (format === "jsonl-dir" ? adapter.descriptor.fields : undefined),
+        format,
+        maxDepth: lt.maxDepth ?? (format === "codex-sessions" ? 5 : format === "claude-projects" ? 2 : 4),
+        inferredModel: lt.inferredModel,
+      };
+    }
     return {
-      id: "ncode",
-      label: "Noumena Code (ncode)",
-      status: "available",
-      roots: [ncodeProjectsDir()],
-      projectMode: "ncode",
-      maxDepth: 2,
+      id: adapter.id,
+      label: adapter.label,
+      status: "unavailable",
+      roots: [],
+      format: "jsonl-dir",
+      maxDepth: 0,
+      message: `${adapter.label} does not declare a liveTrace source yet.`,
     };
   }
-
-  if (harness === "codex") {
-    return {
-      id: "codex",
-      label: "Codex CLI / Codex App",
-      status: "available",
-      roots: [
-        path.join(os.homedir(), ".codex", "sessions"),
-        path.join(os.homedir(), ".codex", "archived_sessions"),
-      ],
-      projectMode: "codex",
-      maxDepth: 5,
-    };
-  }
-
-  const desc = loadLiveTraceDescriptor(harness);
-  if (desc?.liveTrace) {
-    return {
-      id: desc.id,
-      label: desc.label,
-      status: "available",
-      roots: desc.liveTrace.roots.map(expandHome),
-      fields: desc.liveTrace.fields ?? desc.fields,
-      projectMode: "parent",
-      maxDepth: desc.liveTrace.maxDepth ?? 4,
-    };
-  }
-
-  const adapter = listAdapters().find((candidate) => candidate.id === harness);
   return {
-    id: harness,
-    label: adapter?.label ?? harness,
+    id,
+    label: id,
     status: "unavailable",
     roots: [],
-    projectMode: "parent",
+    format: "jsonl-dir",
     maxDepth: 0,
-    message: adapter
-      ? `${adapter.label} does not declare a liveTrace source yet.`
-      : `Unknown harness "${harness}" does not have a registered live trace source.`,
+    message: `Unknown harness "${id}" does not have a registered live trace source.`,
   };
 }
 
-export function isPathInLiveSource(filePath: string, harness = "ncode"): boolean {
+export function isPathInLiveSource(filePath: string, harness?: string): boolean {
   const source = resolveLiveSource(harness);
   if (source.status !== "available") return false;
   const resolved = path.resolve(filePath);
@@ -394,12 +359,7 @@ function extractFilePaths(value: unknown, out = new Set<string>()): Set<string> 
   return out;
 }
 
-function isNoumenaCodeTrace(userType: string | null, project: string, file: string): boolean {
-  const normalizedUserType = userType?.toLowerCase();
-  return normalizedUserType === "noumena" || project.includes("/.ncode") || file.includes(`${path.sep}.ncode${path.sep}projects${path.sep}`);
-}
-
-export function scanLiveSessions(limit = 200, harness = "ncode"): LiveAggregate {
+export function scanLiveSessions(limit = 200, harness?: string): LiveAggregate {
   const source = resolveLiveSource(harness);
   const sessions: LiveSession[] = [];
   const scanWarnings: string[] = [];
@@ -413,9 +373,9 @@ export function scanLiveSessions(limit = 200, harness = "ncode"): LiveAggregate 
   files.sort((a, b) => b.mtime - a.mtime);
 
   for (const f of files.slice(0, limit)) {
-    const s = source.projectMode === "codex"
+    const s = source.format === "codex-sessions"
       ? summarizeCodexSessionFile(f.file, f.project, f.mtime)
-      : summarizeLiveSessionFile(f.file, f.project, f.mtime, { fields: source.fields });
+      : summarizeLiveSessionFile(f.file, f.project, f.mtime, { fields: source.fields, inferredModel: source.inferredModel });
     if (s) sessions.push(s);
   }
 
@@ -425,7 +385,7 @@ export function scanLiveSessions(limit = 200, harness = "ncode"): LiveAggregate 
 function collectLiveTraceFiles(source: LiveTraceSource, scanWarnings: string[]): Array<{ file: string; project: string; mtime: number }> {
   const files: Array<{ file: string; project: string; mtime: number }> = [];
   for (const root of source.roots) {
-    if (source.projectMode === "ncode") {
+    if (source.format === "claude-projects") {
       let projectDirs: string[] = [];
       try {
         projectDirs = fs.readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
@@ -521,8 +481,8 @@ export function getErroringTurns(filePath: string): TranscriptResult {
   return { turns: [...keep].sort((a, b) => a - b).map((index) => parsed.turns[index]) };
 }
 
-export function summarizeLiveSessionFile(file: string, projectDir: string, mtime: number, opts: { fields?: FieldMapping } = {}): LiveSession | null {
-  return summarizeWithCache(file, projectDir, mtime, (f, content, pd, mt) => parseLiveSession(f, content, pd, mt, opts.fields));
+export function summarizeLiveSessionFile(file: string, projectDir: string, mtime: number, opts: { fields?: FieldMapping; inferredModel?: string } = {}): LiveSession | null {
+  return summarizeWithCache(file, projectDir, mtime, (f, content, pd, mt) => parseLiveSession(f, content, pd, mt, opts.fields, opts.inferredModel));
 }
 
 const sessionCache = new Map<string, { mtimeMs: number; size: number; session: LiveSession | null }>();
@@ -554,7 +514,7 @@ function summarizeWithCache(
   return session;
 }
 
-function parseLiveSession(file: string, content: string, projectDir: string, mtime: number, fields?: FieldMapping): LiveSession | null {
+function parseLiveSession(file: string, content: string, projectDir: string, mtime: number, fields?: FieldMapping, inferredModel?: string): LiveSession | null {
   let model: string | null = null;
   let sessionId: string | null = null;
   let displayTitle: string | null = null;
@@ -801,8 +761,8 @@ function parseLiveSession(file: string, content: string, projectDir: string, mti
 
   if (model) {
     metricSources.model = "measured";
-  } else if (isNoumenaCodeTrace(userType, project, file)) {
-    model = NOUMENA_CODE_INFERRED_MODEL;
+  } else if (inferredModel) {
+    model = inferredModel;
     metricSources.model = "inferred";
   }
   if (numTurns === 0 && messageCount > 0) {
@@ -819,7 +779,7 @@ function parseLiveSession(file: string, content: string, projectDir: string, mti
     metricSources.turns = "malformed";
   }
 
-  const parseWarnings = buildWarnings(metricSources, malformedLineCount, lineCount, hookErrors, sawResult);
+  const parseWarnings = buildWarnings(metricSources, malformedLineCount, lineCount, hookErrors, sawResult, model);
   const toolErrorRate = toolCalls > 0 ? toolErrors / toolCalls : 0;
   const toolCallsPerTurn = numTurns > 0 ? toolCalls / numTurns : 0;
   const textAvailability = lineCount > 0 ? textBlocks / lineCount : 0;
@@ -1138,10 +1098,10 @@ function parseCodexSession(file: string, content: string, projectDir: string, mt
   };
 }
 
-function buildWarnings(sources: LiveMetricSources, malformedLineCount: number, lineCount: number, hookErrors: number, sawResult: boolean): string[] {
+function buildWarnings(sources: LiveMetricSources, malformedLineCount: number, lineCount: number, hookErrors: number, sawResult: boolean, model?: string | null): string[] {
   const warnings: string[] = [];
   if (sources.model === "missing") warnings.push("model missing from trace");
-  if (sources.model === "inferred") warnings.push(`model inferred as ${NOUMENA_CODE_INFERRED_MODEL} from Noumena Code/ncode default`);
+  if (sources.model === "inferred") warnings.push(`model inferred as ${model ?? "unknown"} from the harness descriptor's liveTrace default`);
   if (sources.tokens === "missing") warnings.push("token usage missing from trace");
   if (sources.cost === "missing") warnings.push("cost missing from trace");
   if (sources.duration === "missing") warnings.push("duration missing from trace");
@@ -1319,7 +1279,7 @@ function emptyUsageSummary(): LiveUsageSummary {
   };
 }
 
-function aggregate(sessions: LiveSession[], scanWarnings: string[] = [], source: LiveTraceSource = resolveLiveSource("ncode")): LiveAggregate {
+function aggregate(sessions: LiveSession[], scanWarnings: string[] = [], source: LiveTraceSource = resolveLiveSource()): LiveAggregate {
   const byModelMap = new Map<string, {
     model: string;
     sessions: number;

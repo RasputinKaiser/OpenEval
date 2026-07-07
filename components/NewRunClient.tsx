@@ -17,11 +17,11 @@ const CATEGORIES = ["agentic-swe", "single-tool", "reasoning", "visual-code"] as
 export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
   const router = useRouter();
   const [runner, setRunner] = useState<"headless" | "tmux">("headless");
-  const [harness, setHarness] = useState<string | undefined>("ncode");
+  const [harness, setHarness] = useState<string | undefined>(undefined);
   const [parallel, setParallel] = useState(1);
   const [samples, setSamples] = useState(1);
   const [name, setName] = useState("");
-  const [model, setModel] = useState<string | undefined>("glm-5.2");
+  const [model, setModel] = useState<string | undefined>(undefined);
   const [selected, setSelected] = useState<Record<string, boolean>>(() => Object.fromEntries(initialCaseIds.map((id) => [id, true])));
   const [filterCats, setFilterCats] = useState<Set<string>>(new Set(cases.map((c) => c.category)));
   const [filterDiff, setFilterDiff] = useState<Set<string>>(new Set());
@@ -178,7 +178,7 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
             <div className="mt-4">
               <label className="text-[11px] uppercase tracking-wider text-fg-muted">Model</label>
               <div className="mt-1.5">
-                <ModelPicker value={model} onChange={setModel} />
+                <ModelPicker value={model} onChange={setModel} harness={harness} />
               </div>
               <div className="text-[10px] text-fg-dim mt-1.5">Leave default to let the harness pick.</div>
             </div>
@@ -284,7 +284,7 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
             <dl className="space-y-1.5 text-sm border-l border-bd-subtle pl-3">
               <Row label="Cases" value={samples > 1 ? `${plannedCaseCount} × ${samples} = ${plannedCaseCount * samples}` : selectedCount > 0 ? `${selectedCount} selected` : `${visible.length} filtered`} />
               <Row label="Runner" value={runner} />
-              <Row label="Harness" value={harness || "ncode"} />
+              <Row label="Harness" value={harness || "default"} />
               <Row label="Model" value={model || "default"} />
               <Row label="Parallel" value={`${parallel}×`} />
               <Row label="Samples" value={samples > 1 ? `${samples} (pass@k)` : "1"} />

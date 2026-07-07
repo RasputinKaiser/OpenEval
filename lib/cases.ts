@@ -102,6 +102,8 @@ const GraderSpecSchema = z.intersection(
       rubric: z.string(),
       min_score: z.number().optional(),
       model: z.string().optional(),
+      judge_harness: z.string().optional(),
+      judge_model: z.string().optional(),
       weight: z.number().optional(),
     }),
     z.object({

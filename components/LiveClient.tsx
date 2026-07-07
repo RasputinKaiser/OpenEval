@@ -52,9 +52,6 @@ type SortMode = "recent" | "quality" | "errors";
 const REDACT_STORAGE_KEY = "openeval.live.redactUsernames";
 const HARNESS_STORAGE_KEY = "openeval.live.harness";
 
-function defaultLiveLimitForHarnessClient(harness: string): number {
-  return harness === "codex" ? 50 : 200;
-}
 
 export default function LiveClient({ initialData, error: initialError, getTranscript }: LiveClientProps) {
   const [data, setData] = useState<LiveAggregate | null>(initialData ?? null);
@@ -62,7 +59,7 @@ export default function LiveClient({ initialData, error: initialError, getTransc
   const [loading, setLoading] = useState(!initialData && !initialError);
   const [selected, setSelected] = useState<LiveSession | null>(null);
   const handleSelectSession = useCallback((s: LiveSession) => setSelected(s), []);
-  const [selectedHarness, setSelectedHarness] = useState(initialData?.sourceHarness ?? "ncode");
+  const [selectedHarness, setSelectedHarness] = useState(initialData?.sourceHarness ?? "");
   const [redact, setRedact] = useState(true);
   const [filter, setFilter] = useState<FilterMode>("all");
   const [sort, setSort] = useState<SortMode>("recent");
@@ -96,7 +93,7 @@ export default function LiveClient({ initialData, error: initialError, getTransc
     try {
       window.localStorage.setItem(HARNESS_STORAGE_KEY, selectedHarness);
       const url = new URL(window.location.href);
-      if (selectedHarness === "ncode") url.searchParams.delete("harness");
+      if (!selectedHarness) url.searchParams.delete("harness");
       else url.searchParams.set("harness", selectedHarness);
       window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
     } catch {}
@@ -110,8 +107,9 @@ export default function LiveClient({ initialData, error: initialError, getTransc
       const controller = new AbortController();
       activeController = controller;
       try {
-        const limit = defaultLiveLimitForHarnessClient(selectedHarness);
-        const response = await fetch(`/api/live?harness=${encodeURIComponent(selectedHarness)}&limit=${limit}`, { signal: controller.signal });
+        const params = new URLSearchParams();
+        if (selectedHarness) params.set("harness", selectedHarness);
+        const response = await fetch(`/api/live${params.size ? `?${params}` : ""}`, { signal: controller.signal });
         if (!response.ok) throw new Error(`Live poll failed: HTTP ${response.status}`);
         const d = (await response.json()) as LiveAggregate;
         if (!cancelled) {
@@ -187,9 +185,9 @@ export default function LiveClient({ initialData, error: initialError, getTransc
           </p>
         </div>
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:min-w-80">
-          <HarnessPicker value={selectedHarness === "ncode" ? undefined : selectedHarness} onChange={(harness) => {
+          <HarnessPicker value={selectedHarness || undefined} onChange={(harness) => {
             setSelected(null);
-            setSelectedHarness(harness || "ncode");
+            setSelectedHarness(harness || "");
           }} />
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
           <button
@@ -330,7 +328,7 @@ function ModelPanel({ data }: { data: LiveAggregate }) {
           <BarChart3 className="size-4 text-fg-muted" /> Model evidence
         </div>
         <div className="mt-1 text-xs text-fg-muted">
-          Inferred rows use the Noumena Code/ncode default; unknown rows mean the trace did not report model metadata.
+          Inferred rows use the harness descriptor&apos;s declared default model; unknown rows mean the trace did not report model metadata.
         </div>
       </div>
       <div className="overflow-x-auto">
@@ -1081,7 +1079,7 @@ function EmptyCard({ warnings }: { warnings: string[] }) {
         <Inbox className="mb-4 size-10 text-fg-muted" />
         <h2 className="mb-2 text-lg font-medium">No live sessions found yet</h2>
         <p className="max-w-md text-sm text-fg-muted">
-          Sessions will appear here as <code className="mono text-xs">~/.ncode/projects/</code> accumulates{" "}
+          Sessions will appear here as the selected harness&apos;s live-trace directory accumulates{" "}
           <code className="mono text-xs">.jsonl</code> traces.
         </p>
         {warnings.length > 0 && (

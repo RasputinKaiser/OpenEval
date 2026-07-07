@@ -2,11 +2,12 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import fs from "node:fs/promises";
 import { WORKDIRS_DIR } from "./config";
-import { appendEvent, insertRun, listRunCases, updateRunStatus } from "./db";
+import { appendEvent, insertRun, listRunCases, updateRunManifest, updateRunStatus } from "./db";
 import { executeCase } from "./executor";
 import { computeSummary } from "./summary";
 import { selectCases } from "./cases";
-import { DEFAULT_HARNESS } from "./adapters/registry";
+import { getAdapter, getDefaultHarness } from "./adapters/registry";
+import { collectRunManifest } from "./manifest";
 import type { CaseDefinition, RunnerKind } from "./types";
 
 export interface CreateRunParams {
@@ -24,8 +25,8 @@ export async function createAndStartRun(params: CreateRunParams): Promise<{ id: 
   const cases = await selectCases(params.filter ?? {});
   if (cases.length === 0) throw new Error("No cases match the filter");
   const samples = Math.max(1, Math.min(params.samples ?? 1, 8));
-  const model = params.model || "glm-5.2";
-  const harness = params.harness || DEFAULT_HARNESS;
+  const harness = params.harness || getDefaultHarness();
+  const model = params.model || getAdapter(harness).descriptor.models?.default;
 
   const run = {
     id,
@@ -37,6 +38,9 @@ export async function createAndStartRun(params: CreateRunParams): Promise<{ id: 
     summary: null,
   };
   insertRun(run);
+  void collectRunManifest(harness, model, { harnessWasDefault: !params.harness, modelWasDefault: !params.model })
+    .then((m) => updateRunManifest(id, m))
+    .catch(() => {});
   appendEvent(id, "run_started", { case_count: cases.length, samples, runner: params.runner, harness, model }, undefined);
 
   void runLoop(id, cases, params.runner, harness, params.parallel, model, samples).catch((e) => {

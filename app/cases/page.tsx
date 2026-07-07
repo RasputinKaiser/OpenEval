@@ -5,7 +5,8 @@ import CasesClient from "@/components/CasesClient";
 
 export const dynamic = "force-dynamic";
 
-export default async function CasesPage({ searchParams }: { searchParams: { category?: string } }) {
+export default async function CasesPage(props: { searchParams: Promise<{ category?: string }> }) {
+  const searchParams = await props.searchParams;
   const all = await loadCases();
   const filterCat = searchParams.category;
   const categories = Array.from(new Set(all.map((c) => c.category)));

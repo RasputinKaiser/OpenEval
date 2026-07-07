@@ -1,53 +1,12 @@
 import type { BuiltCommand, HarnessAdapter, ParseAccumulator } from "./types";
 import type { PermissionMode, RunnerContext, RunnerEvent } from "../types";
+import type { FieldMapping, HarnessDescriptorInput, LiveTraceDescriptor, NormalizedDescriptor } from "./schema";
+import { parseStreamLine } from "./stream-json";
+import { parseCodexLine } from "./codex";
 
-export interface FieldMapping {
-  finalText?: string;
-  sessionId?: string;
-  model?: string;
-  toolCallName?: string;
-  toolCallId?: string;
-  toolCallInput?: string;
-  toolCallOutput?: string;
-  toolCallError?: string;
-  durationMs?: string;
-  numTurns?: string;
-  costUsd?: string;
-  inputTokens?: string;
-  outputTokens?: string;
-  cacheReadTokens?: string;
-  cacheCreateTokens?: string;
-  stopReason?: string;
-  isError?: string;
-}
-
-export interface LiveTraceDescriptor {
-  roots: string[];
-  maxDepth?: number;
-  fields?: FieldMapping;
-}
-
-export type GenericOutputFormat = "jsonl" | "stream-json" | "text";
-
-export interface HarnessDescriptor {
-  id: string;
-  label: string;
-  binNames: string[];
-  defaultBin?: string;
-  wellKnownPaths?: string[];
-  versionArgs?: string[];
-  output: GenericOutputFormat;
-  argTemplate: string[];
-  extraEnv?: Record<string, string>;
-  permissionFlag?: string;
-  promptPlaceholder?: string;
-  workdirFlag?: string;
-  modelFlag?: string;
-  maxTurnsFlag?: string;
-  eventFilter?: string;
-  fields: FieldMapping;
-  liveTrace?: LiveTraceDescriptor;
-}
+export type { FieldMapping, LiveTraceDescriptor } from "./schema";
+/** Raw (pre-validation) descriptor shape, as written in a .harness.json file. */
+export type HarnessDescriptor = HarnessDescriptorInput;
 
 export function getPath(obj: any, path: string | undefined): any {
   if (!path || obj == null) return undefined;
@@ -71,26 +30,79 @@ function maybeNum(v: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-function replaceTemplate(template: string[], ctx: RunnerContext, bin: string): { args: string[] } {
-  const out: string[] = [];
-  for (const tok of template) {
-    const replaced = tok
-      .replace("{prompt}", ctx.prompt)
-      .replace("{workdir}", ctx.workdir)
-      .replace("{model}", ctx.model ?? "")
-      .replace("{maxTurns}", String(ctx.maxTurns));
-    out.push(replaced);
-  }
-  return { args: out };
+function substitute(token: string, ctx: RunnerContext): string {
+  return token
+    .replace("{prompt}", ctx.prompt)
+    .replace("{workdir}", ctx.workdir)
+    .replace("{model}", ctx.model ?? "")
+    .replace("{maxTurns}", String(ctx.maxTurns))
+    .replace("{permissionMode}", ctx.permissionMode);
 }
 
-export function parseGenericJsonlLine(line: string, into: ParseAccumulator, desc: HarnessDescriptor): RunnerEvent[] {
+export function resolveDescriptorBin(desc: NormalizedDescriptor): string {
+  if (desc.binEnvVar && process.env[desc.binEnvVar]) return process.env[desc.binEnvVar]!;
+  return desc.defaultBin;
+}
+
+/**
+ * Build the full command line for a descriptor-defined harness.
+ *
+ * Order: argTemplate → permission args → workdir/model/maxTurns flags →
+ * case extra_args → prompt (arg/flag/stdin). Every declared flag is applied —
+ * a descriptor never silently drops part of the run context.
+ */
+export function buildDescriptorCommand(desc: NormalizedDescriptor, ctx: RunnerContext): BuiltCommand {
+  const bin = resolveDescriptorBin(desc);
+  const args = desc.argTemplate.map((t) => substitute(t, ctx));
+
+  if (desc.permissionArgs) {
+    const modeArgs = desc.permissionArgs[ctx.permissionMode] ?? desc.permissionArgs["*"];
+    if (modeArgs) args.push(...modeArgs.map((t) => substitute(t, ctx)));
+  } else if (desc.permissionFlag) {
+    args.push(desc.permissionFlag, ctx.permissionMode);
+  }
+
+  if (desc.workdirFlag && !desc.argTemplate.some((t) => t.includes("{workdir}"))) {
+    args.push(desc.workdirFlag, ctx.workdir);
+  }
+  if (desc.modelFlag && ctx.model && !desc.argTemplate.some((t) => t.includes("{model}"))) {
+    args.push(desc.modelFlag, ctx.model);
+  }
+  if (desc.maxTurnsFlag && ctx.maxTurns > 0 && !desc.argTemplate.some((t) => t.includes("{maxTurns}"))) {
+    args.push(desc.maxTurnsFlag, String(ctx.maxTurns));
+  }
+  if (desc.appendExtraArgs) args.push(...ctx.extraArgs);
+
+  let stdin: string | undefined;
+  switch (desc.prompt.mode) {
+    case "template":
+      break;
+    case "flag":
+      args.push(desc.prompt.flag!, ctx.prompt);
+      break;
+    case "stdin":
+      stdin = ctx.prompt;
+      break;
+    case "arg":
+    default:
+      args.push(ctx.prompt);
+      break;
+  }
+
+  return { bin, args, env: desc.extraEnv, stdin };
+}
+
+export function parseGenericJsonlLine(
+  line: string,
+  into: ParseAccumulator,
+  desc: { fields?: FieldMapping; eventFilter?: string }
+): RunnerEvent[] {
   const events: RunnerEvent[] = [];
   if (!line.trim()) return events;
   let obj: any;
   try { obj = JSON.parse(line); } catch { return events; }
   const at = Date.now();
-  const f = desc.fields;
+  const f = desc.fields ?? {};
 
   const evtType = desc.eventFilter ? getPath(obj, desc.eventFilter) : obj.type;
 
@@ -164,37 +176,47 @@ export function parseGenericJsonlLine(line: string, into: ParseAccumulator, desc
   return events;
 }
 
-export function makeGenericAdapter(desc: HarnessDescriptor): HarnessAdapter {
-  const bin = desc.defaultBin || desc.binNames[0];
+function parseTextLine(line: string, acc: ParseAccumulator): RunnerEvent[] {
+  if (!line.trim()) return [];
+  const text = line;
+  const entry = { role: "assistant" as const, content: [{ type: "text" as const, text }], uuid: undefined, atMs: Date.now(), textLen: text.length };
+  acc.transcript.push(entry);
+  acc.finalText = text;
+  return [{ kind: "message" as const, message: entry, at: Date.now() }];
+}
+
+export function makeGenericAdapter(desc: NormalizedDescriptor): HarnessAdapter {
   return {
     id: desc.id,
     label: desc.label,
     binNames: desc.binNames,
-    defaultBin: bin,
+    defaultBin: resolveDescriptorBin(desc),
     wellKnownPaths: desc.wellKnownPaths,
-    versionArgs: desc.versionArgs ?? ["--version"],
+    versionArgs: desc.versionArgs,
+    descriptor: desc,
     capabilities: {
-      outputFormat: desc.output === "jsonl" ? "jsonl" : desc.output === "stream-json" ? "stream-json" : "text",
-      reportsCost: !!desc.fields.costUsd,
-      reportsTokens: !!desc.fields.inputTokens || !!desc.fields.outputTokens,
-      reportsTurns: !!desc.fields.numTurns,
-      permissionModes: ["bypassPermissions", "default", "acceptEdits", "dontAsk", "plan", "auto"],
-      supportsVisionInput: false,
+      outputFormat: desc.parser === "claude-stream-json" ? "stream-json" : desc.parser === "text" ? "text" : "jsonl",
+      reportsCost: desc.capabilities.reportsCost,
+      reportsTokens: desc.capabilities.reportsTokens,
+      reportsTurns: desc.capabilities.reportsTurns,
+      permissionModes: desc.capabilities.permissionModes as PermissionMode[],
+      supportsVisionInput: desc.capabilities.supportsVisionInput,
     },
     buildCommand(ctx: RunnerContext): BuiltCommand {
-      const { args } = replaceTemplate(desc.argTemplate, ctx, bin);
-      return { bin, args, env: desc.extraEnv ?? {} };
+      return buildDescriptorCommand(desc, ctx);
     },
     parseLine(line: string, acc: ParseAccumulator): RunnerEvent[] {
-      if (desc.output === "text") {
-        if (!line.trim()) return [];
-        const text = line;
-        const entry = { role: "assistant" as const, content: [{ type: "text" as const, text }], uuid: undefined, atMs: Date.now(), textLen: text.length };
-        acc.transcript.push(entry);
-        acc.finalText = text;
-        return [{ kind: "message" as const, message: entry, at: Date.now() }];
+      switch (desc.parser) {
+        case "claude-stream-json":
+          return parseStreamLine(line, acc);
+        case "codex-jsonl":
+          return parseCodexLine(line, acc);
+        case "text":
+          return parseTextLine(line, acc);
+        case "generic-jsonl":
+        default:
+          return parseGenericJsonlLine(line, acc, desc);
       }
-      return parseGenericJsonlLine(line, acc, desc);
     },
   };
 }

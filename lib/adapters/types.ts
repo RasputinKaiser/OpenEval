@@ -1,4 +1,5 @@
 import type { PermissionMode, RunnerContext, RunnerEvent, RunnerResult, TranscriptEntry } from "../types";
+import type { NormalizedDescriptor } from "./schema";
 
 export type HarnessId = string;
 
@@ -15,6 +16,8 @@ export interface BuiltCommand {
   bin: string;
   args: string[];
   env: Record<string, string>;
+  /** When set, written to the harness process's stdin (prompt mode "stdin"). */
+  stdin?: string;
 }
 
 export interface ParseAccumulator {
@@ -33,6 +36,8 @@ export interface HarnessAdapter {
   wellKnownPaths?: string[];
   versionArgs?: string[];
   capabilities: AdapterCapabilities;
+  /** The validated descriptor this adapter was built from. All adapters are descriptor-defined. */
+  descriptor: NormalizedDescriptor;
   buildCommand(ctx: RunnerContext): BuiltCommand;
   parseLine(line: string, acc: ParseAccumulator): RunnerEvent[];
 }

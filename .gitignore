@@ -30,3 +30,6 @@ media/**/renders/
 fixtures/**/node_modules/
 fixtures/**/.git/
 fixtures/**/.DS_Store
+
+# Local Claude Code launch/config surfaces.
+.claude/

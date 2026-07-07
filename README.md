@@ -1,12 +1,10 @@
+Developed primarily with Noumena Code
 
-*** This project is primarily a draft. There are issues I'm aware of with formatting and whatnot
-  Developed primarily with Noumena Code
-  
-  [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/W7W7C9TC7)
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/W7W7C9TC7)
 
 # OpenEval
 
-OpenEval is a local-first evaluation dashboard for agent CLIs. It runs repeatable cases against a harness such as `ncode`, Claude Code, Codex, or a descriptor-defined JSONL harness, grades the result with deterministic and rubric-based checks, persists run history to SQLite, and turns the results into an operator-friendly Next.js dashboard.
+OpenEval is a local-first, harness-agnostic evaluation dashboard for agent CLIs. Every harness is a JSON descriptor; the bundled Claude Code, Codex, and ncode adapters use the same format as user descriptors under `harnesses/`. OpenEval runs repeatable cases, grades results with deterministic and rubric-based checks, persists run history to SQLite, and turns the results into an operator-friendly Next.js dashboard.
 
 The project is designed for people who want to compare agent behavior on practical software tasks, inspect the exact traces behind a score, and keep their private run history on their own machine.
 
@@ -16,11 +14,11 @@ Repository: [RasputinKaiser/OpenEval](https://github.com/RasputinKaiser/OpenEval
 
 [Watch the OpenEval launch video](https://github.com/user-attachments/assets/2353204b-81c9-4d63-9c22-fb7c1c19017e)
 
-[![OpenEval launch video poster](https://github.com/user-attachments/assets/2353204b-81c9-4d63-9c22-fb7c1c19017e)
+[![OpenEval launch video poster](https://github.com/user-attachments/assets/2353204b-81c9-4d63-9c22-fb7c1c19017e)](https://github.com/user-attachments/assets/2353204b-81c9-4d63-9c22-fb7c1c19017e)
 
 ## Highlights
 
-- **Agent CLI harnesses:** built-in adapters for `ncode`, Claude Code, and Codex, plus descriptor-driven harnesses under `harnesses/`.
+- **Descriptor-first harnesses:** bundled `ncode`, Claude Code, and Codex harnesses plus user harnesses under `harnesses/` are all validated JSON descriptors.
 - **Weighted graders:** combine shell checks, file assertions, transcript regexes, JSON path checks, trace-shape checks, git diff checks, and optional LLM rubric judges.
 - **Run dashboard:** browse recent runs, pass rates, token and cost summaries, case outcomes, and per-case trace detail.
 - **Live trace view:** inspect recent local CLI sessions with measured/inferred/missing/malformed provenance for usage, cost, model, duration, tool calls, and trace structure.
@@ -52,9 +50,35 @@ The dashboard currently exposes these primary routes:
 | `/runs/compare` | Side-by-side comparison of selected runs. |
 | `/harnesses` | Harness discovery, binary availability, capabilities, version probe, and sample command display. |
 | `/accuracy` | Case quality audit: evidence tiers, oracle coverage, known-bad rejection, and weak grader warnings. |
-| `/live` | Live local trace intelligence for ncode, Codex, and descriptor roots. Defaults to ncode when available. |
+| `/live` | Live local trace intelligence from the selected harness descriptor's `liveTrace` roots, or the descriptor-driven default harness. |
 | `/cases` | Case library browser with categories, tags, prompts, setup, and grader definitions. |
 | `/settings` | Operator settings surface for local configuration. |
+
+## Documentation
+
+| Document | Purpose |
+| --- | --- |
+| [Harness Authoring](docs/harness-authoring.md) | Write and validate `.harness.json` descriptors. |
+| [Case Authoring](docs/case-authoring.md) | Write `.case.json` cases, fixtures, runner settings, budgets, oracles, visual contracts, and grader arrays. |
+| [Graders](docs/graders.md) | Understand every grader type, parameters, evidence tier, weights, forbidden checks, and pass-threshold math. |
+| [Architecture](docs/architecture.md) | Follow the dataflow from case selection through workdir prep, harness spawn, parsing, SQLite persistence, dashboard routes, SSE, and live traces. |
+| [Redaction](docs/redaction.md) | Layered redaction: local paths, credential shapes, and the optional on-device Rampart PII model. |
+
+## npm scripts
+
+| Script | Command | Purpose |
+| --- | --- | --- |
+| `dev` | `next dev` | Start the local Next.js dashboard. |
+| `build` | `next build` | Build the production Next.js app. |
+| `typecheck` | `tsc --noEmit` | Run TypeScript without emitting files. |
+| `test:live` | `node --import tsx --test tests/live.test.ts` | Run live-trace tests. |
+| `test:telemetry` | `node --import tsx --test tests/telemetry.test.ts` | Run telemetry tests. |
+| `run:eval` | `tsx lib/cli/run.ts` | Start evaluation runs from the CLI. |
+| `run:case` | `tsx lib/cli/run.ts --case` | Run one case id through the evaluation CLI. |
+| `selftest` | `tsx lib/cli/selftest.ts` | Validate DB access, cases, harness descriptors/parsers, no-op baselines, and oracles. |
+| `audit:accuracy` | `tsx lib/cli/accuracy.ts` | Audit case proof strength, oracle coverage, known-bad coverage, and evidence tiers. |
+| `report` | `tsx lib/cli/report.ts` | Generate a Markdown run report or portable bundle (`--bundle`, `--redact`); every run also records a reproducibility manifest. |
+| `test:redaction` | `node --import tsx --test tests/redaction.test.ts` | Run redaction-pipeline tests. |
 
 ## What OpenEval Tests
 
@@ -78,7 +102,7 @@ Each `.case.json` file declares:
 
 ## Grader System
 
-The grader registry is implemented in `lib/grader/index.ts`. A case can combine multiple graders and assign optional weights. A `forbidden: true` grader is a hard failure even when the weighted score would otherwise pass.
+The grader registry is implemented in `lib/grader/index.ts`. A case can combine multiple graders and assign optional weights. A failed grader with `forbidden: true` is a hard failure even when the weighted score would otherwise pass.
 
 Common grader types include:
 
@@ -94,7 +118,7 @@ Common grader types include:
 | `checksum` | A file or artifact matches an expected checksum. |
 | `regex_match` | Final answer, stdout, or transcript matches a regex. |
 | `json_path` | A JSON value at a dotted path equals the expected value. |
-| `step_shape` | Tool-call traces follow expected shape, order, or count constraints. |
+| `step` | Tool-call traces follow expected shape, order, or count constraints. |
 | `rubric_llm` | A separate judge harness grades a response against a rubric. |
 | `manual` | Marks a case for human review instead of fully automated proof. |
 
@@ -111,7 +135,7 @@ OpenEval separates "how to run an agent CLI" from "how to grade a case" through 
 
 Built-in harnesses:
 
-- `ncode`: default adapter for NCode stream JSON output.
+- `ncode`: descriptor for NCode stream JSON output.
 - `claude-code`: stream JSON adapter for Claude Code-compatible output.
 - `codex`: adapter for Codex CLI/App session event formats.
 
@@ -190,7 +214,6 @@ Ignored runtime data:
 - `data/eval.db-shm`
 - `data/transcripts/`
 - `data/workdirs/`
-- `data/runs/`
 - `.codex/`
 - `.ncode/`
 - `state.yaml`
@@ -255,7 +278,7 @@ fixtures/                    tiny repositories and inputs copied into workdirs
 harnesses/                   descriptor-driven harness definitions
 scripts/                     maintenance and public-readiness helpers
 media/openeval-launch/       HyperFrames source for the OpenEval launch video
-data/                        ignored local SQLite DB, transcripts, workdirs, artifacts
+data/                        ignored local SQLite DB, transcripts, and workdirs
 ```
 
 ## Development
@@ -336,15 +359,13 @@ Example:
 
 ## Adding a Descriptor Harness
 
-Use a descriptor when a CLI emits stable JSONL but does not need custom parsing code.
+Use a descriptor when a CLI emits Claude stream JSON, Codex JSONL, generic JSONL with stable field paths, or line-oriented text.
 
 1. Create `harnesses/<id>.harness.json`.
 2. Declare binary names and optional well-known paths.
 3. Map output fields such as final text, usage, cost, duration, error state, and tool calls.
 4. Run `npm run run:eval -- --list-harnesses`.
 5. Start with one simple case and inspect the transcript before running larger suites.
-
-For fully custom formats, add a `HarnessAdapter` implementation and register it in `lib/adapters/registry.ts`.
 
 ## Operating Notes
 

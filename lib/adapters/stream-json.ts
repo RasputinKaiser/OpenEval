@@ -1,26 +1,10 @@
-import { NCODE_BIN } from "../config";
-import type { PermissionMode, RunnerContext, RunnerEvent } from "../types";
-import type { BuiltCommand, HarnessAdapter, ParseAccumulator } from "./types";
+import type { RunnerEvent } from "../types";
+import type { ParseAccumulator } from "./types";
 
-const ALL_PERMISSION_MODES: PermissionMode[] = [
-  "bypassPermissions", "default", "acceptEdits", "dontAsk", "plan", "auto",
-];
-
-function buildStreamJsonCommand(ctx: RunnerContext, bin: string, extraEnv: Record<string, string>): BuiltCommand {
-  const args = [
-    "-p",
-    "--output-format", "stream-json",
-    "--input-format", "text",
-    "--permission-mode", ctx.permissionMode,
-    "--add-dir", ctx.workdir,
-  ];
-  if (ctx.model) args.push("--model", ctx.model);
-  if (ctx.maxTurns > 0) args.push("--max-turns", String(ctx.maxTurns));
-  args.push(...ctx.extraArgs);
-  args.push(ctx.prompt);
-  return { bin, args, env: extraEnv };
-}
-
+/**
+ * Parser for Claude Code-style `--output-format stream-json` output.
+ * Referenced by descriptors via `parser: "claude-stream-json"`.
+ */
 export function parseStreamLine(
   line: string,
   into: ParseAccumulator,
@@ -173,54 +157,3 @@ export function parseStreamLine(
 
   return events;
 }
-
-export interface StreamJsonAdapterOpts {
-  id: string;
-  label: string;
-  binNames: string[];
-  defaultBin: string;
-  extraEnv?: Record<string, string>;
-  wellKnownPaths?: string[];
-}
-
-export function makeStreamJsonAdapter(opts: StreamJsonAdapterOpts): HarnessAdapter {
-  return {
-    id: opts.id,
-    label: opts.label,
-    binNames: opts.binNames,
-    defaultBin: opts.defaultBin,
-    wellKnownPaths: opts.wellKnownPaths,
-    versionArgs: ["--version"],
-    capabilities: {
-      outputFormat: "stream-json",
-      reportsCost: true,
-      reportsTokens: true,
-      reportsTurns: true,
-      permissionModes: ALL_PERMISSION_MODES,
-      supportsVisionInput: true,
-    },
-    buildCommand(ctx) {
-      return buildStreamJsonCommand(ctx, opts.defaultBin, opts.extraEnv ?? {});
-    },
-    parseLine(line, acc) {
-      return parseStreamLine(line, acc);
-    },
-  };
-}
-
-export const ncodeAdapter = makeStreamJsonAdapter({
-  id: "ncode",
-  label: "Noumena Code (ncode)",
-  binNames: ["ncode"],
-  defaultBin: NCODE_BIN,
-  extraEnv: { NCODE_DISABLE_NONESSENTIAL_TRAFFIC: "1" },
-  wellKnownPaths: ["~/.local/bin/ncode", "~/.ncode/bin/ncode"],
-});
-
-export const claudeCodeAdapter = makeStreamJsonAdapter({
-  id: "claude-code",
-  label: "Claude Code",
-  binNames: ["claude"],
-  defaultBin: process.env.CLAUDE_BIN || "claude",
-  wellKnownPaths: ["~/.local/bin/claude", "~/.claude/local/claude"],
-});

@@ -35,7 +35,7 @@ export function emptyRunnerResult(): RunnerResult {
 
 export function spawnHarnessProcess(ctx: RunnerContext, onLine: (line: string, acc: ParseAccumulator) => void): Promise<SpawnHarnessResult> {
   const adapter = getAdapter(ctx.harness);
-  const { bin, args, env: extraEnv } = adapter.buildCommand(ctx);
+  const { bin, args, env: extraEnv, stdin } = adapter.buildCommand(ctx);
   const startedAt = Date.now();
   const acc: ParseAccumulator = {
     startedAt,
@@ -52,13 +52,17 @@ export function spawnHarnessProcess(ctx: RunnerContext, onLine: (line: string, a
     const proc = spawn(bin, args, {
       cwd: ctx.workdir,
       env: { ...process.env, ...extraEnv },
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: [stdin != null ? "pipe" : "ignore", "pipe", "pipe"],
     });
+    if (stdin != null && proc.stdin) {
+      proc.stdin.write(stdin);
+      proc.stdin.end();
+    }
     const timer = setTimeout(() => {
       try { proc.kill("SIGKILL"); } catch {}
     }, ctx.timeoutMs);
 
-    proc.stdout.on("data", (chunk: Buffer) => {
+    proc.stdout?.on("data", (chunk: Buffer) => {
       const text = chunk.toString();
       stdout += text;
       stdoutBuf += text;
@@ -66,7 +70,7 @@ export function spawnHarnessProcess(ctx: RunnerContext, onLine: (line: string, a
       stdoutBuf = lines.pop() ?? "";
       for (const line of lines) onLine(line, acc);
     });
-    proc.stderr.on("data", (c: Buffer) => { stderr += c.toString(); });
+    proc.stderr?.on("data", (c: Buffer) => { stderr += c.toString(); });
     const finish = (exitCode: number) => {
       clearTimeout(timer);
       if (stdoutBuf.trim()) {

@@ -3,7 +3,7 @@ import { createAndStartRun } from '../run';
 import { selectCases } from '../cases';
 import { getRun, listRunCases } from '../db';
 import { computeSummary } from '../summary';
-import { listAdapters, DEFAULT_HARNESS } from '../adapters/registry';
+import { listAdapters, getDefaultHarness } from '../adapters/registry';
 import { discoverHarnesses } from '../adapters/discover';
 import type { RunnerKind } from '../types';
 
@@ -64,7 +64,7 @@ Usage: npx tsx lib/cli/run.ts [options] [caseId]
 Options:
   --case <id>          Run a single case by ID
   --runner <kind>      headless | tmux          (default: headless)
-  --harness <id>      Agent CLI to run against (repeatable to fan across harnesses; default: ${DEFAULT_HARNESS})
+  --harness <id>      Agent CLI to run against (repeatable to fan across harnesses; default: ${getDefaultHarness()})
   --list-harnesses     List registered harness adapters and exit
   --parallel <n>       Concurrent cases        (default: 1)
   --samples <k>        Trials per case for pass@k  (default: 1, max 8)
@@ -92,7 +92,7 @@ function listHarnesses(): Promise<void> {
     console.log('');
     for (const a of known) {
       const h = byId.get(a.id);
-      const tag = a.id === DEFAULT_HARNESS ? ' (default)' : '';
+      const tag = a.id === getDefaultHarness() ? ' (default)' : '';
       if (!h) { console.log(`  ${a.id}${tag}  — ${a.label}  [bin: ${a.defaultBin}]`); continue; }
       const bin = h.bin ?? '—';
       const ver = h.version ?? '';
@@ -145,7 +145,7 @@ async function main(): Promise<number> {
     throw new Error('No cases match. Try without filters, or check lib/cases.ts.');
   }
 
-  const harnesses = args.harnesses.length > 0 ? args.harnesses : [DEFAULT_HARNESS];
+  const harnesses = args.harnesses.length > 0 ? args.harnesses : [getDefaultHarness()];
   const fanOut = harnesses.length > 1;
   if (fanOut) {
     log('Fanning across ' + harnesses.length + ' harnesses: ' + harnesses.join(', '));

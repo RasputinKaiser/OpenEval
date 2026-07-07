@@ -451,7 +451,7 @@ test("summarizeLiveSessionFile infers Noumena Code ncode model without pretendin
     },
   ]);
 
-  const session = summarizeLiveSessionFile(file, "-Users-ralto-Documents-AgentEvals", Date.parse("2026-06-28T20:01:00.000Z"));
+  const session = summarizeLiveSessionFile(file, "-Users-ralto-Documents-AgentEvals", Date.parse("2026-06-28T20:01:00.000Z"), { inferredModel: "GLM 5.2 (1M)" });
 
   assert.ok(session);
   assert.equal(session.model, "GLM 5.2 (1M)");

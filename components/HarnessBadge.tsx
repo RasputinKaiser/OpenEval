@@ -8,7 +8,11 @@ const HARNESS_COLORS: Record<string, string> = {
 };
 
 export function harnessColor(id?: string): string {
-  return (id && HARNESS_COLORS[id]) || "#5a5a63";
+  if (!id) return "#5a5a63";
+  if (HARNESS_COLORS[id]) return HARNESS_COLORS[id];
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
+  return `hsl(${hash % 360} 55% 65%)`;
 }
 
 export default function HarnessBadge({ harness, bin, version }: { harness?: string; bin?: string | null; version?: string | null }) {

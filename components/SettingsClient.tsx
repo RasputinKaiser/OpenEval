@@ -5,8 +5,8 @@ import clsx from "clsx";
 import { Save, RotateCcw } from "lucide-react";
 
 const DEFAULTS = {
-  defaultHarness: "ncode",
-  defaultModel: "glm-5.2",
+  defaultHarness: "",
+  defaultModel: "",
   defaultParallel: 1,
   defaultSamples: 1,
   pollInterval: 1500,
@@ -20,12 +20,17 @@ type Settings = typeof DEFAULTS;
 export default function SettingsClient() {
   const [settings, setSettings] = useState<Settings>(DEFAULTS);
   const [saved, setSaved] = useState(false);
+  const [harnessOptions, setHarnessOptions] = useState<Array<{ id: string; label: string }>>([]);
 
   useEffect(() => {
     try {
       const stored = localStorage.getItem("openeval-settings");
       if (stored) setSettings({ ...DEFAULTS, ...JSON.parse(stored) });
     } catch {}
+    fetch("/api/harnesses")
+      .then((r) => r.json())
+      .then((d) => setHarnessOptions((d.harnesses ?? []).map((h: any) => ({ id: h.id, label: h.label }))))
+      .catch(() => {});
   }, []);
 
   function save() {
@@ -56,9 +61,10 @@ export default function SettingsClient() {
           <div className="space-y-3">
             <Field label="Default harness">
               <select value={settings.defaultHarness} onChange={(e) => update("defaultHarness", e.target.value)} className="w-full px-3 py-2 text-sm bg-bg border border-bd rounded-md mono focus:outline-none focus:border-accent">
-                <option value="ncode">ncode</option>
-                <option value="claude-code">claude-code</option>
-                <option value="codex">codex</option>
+                <option value="">(registry default)</option>
+                {harnessOptions.map((h) => (
+                  <option key={h.id} value={h.id}>{h.id}</option>
+                ))}
               </select>
             </Field>
             <Field label="Default model">

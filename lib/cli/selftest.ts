@@ -12,7 +12,7 @@ import { runCodexParserSelfCheck } from '../adapters/codex';
 import { makeGenericAdapter, parseGenericJsonlLine } from '../adapters/generic';
 import type { HarnessDescriptor } from '../adapters/generic';
 import { loadDescriptorAdapters } from '../adapters/loader';
-import { getAdapter } from '../adapters/registry';
+import { getAdapter, listAdapters, getAllDescriptorIssues } from '../adapters/registry';
 
 interface Check {
   name: string;
@@ -99,17 +99,26 @@ async function runChecks(json: boolean, verbose: boolean, withLlmJudge: boolean)
     record('cases loaded', 'pass', cases.length + ' cases');
   }
 
-  const bin = process.env.NCODE_BIN || 'ncode';
+  const defaultAdapter = getAdapter();
+  const bin = defaultAdapter.defaultBin;
   const resolved = resolveBinary(bin);
+  const binCheckName = `default harness (${defaultAdapter.id}) binary callable`;
   if (!resolved) {
-    record('ncode binary callable', 'skip', 'binary not found: ' + bin);
+    record(binCheckName, 'skip', 'binary not found: ' + bin);
   } else {
     try {
-      execSync(resolved + ' --version', { stdio: 'pipe', timeout: 10_000 });
-      record('ncode binary callable', 'pass', resolved);
+      execSync(resolved + ' ' + (defaultAdapter.versionArgs ?? ['--version']).join(' '), { stdio: 'pipe', timeout: 10_000 });
+      record(binCheckName, 'pass', resolved);
     } catch (e) {
-      record('ncode binary callable', 'fail', errorMessage(e));
+      record(binCheckName, 'fail', errorMessage(e));
     }
+  }
+
+  const descriptorIssues = getAllDescriptorIssues();
+  if (descriptorIssues.length === 0) {
+    record('harness descriptors valid', 'pass', listAdapters().map((a) => a.id).join(','));
+  } else {
+    record('harness descriptors valid', 'fail', descriptorIssues.map((i) => `${i.source}: ${i.message}`).join('; '));
   }
 
   try {
