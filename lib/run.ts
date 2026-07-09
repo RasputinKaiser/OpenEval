@@ -66,7 +66,13 @@ async function runLoop(runId: string, cases: CaseDefinition[], runner: RunnerKin
     while (work.length) {
       const item = work.shift();
       if (!item) break;
-      await executeCase(runId, item.def, runner, item.seq, model, item.sample, harness);
+      try {
+        await executeCase(runId, item.def, runner, item.seq, model, item.sample, harness);
+      } catch (e: any) {
+        // Defense in depth: executeCase records its own failures, but never let
+        // one case's unexpected throw reject the pool and abort the whole run.
+        appendEvent(runId, "case_error", { case_id: item.def.id, seq: item.seq, sample: item.sample, error: String(e?.stack || e) }, item.def.id);
+      }
     }
   }
 

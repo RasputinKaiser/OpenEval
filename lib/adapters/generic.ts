@@ -10,7 +10,9 @@ export type HarnessDescriptor = HarnessDescriptorInput;
 
 export function getPath(obj: any, path: string | undefined): any {
   if (!path || obj == null) return undefined;
-  const parts = path.replace(/\[(\d+)\]/g, ".$1").split(".");
+  // filter(Boolean) drops the empty leading segment when a mapping starts with
+  // an array index (e.g. "[0].text" → ".0.text" → ["", "0", "text"]).
+  const parts = path.replace(/\[(\d+)\]/g, ".$1").split(".").filter(Boolean);
   let cur: any = obj;
   for (const p of parts) {
     if (cur == null) return undefined;
@@ -165,7 +167,7 @@ export function parseGenericJsonlLine(
       numTurns: maybeNum(getPath(obj, f.numTurns)) || into.toolCalls.length,
       stopReason: str(getPath(obj, f.stopReason)) || null,
       sessionId: into.result?.sessionId ?? (into as any)._lastSessionId ?? null,
-      model: into.result?.model ?? str(getPath(obj, f.model)) ?? null,
+      model: into.result?.model ?? (str(getPath(obj, f.model)) || null),
       isError: !!isError,
       rawJson: obj,
       tokenSegments: [],

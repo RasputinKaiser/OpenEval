@@ -1,7 +1,6 @@
 #!/usr/bin/env tsx
-import { execSync } from 'node:child_process';
+import { execSync, execFileSync } from 'node:child_process';
 import path from 'node:path';
-import os from 'node:os';
 import fs from 'node:fs';
 import { loadCases } from '../cases';
 import { prepareWorkdir } from '../executor';
@@ -61,7 +60,9 @@ function resolveBinary(name: string): string | null {
     return fs.existsSync(name) ? name : null;
   }
   try {
-    const out = execSync('command -v ' + JSON.stringify(name), { stdio: 'pipe', timeout: 5_000 }).toString().trim();
+    // Pass the name as a positional arg ($1), not spliced into the script, so a
+    // harness-descriptor binName can't inject shell commands.
+    const out = execFileSync('sh', ['-c', 'command -v -- "$1"', 'sh', name], { stdio: 'pipe', timeout: 5_000 }).toString().trim();
     return out || null;
   } catch {
     return null;
@@ -107,7 +108,7 @@ async function runChecks(json: boolean, verbose: boolean, withLlmJudge: boolean)
     record(binCheckName, 'skip', 'binary not found: ' + bin);
   } else {
     try {
-      execSync(resolved + ' ' + (defaultAdapter.versionArgs ?? ['--version']).join(' '), { stdio: 'pipe', timeout: 10_000 });
+      execFileSync(resolved, defaultAdapter.versionArgs ?? ['--version'], { stdio: 'pipe', timeout: 10_000 });
       record(binCheckName, 'pass', resolved);
     } catch (e) {
       record(binCheckName, 'fail', errorMessage(e));
@@ -226,7 +227,7 @@ async function runChecks(json: boolean, verbose: boolean, withLlmJudge: boolean)
     let oracleErr = '';
     if (scriptPath) {
       try {
-        execSync('bash ' + JSON.stringify(scriptPath), { cwd: dir, stdio: 'pipe', timeout: 30_000 });
+        execFileSync('bash', [scriptPath], { cwd: dir, stdio: 'pipe', timeout: 30_000 });
       } catch (e: any) {
         oracleOk = false;
         oracleErr = (e.stderr?.toString() || e.message || '').slice(0, 300);
@@ -265,12 +266,7 @@ async function runChecks(json: boolean, verbose: boolean, withLlmJudge: boolean)
     console.log('Self-test result: ' + pass + ' pass, ' + fail + ' fail, ' + skip + ' skip (no oracle)' + (llmSkip > 0 ? ', ' + llmSkip + ' skip (LLM judge — use --with-llm-judge to enable)' : ''));
   }
 
-  // cleanup
-  try {
-    fs.rmSync(path.join(os.tmpdir(), '..', 'data', 'workdirs', tmpRun), { recursive: true, force: true });
-  } catch (e) {
-    warn(e, verbose);
-  }
+  // cleanup — workdirs live under <cwd>/data/workdirs (see lib/config.ts)
   try {
     const wd = path.resolve('data', 'workdirs', tmpRun);
     fs.rmSync(wd, { recursive: true, force: true });

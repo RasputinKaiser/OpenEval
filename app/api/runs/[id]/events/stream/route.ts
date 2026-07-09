@@ -3,7 +3,8 @@ import { getRun, listEvents } from "@/lib/db";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const terminar = (run: any) => run?.status === "completed" || run?.status === "failed" || run?.status === "canceled" || run?.status === "error";
+const isTerminalRun = (run: { status?: string } | null) =>
+  run?.status === "completed" || run?.status === "failed" || run?.status === "aborted";
 
 export async function GET(request: Request, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -15,12 +16,23 @@ export async function GET(request: Request, props: { params: Promise<{ id: strin
   const lastEventId = Number(request.headers.get("Last-Event-ID") || "0") || 0;
   let sinceId = lastEventId;
   let closed = false;
+  let interval: ReturnType<typeof setInterval> | undefined;
+  const clearPoll = () => { if (interval) { clearInterval(interval); interval = undefined; } };
 
   const encoder = new TextEncoder();
   const heartbeat = encoder.encode(`: ping\n\n`);
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
+      // Single termination path: idempotent, always clears the poll timer so a
+      // closed stream can never leak an interval that fires forever.
+      const stop = () => {
+        if (closed) return;
+        closed = true;
+        clearPoll();
+        try { controller.close(); } catch {}
+      };
+
       controller.enqueue(encoder.encode("retry: 2000\n\n"));
       controller.enqueue(heartbeat);
 
@@ -39,8 +51,7 @@ export async function GET(request: Request, props: { params: Promise<{ id: strin
           controller.enqueue(encoder.encode(frame));
           sinceId = ev.id;
           if (ev.kind === "run_completed" || ev.kind === "run_fatal") {
-            closed = true;
-            controller.close();
+            stop();
             return true;
           }
         }
@@ -61,23 +72,19 @@ export async function GET(request: Request, props: { params: Promise<{ id: strin
         }
         // Auto-close if run ended server-side without a completion event
         const current = getRun(params.id);
-        if (current && terminar(current)) {
-          closed = true;
-          try { controller.close(); } catch {}
+        if (current && isTerminalRun(current)) {
+          stop();
         }
       };
 
+      interval = setInterval(poll, 600);
       poll();
-      const interval = setInterval(poll, 600);
 
-      request.signal.addEventListener("abort", () => {
-        closed = true;
-        clearInterval(interval);
-        try { controller.close(); } catch {}
-      });
+      request.signal.addEventListener("abort", stop);
     },
     cancel() {
       closed = true;
+      clearPoll();
     },
   });
 

@@ -146,7 +146,9 @@ test("summarizeLiveSessionFile caches summaries across calls for unchanged files
   const second = summarizeLiveSessionFile(file, "-Users-ralto-Documents-AgentEvals", Date.parse("2026-06-28T20:00:00.000Z"));
   assert.ok(first);
   assert.ok(second);
-  assert.equal(first, second, "expected the cache to return the same object reference for an unchanged file");
+  // Cache hits return a fresh copy with staleMs recomputed (a persisted cache
+  // must not freeze staleness), so compare content rather than identity.
+  assert.deepEqual({ ...second, staleMs: 0 }, { ...first, staleMs: 0 }, "expected the cache to return the same summary for an unchanged file");
   assert.equal(second.inputTokens, 50);
 });
 
@@ -339,6 +341,31 @@ test("scanLiveSessions reads descriptor liveTrace usage without fabricating miss
   }
 });
 
+test("summarizeCodexSessionFile sums per-turn usage across a context reset (compaction)", () => {
+  // last_token_usage is per turn; total_token_usage resets when the context is
+  // compacted. Max-of-cumulative would undercount; billed = sum of per-turn.
+  const turn = (t: string, input: number, cached: number, output: number, totalIn: number) => ({
+    timestamp: t,
+    type: "event_msg",
+    payload: { type: "token_count", info: {
+      last_token_usage: { input_tokens: input, cached_input_tokens: cached, output_tokens: output },
+      total_token_usage: { input_tokens: totalIn, cached_input_tokens: cached, output_tokens: output },
+    } },
+  });
+  const file = writeSession([
+    { timestamp: "2026-06-29T00:00:00.000Z", type: "session_meta", payload: { id: "s", model: "gpt-5.5" } },
+    turn("2026-06-29T00:00:01.000Z", 1000, 200, 50, 1000), // cumulative 1000
+    turn("2026-06-29T00:00:02.000Z", 1000, 400, 50, 400),  // reset: total drops to 400
+  ]);
+  const session = summarizeCodexSessionFile(file, "2026/06/29", Date.parse("2026-06-29T00:00:00.000Z"));
+  assert.ok(session);
+  // summed input = 2000, summed cached = 600 → fresh = 1400, cacheRead = 600, output = 100
+  assert.equal(session.cacheReadTokens, 600);
+  assert.equal(session.inputTokens, 1400);
+  assert.equal(session.outputTokens, 100);
+  assert.equal(session.totalTokens, 2100); // 1400 + 100 + 600 = summed input(2000) + output(100)
+});
+
 test("summarizeCodexSessionFile reads Codex App and CLI rollout usage", () => {
   const file = writeSession([
     {
@@ -378,12 +405,14 @@ test("summarizeCodexSessionFile reads Codex App and CLI rollout usage", () => {
       payload: {
         type: "token_count",
         info: {
+          // Real Codex format: input_tokens INCLUDES the cached portion and
+          // total_tokens = input + output (verified against ~/.codex/sessions).
           total_token_usage: {
             input_tokens: 1000,
             cached_input_tokens: 250,
             output_tokens: 120,
             reasoning_output_tokens: 30,
-            total_tokens: 1370,
+            total_tokens: 1120,
           },
         },
       },
@@ -398,10 +427,12 @@ test("summarizeCodexSessionFile reads Codex App and CLI rollout usage", () => {
   assert.equal(session.userType, "Codex Desktop");
   assert.equal(session.modeSummary.entrypoint, "vscode");
   assert.equal(session.metricSources.tokens, "measured");
-  assert.equal(session.inputTokens, 1000);
+  // input_tokens (1000) includes the 250 cached; report fresh (750) + cacheRead
+  // (250) as disjoint buckets so they don't double-count. total = input + output.
+  assert.equal(session.inputTokens, 750);
   assert.equal(session.outputTokens, 120);
   assert.equal(session.cacheReadTokens, 250);
-  assert.equal(session.totalTokens, 1370);
+  assert.equal(session.totalTokens, 1120);
   assert.equal(session.cacheCreateTokens, 0);
   assert.equal(session.toolCalls, 1);
   assert.ok(session.fileActivity.touchedFiles.includes("/Users/ralto/Documents/AgentEvals/lib/live.ts"));

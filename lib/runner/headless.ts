@@ -10,7 +10,7 @@ export class HeadlessRunner implements Runner {
     const startedAt = Date.now();
     emit(ctx, { kind: "started", at: startedAt });
 
-    const { acc, stderr, exitCode, durationMs } = await spawnHarnessProcess(ctx, (line, accumulator) => {
+    const { acc, stderr, exitCode, durationMs, timedOut } = await spawnHarnessProcess(ctx, (line, accumulator) => {
       const adapter = getAdapter(ctx.harness);
       for (const ev of adapter.parseLine(line, accumulator)) emit(ctx, ev);
     });
@@ -19,7 +19,7 @@ export class HeadlessRunner implements Runner {
       emit(ctx, { kind: "finished", at: Date.now(), durationMs, exitCode });
       return { ...acc.result, exitCode, durationMs, startedAt, endedAt: startedAt + durationMs } as RunnerResult;
     }
-    return failure(ctx, acc, startedAt, durationMs, exitCode, stderr);
+    return failure(ctx, acc, startedAt, durationMs, exitCode, stderr, timedOut);
   }
 }
 
@@ -30,9 +30,12 @@ function failure(
   durationMs: number,
   exitCode: number,
   stderr: string,
+  timedOut = false,
 ): RunnerResult {
   emit(ctx, { kind: "finished", at: Date.now(), durationMs, exitCode });
-  const msg = `Runner exited without producing a result event.\nstderr:\n${stderr}`;
+  const msg = timedOut
+    ? `Runner timed out after ${durationMs}ms (SIGKILL) without producing a result event.\nstderr:\n${stderr}`
+    : `Runner exited without producing a result event.\nstderr:\n${stderr}`;
   return {
     exitCode,
     durationMs,

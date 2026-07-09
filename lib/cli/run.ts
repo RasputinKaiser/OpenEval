@@ -151,7 +151,7 @@ async function main(): Promise<number> {
     log('Fanning across ' + harnesses.length + ' harnesses: ' + harnesses.join(', '));
   }
 
-  const startedIds: string[] = [];
+  const started: Array<{ id: string; harness: string }> = [];
   for (const harness of harnesses) {
     const label = fanOut ? `[${harness}] ` : '';
     log(label + 'Starting run: ' + selected.length + ' case(s) × ' + args.samples + ' sample(s) — runner=' + args.runner + ' parallel=' + args.parallel + (args.model ? ' model=' + args.model : ''));
@@ -165,72 +165,80 @@ async function main(): Promise<number> {
       samples: args.samples,
       filter,
     });
-    startedIds.push(id);
+    started.push({ id, harness });
     log(label + 'Run started: ' + id);
     log(label + '  → Dashboard: http://localhost:3000/runs/' + id);
   }
 
-  if (!args.watch) return 0;
+  // Runs execute in-process (createAndStartRun launches runLoop and returns
+  // immediately), so this CLI MUST wait for every started run to finish — the
+  // top-level process.exit would otherwise abort the in-process work. --no-watch
+  // only suppresses the live progress line; it still waits. And a fan-out must
+  // watch ALL runs, not just the first.
+  const showLive = args.watch && !outputJson;
+  if (showLive && fanOut) log('Watching ' + started.length + ' runs in parallel…');
+  await Promise.all(started.map((s) => waitForRun(s.id, showLive, fanOut ? `[${s.harness}] ` : '')));
 
-  if (fanOut && !outputJson) {
-    log('Watching ' + startedIds.length + ' runs in parallel…');
+  let worstCode = 0;
+  const jsonSummaries: Array<{ harness: string; id: string; summary: ReturnType<typeof computeSummary> }> = [];
+  for (const s of started) {
+    const finalRun = getRun(s.id);
+    const finalCases = listRunCases(s.id);
+    const summary = computeSummary(finalCases);
+    const label = fanOut ? `[${s.harness}] ` : '';
+    if (!outputJson) {
+      console.log();
+      console.log(label + 'Run ' + finalRun?.status + ': ' + summary.passed + '/' + summary.total + ' passed (' + (summary.passRate * 100).toFixed(0) + '%)');
+      console.log(label + 'Cost: $' + summary.totalCostUsd.toFixed(4) + '  Tokens: ↑' + summary.totalTokensIn + ' ↓' + summary.totalTokensOut + '  Duration: ' + (summary.totalDurationMs / 1000).toFixed(1) + 's');
+      for (const [cat, c] of Object.entries(summary.byCategory)) {
+        console.log(label + '  ' + cat + ': ' + c.passed + '/' + c.total);
+      }
+    }
+    jsonSummaries.push({ harness: s.harness, id: s.id, summary });
+    if (finalRun?.status === 'failed') log(label + 'Run did not complete due to an unexpected failure.');
+    worstCode = Math.max(worstCode, exitCodeForRun(finalRun?.status ?? null, finalCases));
   }
-  const id = startedIds[0];
 
-  // Poll until complete
-  let lastSig = "";
+  if (outputJson) {
+    console.log(JSON.stringify(fanOut ? { runs: jsonSummaries } : (jsonSummaries[0]?.summary ?? null)));
+  }
+  return worstCode;
+  } catch (e) {
+    printError(e, outputJson, verbose, 1);
+  }
+}
+
+async function waitForRun(id: string, live: boolean, label: string): Promise<void> {
+  let lastSig = '';
   while (true) {
     const run = getRun(id);
     if (!run) break;
     const cases = listRunCases(id);
-    const sig = cases.map((c) => `${c.seq}:${c.status}`).join(" ");
-    if (sig !== lastSig) {
-      lastSig = sig;
-      if (!outputJson) process.stdout.write("\r" + " ".repeat(80) + "\r");
-      const counts = cases.reduce<Record<string, number>>((a, c) => { a[c.status] = (a[c.status] || 0) + 1; return a; }, {});
-      const summary = [
-        `passed=${counts.passed || 0}`,
-        `failed=${counts.failed || 0}`,
-        `error=${counts.error || 0}`,
-        `running=${(counts.running || 0) + (counts.grading || 0)}`,
-        `pending=${counts.pending || 0}`,
-      ].join("  ");
-      if (!outputJson) process.stdout.write(`[${cases.filter((c) => ["passed","failed","error","skipped"].includes(c.status)).length}/${cases.length}] ${summary}`);
-    }
-    if (run.status !== "running") break;
-    await new Promise((r) => setTimeout(r, 1000));
-  }
-
-  const finalRun = getRun(id);
-  const finalCases = listRunCases(id);
-  const summary = computeSummary(finalCases);
-
-  if (outputJson) {
-    console.log(JSON.stringify(summary));
-  } else {
-    console.log();
-    console.log('Run ' + finalRun?.status + ': ' + summary.passed + '/' + summary.total + ' passed (' + (summary.passRate * 100).toFixed(0) + '%)');
-    console.log('Cost: $' + summary.totalCostUsd.toFixed(4) + '  Tokens: ↑' + summary.totalTokensIn + '' + summary.totalTokensOut + '  Duration: ' + (summary.totalDurationMs / 1000).toFixed(1) + 's');
-    if (summary.byCategory) {
-      for (const [cat, s] of Object.entries(summary.byCategory)) {
-        console.log('  ' + cat + ': ' + s.passed + '/' + s.total);
+    if (live) {
+      const sig = cases.map((c) => `${c.seq}:${c.status}`).join(' ');
+      if (sig !== lastSig) {
+        lastSig = sig;
+        const counts = cases.reduce<Record<string, number>>((a, c) => { a[c.status] = (a[c.status] || 0) + 1; return a; }, {});
+        const done = cases.filter((c) => ['passed', 'failed', 'error', 'skipped'].includes(c.status)).length;
+        const body = `${label}[${done}/${cases.length}] passed=${counts.passed || 0}  failed=${counts.failed || 0}  error=${counts.error || 0}  running=${(counts.running || 0) + (counts.grading || 0)}  pending=${counts.pending || 0}`;
+        // Fan-out prints full lines (concurrent \r would clobber each other);
+        // a single run updates one line in place.
+        if (label) process.stdout.write(body + '\n');
+        else process.stdout.write('\r' + ' '.repeat(80) + '\r' + body);
       }
     }
+    if (run.status !== 'running') break;
+    await new Promise((r) => setTimeout(r, 1000));
   }
+}
 
-  if (finalRun?.status === 'failed') {
-    throw new Error('Run did not complete due to an unexpected failure.');
-  }
-
+function exitCodeForRun(status: string | null, finalCases: ReturnType<typeof listRunCases>): number {
+  if (status === 'failed') return 1;
   const graderCrash = finalCases.some((c) => c.status === 'error' && (c.error_msg ?? '').startsWith('Grader threw:'));
   const runnerCrash = finalCases.some((c) => c.status === 'error' && ((c.error_msg ?? '').startsWith('Runner threw:') || c.runner_result?.isError));
-
   if (graderCrash) return 3;
   if (runnerCrash) return 2;
   return 0;
-  } catch (e) {
-    printError(e, outputJson, verbose, 1);
-  }
 }
 
 main().then((code) => process.exit(code)).catch((e) => {

@@ -1,17 +1,17 @@
+/** RFC-4180 cell: always quoted, embedded quotes doubled. */
+export function csvCell(val: unknown): string {
+  const str = val == null ? "" : typeof val === "object" ? JSON.stringify(val) : String(val);
+  return `"${str.replace(/"/g, '""')}"`;
+}
+
 export function exportCsv(filename: string, rows: Record<string, unknown>[]): void {
   if (!rows.length) return;
   const headers = Object.keys(rows[0]);
   const csv = [
-    headers.join(","),
-    ...rows.map((row) =>
-      headers
-        .map((h) => {
-          const val = row[h];
-          const str = val == null ? "" : typeof val === "object" ? JSON.stringify(val) : String(val);
-          return `"${str.replace(/"/g, '""')}"`;
-        })
-        .join(",")
-    ),
+    // Escape the header row too — a column key with a comma/quote/newline would
+    // otherwise misalign it against the quoted data cells below.
+    headers.map(csvCell).join(","),
+    ...rows.map((row) => headers.map((h) => csvCell(row[h])).join(",")),
   ].join("\n");
   download(filename, csv, "text/csv");
 }

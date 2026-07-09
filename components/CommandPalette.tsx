@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import clsx from "clsx";
-import { Search, ArrowRight, Activity, Radio, FileText, Plus, Trophy, GitCompareArrows, Plug, ShieldCheck, LayoutDashboard } from "lucide-react";
+import { Search, ArrowRight, Activity, Radio, FileText, Plus, Trophy, GitCompareArrows, Plug, ShieldCheck, LayoutDashboard, Boxes, TrendingUp, Settings } from "lucide-react";
 
 interface CommandItem {
   id: string;
@@ -27,6 +27,9 @@ const NAV_ITEMS: CommandItem[] = [
   { id: "nav-compare", label: "Compare", icon: GitCompareArrows, href: "/runs/compare", group: "Navigation", keywords: "diff" },
   { id: "nav-harnesses", label: "Harnesses", icon: Plug, href: "/harnesses", group: "Navigation", keywords: "cli adapters" },
   { id: "nav-accuracy", label: "Accuracy", icon: ShieldCheck, href: "/accuracy", group: "Navigation", keywords: "audit coverage" },
+  { id: "nav-collection", label: "Collection", icon: Boxes, href: "/collection", group: "Navigation", keywords: "harnesses sessions archive search transcripts" },
+  { id: "nav-timeline", label: "Timeline & Impact", icon: TrendingUp, href: "/collection/timeline", group: "Navigation", keywords: "adoption skills plugins outcome judge" },
+  { id: "nav-settings", label: "Settings", icon: Settings, href: "/settings", group: "Navigation", keywords: "config preferences" },
 ];
 
 function fuzzyScore(query: string, text: string, keywords?: string): number {

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "node:fs";
-import path from "node:path";
 import { getRunCaseByCaseId } from "@/lib/db";
+import { resolveWithin } from "@/lib/config";
 
 export async function GET(
   req: NextRequest,
@@ -15,19 +15,15 @@ export async function GET(
     return NextResponse.json({ error: "Missing path parameter" }, { status: 400 });
   }
 
-  // Sanitize: only allow filenames, no directory traversal
-  const safeName = path.basename(artifactPath);
-  if (safeName !== artifactPath) {
-    return NextResponse.json({ error: "Invalid path" }, { status: 400 });
-  }
-
   const rc = getRunCaseByCaseId(runId, caseId);
   if (!rc) {
     return NextResponse.json({ error: "Case not found" }, { status: 404 });
   }
 
-  const fullPath = path.join(rc.workdir_path, safeName);
-  if (!fullPath.startsWith(rc.workdir_path)) {
+  // Resolve within the case workdir: blocks `..`/absolute-path escapes while
+  // still allowing nested artifact subpaths (e.g. dist/index.html).
+  const fullPath = resolveWithin(rc.workdir_path, artifactPath);
+  if (!fullPath) {
     return NextResponse.json({ error: "Invalid path" }, { status: 400 });
   }
 
@@ -37,7 +33,7 @@ export async function GET(
     const headers = isTerminal
       ? { "Cache-Control": "private, max-age=300, stale-while-revalidate=600" }
       : { "Cache-Control": "no-cache" };
-    return NextResponse.json({ path: safeName, content }, { headers });
+    return NextResponse.json({ path: artifactPath, content }, { headers });
   } catch {
     return NextResponse.json(
       { error: "Artifact not found. Run the case or oracle solve script first." },

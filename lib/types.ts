@@ -277,6 +277,8 @@ export interface RunSummary {
   passAt1?: number;
   passAtK?: number;
   passPowK?: number;
+  /** 95% Wilson confidence interval on pass@1, over unique cases. */
+  passAt1Ci95?: { lo: number; hi: number };
   samples?: number;
   totalCostUsd: number;
   totalTokensIn: number;

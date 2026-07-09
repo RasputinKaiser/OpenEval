@@ -38,8 +38,9 @@ export async function prepareWorkdir(runId: string, caseId: string, def: CaseDef
     fixtureSrc = path.resolve(FIXTURES_DIR, setup.fixture);
     await copyDir(fixtureSrc, dir);
   } else if (setup.type === "git-clone" && setup.repo) {
-    const { execSync } = await import("node:child_process");
-    execSync(`git clone --depth 1 ${setup.repo} .`, { cwd: dir, stdio: "pipe" });
+    const { execFileSync } = await import("node:child_process");
+    // execFile (no shell) so a crafted case-descriptor repo value can't inject shell commands.
+    execFileSync("git", ["clone", "--depth", "1", "--", setup.repo, "."], { cwd: dir, stdio: "pipe" });
   }
   if (setup.init_git) {
     const { execSync } = await import("node:child_process");
@@ -92,7 +93,27 @@ export async function executeCase(
   harness?: string,
 ): Promise<RunCaseRecord> {
   const rcId = randomUUID();
-  const { dir: workdir, fixtureSrc } = await prepareWorkdir(runId, def.id, def, sample);
+  let workdir: string;
+  let fixtureSrc: string | undefined;
+  try {
+    ({ dir: workdir, fixtureSrc } = await prepareWorkdir(runId, def.id, def, sample));
+  } catch (e: any) {
+    // Workdir prep (fixture copy / git clone) failed. Record this case as
+    // errored so it still counts in the summary and one bad case cannot abort
+    // the whole run by throwing out of the worker pool.
+    const now = Date.now();
+    const errRec: RunCaseRecord & { seq: number } = {
+      id: rcId, run_id: runId, case_id: def.id, case_name: def.name, category: def.category,
+      difficulty: def.difficulty, status: "error", started_at: now, ended_at: now,
+      workdir_path: "", transcript_path: null, runner_kind: runnerKind, runner_result: null,
+      grader_result: null, evaluation: null, budget_exceeded: false,
+      error_msg: `Workdir preparation failed: ${String(e?.stack || e)}`,
+      case_def: def, seq, sample,
+    };
+    insertRunCase(errRec);
+    appendEvent(runId, "case_finished", { case_id: def.id, seq, sample, status: "error" }, def.id);
+    return errRec;
+  }
   const transcriptPath = path.join(TRANSCRIPTS_DIR, `${runId}_${def.id}__s${sample}.jsonl`);
 
   const rec: RunCaseRecord & { seq: number } = {
