@@ -22,6 +22,9 @@ Repository: [RasputinKaiser/OpenEval](https://github.com/RasputinKaiser/OpenEval
 - **Weighted graders:** combine shell checks, file assertions, transcript regexes, JSON path checks, trace-shape checks, git diff checks, and optional LLM rubric judges.
 - **Run dashboard:** browse recent runs, pass rates, token and cost summaries, case outcomes, and per-case trace detail.
 - **Live trace view:** inspect recent local CLI sessions with measured/inferred/missing/malformed provenance for usage, cost, model, duration, tool calls, and trace structure.
+- **Collection:** every harness's sessions on the machine — full-history totals, weekly usage rollups, top projects, OpenRouter-based cost estimates (always tilde-marked), and a permanent archive so sessions survive harness log pruning.
+- **Full-text search:** an FTS5 index over every transcript's conversational text; one search box across Claude Code, Codex, ncode, and any other parseable source, with a read-only transcript viewer for every hit.
+- **Timeline & Impact:** adoption markers (skills, MCP servers, subagents, models), before/after impact deltas with confound flags, automatic change-point detection, and opt-in LLM-judge outcome refinement (OpenRouter or a local CLI; verdicts persist and upgrade the heuristic scores).
 - **Accuracy audits:** review whether cases have deterministic proof, known-bad rejection, oracle coverage, and rubric backstops.
 - **Local-first storage:** run history, workdirs, transcripts, SQLite WAL files, and personal stats live under `data/`, which is ignored by Git.
 - **Fixture-based repeatability:** each case can copy a tiny repository from `fixtures/`, initialize git, run the harness, and grade the changed workdir.
@@ -51,6 +54,9 @@ The dashboard currently exposes these primary routes:
 | `/harnesses` | Harness discovery, binary availability, capabilities, version probe, and sample command display. |
 | `/accuracy` | Case quality audit: evidence tiers, oracle coverage, known-bad rejection, and weak grader warnings. |
 | `/live` | Live local trace intelligence from the selected harness descriptor's `liveTrace` roots, or the descriptor-driven default harness. |
+| `/collection` | All harnesses at once: source discovery, full-history totals (archive included), weekly usage rollups, top projects, and full-text search across every transcript. |
+| `/collection/session` | Read-only transcript viewer for any discovered session file (search hits and session tables link here). |
+| `/collection/timeline` | Adoption timeline, before/after impact analysis, detected metric shifts, and LLM-judge outcome refinement. |
 | `/cases` | Case library browser with categories, tags, prompts, setup, and grader definitions. |
 | `/settings` | Operator settings surface for local configuration. |
 

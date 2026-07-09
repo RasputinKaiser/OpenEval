@@ -207,7 +207,14 @@ export async function loadCasesWithErrors(
     if (!ent.isDirectory()) continue;
     if (!categorySet.has(ent.name)) continue;
     const catDir = path.join(CASES_DIR, ent.name);
-    const files = await fs.readdir(catDir);
+    let files: string[] = [];
+    try {
+      files = await fs.readdir(catDir);
+    } catch {
+      // An unreadable category subdir should skip that category, not abort the
+      // whole load (which would leave the cache unset and re-throw every call).
+      continue;
+    }
     for (const f of files) {
       if (!f.endsWith(".case.json")) continue;
       const full = path.join(catDir, f);

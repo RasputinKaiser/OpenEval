@@ -54,7 +54,9 @@ export class TmuxRunner implements Runner {
     let lastCapture = "";
     const deadline = startedAt + ctx.timeoutMs;
     while (Date.now() < deadline) {
-      const list = await tmux(["ls", "-F", "#{session_name}", "2>/dev/null"]);
+      // No shell here: "2>/dev/null" would be passed as a literal arg and make
+      // `tmux ls` error out, breaking the poll loop on its first iteration.
+      const list = await tmux(["ls", "-F", "#{session_name}"]);
       if (!list.stdout.split("\n").includes(session)) break;
 
       const cap = await tmux(["capture-pane", "-p", "-S", "-", "-E", "-", "-t", session]);

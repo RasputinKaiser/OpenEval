@@ -77,13 +77,16 @@ function manifestRows(run: RunRecord): Array<[string, string]> | null {
 
 function summaryLines(summary: RunSummary | null): string[] {
   if (!summary) return ["No summary captured yet."];
+  const ci = summary.passAt1Ci95;
+  const ciSuffix = ci ? ` (95% CI ${fmtPct(ci.lo)}–${fmtPct(ci.hi)})` : "";
   const lines = [
-    `- Pass rate: ${fmtPct(summary.passRate)}`,
+    `- Pass rate: ${fmtPct(summary.passRate)}${ciSuffix}`,
     `- Passed/failed/errored/skipped: ${summary.passed}/${summary.failed}/${summary.errored}/${summary.skipped}`,
   ];
   if ((summary.samples ?? 1) > 1) {
-    lines.push(`- pass@1: ${fmtPct(summary.passAt1)}`);
+    lines.push(`- pass@1: ${fmtPct(summary.passAt1)}${ciSuffix} (k=${summary.samples})`);
     lines.push(`- pass@k: ${fmtPct(summary.passAtK)}`);
+    lines.push(`- pass^k (reliability): ${fmtPct(summary.passPowK)}`);
   }
   lines.push(`- Total cost USD: ${fmtUsd(summary.totalCostUsd)}`);
   lines.push(`- Tokens in/out: ${summary.totalTokensIn}/${summary.totalTokensOut}`);

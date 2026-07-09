@@ -4,6 +4,9 @@
   "private": true,
   "description": "Local-first evaluation dashboard for agent CLIs with deterministic graders, live trace telemetry, and accuracy audits.",
   "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/RasputinKaiser/OpenEval.git"
@@ -18,6 +21,7 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test tests/*.test.ts",
     "test:live": "node --import tsx --test tests/live.test.ts",
     "test:telemetry": "node --import tsx --test tests/telemetry.test.ts",
     "run:eval": "tsx lib/cli/run.ts",

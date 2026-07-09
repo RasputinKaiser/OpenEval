@@ -1,4 +1,5 @@
 import type { CaseTelemetry, RunCaseRecord, RunSummary, RunTelemetry } from "./types";
+import { passAtK as passAtKEstimate, wilsonInterval, mean } from "./stats";
 
 export function computeSummary(cases: RunCaseRecord[]): RunSummary {
   const byCategory: Record<string, { total: number; passed: number; failed: number; errored: number }> = {};
@@ -38,16 +39,26 @@ export function computeSummary(cases: RunCaseRecord[]): RunSummary {
   }
   const total = cases.length;
 
-  let passAt1 = 0, passAtK = 0, passPowK = 0, uniqueCases = 0;
+  // Per-case (n samples, c passed) → unbiased pass@k estimates, averaged over
+  // unique cases. k is the run's sample budget. pass@1 is the low-variance mean
+  // c/n (not "did trial 0 pass"); pass^k ("reliability") stays "all k passed".
+  const k = samples > 0 ? samples : 1;
+  const perCasePassAt1: number[] = [];
+  const perCasePassAtK: number[] = [];
+  let passPowK = 0, uniqueCases = 0;
   for (const list of Object.values(buckets)) {
-    const trial0 = list.find((c) => (c.sample ?? 0) === 0) ?? list[0];
-    const anyPassed = list.some((c) => c.status === "passed");
-    const allPassed = list.length > 0 && list.every((c) => c.status === "passed");
+    const n = list.length;
+    const c = list.filter((rc) => rc.status === "passed").length;
     uniqueCases++;
-    if (trial0?.status === "passed") passAt1++;
-    if (anyPassed) passAtK++;
-    if (allPassed) passPowK++;
+    perCasePassAt1.push(passAtKEstimate(n, c, 1));
+    perCasePassAtK.push(passAtKEstimate(n, c, k));
+    if (n > 0 && c === n) passPowK++;
   }
+  const passAt1 = mean(perCasePassAt1);
+  const passAtK = mean(perCasePassAtK);
+  // Honest 95% uncertainty band on pass@1, at the level of independent units
+  // (unique cases), rather than pseudo-replicating over correlated samples.
+  const passAt1Ci95 = wilsonInterval(Math.round(passAt1 * uniqueCases), uniqueCases);
 
   return {
     total,
@@ -56,9 +67,10 @@ export function computeSummary(cases: RunCaseRecord[]): RunSummary {
     errored,
     skipped,
     passRate: total ? passed / total : 0,
-    passAt1: uniqueCases ? passAt1 / uniqueCases : 0,
-    passAtK: uniqueCases ? passAtK / uniqueCases : 0,
+    passAt1,
+    passAtK,
     passPowK: uniqueCases ? passPowK / uniqueCases : 0,
+    passAt1Ci95,
     samples: samples > 0 ? samples : 1,
     totalCostUsd,
     totalTokensIn,

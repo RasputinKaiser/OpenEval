@@ -59,6 +59,8 @@ export default async function LivePage(props: { searchParams?: Promise<{ harness
       sessionsWithMissingModel: 0,
       sessionsWithInferredModel: 0,
       sessionsWithMissingTokens: 0,
+      sessionsWithInferredCost: 0,
+      archivedSessions: 0,
       sessionsWithMalformedLines: 0,
       staleSessions: 0,
       avgDataQuality: 0,

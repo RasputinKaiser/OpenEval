@@ -9,6 +9,23 @@ export interface SpawnHarnessResult {
   stderr: string;
   exitCode: number;
   durationMs: number;
+  timedOut: boolean;
+}
+
+/** Max bytes retained per stream, so a runaway harness can't OOM the eval. */
+export const MAX_RETAINED_BYTES = 8 * 1024 * 1024;
+
+/**
+ * Append `chunk` to `current`, capping total length at `max`. Once the cap is
+ * reached a single truncation marker is added and the string stops growing.
+ * The live line parser still sees every line — only the retained diagnostic
+ * copy is bounded.
+ */
+export function appendCapped(current: string, chunk: string, max = MAX_RETAINED_BYTES): string {
+  if (current.length >= max) return current;
+  const next = current + chunk;
+  if (next.length <= max) return next;
+  return next.slice(0, max) + "\n…[output truncated]…";
 }
 
 export function emptyRunnerResult(): RunnerResult {
@@ -48,6 +65,8 @@ export function spawnHarnessProcess(ctx: RunnerContext, onLine: (line: string, a
   let stderr = "";
   let stdoutBuf = "";
 
+  let timedOut = false;
+
   return new Promise<SpawnHarnessResult>((resolve) => {
     const proc = spawn(bin, args, {
       cwd: ctx.workdir,
@@ -55,28 +74,35 @@ export function spawnHarnessProcess(ctx: RunnerContext, onLine: (line: string, a
       stdio: [stdin != null ? "pipe" : "ignore", "pipe", "pipe"],
     });
     if (stdin != null && proc.stdin) {
-      proc.stdin.write(stdin);
-      proc.stdin.end();
+      // A child that exits before reading stdin emits EPIPE on this stream;
+      // without a handler that error is unhandled and crashes the eval process.
+      proc.stdin.on("error", () => {});
+      try { proc.stdin.write(stdin); proc.stdin.end(); } catch {}
     }
     const timer = setTimeout(() => {
+      timedOut = true;
       try { proc.kill("SIGKILL"); } catch {}
     }, ctx.timeoutMs);
 
     proc.stdout?.on("data", (chunk: Buffer) => {
       const text = chunk.toString();
-      stdout += text;
+      stdout = appendCapped(stdout, text);
       stdoutBuf += text;
       const lines = stdoutBuf.split("\n");
       stdoutBuf = lines.pop() ?? "";
       for (const line of lines) onLine(line, acc);
     });
-    proc.stderr?.on("data", (c: Buffer) => { stderr += c.toString(); });
+    proc.stderr?.on("data", (c: Buffer) => { stderr = appendCapped(stderr, c.toString()); });
+
+    let settled = false;
     const finish = (exitCode: number) => {
+      if (settled) return; // 'error' and 'close' can both fire; flush only once
+      settled = true;
       clearTimeout(timer);
       if (stdoutBuf.trim()) {
         try { onLine(stdoutBuf, acc); } catch {}
       }
-      resolve({ acc, stdout, stderr, exitCode, durationMs: Date.now() - startedAt });
+      resolve({ acc, stdout, stderr, exitCode, durationMs: Date.now() - startedAt, timedOut });
     };
     proc.on("error", () => finish(2));
     proc.on("close", (code) => finish(code ?? (acc.result?.isError ? 1 : 0)));

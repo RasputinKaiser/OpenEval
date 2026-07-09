@@ -1,8 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { StringDecoder } from "node:string_decoder";
 import { compactDisplayPath, redactSensitiveText } from "./redaction";
 import { getPath, type FieldMapping } from "./adapters/generic";
+import { estimateCostUsd } from "./pricing";
+import { cacheGet, cachePut, listCachedSessionsUnder } from "./live-cache";
+import { classifySentiment, isRephrase, looksLikeApologyOrFailure, looksLikeTestsPassed, mcpServerFromTool, JUDGE_PROMPT_MARKER } from "./insights/signals";
 import { listAdapters, hasAdapter, getAdapter, getDefaultHarness, invalidateRegistry } from "./adapters/registry";
 import { invalidateDescriptorCache } from "./adapters/loader";
 
@@ -129,6 +133,24 @@ export interface LiveSession {
   fileActivity: LiveFileActivity;
   modeSummary: LiveModeSummary;
   path?: string;
+  /** True when this session's file was pruned from disk and only the cached parse remains. */
+  archived?: boolean;
+  /** Longitudinal markers: what this session used (for adoption timelines). */
+  skillsUsed: string[];
+  mcpServersUsed: string[];
+  subagentSpawns: number;
+  cliVersion: string | null;
+  /** Heuristic outcome signals inferred from the transcript's own text. */
+  outcomeSignals: OutcomeSignals;
+}
+
+export interface OutcomeSignals {
+  userPositive: number;
+  userNegative: number;
+  rephrases: number;
+  errorTail: boolean;
+  testsPassedTail: boolean;
+  reworkFiles: number;
 }
 
 export interface LiveAggregate {
@@ -149,6 +171,8 @@ export interface LiveAggregate {
   sessionsWithMissingModel: number;
   sessionsWithInferredModel: number;
   sessionsWithMissingTokens: number;
+  sessionsWithInferredCost: number;
+  archivedSessions: number;
   sessionsWithMalformedLines: number;
   staleSessions: number;
   avgDataQuality: number;
@@ -191,7 +215,7 @@ export interface TranscriptResult {
 
 export { compactDisplayPath, redactSensitiveText };
 
-type LiveTraceFormat = "claude-projects" | "codex-sessions" | "jsonl-dir";
+export type LiveTraceFormat = "claude-projects" | "codex-sessions" | "jsonl-dir";
 
 interface LiveTraceSource {
   id: string;
@@ -203,6 +227,49 @@ interface LiveTraceSource {
   format: LiveTraceFormat;
   maxDepth: number;
   inferredModel?: string;
+}
+
+/**
+ * A transcript-collection source that is NOT necessarily a runnable harness —
+ * "you might have Cursor transcripts without being able to run Cursor." Roots
+ * may use `~`; they are home-expanded here. This is the public shape the
+ * collection registry hands to `scanSourceSessions` / `listSourceFiles`.
+ */
+export interface CollectionSourceSpec {
+  id: string;
+  label: string;
+  roots: string[];
+  format: LiveTraceFormat;
+  fields?: FieldMapping;
+  maxDepth?: number;
+  inferredModel?: string;
+}
+
+function defaultMaxDepth(format: LiveTraceFormat): number {
+  return format === "codex-sessions" ? 5 : format === "claude-projects" ? 2 : 4;
+}
+
+function specToSource(spec: CollectionSourceSpec): LiveTraceSource {
+  return {
+    id: spec.id,
+    label: spec.label,
+    status: "available",
+    roots: spec.roots.map(expandHome),
+    fields: spec.fields,
+    format: spec.format,
+    maxDepth: spec.maxDepth ?? defaultMaxDepth(spec.format),
+    inferredModel: spec.inferredModel,
+  };
+}
+
+/** Session files for a source, without parsing them — cheap discovery counts. */
+export function listSourceFiles(spec: CollectionSourceSpec): Array<{ file: string; project: string; mtime: number }> {
+  return collectLiveTraceFiles(specToSource(spec), []);
+}
+
+/** Scan one arbitrary collection source (any harness), reusing the harness path. */
+export function scanSourceSessions(spec: CollectionSourceSpec, limit = 200, opts: { includeArchived?: boolean } = {}): LiveAggregate {
+  return scanResolvedSource(specToSource(spec), limit, opts.includeArchived ?? false);
 }
 
 export function defaultLiveLimitForHarness(harness?: string): number {
@@ -282,11 +349,39 @@ function decodeProjectDir(name: string): string {
     .replace(/-/g, "/");
 }
 
+/**
+ * Heuristic: does a tool's raw output text indicate a failure? Codex
+ * `function_call_output` events carry no structured error flag, so we sniff the
+ * text — but only for real error INDICATORS, not any occurrence of the words
+ * "error"/"failed". Matching those as bare substrings flagged benign output
+ * ("5 passed, 0 failed", "0 errors", "error handling") as failures, inflating
+ * error rates and depressing data-quality scores across most real sessions.
+ */
+export function looksLikeToolError(output: string): boolean {
+  if (!output) return false;
+  return (
+    /(?:exit(?:ed)? with code|exit code)\s+[1-9]/i.test(output) ||
+    /traceback \(most recent call last\)/i.test(output) ||
+    /\b(?:error|fatal|panic)\s*:/i.test(output) ||
+    /\b(?:command not found|no such file or directory|permission denied|segmentation fault|command failed)\b/i.test(output)
+  );
+}
+
+const MIN_PLAUSIBLE_MS = 1_577_836_800_000; // 2020-01-01
+
 function parseTimestamp(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value !== "string") return null;
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) ? parsed : null;
+  let ms: number | null = null;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    // Some harnesses (Codex) log UNIX seconds; interpreting them as ms lands
+    // near 1970 and corrupts startedAt. Anything below ~1e12 is seconds.
+    ms = value < 1e12 ? value * 1000 : value;
+  } else if (typeof value === "string") {
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed)) ms = parsed;
+  }
+  // Reject implausible/placeholder timestamps rather than let them pull startedAt down.
+  if (ms == null || ms < MIN_PLAUSIBLE_MS) return null;
+  return ms;
 }
 
 function jsonPreview(value: unknown, max = 420): string {
@@ -360,25 +455,54 @@ function extractFilePaths(value: unknown, out = new Set<string>()): Set<string> 
 }
 
 export function scanLiveSessions(limit = 200, harness?: string): LiveAggregate {
-  const source = resolveLiveSource(harness);
+  return scanResolvedSource(resolveLiveSource(harness), limit);
+}
+
+function parseSourceSessionList(source: LiveTraceSource, limit: number, scanWarnings: string[], includeArchived = false): LiveSession[] {
   const sessions: LiveSession[] = [];
-  const scanWarnings: string[] = [];
-
-  if (source.status !== "available") {
-    if (source.message) scanWarnings.push(source.message);
-    return aggregate(sessions, scanWarnings, source);
-  }
-
+  if (source.status !== "available") return sessions;
   const files = collectLiveTraceFiles(source, scanWarnings);
   files.sort((a, b) => b.mtime - a.mtime);
-
   for (const f of files.slice(0, limit)) {
     const s = source.format === "codex-sessions"
       ? summarizeCodexSessionFile(f.file, f.project, f.mtime)
-      : summarizeLiveSessionFile(f.file, f.project, f.mtime, { fields: source.fields, inferredModel: source.inferredModel });
+      : summarizeLiveSessionFile(f.file, f.project, f.mtime, { fields: source.fields, inferredModel: source.inferredModel, decodeProject: source.format !== "jsonl-dir" });
     if (s) sessions.push(s);
   }
+  if (includeArchived) appendArchivedSessions(source, sessions);
+  return sessions;
+}
 
+/**
+ * Merge in ARCHIVED sessions: cached parses whose files were since pruned from
+ * disk (Claude Code keeps ~30 days of transcripts; history should not follow
+ * them into the void). Dedupes on sessionId so a rotated/moved file doesn't
+ * count twice; the on-disk copy always wins.
+ */
+function appendArchivedSessions(source: LiveTraceSource, sessions: LiveSession[]): void {
+  const seenIds = new Set(sessions.map((s) => s.sessionId));
+  for (const { file, session } of listCachedSessionsUnder(source.roots)) {
+    let onDisk = false;
+    try { onDisk = fs.existsSync(file); } catch {}
+    if (onDisk || seenIds.has(session.sessionId)) continue;
+    seenIds.add(session.sessionId);
+    sessions.push({ ...session, archived: true, staleMs: Math.max(0, Date.now() - session.lastEventAt) });
+  }
+  sessions.sort((a, b) => b.lastEventAt - a.lastEventAt);
+}
+
+/**
+ * Full parsed session list for a source, UNCAPPED (the aggregate's `sessions`
+ * array is sliced to 100 for the live view; longitudinal analytics need them all).
+ */
+export function collectSourceSessions(spec: CollectionSourceSpec, limit = 100_000, opts: { includeArchived?: boolean } = {}): LiveSession[] {
+  return parseSourceSessionList(specToSource(spec), limit, [], opts.includeArchived ?? false);
+}
+
+function scanResolvedSource(source: LiveTraceSource, limit: number, includeArchived = false): LiveAggregate {
+  const scanWarnings: string[] = [];
+  if (source.status !== "available" && source.message) scanWarnings.push(source.message);
+  const sessions = parseSourceSessionList(source, limit, scanWarnings, includeArchived);
   return aggregate(sessions, scanWarnings, source);
 }
 
@@ -439,12 +563,15 @@ function collectJsonlRecursive(dir: string, depth: number, files: Array<{ file: 
   }
 }
 
+const TRANSCRIPT_TURN_CAP = 20_000;
+
 export function parseSessionTranscript(filePath: string): TranscriptResult {
   try {
-    const content = fs.readFileSync(filePath, "utf8");
     const turns: LiveTranscriptTurn[] = [];
     let index = 0;
-    for (const line of content.split("\n")) {
+    // Stream (don't readFileSync a giant string) and cap turns so a multi-hundred-MB
+    // session can be opened without exhausting memory.
+    for (const line of readFileLines(filePath)) {
       if (!line.trim()) continue;
       index++;
       try {
@@ -456,6 +583,15 @@ export function parseSessionTranscript(filePath: string): TranscriptResult {
           label: `Malformed line ${index}`,
           preview: line.slice(0, 420),
         });
+      }
+      if (turns.length >= TRANSCRIPT_TURN_CAP) {
+        turns.push({
+          type: "truncated",
+          severity: "info",
+          label: `Transcript truncated at ${TRANSCRIPT_TURN_CAP} lines`,
+          preview: "This session is very large; earlier lines are shown.",
+        });
+        break;
       }
     }
     return { turns };
@@ -481,18 +617,49 @@ export function getErroringTurns(filePath: string): TranscriptResult {
   return { turns: [...keep].sort((a, b) => a - b).map((index) => parsed.turns[index]) };
 }
 
-export function summarizeLiveSessionFile(file: string, projectDir: string, mtime: number, opts: { fields?: FieldMapping; inferredModel?: string } = {}): LiveSession | null {
-  return summarizeWithCache(file, projectDir, mtime, (f, content, pd, mt) => parseLiveSession(f, content, pd, mt, opts.fields, opts.inferredModel));
+export function summarizeLiveSessionFile(file: string, projectDir: string, mtime: number, opts: { fields?: FieldMapping; inferredModel?: string; decodeProject?: boolean } = {}): LiveSession | null {
+  return summarizeWithCache(file, projectDir, mtime, (f, lines, bytes, pd, mt) => parseLiveSession(f, lines, bytes, pd, mt, opts.fields, opts.inferredModel, opts.decodeProject));
 }
 
 const sessionCache = new Map<string, { mtimeMs: number; size: number; session: LiveSession | null }>();
 const SESSION_CACHE_LIMIT = 500;
 
+/**
+ * Stream a file's lines without ever materializing the whole file as one string.
+ * `fs.readFileSync(file, "utf8")` throws ERR_STRING_TOO_LONG on files over ~512MB
+ * — real agent sessions get that big — which silently dropped the largest (and
+ * most token-heavy) sessions from every total. Reads in bounded chunks with a
+ * StringDecoder so multibyte characters spanning a chunk boundary aren't
+ * corrupted, holding at most one chunk + one line in memory.
+ */
+export function* readFileLines(file: string): Generator<string> {
+  const CHUNK = 1 << 20; // 1 MiB
+  const fd = fs.openSync(file, "r");
+  const decoder = new StringDecoder("utf8");
+  try {
+    const buf = Buffer.allocUnsafe(CHUNK);
+    let leftover = "";
+    let n: number;
+    while ((n = fs.readSync(fd, buf, 0, CHUNK, null)) > 0) {
+      leftover += decoder.write(buf.subarray(0, n));
+      let idx: number;
+      while ((idx = leftover.indexOf("\n")) >= 0) {
+        yield leftover.slice(0, idx);
+        leftover = leftover.slice(idx + 1);
+      }
+    }
+    leftover += decoder.end();
+    if (leftover.length) yield leftover;
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
 function summarizeWithCache(
   file: string,
   projectDir: string,
   mtime: number,
-  parser: (file: string, content: string, projectDir: string, mtime: number) => LiveSession | null,
+  parser: (file: string, lines: Iterable<string>, bytes: number, projectDir: string, mtime: number) => LiveSession | null,
 ): LiveSession | null {
   let st: fs.Stats;
   try {
@@ -500,26 +667,56 @@ function summarizeWithCache(
   } catch {
     return null;
   }
+  // staleMs is stamped at parse time; cached copies (memory or disk) must not
+  // freeze it, so refresh it on every cache hit.
+  const refresh = (s: LiveSession | null): LiveSession | null =>
+    s ? { ...s, staleMs: Math.max(0, Date.now() - s.lastEventAt) } : s;
+
   const cached = sessionCache.get(file);
   if (cached && cached.mtimeMs === st.mtimeMs && cached.size === st.size) {
-    return cached.session;
+    return refresh(cached.session);
   }
-  const content = fs.readFileSync(file, "utf8");
-  const session = parser(file, content, projectDir, mtime);
+  // Second tier: the persistent SQLite cache survives restarts, so cold
+  // full-history scans don't re-parse hundreds of MB of unchanged files.
+  const persisted = cacheGet(file, st.mtimeMs, st.size);
+  let session: LiveSession | null;
+  if (persisted.hit) {
+    session = persisted.session;
+  } else {
+    try {
+      // The file can vanish or become unreadable between statSync and here (log
+      // rotation, active session dirs). Skip one file rather than aborting the scan.
+      session = parser(file, readFileLines(file), st.size, projectDir, mtime);
+    } catch {
+      return null;
+    }
+    cachePut(file, st.mtimeMs, st.size, session);
+  }
   if (sessionCache.size >= SESSION_CACHE_LIMIT) {
     const oldest = sessionCache.keys().next().value;
     if (oldest !== undefined) sessionCache.delete(oldest);
   }
   sessionCache.set(file, { mtimeMs: st.mtimeMs, size: st.size, session });
-  return session;
+  return refresh(session);
 }
 
-function parseLiveSession(file: string, content: string, projectDir: string, mtime: number, fields?: FieldMapping, inferredModel?: string): LiveSession | null {
+function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, projectDir: string, mtime: number, fields?: FieldMapping, inferredModel?: string, decodeProject = true): LiveSession | null {
   let model: string | null = null;
   let sessionId: string | null = null;
   let displayTitle: string | null = null;
   let lastPromptPreview: string | null = null;
-  let project = decodeProjectDir(projectDir);
+  // Only dash-encoded formats (claude-projects / ncode) need decoding; jsonl-dir
+  // project names are already real relative paths and get corrupted by it.
+  let project = decodeProject ? decodeProjectDir(projectDir) : projectDir;
+  // Longitudinal markers + heuristic outcome signals.
+  const skillsUsed = new Set<string>();
+  const mcpServersUsed = new Set<string>();
+  let subagentSpawns = 0;
+  let cliVersion: string | null = null;
+  const writeCountByFile = new Map<string, number>();
+  let userPositive = 0, userNegative = 0, rephrases = 0;
+  let lastUserText: string | null = null;
+  let lastAssistantText = "";
   let inputTokens = 0;
   let outputTokens = 0;
   let cacheReadTokens = 0;
@@ -573,8 +770,8 @@ function parseLiveSession(file: string, content: string, projectDir: string, mti
   };
 
   try {
-    pathBytes = Buffer.byteLength(content);
-    for (const line of content.split("\n")) {
+    pathBytes = bytes;
+    for (const line of lines) {
       if (!line.trim()) continue;
       lineCount++;
       let obj: any;
@@ -602,9 +799,32 @@ function parseLiveSession(file: string, content: string, projectDir: string, mti
       if (typeof obj.sessionId === "string" && obj.sessionId) sessionId = obj.sessionId;
       if (typeof obj.cwd === "string" && obj.cwd) project = obj.cwd;
       if (typeof obj.userType === "string" && obj.userType) userType = obj.userType;
+      if (typeof obj.version === "string" && obj.version) cliVersion = obj.version;
+
+      // Human sentiment/rephrase — only real, short-ish user turns (skip
+      // tool-results, injected <system-reminder>/command wrappers, pasted blobs).
+      if (obj.type === "user" && obj.message && obj.isSidechain !== true) {
+        const c = obj.message.content;
+        const userText = typeof c === "string"
+          ? c
+          : Array.isArray(c) ? c.filter((b: any) => b?.type === "text").map((b: any) => b.text ?? "").join(" ") : "";
+        const trimmed = userText.trim();
+        // A claude-CLI-backed judge leaves its own session files; drop them.
+        if (trimmed.startsWith(JUDGE_PROMPT_MARKER)) return null;
+        if (trimmed && trimmed.length <= 600 && !trimmed.startsWith("<") && !trimmed.startsWith("Caveat:")) {
+          const sent = classifySentiment(trimmed);
+          if (sent === "positive") userPositive++;
+          else if (sent === "negative") userNegative++;
+          if (isRephrase(trimmed, lastUserText)) rephrases++;
+          lastUserText = trimmed;
+        }
+      }
 
       if (obj.type === "system") {
-        model = obj.model ?? model;
+        // "<synthetic>" is Claude Code's placeholder model on API-error turns,
+        // not a real model — letting it win would misattribute (and mis-price)
+        // the whole session's usage.
+        if (typeof obj.model === "string" && obj.model && obj.model !== "<synthetic>") model = obj.model;
         sessionId = obj.sessionId ?? obj.session_id ?? sessionId;
         project = obj.cwd ?? obj.project ?? project;
         userType = obj.userType ?? userType;
@@ -620,7 +840,7 @@ function parseLiveSession(file: string, content: string, projectDir: string, mti
           metricSources.duration = "measured";
         }
       } else if (obj.type === "assistant" && Array.isArray(obj.message?.content)) {
-        if (typeof obj.message?.model === "string" && obj.message.model) model = obj.message.model;
+        if (typeof obj.message?.model === "string" && obj.message.model && obj.message.model !== "<synthetic>") model = obj.message.model;
         const messageUsage = obj.message?.usage ?? {};
         const messageInput = numericOrNull(messageUsage.input_tokens);
         const messageOutput = numericOrNull(messageUsage.output_tokens);
@@ -646,6 +866,7 @@ function parseLiveSession(file: string, content: string, projectDir: string, mti
             });
           }
         }
+        let assistantText = "";
         for (const b of obj.message.content) {
           if (b.type === "tool_use") {
             toolCalls++;
@@ -655,13 +876,29 @@ function parseLiveSession(file: string, content: string, projectDir: string, mti
             }
             if (typeof b.name === "string") increment(toolCallsByName, b.name);
             for (const filePath of extractFilePaths(b.input)) touchedFiles.add(filePath);
-            const name = String(b.name ?? "").toLowerCase();
+            const rawName = String(b.name ?? "");
+            const name = rawName.toLowerCase();
             if (["read", "grep", "glob", "webfetch", "websearch"].some((tool) => name.includes(tool))) readLikeOperations++;
-            if (["write", "edit", "multiedit"].some((tool) => name.includes(tool))) writeLikeOperations++;
+            const isWrite = ["write", "edit", "multiedit"].some((tool) => name === tool || name.startsWith(tool));
+            if (name.includes("write") || name.includes("edit")) writeLikeOperations++;
+            // --- markers --- (subagent spawns are "Task" or "Agent" across versions)
+            if (rawName === "Task" || rawName === "Agent") subagentSpawns++;
+            if (rawName === "Skill") {
+              const s = (b.input as any)?.skill ?? (b.input as any)?.command ?? (b.input as any)?.name;
+              if (typeof s === "string" && s) skillsUsed.add(s);
+            }
+            const server = mcpServerFromTool(rawName);
+            if (server) mcpServersUsed.add(server);
+            // --- rework: count writes per file (a file rewritten 2+ times = churn) ---
+            if (isWrite) {
+              const fp = (b.input as any)?.file_path ?? (b.input as any)?.path;
+              if (typeof fp === "string" && fp) writeCountByFile.set(fp, (writeCountByFile.get(fp) ?? 0) + 1);
+            }
           }
           if (b.type === "thinking") thinkingBlocks++;
-          if (b.type === "text") textBlocks++;
+          if (b.type === "text") { textBlocks++; if (typeof b.text === "string") assistantText += b.text; }
         }
+        if (assistantText.trim()) lastAssistantText = assistantText;
       } else if (obj.type === "user" && Array.isArray(obj.message?.content)) {
         for (const b of obj.message.content) {
           if (b.type === "tool_result") {
@@ -778,6 +1015,15 @@ function parseLiveSession(file: string, content: string, projectDir: string, mti
     metricSources.duration = "malformed";
     metricSources.turns = "malformed";
   }
+  // Persisted session files carry token usage but no cost — estimate it from the
+  // measured tokens + model list price. Tagged "inferred", never "measured".
+  if (metricSources.cost === "missing") {
+    const est = estimateCostUsd(model, { input: inputTokens, output: outputTokens, cacheRead: cacheReadTokens, cacheCreate: cacheCreateTokens });
+    if (est != null) {
+      costUsd = est;
+      metricSources.cost = "inferred";
+    }
+  }
 
   const parseWarnings = buildWarnings(metricSources, malformedLineCount, lineCount, hookErrors, sawResult, model);
   const toolErrorRate = toolCalls > 0 ? toolErrors / toolCalls : 0;
@@ -855,6 +1101,18 @@ function parseLiveSession(file: string, content: string, projectDir: string, mti
       gitBranch,
       entrypoint,
     },
+    skillsUsed: [...skillsUsed].sort(),
+    mcpServersUsed: [...mcpServersUsed].sort(),
+    subagentSpawns,
+    cliVersion,
+    outcomeSignals: {
+      userPositive,
+      userNegative,
+      rephrases,
+      errorTail: isError || looksLikeApologyOrFailure(lastAssistantText),
+      testsPassedTail: looksLikeTestsPassed(lastAssistantText),
+      reworkFiles: [...writeCountByFile.values()].filter((n) => n >= 2).length,
+    },
   };
 }
 
@@ -862,7 +1120,7 @@ export function summarizeCodexSessionFile(file: string, projectDir: string, mtim
   return summarizeWithCache(file, projectDir, mtime, parseCodexSession);
 }
 
-function parseCodexSession(file: string, content: string, projectDir: string, mtime: number): LiveSession | null {
+function parseCodexSession(file: string, lines: Iterable<string>, bytes: number, projectDir: string, mtime: number): LiveSession | null {
   let sessionId: string | null = null;
   let displayTitle: string | null = null;
   let lastPromptPreview: string | null = null;
@@ -872,6 +1130,13 @@ function parseCodexSession(file: string, content: string, projectDir: string, mt
   let outputTokens = 0;
   let cacheReadTokens = 0;
   let cacheCreateTokens = 0;
+  // Codex token accounting: sum per-turn usage (billed), not max-of-cumulative
+  // (which undercounts sessions whose context was compacted/reset).
+  let sumIn = 0, sumOut = 0, sumCached = 0, sawLast = false;
+  let maxTotIn = 0, maxTotOut = 0, maxTotCached = 0;
+  let userPositive = 0, userNegative = 0, rephrases = 0;
+  let lastUserText: string | null = null;
+  let lastAgentText = "";
   let toolCalls = 0;
   let toolErrors = 0;
   let messageCount = 0;
@@ -901,10 +1166,10 @@ function parseCodexSession(file: string, content: string, projectDir: string, mt
   };
 
   try {
-    pathBytes = Buffer.byteLength(content);
+    pathBytes = bytes;
     let previousInput = 0;
     let previousOutput = 0;
-    for (const line of content.split("\n")) {
+    for (const line of lines) {
       if (!line.trim()) continue;
       lineCount++;
       let obj: any;
@@ -935,39 +1200,51 @@ function parseCodexSession(file: string, content: string, projectDir: string, mt
         const payload = obj.payload ?? {};
         project = payload.cwd ?? project;
         displayTitle = displayTitle ?? payload.thread_name ?? payload.title ?? null;
+        // Codex records the model per turn here, not in session_meta — reading
+        // only session_meta left every Codex session's model "unknown".
+        if (payload.model || payload.model_slug) {
+          model = payload.model ?? payload.model_slug ?? model;
+          metricSources.model = "measured";
+        }
       } else if (obj.type === "event_msg") {
         const payload = obj.payload ?? {};
         if (payload.type === "agent_message" && typeof payload.message === "string") {
           textBlocks++;
           messageCount++;
           displayTitle = displayTitle ?? jsonPreview(payload.message, 80);
+          lastAgentText = payload.message;
+        } else if (payload.type === "user_message" && typeof payload.message === "string") {
+          if (payload.message.trim().startsWith(JUDGE_PROMPT_MARKER)) return null; // judge stub, not user work
         } else if (payload.type === "token_count") {
-          const usage = payload.info?.total_token_usage ?? payload.info?.last_token_usage ?? {};
-          const nextInput = Number(usage.input_tokens ?? 0) || 0;
-          const nextOutput = Number(usage.output_tokens ?? 0) || 0;
-          const nextCache = Number(usage.cached_input_tokens ?? 0) || 0;
-          const total = Number(usage.total_tokens ?? 0) || nextInput + nextOutput + nextCache;
-          inputTokens = Math.max(inputTokens, nextInput);
-          outputTokens = Math.max(outputTokens, nextOutput);
-          cacheReadTokens = Math.max(cacheReadTokens, nextCache);
+          const info = payload.info ?? {};
+          const last = info.last_token_usage;
+          const tot = info.total_token_usage;
+          if (last) {
+            sawLast = true;
+            sumIn += Number(last.input_tokens ?? 0) || 0;
+            sumOut += Number(last.output_tokens ?? 0) || 0;
+            sumCached += Number(last.cached_input_tokens ?? 0) || 0;
+          }
+          if (tot) {
+            maxTotIn = Math.max(maxTotIn, Number(tot.input_tokens ?? 0) || 0);
+            maxTotOut = Math.max(maxTotOut, Number(tot.output_tokens ?? 0) || 0);
+            maxTotCached = Math.max(maxTotCached, Number(tot.cached_input_tokens ?? 0) || 0);
+          }
           metricSources.tokens = "measured";
-          if (at) {
-            const deltaInput = Math.max(0, nextInput - previousInput);
-            const deltaOutput = Math.max(0, nextOutput - previousOutput);
+          if (at && tot) {
+            const cin = Number(tot.input_tokens ?? 0) || 0;
+            const cout = Number(tot.output_tokens ?? 0) || 0;
             const elapsedSec = Math.max((at - startedAt) / 1000, 0.001);
             usageSegments.push({
               atMs: at,
-              cumulativeInput: nextInput,
-              cumulativeOutput: nextOutput,
-              deltaInput,
-              deltaOutput,
-              outTokPerSec: nextOutput / elapsedSec,
+              cumulativeInput: cin,
+              cumulativeOutput: cout,
+              deltaInput: Math.max(0, cin - previousInput),
+              deltaOutput: Math.max(0, cout - previousOutput),
+              outTokPerSec: cout / elapsedSec,
             });
-            previousInput = nextInput;
-            previousOutput = nextOutput;
-          }
-          if (total > inputTokens + outputTokens + cacheReadTokens) {
-            cacheCreateTokens = Math.max(cacheCreateTokens, total - inputTokens - outputTokens - cacheReadTokens);
+            previousInput = cin;
+            previousOutput = cout;
           }
         }
       } else if (obj.type === "response_item") {
@@ -979,7 +1256,12 @@ function parseCodexSession(file: string, content: string, projectDir: string, mt
           const text = Array.isArray(payload.content)
             ? payload.content.map((item: any) => item.text).filter(Boolean).join(" ")
             : "";
-          if (text) displayTitle = displayTitle ?? jsonPreview(text, 80);
+          // OpenEval's own CLI-backed judge invocations leave codex_exec stub
+          // sessions behind; they are instrumentation, not user work.
+          if (payload.role === "user" && text.trim().startsWith(JUDGE_PROMPT_MARKER)) return null;
+          // Injected wrappers ("<permissions instructions>", "<environment_context>")
+          // make useless titles — wait for the first real message.
+          if (text && !text.trim().startsWith("<")) displayTitle = displayTitle ?? jsonPreview(text, 80);
         }
         if (payload.type === "function_call") {
           toolCalls++;
@@ -994,7 +1276,7 @@ function parseCodexSession(file: string, content: string, projectDir: string, mt
         if (payload.type === "function_call_output") {
           const output = String(payload.output ?? "");
           extractFilePaths(output, touchedFiles);
-          const errored = /exit(ed)? with code [1-9]|error|traceback|failed/i.test(output);
+          const errored = looksLikeToolError(output);
           if (typeof payload.call_id === "string") {
             const startMs = toolStartByCallIdMs.get(payload.call_id);
             if (startMs != null && at != null) {
@@ -1017,11 +1299,31 @@ function parseCodexSession(file: string, content: string, projectDir: string, mt
         }
       } else if (obj.type === "user_msg" || obj.type === "user_message") {
         const text = String(obj.payload?.message ?? obj.payload?.text ?? obj.message ?? obj.text ?? "");
-        if (text) lastPromptPreview = jsonPreview(text, 260);
+        if (text && !text.trim().startsWith("<")) lastPromptPreview = jsonPreview(text, 260);
+        const trimmed = text.trim();
+        if (trimmed && trimmed.length <= 600 && !trimmed.startsWith("<")) {
+          const sent = classifySentiment(trimmed);
+          if (sent === "positive") userPositive++;
+          else if (sent === "negative") userNegative++;
+          if (isRephrase(trimmed, lastUserText)) rephrases++;
+          lastUserText = trimmed;
+        }
       }
     }
   } catch {
     return null;
+  }
+
+  // Finalize tokens. Codex `input_tokens` INCLUDES the cached portion, so split
+  // fresh = input − cached and report cacheRead = cached — otherwise input and
+  // cacheRead double-count. Prefer summed per-turn usage; fall back to cumulative.
+  {
+    const totIn = sawLast ? sumIn : maxTotIn;
+    const totOut = sawLast ? sumOut : maxTotOut;
+    const cached = sawLast ? sumCached : maxTotCached;
+    cacheReadTokens = cached;
+    inputTokens = Math.max(0, totIn - cached);
+    outputTokens = totOut;
   }
 
   const durationMs = Math.max(0, lastEventAt - startedAt);
@@ -1032,6 +1334,14 @@ function parseCodexSession(file: string, content: string, projectDir: string, mt
     errors: toolErrorsByName.get(key) ?? 0,
   }));
   const toolDurations = summarizeToolDurations(toolDurationMs, toolErrorsByName);
+  // Codex session files carry no cost — estimate from measured tokens + model.
+  let costUsd = 0;
+  const estCost = estimateCostUsd(model, { input: inputTokens, output: outputTokens, cacheRead: cacheReadTokens, cacheCreate: cacheCreateTokens });
+  if (estCost != null) {
+    costUsd = estCost;
+    metricSources.cost = "inferred";
+  }
+
   const parseWarnings = buildWarnings(metricSources, malformedLineCount, lineCount, 0, true);
   if (originator) parseWarnings.push(`source: ${originator}${source ? ` / ${source}` : ""}${cliVersion ? ` ${cliVersion}` : ""}`);
   const toolErrorRate = toolCalls > 0 ? toolErrors / toolCalls : 0;
@@ -1050,7 +1360,7 @@ function parseCodexSession(file: string, content: string, projectDir: string, mt
     cacheReadTokens,
     cacheCreateTokens,
     totalTokens,
-    costUsd: 0,
+    costUsd,
     usageSegments,
     toolCalls,
     toolErrors,
@@ -1094,6 +1404,18 @@ function parseCodexSession(file: string, content: string, projectDir: string, mt
       permissionModes: {},
       gitBranch: null,
       entrypoint: source ?? originator,
+    },
+    skillsUsed: [],
+    mcpServersUsed: [],
+    subagentSpawns: 0,
+    cliVersion,
+    outcomeSignals: {
+      userPositive,
+      userNegative,
+      rephrases,
+      errorTail: looksLikeApologyOrFailure(lastAgentText),
+      testsPassedTail: looksLikeTestsPassed(lastAgentText),
+      reworkFiles: 0,
     },
   };
 }
@@ -1187,7 +1509,7 @@ function toTranscriptTurn(obj: any, index: number): LiveTranscriptTurn {
 
   if (type === "response_item") {
     const payload = obj.payload ?? {};
-    const errored = payload.type === "function_call_output" && /exit(ed)? with code [1-9]|error|traceback|failed/i.test(String(payload.output ?? ""));
+    const errored = payload.type === "function_call_output" && looksLikeToolError(String(payload.output ?? ""));
     return {
       type,
       subtype: payload.type,
@@ -1399,6 +1721,8 @@ function aggregate(sessions: LiveSession[], scanWarnings: string[] = [], source:
     sessionsWithMissingModel: sessions.filter((s) => s.metricSources.model === "missing").length,
     sessionsWithInferredModel: sessions.filter((s) => s.metricSources.model === "inferred").length,
     sessionsWithMissingTokens: sessions.filter((s) => s.metricSources.tokens === "missing").length,
+    sessionsWithInferredCost: sessions.filter((s) => s.metricSources.cost === "inferred").length,
+    archivedSessions: sessions.filter((s) => s.archived).length,
     sessionsWithMalformedLines: sessions.filter((s) => s.malformedLineCount > 0).length,
     staleSessions: sessions.filter((s) => s.staleMs > 1000 * 60 * 60 * 12).length,
     avgDataQuality: sessions.length ? totalQuality / sessions.length : 0,

@@ -81,7 +81,7 @@ export default function CompareClient({ runs, initialA, initialB }: Props) {
       {a && b && a !== b && summaryA && summaryB && (
         <section className="stagger-grid grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
           <Delta label="Pass rate" a={`${(summaryA.passRate * 100).toFixed(0)}%`} b={`${(summaryB.passRate * 100).toFixed(0)}%`} higherIsBetter aVal={summaryA.passRate} bVal={summaryB.passRate} />
-          <Delta label="pass@1" a={fmtPct(summaryA.passAt1)} b={fmtPct(summaryB.passAt1)} aVal={summaryA.passAt1} bVal={summaryB.passAt1} />
+          <Delta label="pass@1" a={fmtPct(summaryA.passAt1)} b={fmtPct(summaryB.passAt1)} aVal={summaryA.passAt1} bVal={summaryB.passAt1} higherIsBetter hint={`95% CI ${fmtCi(summaryA.passAt1Ci95)} → ${fmtCi(summaryB.passAt1Ci95)}`} />
           <Delta label="pass@k" a={fmtPct(summaryA.passAtK)} b={fmtPct(summaryB.passAtK)} aVal={summaryA.passAtK} bVal={summaryB.passAtK} />
           <Delta label="pass^k (reliability)" a={fmtPct(summaryA.passPowK)} b={fmtPct(summaryB.passPowK)} aVal={summaryA.passPowK} bVal={summaryB.passPowK} />
           <Delta label="Total cost" a={`$${summaryA.totalCostUsd.toFixed(4)}`} b={`$${summaryB.totalCostUsd.toFixed(4)}`} aVal={summaryA.totalCostUsd} bVal={summaryB.totalCostUsd} lowerIsBetter />
@@ -213,7 +213,7 @@ function DeltaText({ value, digits, prefix = "", higherIsBetter, lowerIsBetter }
   );
 }
 
-function Delta({ label, a, b, aVal, bVal, higherIsBetter, lowerIsBetter }: { label: string; a: string; b: string; aVal: number; bVal: number; higherIsBetter?: boolean; lowerIsBetter?: boolean }) {
+function Delta({ label, a, b, aVal, bVal, higherIsBetter, lowerIsBetter, hint }: { label: string; a: string; b: string; aVal: number; bVal: number; higherIsBetter?: boolean; lowerIsBetter?: boolean; hint?: string }) {
   const diff = bVal - aVal;
   let tone = "text-fg-muted";
   let bgTone = "";
@@ -237,8 +237,13 @@ function Delta({ label, a, b, aVal, bVal, higherIsBetter, lowerIsBetter }: { lab
         <span className="text-sm mono font-medium tabular-nums">{b}</span>
       </div>
       <div className={clsx("text-[11px] mono mt-0.5 tabular-nums", tone)}>{arrow} {diff > 0 ? "+" : ""}{diff.toFixed(2)}</div>
+      {hint && <div className="text-[10px] mono text-fg-dim mt-0.5 tabular-nums">{hint}</div>}
     </div>
   );
+}
+
+function fmtCi(ci?: { lo: number; hi: number }): string {
+  return ci ? `${(ci.lo * 100).toFixed(0)}–${(ci.hi * 100).toFixed(0)}%` : "—";
 }
 
 function fmtPct(x?: number) { return x == null ? "—" : `${(x * 100).toFixed(0)}%`; }

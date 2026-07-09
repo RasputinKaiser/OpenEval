@@ -25,9 +25,11 @@ export function parseCodexLine(line: string, into: ParseAccumulator): RunnerEven
 
   if (obj.type === "item.completed" && obj.item) {
     const item = obj.item;
-    if (item.type === "message") {
+    // Older CLIs emit type "message" with a content array; 0.4x+ emits type
+    // "agent_message" with a flat text field. Same meaning: assistant text.
+    if (item.type === "message" || item.type === "agent_message") {
       const texts = (item.content || []).filter((c: any) => c.type === "output_text" || c.type === "text").map((c: any) => c.text ?? "");
-      const text = texts.join("");
+      const text = typeof item.text === "string" && item.text ? item.text : texts.join("");
       const entry = { role: "assistant" as const, content: [{ type: "text" as const, text }], uuid: item.id, atMs: at, textLen: text.length };
       into.transcript.push(entry);
       if (text) {
@@ -67,7 +69,11 @@ export function parseCodexLine(line: string, into: ParseAccumulator): RunnerEven
       usage: {
         inputTokens: usage.input_tokens ?? usage.inputTokens ?? 0,
         outputTokens: usage.output_tokens ?? usage.outputTokens ?? 0,
-        cacheReadTokens: 0, cacheCreateTokens: 0, costUsd: 0,
+        // Codex reports cached input tokens under cached_input_tokens (same field
+        // the live-trace parser reads); 0 when absent. Without this, recorded
+        // Codex runs always show a 0% cache-hit rate in the summary.
+        cacheReadTokens: usage.cached_input_tokens ?? usage.cache_read_input_tokens ?? 0,
+        cacheCreateTokens: 0, costUsd: 0,
       },
       numTurns: obj.num_turns ?? 1,
       stopReason: obj.stop_reason ?? "completed",

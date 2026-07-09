@@ -74,6 +74,31 @@ button:active:not(:disabled) { transform: scale(0.96); }
     0 8px 24px rgba(0, 0, 0, 0.18);
 }
 
+/* Keyboard navigation must be visibly trackable everywhere. */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+  border-radius: 4px;
+}
+
+/*
+ * One table voice for the whole app: quiet uppercase headers (sticky inside
+ * scroll containers), hairline rows, hover trace, numerics right-aligned via
+ * the `num` cell class.
+ */
+.data-table { @apply w-full text-sm; }
+.data-table thead th {
+  @apply text-left font-medium px-3 py-2 text-[10px] uppercase tracking-wider text-fg-dim border-b border-bd;
+  position: sticky;
+  top: 0;
+  background: var(--color-bg-subtle);
+  z-index: 1;
+}
+.data-table td { @apply px-3 py-2; }
+.data-table tbody tr { border-bottom: 1px solid color-mix(in srgb, var(--color-bd) 50%, transparent); }
+.data-table tbody tr:hover { background: color-mix(in srgb, var(--color-bg-elev) 40%, transparent); }
+.data-table th.num, .data-table td.num { @apply text-right; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; font-variant-numeric: tabular-nums; }
+
 @keyframes shimmer {
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }

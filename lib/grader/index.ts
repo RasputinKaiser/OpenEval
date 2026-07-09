@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { evidenceLabel, graderEvidenceTier } from "../accuracy";
-import { runJudge } from "./judge";
+import { runJudge, extractJudgeJson } from "./judge";
 import type { CaseEvaluation, GraderResult, GraderSpec, RunnerResult } from "../types";
 
 function runShell(spec: { command: string; cwd?: string; env?: Record<string, string>; timeout_ms?: number }): Promise<{ code: number; stdout: string; stderr: string; durationMs: number; timedOut: boolean }> {
@@ -138,7 +138,11 @@ export async function runGrader(
     if (content === null) return fail(spec, `file not found: ${spec.path}`, dur());
     let parsed: any;
     try { parsed = JSON.parse(content); } catch (e) { return fail(spec, `invalid JSON: ${String(e)}`, dur(), content.slice(0, 400)); }
-    const segs = spec.jsonpath.split(".").filter(Boolean);
+    // Support dotted keys plus bracketed array indices, e.g. items[0].name
+    const segs = spec.jsonpath
+      .replace(/\[(\d+)\]/g, ".$1")
+      .split(".")
+      .filter(Boolean);
     let cur: any = parsed;
     for (const s of segs) {
       if (cur == null || typeof cur !== "object") { cur = undefined; break; }
@@ -245,8 +249,7 @@ export async function runGrader(
     const res = await runJudge({ harness: judgeHarness, model: judgeModel, prompt, timeoutMs: 120_000 });
     let judge: { passed?: boolean; score?: number; reason?: string } | null = null;
     if (res.ok || res.text) {
-      const m = res.text.match(/\{[\s\S]*\}/);
-      if (m) { try { judge = JSON.parse(m[0]); } catch {} }
+      judge = extractJudgeJson(res.text) as { passed?: boolean; score?: number; reason?: string } | null;
     }
     const passed = judge?.passed === true || (judge?.score ?? 0) >= (spec.min_score ?? 0.7);
     const score = typeof judge?.score === "number" ? judge.score : passed ? 1 : 0;

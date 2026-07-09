@@ -228,6 +228,15 @@ export function listEvents(runId: string, sinceId = 0, limit = 500): Array<{ id:
   return getDb().prepare(`SELECT * FROM events WHERE run_id = ? AND id > ? ORDER BY id ASC LIMIT ?`).all(runId, sinceId, limit) as any[];
 }
 
+// Defensive parse: a single truncated/corrupt JSON column (e.g. a run killed
+// mid-write) must not throw out of a list query and 500 the whole dashboard.
+// Fall back to a sane value so the rest of the row — and every other row —
+// still renders.
+export function safeParse<T>(json: string | null | undefined, fallback: T): T {
+  if (json == null) return fallback;
+  try { return JSON.parse(json) as T; } catch { return fallback; }
+}
+
 function rowToRun(r: any): RunRecord {
   return {
     id: r.id,
@@ -235,9 +244,9 @@ function rowToRun(r: any): RunRecord {
     status: r.status,
     created_at: r.created_at,
     ended_at: r.ended_at,
-    params: JSON.parse(r.params_json),
-    summary: r.summary_json ? JSON.parse(r.summary_json) : null,
-    manifest: r.manifest_json ? JSON.parse(r.manifest_json) : undefined,
+    params: safeParse(r.params_json, { runner: "headless", parallel: 1 } as RunRecord["params"]),
+    summary: r.summary_json ? safeParse(r.summary_json, null) : null,
+    manifest: r.manifest_json ? safeParse<unknown>(r.manifest_json, undefined) : undefined,
   };
 }
 
@@ -255,14 +264,20 @@ function rowToRunCase(r: any): RunCaseRecord {
     workdir_path: r.workdir_path,
     transcript_path: r.transcript_path,
     runner_kind: r.runner_kind,
-    runner_result: r.runner_result_json ? JSON.parse(r.runner_result_json) : null,
-    grader_result: r.grader_result_json ? JSON.parse(r.grader_result_json) : null,
-    evaluation: r.evaluation_json ? JSON.parse(r.evaluation_json) : null,
+    runner_result: r.runner_result_json ? safeParse(r.runner_result_json, null) : null,
+    grader_result: r.grader_result_json ? safeParse(r.grader_result_json, null) : null,
+    evaluation: r.evaluation_json ? safeParse(r.evaluation_json, null) : null,
     budget_exceeded: !!r.budget_exceeded,
     error_msg: r.error_msg,
-    case_def: JSON.parse(r.case_def_json),
+    case_def: safeParse(r.case_def_json, {
+      id: r.case_id,
+      name: r.case_name,
+      category: r.category,
+      prompt: "",
+      graders: [],
+    } as unknown as RunCaseRecord["case_def"]),
     seq: r.seq,
     sample: r.sample ?? 0,
-    harness_info: r.harness_info_json ? JSON.parse(r.harness_info_json) : undefined,
+    harness_info: r.harness_info_json ? safeParse(r.harness_info_json, undefined) : undefined,
   };
 }
