@@ -40,8 +40,44 @@ export function redactSensitiveText(value: unknown): string {
   if (value == null) return "";
   return String(value)
     .replace(USER_PATH_RE, "/$1/[redacted]")
-    .replace(/(-Users-)([^-\s/]+)(-)/g, "$1[redacted]$3")
-    .replace(/(-home-)([^-\s/]+)(-)/g, "$1[redacted]$3");
+    // Lookahead, not a captured trailing dash: munged dirs can end the segment
+    // at a slash or end-of-string (e.g. /tmp/claude-501/-Users-alice/uuid).
+    .replace(/(-Users-)([^-\s/]+)(?=[-/\s]|$)/g, "$1[redacted]")
+    .replace(/(-home-)([^-\s/]+)(?=[-/\s]|$)/g, "$1[redacted]");
+}
+
+/**
+ * Scrub bare mentions of known local usernames (e.g. inside bundle ids or
+ * prose), which the path-shaped regexes can't catch. Callers harvest the
+ * usernames from real filesystem paths in their data. Names under 4 chars are
+ * skipped — too collision-prone as bare tokens.
+ */
+export function redactNamedUsers(value: unknown, usernames: Iterable<string>): string {
+  let text = String(value ?? "");
+  for (const name of usernames) {
+    if (name.length < 4 || name === "[redacted]") continue;
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    text = text.replace(new RegExp(`(?<![\\w-])${escaped}(?![\\w-])`, "g"), "[redacted]");
+  }
+  return text;
+}
+
+/** Pull usernames out of /Users/... or /home/... paths in a string. */
+export function collectPathUsernames(value: unknown, into: Set<string>): void {
+  if (typeof value !== "string") return;
+  for (const m of value.matchAll(/\/(?:Users|home)\/([^/\s]+)/g)) into.add(m[1]);
+}
+
+/**
+ * One-call display scrub: path-shaped usernames always; bare username tokens
+ * when the caller supplies harvested names; credential shapes on request
+ * (transcript bodies). Synchronous — safe in render paths.
+ */
+export function redactDisplay(value: unknown, opts: { usernames?: Iterable<string>; secrets?: boolean } = {}): string {
+  let text = redactSensitiveText(value);
+  if (opts.secrets) text = redactSecrets(text);
+  if (opts.usernames) text = redactNamedUsers(text, opts.usernames);
+  return text;
 }
 
 export function compactDisplayPath(value: unknown, redact: boolean): string {
