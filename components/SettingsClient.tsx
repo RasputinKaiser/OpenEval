@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import clsx from "clsx";
-import { Save, RotateCcw } from "lucide-react";
+import { Save, RotateCcw, Settings as SettingsIcon } from "lucide-react";
+import PageHeader from "./PageHeader";
 
 const DEFAULTS = {
   defaultHarness: "",
@@ -50,10 +51,7 @@ export default function SettingsClient() {
 
   return (
     <div className="p-8 max-w-2xl mx-auto">
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-        <p className="text-sm text-fg-muted mt-1">Configure dashboard defaults. Stored locally in your browser.</p>
-      </header>
+      <PageHeader icon={SettingsIcon} title="Settings" subtitle="Configure dashboard defaults. Stored locally in your browser." />
 
       <section className="space-y-4">
         <div className="card p-5">

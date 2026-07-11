@@ -85,7 +85,7 @@ function RunTimelineImpl({ cases, selectedIndex, onSelect, live }: Props) {
             aria-pressed={selectedIndex === s.i}
             style={{ left: `${s.left}%`, width: `${s.width}%` }}
             className={clsx(
-              "absolute top-1 bottom-1 rounded-sm border-x border-black/20 transition-all duration-150",
+              "absolute top-1 bottom-1 rounded-sm border-x border-black/20 transition-[left,width,box-shadow] duration-150",
               STATUS_FILL[s.c.status] ?? STATUS_FILL.pending,
               selectedIndex === s.i && "ring-2 ring-white/80 ring-offset-1 ring-offset-card z-10",
             )}

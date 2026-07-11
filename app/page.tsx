@@ -6,6 +6,7 @@ import { scanAllSources, type AllSourcesResult } from "@/lib/collection/aggregat
 import { buildTimeline, type TimelineReport } from "@/lib/insights/collect";
 import StatusBadge from "@/components/StatusBadge";
 import HarnessBadge from "@/components/HarnessBadge";
+import RecentSessions from "@/components/RecentSessions";
 import { Sparkline } from "@/components/Sparkline";
 import { fmtNum, fmtNumFull, fmtUsd, fmtUsdFull, fmtRel, fmtDuration, fmtSigned, fmtPct } from "@/lib/format";
 import {
@@ -108,35 +109,7 @@ export default async function Page() {
               Collection <ArrowRight className="size-3" />
             </Link>
           </div>
-          {recentSessions.length === 0 ? (
-            <div className="text-center py-10 text-sm text-fg-dim">No sessions discovered yet.</div>
-          ) : (
-            <div className="divide-y divide-bd/50">
-              {recentSessions.map((s, i) => {
-                const inner = (
-                  <>
-                    <span className="rounded bg-accent/10 text-accent-soft px-1.5 py-0.5 text-[10px] shrink-0">{s.sourceLabel}</span>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm truncate">{s.displayTitle || s.lastPromptPreview || s.project}</div>
-                      <div className="text-[11px] text-fg-dim mono truncate">{s.model ?? "model unknown"} · {s.project}</div>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <div className="text-sm mono tabular-nums" title={fmtNumFull(s.inputTokens + s.outputTokens) + " tokens"}>{fmtNum(s.inputTokens + s.outputTokens)}</div>
-                      <div className="text-[11px] text-fg-dim mono tabular-nums">{fmtRel(s.lastEventAt)}</div>
-                    </div>
-                  </>
-                );
-                const cls = "py-2 flex items-center gap-3 min-w-0";
-                return s.path ? (
-                  <Link key={`${s.sourceId}-${s.sessionId}-${i}`} href={`/collection/session?file=${encodeURIComponent(s.path)}`} className={clsx(cls, "hover:bg-bg-elev/40 -mx-2 px-2 rounded transition-colors")}>
-                    {inner}
-                  </Link>
-                ) : (
-                  <div key={`${s.sourceId}-${s.sessionId}-${i}`} className={cls}>{inner}</div>
-                );
-              })}
-            </div>
-          )}
+          <RecentSessions sessions={recentSessions} />
         </section>
 
         <section className="card p-5">
@@ -149,7 +122,7 @@ export default async function Page() {
           {timeline && timeline.outcomeSeries.length > 1 ? (
             <>
               <div className="mb-3">
-                <Sparkline data={timeline.outcomeSeries.map((p) => p.value)} width={280} height={44} />
+                <Sparkline data={timeline.outcomeSeries.map((p) => p.value)} width={280} height={44} responsive />
                 <div className="text-[10px] text-fg-dim mt-1">Inferred outcome, trailing median · {timeline.totalSessions} sessions</div>
               </div>
               {topImpacts.length > 0 && (

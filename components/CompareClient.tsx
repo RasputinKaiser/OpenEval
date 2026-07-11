@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import clsx from "clsx";
 import { ArrowRight, GitCompareArrows, Loader2 } from "lucide-react";
+import PageHeader from "./PageHeader";
 
 interface RunLite { id: string; name: string; createdAt: number; status: string; passRate: number | null; model?: string; }
 interface Props { runs: RunLite[]; initialA?: string; initialB?: string; }
@@ -65,10 +66,7 @@ export default function CompareClient({ runs, initialA, initialB }: Props) {
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold flex items-center gap-2"><GitCompareArrows className="size-6" /> Compare runs</h1>
-        <p className="text-sm text-fg-muted mt-1">Diff two runs to surface per-case regressions and model deltas.</p>
-      </header>
+      <PageHeader icon={GitCompareArrows} title="Compare runs" subtitle="Diff two runs to surface per-case regressions and model deltas." />
 
       <div className="card p-4 mb-4">
         <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-3 items-end">

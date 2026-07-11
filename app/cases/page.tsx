@@ -1,7 +1,9 @@
 import Link from "next/link";
 import clsx from "clsx";
+import { FileText } from "lucide-react";
 import { loadCases } from "@/lib/cases";
 import CasesClient from "@/components/CasesClient";
+import PageHeader from "@/components/PageHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -13,10 +15,7 @@ export default async function CasesPage(props: { searchParams: Promise<{ categor
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Cases</h1>
-        <p className="text-sm text-fg-muted mt-1">Test library. {all.length} cases across {categories.length} categories.</p>
-      </header>
+      <PageHeader icon={FileText} title="Cases" subtitle={`Test library. ${all.length} cases across ${categories.length} categories.`} />
 
       <nav className="flex flex-wrap gap-2 mb-6">
         <Link href="/cases" className={clsx("text-[11px] px-2.5 py-1.5 rounded-md border mono", !filterCat ? "border-accent bg-accent/10 text-accent-soft" : "border-bd text-fg-muted hover:bg-bg-elev")}>all</Link>

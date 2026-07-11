@@ -13,6 +13,8 @@ import {
   SearchCheck, BadgeCheck, Scale, Fingerprint, Search,
 } from "lucide-react";
 import type { EvidenceTier, GraderResult, GraderSpec, RunCaseRecord, TranscriptEntry } from "@/lib/types";
+import { redactSensitiveText } from "@/lib/redaction";
+import { useRedaction } from "@/lib/use-redaction";
 import { useFocusOnSlash } from "@/lib/use-focus-slash";
 import { useVisibilityPoll } from "@/lib/use-visibility-poll";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
@@ -344,6 +346,13 @@ function CaseSidePanel({ rc, runId }: { rc: RunCaseRecord; runId: string }) {
   const runner = rc.runner_result;
   const grader = rc.grader_result;
   const trust = summarizeCaseTrust(rc);
+  const jumps = [
+    ...(grader && grader.results.length > 0 ? [{ id: "case-graders", label: "Graders" }] : []),
+    ...(rc.case_def?.visual?.expected_artifacts?.length ? [{ id: "case-artifact", label: "Artifact" }] : []),
+    ...(runner && runner.transcript.length > 0 ? [{ id: "case-transcript", label: "Transcript" }] : []),
+    ...(runner?.finalText ? [{ id: "case-answer", label: "Answer" }] : []),
+    ...(runner && runner.toolCalls.length > 0 ? [{ id: "case-tools", label: "Tools" }] : []),
+  ];
   return (
     <div className="space-y-3">
       <div className="card p-4">
@@ -354,6 +363,20 @@ function CaseSidePanel({ rc, runId }: { rc: RunCaseRecord; runId: string }) {
           </div>
           <StatusBadge status={rc.status} size="md" />
         </div>
+        {jumps.length > 1 && (
+          <div className="mt-3 flex flex-wrap items-center gap-1.5">
+            {jumps.map((j) => (
+              <a
+                key={j.id}
+                href={`#${j.id}`}
+                onClick={(e) => { e.preventDefault(); document.getElementById(j.id)?.scrollIntoView({ behavior: "smooth", block: "start" }); }}
+                className="rounded-full border border-bd px-2.5 py-1 text-[11px] text-fg-muted hover:bg-bg-elev hover:text-fg transition-colors"
+              >
+                {j.label}
+              </a>
+            ))}
+          </div>
+        )}
       </div>
 
       {(rc.status === "error" || rc.error_msg) && (
@@ -382,7 +405,7 @@ function CaseSidePanel({ rc, runId }: { rc: RunCaseRecord; runId: string }) {
       )}
 
       {grader && grader.results.length > 0 && (
-        <div className="card overflow-hidden">
+        <div id="case-graders" className="card overflow-hidden scroll-mt-3">
           <div className="px-4 py-2.5 border-b border-bd-subtle bg-bg-subtle/50 flex items-center justify-between">
             <span className="text-xs font-medium">Evidence groups</span>
             <span className={clsx("text-xs mono font-semibold", grader.passed ? "text-ok" : "text-err")}>
@@ -399,30 +422,32 @@ function CaseSidePanel({ rc, runId }: { rc: RunCaseRecord; runId: string }) {
       )}
 
       {rc.case_def?.visual?.expected_artifacts?.length ? (
-        <ArtifactStage
-          artifacts={rc.case_def.visual.expected_artifacts}
-          caseId={rc.case_id}
-          runId={runId}
-          status={rc.status}
-        />
+        <div id="case-artifact" className="scroll-mt-3">
+          <ArtifactStage
+            artifacts={rc.case_def.visual.expected_artifacts}
+            caseId={rc.case_id}
+            runId={runId}
+            status={rc.status}
+          />
+        </div>
       ) : null}
 
       {runner && runner.transcript.length > 0 && (
-        <div className="card overflow-hidden">
+        <div id="case-transcript" className="card overflow-hidden scroll-mt-3">
           <div className="px-4 py-2.5 border-b border-bd-subtle bg-bg-subtle/50 text-xs font-medium">Transcript ({runner.transcript.length})</div>
           <Transcript transcript={runner.transcript} />
         </div>
       )}
 
       {runner && runner.finalText && (
-        <div className="card p-4">
+        <div id="case-answer" className="card p-4 scroll-mt-3">
           <div className="text-[10px] uppercase tracking-wider text-fg-muted mb-2">Final answer</div>
           <pre className="text-[12px] mono text-fg whitespace-pre-wrap max-h-64 overflow-y-auto">{runner.finalText}</pre>
         </div>
       )}
 
       {runner && runner.toolCalls.length > 0 && (
-        <div className="card overflow-hidden">
+        <div id="case-tools" className="card overflow-hidden scroll-mt-3">
           <div className="px-4 py-2.5 border-b border-bd-subtle bg-bg-subtle/50 text-xs font-medium">Tool calls ({runner.toolCalls.length})</div>
           <div className="divide-y divide-bd-subtle max-h-80 overflow-y-auto">
             {runner.toolCalls.map((tc, i) => (
@@ -671,6 +696,7 @@ function ArtifactStage({
   const [preview, setPreview] = useState<{ path: string; content: string; kind: "svg" | "html" | "text" } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const { redact } = useRedaction();
 
   useEffect(() => {
     if (!selected) return;
@@ -711,7 +737,7 @@ function ArtifactStage({
           <Eye className="size-4 text-accent-soft" />
           <div>
             <div className="text-xs font-medium">Live artifact preview</div>
-            <div className="text-[10px] text-fg-dim mono">{preview?.path ?? selected}</div>
+            <div className="text-[10px] text-fg-dim mono">{redact ? redactSensitiveText(preview?.path ?? selected) : (preview?.path ?? selected)}</div>
           </div>
         </div>
         <div className="flex flex-wrap gap-1.5">

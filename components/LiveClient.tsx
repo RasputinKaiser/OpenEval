@@ -11,7 +11,6 @@ import {
   BarChart3,
   Clock3,
   Cpu,
-  Eye,
   FileText,
   Filter,
   FolderGit2,
@@ -21,7 +20,6 @@ import {
   Inbox,
   Layers,
   Loader2,
-  Lock,
   MessageSquareText,
   RefreshCw,
   Search,
@@ -34,7 +32,11 @@ import {
   Zap,
 } from "lucide-react";
 import HarnessPicker from "./HarnessPicker";
-import { compactDisplayPath, redactSensitiveText } from "@/lib/redaction";
+import PageHeader from "./PageHeader";
+import { SectionHeader, SectionNav } from "./Section";
+import { RedactToggle } from "./RedactToggle";
+import { collectPathUsernames, compactDisplayPath, redactNamedUsers, redactSensitiveText } from "@/lib/redaction";
+import { useRedaction } from "@/lib/use-redaction";
 import { Sparkline } from "@/components/Sparkline";
 import type { LiveAggregate, LiveMetricSources, LiveSession, LiveTranscriptTurn, MetricSource, TranscriptResult } from "@/lib/live";
 import { useFocusOnSlash } from "@/lib/use-focus-slash";
@@ -49,8 +51,12 @@ type LiveClientProps = {
 type FilterMode = "all" | "attention" | "stale" | "missing";
 type SortMode = "recent" | "quality" | "errors";
 
-const REDACT_STORAGE_KEY = "openeval.live.redactUsernames";
 const HARNESS_STORAGE_KEY = "openeval.live.harness";
+
+// Usernames harvested from the scanned sessions' real paths — consulted by
+// displayText so bare mentions (bundle ids, prose) get scrubbed everywhere
+// in this page without threading a set through every subcomponent.
+let KNOWN_USERS: ReadonlySet<string> = new Set();
 
 
 export default function LiveClient({ initialData, error: initialError, getTranscript }: LiveClientProps) {
@@ -60,7 +66,7 @@ export default function LiveClient({ initialData, error: initialError, getTransc
   const [selected, setSelected] = useState<LiveSession | null>(null);
   const handleSelectSession = useCallback((s: LiveSession) => setSelected(s), []);
   const [selectedHarness, setSelectedHarness] = useState(initialData?.sourceHarness ?? "");
-  const [redact, setRedact] = useState(true);
+  const { redact, setRedact } = useRedaction();
   const [filter, setFilter] = useState<FilterMode>("all");
   const [sort, setSort] = useState<SortMode>("recent");
   const [search, setSearch] = useState("");
@@ -72,9 +78,6 @@ export default function LiveClient({ initialData, error: initialError, getTransc
 
   useEffect(() => {
     try {
-      const stored = window.localStorage.getItem(REDACT_STORAGE_KEY);
-      if (stored === "0") setRedact(false);
-      if (stored === "1") setRedact(true);
       const url = new URL(window.location.href);
       const urlHarness = url.searchParams.get("harness");
       const storedHarness = window.localStorage.getItem(HARNESS_STORAGE_KEY);
@@ -82,12 +85,6 @@ export default function LiveClient({ initialData, error: initialError, getTransc
       else if (storedHarness) setSelectedHarness(storedHarness);
     } catch {}
   }, []);
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(REDACT_STORAGE_KEY, redact ? "1" : "0");
-    } catch {}
-  }, [redact]);
 
   useEffect(() => {
     try {
@@ -144,6 +141,17 @@ export default function LiveClient({ initialData, error: initialError, getTransc
     };
   }, [selectedHarness]);
 
+  // Render-phase on purpose: children call displayText during this same render.
+  useMemo(() => {
+    const names = new Set<string>();
+    for (const s of data?.sessions ?? []) {
+      collectPathUsernames(s.project, names);
+      collectPathUsernames(s.path, names);
+    }
+    for (const root of data?.sourceRoots ?? []) collectPathUsernames(root, names);
+    KNOWN_USERS = names;
+  }, [data]);
+
   const visibleSessions = useMemo(() => {
     const sessions = data?.sessions ?? [];
     const q = debouncedSearch.trim().toLowerCase();
@@ -173,44 +181,45 @@ export default function LiveClient({ initialData, error: initialError, getTransc
   const modelEvidenceTone = data.sessionsWithMissingModel ? "warn" : undefined;
 
   return (
-    <div className="mx-auto max-w-7xl p-4 md:p-8">
-      <header className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-normal">
-            <Activity className="size-6 text-accent-soft" /> Live sessions
-          </h1>
-          <p className="mt-1 max-w-3xl text-sm leading-6 text-fg-muted">
+    <div className="mx-auto max-w-7xl p-4 md:p-6">
+      <PageHeader
+        icon={Activity}
+        title="Live sessions"
+        subtitle={
+          <>
             Live trace sessions from <code className="mono text-xs">{displayText(data.sourceRoots[0] ?? data.sourceLabel, redact)}</code>, with usage
             provenance, parser confidence, and copy-safe redaction for local usernames.
-          </p>
-        </div>
-        <div className="flex w-full flex-col gap-2 sm:w-auto sm:min-w-80">
-          <HarnessPicker value={selectedHarness || undefined} onChange={(harness) => {
-            setSelected(null);
-            setSelectedHarness(harness || "");
-          }} />
-          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-          <button
-            type="button"
-            onClick={() => setRedact((value) => !value)}
-            className={clsx(
-              "inline-flex items-center gap-2 rounded-md border px-3 py-2 text-xs font-medium",
-              redact ? "border-ok/30 bg-ok/10 text-ok" : "border-warn/30 bg-warn/10 text-warn"
-            )}
-          >
-            {redact ? <Lock className="size-4" /> : <Eye className="size-4" />}
-            REDACT {redact ? "ON" : "OFF"}
-          </button>
-          <button
-            type="button"
-            onClick={() => window.location.reload()}
-            className="inline-flex items-center gap-2 rounded-md border border-bd bg-bg-elev px-3 py-2 text-xs text-fg-muted hover:text-fg"
-          >
-            <RefreshCw className="size-4" /> Refresh
-          </button>
+          </>
+        }
+        actions={
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:min-w-80">
+            <HarnessPicker value={selectedHarness || undefined} onChange={(harness) => {
+              setSelected(null);
+              setSelectedHarness(harness || "");
+            }} />
+            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+              <RedactToggle redact={redact} onToggle={() => setRedact((value) => !value)} />
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="inline-flex items-center gap-2 rounded-md border border-bd bg-bg-elev px-3 py-2 text-xs text-fg-muted hover:text-fg"
+              >
+                <RefreshCw className="size-4" /> Refresh
+              </button>
+            </div>
           </div>
-        </div>
-      </header>
+        }
+      />
+
+      <SectionNav
+        sections={[
+          { id: "usage", label: "Usage" },
+          { id: "quality", label: "Quality" },
+          { id: "sessions", label: "Sessions" },
+          { id: "intelligence", label: "Intelligence" },
+        ]}
+        summary={`${data.totalSessions} sessions · ${Math.round(data.avgDataQuality)}% quality`}
+      />
 
       {data.sourceStatus !== "available" && (
         <div className="mb-4 rounded-lg border border-warn/30 bg-warn/10 p-3 text-sm text-warn">
@@ -226,7 +235,14 @@ export default function LiveClient({ initialData, error: initialError, getTransc
 
       <UsageStrip data={data} />
 
-      <section className="mb-6 grid grid-cols-1 gap-3 md:grid-cols-3">
+      <section id="quality" className="scroll-mt-16 mb-6">
+        <SectionHeader
+          icon={Gauge}
+          title="Data quality"
+          desc="What the trace actually records — population, model evidence, and parse health"
+          right={`${Math.round(data.avgDataQuality)}% avg quality`}
+        />
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         <MetricGroup label="Population">
           <Stat label="Sessions" value={String(data.totalSessions)} icon={Activity} />
           <Stat label="Measured dur" value={`${data.sessionsWithMeasuredDuration}/${data.totalSessions}`} icon={Timer} />
@@ -241,9 +257,17 @@ export default function LiveClient({ initialData, error: initialError, getTransc
           <Stat label="Stale" value={String(data.staleSessions)} icon={Clock3} tone={data.staleSessions ? "warn" : undefined} />
           <Stat label="Malformed" value={String(data.sessionsWithMalformedLines)} icon={ShieldAlert} tone={data.sessionsWithMalformedLines ? "err" : undefined} />
         </MetricGroup>
+        </div>
       </section>
 
-      <section className="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-[1.1fr_1.8fr]">
+      <section id="sessions" className="scroll-mt-16 mb-6">
+      <SectionHeader
+        icon={FolderGit2}
+        title="Sessions"
+        desc="Model evidence and every recent session — filter, sort, click for the full drawer"
+        right={`${visibleSessions.length}/${data.sessions.length} shown`}
+      />
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.1fr_1.8fr]">
         <ModelPanel data={data} />
         <section className="card overflow-hidden">
           <div className="flex flex-col gap-3 border-b border-bd-subtle px-4 py-3 md:flex-row md:items-center md:justify-between">
@@ -274,7 +298,7 @@ export default function LiveClient({ initialData, error: initialError, getTransc
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search…"
-                  className="w-32 lg:w-44 pl-8 pr-2 py-1.5 text-[11px] bg-bg border border-bd rounded-md focus:outline-none focus:border-accent focus:w-40 lg:focus:w-52 transition-all placeholder:text-fg-dim"
+                  className="w-32 lg:w-44 pl-8 pr-2 py-1.5 text-[11px] bg-bg border border-bd rounded-md focus:outline-none focus:border-accent focus:w-40 lg:focus:w-52 transition-[width,border-color] placeholder:text-fg-dim"
                 />
               </div>
             </div>
@@ -303,6 +327,7 @@ export default function LiveClient({ initialData, error: initialError, getTransc
             )}
           </div>
         </section>
+      </div>
       </section>
 
       <TraceIntelligencePanels data={data} redact={redact} />
@@ -368,7 +393,14 @@ function ModelPanel({ data }: { data: LiveAggregate }) {
 function TraceIntelligencePanels({ data, redact }: { data: LiveAggregate; redact: boolean }) {
   const queueTotal = data.queueTotals.enqueue + data.queueTotals.dequeue + data.queueTotals.remove + data.queueTotals.popAll;
   return (
-    <section className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-2 2xl:grid-cols-4">
+    <section id="intelligence" className="scroll-mt-16 mb-4">
+    <SectionHeader
+      icon={GitFork}
+      title="Trace intelligence"
+      desc="Execution graph, tool reliability, operator queue, and file impact across the scanned sessions"
+      right={`${fmt(data.totalToolCalls)} tool calls`}
+    />
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 2xl:grid-cols-4">
       <section className="card overflow-hidden">
         <PanelHeader icon={GitFork} title="Execution graph" subtitle="Root thread, sidechains, and agents." />
         <div className="grid grid-cols-3 gap-2 p-4">
@@ -432,6 +464,7 @@ function TraceIntelligencePanels({ data, redact }: { data: LiveAggregate; redact
           }))} redact={false} empty="No touched files inferred." />
         </div>
       </section>
+    </div>
     </section>
   );
 }
@@ -442,7 +475,7 @@ function UsageStrip({ data }: { data: LiveAggregate }) {
   const costMeasured = usage.sessionsWithMeasuredCost;
   const measuredTone = tokenMeasured === data.totalSessions && data.totalSessions > 0 ? "ok" : tokenMeasured > 0 ? "warn" : "warn";
   return (
-    <section className="mb-6 card overflow-hidden">
+    <section id="usage" className="scroll-mt-16 mb-6 card overflow-hidden">
       <div className="flex flex-col gap-2 border-b border-bd-subtle px-4 py-3 md:flex-row md:items-center md:justify-between">
         <div>
           <div className="flex items-center gap-2 text-sm font-medium">
@@ -690,6 +723,15 @@ function SessionDrawer({
               </div>
               <p className="mono mt-1 break-all text-xs text-fg-muted">{displayText(session.sessionId, redact)}</p>
             </div>
+            {session.path && (
+              <a
+                href={`/collection/session?file=${encodeURIComponent(session.path)}`}
+                className="shrink-0 inline-flex items-center gap-1.5 rounded-md border border-bd px-2.5 py-1.5 text-xs text-fg-muted hover:bg-bg-elev hover:text-fg transition-colors"
+                title="Open the full transcript viewer for this session"
+              >
+                <FileText className="size-3.5" /> Full transcript
+              </a>
+            )}
             <button type="button" onClick={requestClose} className="rounded min-h-10 min-w-10 flex items-center justify-center hover:bg-bg-elev">
               <X className="size-5 text-fg-muted" />
             </button>
@@ -1110,7 +1152,7 @@ function ErrorCard({ message }: { message: string }) {
 }
 
 function displayText(value: unknown, redact: boolean): string {
-  return redact ? redactSensitiveText(value) : String(value ?? "");
+  return redact ? redactNamedUsers(redactSensitiveText(value), KNOWN_USERS) : String(value ?? "");
 }
 
 function shortId(id: string): string {

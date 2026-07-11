@@ -82,7 +82,7 @@ export default function Sidebar() {
 
   return (
     <aside className={clsx(
-      "shrink-0 border-b border-bd bg-bg-subtle/80 backdrop-blur md:flex md:min-h-screen md:flex-col md:border-b-0 md:border-r transition-all",
+      "shrink-0 border-b border-bd bg-bg-subtle/80 backdrop-blur md:flex md:min-h-screen md:flex-col md:border-b-0 md:border-r transition-[width]",
       collapsed ? "md:w-14" : "md:w-60"
     )}>
       <div className="px-4 py-3 md:border-b md:border-bd md:py-5">
@@ -141,7 +141,7 @@ export default function Sidebar() {
           <ThemeToggle collapsed={collapsed} />
           <button
             onClick={() => setCollapsed(!collapsed)}
-            className="min-h-8 min-w-8 flex items-center justify-center rounded text-fg-dim hover:text-fg hover:bg-bg-elev transition-colors"
+            className="min-h-10 min-w-10 flex items-center justify-center rounded-md text-fg-dim hover:text-fg hover:bg-bg-elev transition-colors"
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
             {collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}

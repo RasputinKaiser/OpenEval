@@ -1,23 +1,20 @@
 import fs from "node:fs";
 import path from "node:path";
 import Link from "next/link";
-import clsx from "clsx";
 import { ArrowLeft, FileText, AlertTriangle, Archive } from "lucide-react";
-import { parseSessionTranscript, type LiveTranscriptTurn } from "@/lib/live";
+import { parseSessionTranscript } from "@/lib/live";
 import { isPathInAnyCollectionSource } from "@/lib/collection/sources";
 import { fmtNum, fmtRel } from "@/lib/format";
 import PageHeader from "@/components/PageHeader";
+import TranscriptClient from "@/components/TranscriptClient";
+import { RedactedPath } from "@/components/RedactToggle";
 
 export const dynamic = "force-dynamic";
 
-/** How many turns to render at once — full parse is capped upstream at 20k. */
-const RENDER_CAP = 1_500;
-
-const SEVERITY_TONE: Record<LiveTranscriptTurn["severity"], string> = {
-  info: "border-bd/50",
-  warning: "border-warn/40 bg-warn/5",
-  error: "border-err/40 bg-err/5",
-};
+/** How many turns to render at once — full parse is capped upstream at 20k.
+ * Turn cards use content-visibility (cv-auto), so offscreen rows cost no
+ * layout/paint; the cap only bounds DOM size for truly enormous sessions. */
+const RENDER_CAP = 5_000;
 
 /**
  * Read-only transcript viewer for ANY discovered session (search hits, the
@@ -51,7 +48,7 @@ export default async function SessionViewerPage({ searchParams }: { searchParams
     return (
       <div className="p-4 md:p-6 max-w-5xl mx-auto">
         {back}
-        <PageHeader icon={Archive} title={path.basename(file)} subtitle={file} />
+        <PageHeader icon={Archive} title={path.basename(file)} subtitle={<RedactedPath path={file} className="mono text-[12px]" />} />
         <div className="card p-4 text-sm text-fg-muted flex items-center gap-2">
           <Archive className="size-4 shrink-0 text-fg-dim" />
           This session&apos;s file has been pruned from disk. Its parsed summary lives on in the archive (Collection totals, Timeline), but the full transcript is gone.
@@ -73,7 +70,7 @@ export default async function SessionViewerPage({ searchParams }: { searchParams
         title={path.basename(file)}
         subtitle={
           <span className="mono text-[12px]">
-            {file} · {fmtNum(st.size)}B on disk · modified {fmtRel(st.mtimeMs)} · {fmtNum(turns.length)} turns
+            <RedactedPath path={file} /> · {fmtNum(st.size)}B on disk · modified {fmtRel(st.mtimeMs)} · {fmtNum(turns.length)} turns
             {errorCount > 0 && <span className="text-err"> · {errorCount} errors</span>}
             {warnCount > 0 && <span className="text-warn"> · {warnCount} warnings</span>}
           </span>
@@ -82,21 +79,7 @@ export default async function SessionViewerPage({ searchParams }: { searchParams
 
       {error && <div className="card p-3 mb-4 text-sm text-err flex items-center gap-2"><AlertTriangle className="size-4" /> {error}</div>}
 
-      <div className="space-y-1">
-        {shown.map((t, i) => (
-          <div key={i} className={clsx("card border rounded-md px-3 py-2", SEVERITY_TONE[t.severity])}>
-            <div className="flex items-center justify-between gap-3">
-              <span className={clsx("text-[11px] font-medium", t.severity === "error" ? "text-err" : t.severity === "warning" ? "text-warn" : "text-fg-muted")}>
-                {t.label}
-              </span>
-              <span className="text-[10px] text-fg-dim mono shrink-0">{t.at ? new Date(t.at).toLocaleTimeString() : ""}</span>
-            </div>
-            {t.preview && (
-              <pre className="mt-1 text-[12px] mono text-fg-muted whitespace-pre-wrap break-words max-h-48 overflow-y-auto">{t.preview}</pre>
-            )}
-          </div>
-        ))}
-      </div>
+      <TranscriptClient turns={shown} file={file} />
 
       {turns.length > RENDER_CAP && (
         <p className="text-[11px] text-fg-dim mt-3">

@@ -34,7 +34,7 @@ export default function ThemeToggle({ collapsed }: { collapsed?: boolean }) {
   return (
     <button
       onClick={toggle}
-      className={clsx("min-h-8 min-w-8 flex items-center justify-center rounded text-fg-dim hover:text-fg hover:bg-bg-elev transition-colors")}
+      className={clsx("min-h-10 min-w-10 flex items-center justify-center rounded-md text-fg-dim hover:text-fg hover:bg-bg-elev transition-colors")}
       aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
       title={collapsed ? (theme === "dark" ? "Light mode" : "Dark mode") : undefined}
     >

@@ -341,7 +341,7 @@ function ScatterSection({ cases, maxTokens, maxCost }: { cases: PerCase[]; maxTo
             stroke={c.status === "passed" ? "#3fb950" : c.status === "error" ? "#d29922" : "#f85149"}
             strokeWidth={1.5}
             fillOpacity={0.5}
-            className="cursor-pointer transition-all hover:opacity-100"
+            className="cursor-pointer transition-opacity hover:opacity-100"
             style={{ transitionProperty: "fill-opacity, r" }}
           >
             <title>{`${c.caseName}\n${c.tokensPerCase} tok · $${c.costPerCase.toFixed(4)} · ${c.status}`}</title>
