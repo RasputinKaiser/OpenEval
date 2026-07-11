@@ -366,6 +366,30 @@ test("summarizeCodexSessionFile sums per-turn usage across a context reset (comp
   assert.equal(session.totalTokens, 2100); // 1400 + 100 + 600 = summed input(2000) + output(100)
 });
 
+test("codex titles and prompt previews skip injected persona preambles", () => {
+  const preamble =
+    "You are Worker 3 for the StorageScope UX fixes. You are one of several agents working in parallel on this repository; coordinate via the shared task list and never push without review.";
+  const file = writeSession([
+    { timestamp: "2026-06-29T00:00:00.000Z", type: "session_meta", payload: { id: "subagent", cwd: "/tmp/x" } },
+    {
+      timestamp: "2026-06-29T00:00:01.000Z",
+      type: "response_item",
+      payload: { type: "message", role: "user", content: [{ type: "input_text", text: preamble }] },
+    },
+    { timestamp: "2026-06-29T00:00:01.500Z", type: "user_msg", payload: { message: preamble } },
+    {
+      timestamp: "2026-06-29T00:00:02.000Z",
+      type: "response_item",
+      payload: { type: "message", role: "user", content: [{ type: "input_text", text: "Fix the flaky dropdown test" }] },
+    },
+  ]);
+  const session = summarizeCodexSessionFile(file, "2026/06/29", Date.parse("2026-06-29T00:00:00.000Z"));
+  assert.ok(session);
+  assert.equal(session.displayTitle, "Fix the flaky dropdown test");
+  // the only user_msg event was the preamble — better no preview than a leaky one
+  assert.equal(session.lastPromptPreview, null);
+});
+
 test("summarizeCodexSessionFile reads Codex App and CLI rollout usage", () => {
   const file = writeSession([
     {

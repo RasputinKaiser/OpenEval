@@ -45,7 +45,7 @@ const FieldMappingSchema = z
 const LiveTraceSchema = z
   .object({
     /** Session-file layout. "claude-projects" = ~/.claude/projects-style JSONL trees. */
-    format: z.enum(["claude-projects", "codex-sessions", "jsonl-dir"]).default("jsonl-dir"),
+    format: z.enum(["claude-projects", "codex-sessions", "jsonl-dir", "hermes-json"]).default("jsonl-dir"),
     roots: z.array(z.string()).min(1),
     maxDepth: z.number().int().positive().optional(),
     fields: FieldMappingSchema.optional(),

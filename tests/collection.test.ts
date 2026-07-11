@@ -159,3 +159,72 @@ test("parsers drop OpenEval's own judge-stub sessions", () => {
   assert.equal(agg.totalSessions, 1);
   assert.equal(agg.sessions[0].sessionId, "real");
 });
+
+// ---- cross-source rollup merges ----
+
+test("mergeModelRollups sums the same model across sources and sorts by cost", () => {
+  const { mergeModelRollups } = require("../lib/collection/aggregate");
+  const merged = mergeModelRollups([
+    [
+      { model: "claude-opus-4-8", sessions: 2, inputTokens: 100, outputTokens: 10, cacheReadTokens: 500, costUsd: 4, toolCalls: 6, toolErrors: 1 },
+      { model: "gpt-5.5", sessions: 1, inputTokens: 50, outputTokens: 5, cacheReadTokens: 0, costUsd: 1, toolCalls: 2, toolErrors: 0 },
+    ],
+    [{ model: "claude-opus-4-8", sessions: 3, inputTokens: 200, outputTokens: 20, cacheReadTokens: 700, costUsd: 6, toolCalls: 4, toolErrors: 0 }],
+  ]);
+  assert.equal(merged.length, 2);
+  assert.equal(merged[0].model, "claude-opus-4-8");
+  assert.equal(merged[0].sessions, 5);
+  assert.equal(merged[0].inputTokens, 300);
+  assert.equal(merged[0].cacheReadTokens, 1200);
+  assert.equal(merged[0].costUsd, 10);
+  assert.equal(merged[0].toolErrors, 1);
+  assert.equal(merged[1].model, "gpt-5.5");
+});
+
+test("mergeToolRollups sums tools across sources, sorts by calls, and caps the list", () => {
+  const { mergeToolRollups } = require("../lib/collection/aggregate");
+  const a = [
+    { name: "Bash", calls: 10, errors: 2 },
+    { name: "Read", calls: 30, errors: 0 },
+  ];
+  const b = [{ name: "Bash", calls: 15, errors: 1 }];
+  const merged = mergeToolRollups([a, b]);
+  assert.deepEqual(merged[0], { name: "Read", calls: 30, errors: 0 });
+  assert.deepEqual(merged[1], { name: "Bash", calls: 25, errors: 3 });
+
+  const many = Array.from({ length: 20 }, (_, i) => ({ name: `t${i}`, calls: i, errors: 0 }));
+  assert.equal(mergeToolRollups([many], 12).length, 12);
+});
+
+// ---- Hermes single-JSON sessions ----
+
+test("hermes-json sessions parse into model, tools, and duration", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "openeval-hermes-"));
+  fs.writeFileSync(path.join(dir, "session_20260531_000552_3e2fd6.json"), JSON.stringify({
+    session_id: "20260531_000552_3e2fd6",
+    model: "gpt-5.5",
+    platform: "cli",
+    session_start: "2026-05-31T00:05:53.370621",
+    last_updated: "2026-05-31T00:06:53.370621",
+    message_count: 4,
+    messages: [
+      { role: "user", content: "list the files" },
+      { role: "assistant", content: "", tool_calls: [{ id: "t1", function: { name: "bash", arguments: "{\"cmd\":\"ls\"}" } }] },
+      { role: "tool", tool_call_id: "t1", content: "a.txt b.txt" },
+      { role: "assistant", content: "Two files: a.txt and b.txt." },
+    ],
+  }, null, 2), "utf8");
+  // A request_dump payload log next to it must NOT be collected as a session.
+  fs.writeFileSync(path.join(dir, "request_dump_20260531_000552.json"), "{}", "utf8");
+
+  const agg = scanSourceSessions({ id: "hermes", label: "Hermes", roots: [dir], format: "hermes-json" }, 50);
+  assert.equal(agg.totalSessions, 1);
+  const s = agg.sessions[0];
+  assert.equal(s.model, "gpt-5.5");
+  assert.equal(s.sessionId, "20260531_000552_3e2fd6");
+  assert.equal(s.toolCalls, 1);
+  assert.equal(s.durationMs, 60000);
+  assert.equal(s.metricSources.duration, "measured");
+  assert.equal(s.metricSources.tokens, "missing"); // Hermes records no usage
+  assert.equal(s.startedAt, Date.parse("2026-05-31T00:05:53.370621"));
+});

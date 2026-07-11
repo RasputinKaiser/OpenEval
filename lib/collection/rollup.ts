@@ -29,6 +29,9 @@ export interface RollupReport {
   weekly: RollupBucket[]; // oldest → newest, contiguous
   byProject: ProjectRollup[]; // by cost, top N
   anyEstimatedCost: boolean;
+  /** Session starts by [weekday][hour], Monday-first, over the full history. */
+  heatmap: number[][];
+  heatmapSessions: number;
 }
 
 const WEEK_MS = 7 * 86_400_000;
@@ -70,10 +73,16 @@ export function buildRollup(sessionsIn?: Array<LiveSession>, opts: { weeks?: num
 
   const projects = new Map<string, ProjectRollup>();
   let anyEstimatedCost = false;
+  const heatmap: number[][] = Array.from({ length: 7 }, () => new Array<number>(24).fill(0));
+  let heatmapSessions = 0;
 
   for (const s of sessions) {
     if (!Number.isFinite(s.startedAt) || s.startedAt <= 0) continue;
     if (s.metricSources.cost === "inferred" && s.costUsd > 0) anyEstimatedCost = true;
+
+    const d = new Date(s.startedAt);
+    heatmap[(d.getDay() + 6) % 7][d.getHours()]++;
+    heatmapSessions++;
 
     const w = weekStart(s.startedAt);
     const b = buckets.get(w);
@@ -98,5 +107,7 @@ export function buildRollup(sessionsIn?: Array<LiveSession>, opts: { weeks?: num
     weekly: [...buckets.values()].sort((a, b) => a.startMs - b.startMs),
     byProject: [...projects.values()].sort((a, b) => b.costUsd - a.costUsd).slice(0, topProjects),
     anyEstimatedCost,
+    heatmap,
+    heatmapSessions,
   };
 }

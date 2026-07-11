@@ -350,6 +350,36 @@ function selectJudgeSampleWindowsOnly(points: SessionPoint[], markers: Marker[],
  * poll judgeJobStatus() for progress. One job at a time; verdicts persist, so
  * an interrupted job resumes where it left off on the next start.
  */
+export interface JudgeAllResult {
+  total: number;
+  judged: number;
+  failed: number;
+  lastError: string | null;
+  judge: string;
+}
+
+/**
+ * Await the full marker-window judging pass. For standalone runners
+ * (scripts/judge-windows.ts) that outlive dev-server HMR — the in-process
+ * startJudgeAll job's status singleton resets on every recompile, while this
+ * caller owns its own loop. Verdicts persist to data/live-cache.db either way.
+ */
+export async function judgeAllWindows(
+  points: SessionPoint[],
+  markers: Marker[],
+  opts: { cap?: number; timeoutMs?: number; onProgress?: (s: { done: number; total: number; judged: number; failed: number }) => void } = {},
+): Promise<JudgeAllResult> {
+  const judged = loadJudgments();
+  const sample = markerWindowSample(points, markers, new Set(judged.keys())).slice(0, Math.min(opts.cap ?? 500, 1000));
+  let done = 0, okCount = 0, failCount = 0;
+  const { ok, failed, lastError } = await runJudgeQueue(sample, 3, opts.timeoutMs ?? 90_000, (okOne) => {
+    done++;
+    if (okOne) okCount++; else failCount++;
+    opts.onProgress?.({ done, total: sample.length, judged: okCount, failed: failCount });
+  });
+  return { total: sample.length, judged: ok, failed, lastError, judge: resolveJudge().judgeName };
+}
+
 export function startJudgeAll(points: SessionPoint[], markers: Marker[], opts: { cap?: number; timeoutMs?: number } = {}): { started: boolean; status: JudgeJobStatus } {
   if (job.running) return { started: false, status: judgeJobStatus() };
   const judged = loadJudgments();

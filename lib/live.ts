@@ -4,6 +4,7 @@ import os from "node:os";
 import { StringDecoder } from "node:string_decoder";
 import { compactDisplayPath, redactSensitiveText } from "./redaction";
 import { getPath, type FieldMapping } from "./adapters/generic";
+import { hermesJsonToRecords } from "./adapters/hermes";
 import { estimateCostUsd } from "./pricing";
 import { cacheGet, cachePut, listCachedSessionsUnder } from "./live-cache";
 import { classifySentiment, isRephrase, looksLikeApologyOrFailure, looksLikeTestsPassed, mcpServerFromTool, JUDGE_PROMPT_MARKER } from "./insights/signals";
@@ -183,6 +184,7 @@ export interface LiveAggregate {
     costUsd: number;
     inputTokens: number;
     outputTokens: number;
+    cacheReadTokens: number;
     toolCalls: number;
     errors: number;
     avgDurationMs: number;
@@ -206,6 +208,8 @@ export interface LiveTranscriptTurn {
   at?: number;
   label: string;
   preview: string;
+  /** Conversation role for viewer grouping; "meta" = protocol/bookkeeping noise. */
+  role?: "user" | "assistant" | "tool" | "meta";
 }
 
 export interface TranscriptResult {
@@ -215,7 +219,7 @@ export interface TranscriptResult {
 
 export { compactDisplayPath, redactSensitiveText };
 
-export type LiveTraceFormat = "claude-projects" | "codex-sessions" | "jsonl-dir";
+export type LiveTraceFormat = "claude-projects" | "codex-sessions" | "jsonl-dir" | "hermes-json";
 
 interface LiveTraceSource {
   id: string;
@@ -466,7 +470,9 @@ function parseSourceSessionList(source: LiveTraceSource, limit: number, scanWarn
   for (const f of files.slice(0, limit)) {
     const s = source.format === "codex-sessions"
       ? summarizeCodexSessionFile(f.file, f.project, f.mtime)
-      : summarizeLiveSessionFile(f.file, f.project, f.mtime, { fields: source.fields, inferredModel: source.inferredModel, decodeProject: source.format !== "jsonl-dir" });
+      : source.format === "hermes-json"
+        ? summarizeHermesSessionFile(f.file, f.project, f.mtime)
+        : summarizeLiveSessionFile(f.file, f.project, f.mtime, { fields: source.fields, inferredModel: source.inferredModel, decodeProject: source.format !== "jsonl-dir" });
     if (s) sessions.push(s);
   }
   if (includeArchived) appendArchivedSessions(source, sessions);
@@ -534,6 +540,9 @@ function collectLiveTraceFiles(source: LiveTraceSource, scanWarnings: string[]):
           } catch {}
         }
       }
+    } else if (source.format === "hermes-json") {
+      // Hermes sessions are single-JSON files; skip its request_dump_* payload logs.
+      collectJsonlRecursive(root, source.maxDepth, files, root, (name) => name.startsWith("session_") && name.endsWith(".json"));
     } else {
       collectJsonlRecursive(root, source.maxDepth, files, root);
     }
@@ -541,7 +550,13 @@ function collectLiveTraceFiles(source: LiveTraceSource, scanWarnings: string[]):
   return files;
 }
 
-function collectJsonlRecursive(dir: string, depth: number, files: Array<{ file: string; project: string; mtime: number }>, root: string): void {
+function collectJsonlRecursive(
+  dir: string,
+  depth: number,
+  files: Array<{ file: string; project: string; mtime: number }>,
+  root: string,
+  matches: (name: string) => boolean = (name) => name.endsWith(".jsonl"),
+): void {
   if (depth < 0) return;
   let entries: fs.Dirent[] = [];
   try {
@@ -552,10 +567,10 @@ function collectJsonlRecursive(dir: string, depth: number, files: Array<{ file: 
   for (const ent of entries) {
     const full = path.join(dir, ent.name);
     if (ent.isDirectory()) {
-      collectJsonlRecursive(full, depth - 1, files, root);
+      collectJsonlRecursive(full, depth - 1, files, root, matches);
       continue;
     }
-    if (!ent.isFile() || !ent.name.endsWith(".jsonl")) continue;
+    if (!ent.isFile() || !matches(ent.name)) continue;
     try {
       const st = fs.statSync(full);
       files.push({ file: full, project: path.dirname(path.relative(root, full)) || path.basename(root), mtime: st.mtimeMs });
@@ -619,6 +634,20 @@ export function getErroringTurns(filePath: string): TranscriptResult {
 
 export function summarizeLiveSessionFile(file: string, projectDir: string, mtime: number, opts: { fields?: FieldMapping; inferredModel?: string; decodeProject?: boolean } = {}): LiveSession | null {
   return summarizeWithCache(file, projectDir, mtime, (f, lines, bytes, pd, mt) => parseLiveSession(f, lines, bytes, pd, mt, opts.fields, opts.inferredModel, opts.decodeProject));
+}
+
+const HERMES_MAX_BYTES = 32 * 1024 * 1024; // whole-file JSON parse; real sessions are ≤ a few MB
+
+/** Hermes single-JSON sessions, re-emitted as Claude-style records (see adapters/hermes). */
+export function summarizeHermesSessionFile(file: string, projectDir: string, mtime: number): LiveSession | null {
+  return summarizeWithCache(file, projectDir, mtime, (f, lines, bytes, pd, mt) => {
+    if (bytes > HERMES_MAX_BYTES) return null;
+    let raw = "";
+    for (const line of lines) raw += line + "\n";
+    const records = hermesJsonToRecords(raw);
+    if (records.length === 0) return null;
+    return parseLiveSession(f, records, bytes, pd, mt, undefined, undefined, false);
+  });
 }
 
 const sessionCache = new Map<string, { mtimeMs: number; size: number; session: LiveSession | null }>();
@@ -1120,6 +1149,19 @@ export function summarizeCodexSessionFile(file: string, projectDir: string, mtim
   return summarizeWithCache(file, projectDir, mtime, parseCodexSession);
 }
 
+/**
+ * Orchestrator-injected persona preambles ("You are Worker 1 for …", "You are
+ * `/root`, the primary agent in a team of agents …") arrive recorded as user
+ * text in subagent sessions. They are plumbing, not the user's ask — using
+ * them as titles/prompt previews leaks system-prompt text all over list UIs.
+ * Short persona prompts a human might really type stay eligible.
+ */
+function isInjectedPersonaPreamble(text: string): boolean {
+  const t = text.trimStart();
+  if (t.startsWith("# AGENTS.md instructions")) return true; // harness-injected repo instructions
+  return /^You are\b/.test(t) && t.length > 120;
+}
+
 function parseCodexSession(file: string, lines: Iterable<string>, bytes: number, projectDir: string, mtime: number): LiveSession | null {
   let sessionId: string | null = null;
   let displayTitle: string | null = null;
@@ -1260,8 +1302,9 @@ function parseCodexSession(file: string, lines: Iterable<string>, bytes: number,
           // sessions behind; they are instrumentation, not user work.
           if (payload.role === "user" && text.trim().startsWith(JUDGE_PROMPT_MARKER)) return null;
           // Injected wrappers ("<permissions instructions>", "<environment_context>")
-          // make useless titles — wait for the first real message.
-          if (text && !text.trim().startsWith("<")) displayTitle = displayTitle ?? jsonPreview(text, 80);
+          // and orchestrator persona preambles make useless titles — wait for
+          // the first real message.
+          if (text && !text.trim().startsWith("<") && !isInjectedPersonaPreamble(text)) displayTitle = displayTitle ?? jsonPreview(text, 80);
         }
         if (payload.type === "function_call") {
           toolCalls++;
@@ -1299,7 +1342,7 @@ function parseCodexSession(file: string, lines: Iterable<string>, bytes: number,
         }
       } else if (obj.type === "user_msg" || obj.type === "user_message") {
         const text = String(obj.payload?.message ?? obj.payload?.text ?? obj.message ?? obj.text ?? "");
-        if (text && !text.trim().startsWith("<")) lastPromptPreview = jsonPreview(text, 260);
+        if (text && !text.trim().startsWith("<") && !isInjectedPersonaPreamble(text)) lastPromptPreview = jsonPreview(text, 260);
         const trimmed = text.trim();
         if (trimmed && trimmed.length <= 600 && !trimmed.startsWith("<")) {
           const sent = classifySentiment(trimmed);
@@ -1472,23 +1515,40 @@ function scoreQuality(sources: LiveMetricSources, malformedLineCount: number, li
   return Math.max(0, Math.min(100, score));
 }
 
+/** Joined text of an OpenAI/Anthropic-style content array (input_text / output_text / text blocks). */
+function contentText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((b: any) => (typeof b === "string" ? b : typeof b?.text === "string" ? b.text : ""))
+    .filter(Boolean)
+    .join("\n");
+}
+
+/** Tool-call arguments as a compact one-liner (parsed when JSON, verbatim otherwise). */
+function argsPreview(args: unknown, max = 420): string {
+  if (typeof args !== "string") return jsonPreview(args ?? {}, max);
+  try { return jsonPreview(JSON.parse(args), max); } catch { return jsonPreview(args, max); }
+}
+
 function toTranscriptTurn(obj: any, index: number): LiveTranscriptTurn {
   const type = typeof obj?.type === "string" ? obj.type : "unknown";
   const subtype = typeof obj?.subtype === "string" ? obj.subtype : undefined;
   const at = parseTimestamp(obj?.timestamp) ?? undefined;
 
   if (type === "session_meta") {
+    const sub = obj.payload?.source?.subagent;
     return {
       type,
       subtype,
       severity: "info",
       at,
-      label: "Codex session",
+      role: "meta",
+      label: sub ? `Codex session — subagent ${sub.thread_spawn?.agent_nickname ?? ""}`.trim() : "Codex session",
       preview: jsonPreview({
         id: obj.payload?.id ?? obj.payload?.session_id,
         cwd: obj.payload?.cwd,
         originator: obj.payload?.originator,
-        source: obj.payload?.source,
         cliVersion: obj.payload?.cli_version,
         modelProvider: obj.payload?.model_provider,
       }),
@@ -1497,33 +1557,50 @@ function toTranscriptTurn(obj: any, index: number): LiveTranscriptTurn {
 
   if (type === "event_msg") {
     const payload = obj.payload ?? {};
+    if (payload.type === "agent_message") {
+      return { type, subtype: payload.type, severity: "info", at, role: "assistant", label: "Assistant", preview: jsonPreview(payload.message ?? "") };
+    }
+    if (payload.type === "user_message") {
+      return { type, subtype: payload.type, severity: "info", at, role: "user", label: "You", preview: jsonPreview(payload.message ?? "") };
+    }
     return {
       type,
       subtype: payload.type,
-      severity: payload.type === "token_count" ? "info" : payload.type === "agent_message" ? "info" : "warning",
+      severity: "info",
       at,
-      label: payload.type === "token_count" ? "Codex usage" : payload.type === "agent_message" ? "Codex message" : `Codex event ${index}`,
+      role: "meta",
+      label: payload.type === "token_count" ? "Usage" : `Event: ${payload.type ?? index}`,
       preview: jsonPreview(payload.type === "token_count" ? payload.info?.total_token_usage ?? payload.info : payload.message ?? payload),
     };
   }
 
   if (type === "response_item") {
     const payload = obj.payload ?? {};
-    const errored = payload.type === "function_call_output" && looksLikeToolError(String(payload.output ?? ""));
-    return {
-      type,
-      subtype: payload.type,
-      severity: errored ? "error" : "info",
-      at,
-      label: payload.type === "function_call"
-        ? `Codex tool use: ${payload.name ?? "(unknown)"}`
-        : payload.type === "function_call_output"
-          ? "Codex tool output"
-          : payload.type === "reasoning"
-            ? "Codex reasoning"
-            : "Codex response",
-      preview: jsonPreview(payload.type === "function_call_output" ? payload.output : payload),
-    };
+    if (payload.type === "message") {
+      const role = String(payload.role ?? "");
+      const text = contentText(payload.content);
+      if (role === "assistant") return { type, subtype: "message", severity: "info", at, role: "assistant", label: "Assistant", preview: jsonPreview(text) };
+      if (role === "user") return { type, subtype: "message", severity: "info", at, role: "user", label: "You", preview: jsonPreview(text) };
+      // developer/system prompts are plumbing, not conversation
+      return { type, subtype: "message", severity: "info", at, role: "meta", label: `${role || "message"} prompt`, preview: jsonPreview(text) };
+    }
+    if (payload.type === "function_call") {
+      return {
+        type, subtype: payload.type, severity: "info", at, role: "tool",
+        label: `Tool: ${payload.name ?? "(unknown)"}`,
+        preview: argsPreview(payload.arguments),
+      };
+    }
+    if (payload.type === "function_call_output") {
+      const out = String(payload.output ?? "");
+      const errored = looksLikeToolError(out);
+      return { type, subtype: payload.type, severity: errored ? "error" : "info", at, role: "tool", label: errored ? "Tool output — error" : "Tool output", preview: jsonPreview(out) };
+    }
+    if (payload.type === "reasoning") {
+      const summary = contentText(payload.summary) || contentText(payload.content);
+      return { type, subtype: payload.type, severity: "info", at, role: "assistant", label: "Reasoning", preview: jsonPreview(summary || "(encrypted reasoning)") };
+    }
+    return { type, subtype: payload.type, severity: "info", at, role: "meta", label: `Response: ${payload.type ?? "item"}`, preview: jsonPreview(payload) };
   }
 
   if (type === "system") {
@@ -1533,35 +1610,54 @@ function toTranscriptTurn(obj: any, index: number): LiveTranscriptTurn {
       subtype,
       severity: warnings > 0 ? "warning" : "info",
       at,
+      role: "meta",
       label: subtype ? `System / ${subtype}` : "System event",
       preview: jsonPreview({ cwd: obj.cwd, sessionId: obj.sessionId ?? obj.session_id, stopReason: obj.stopReason, hookErrors: obj.hookErrors, messageCount: obj.messageCount }),
     };
   }
 
   if (type === "assistant" && Array.isArray(obj.message?.content)) {
-    const tools = obj.message.content.filter((b: any) => b.type === "tool_use").map((b: any) => b.name).filter(Boolean);
+    const tools = obj.message.content.filter((b: any) => b.type === "tool_use");
     const text = obj.message.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join(" ");
     const thinkingCount = obj.message.content.filter((b: any) => b.type === "thinking").length;
+    if (tools.length) {
+      const names = tools.map((b: any) => b.name).filter(Boolean);
+      return {
+        type, subtype, severity: "info", at, role: "tool",
+        label: `Tool: ${names.join(", ") || "(unknown)"}`,
+        preview: argsPreview(tools[0]?.input),
+      };
+    }
     return {
       type,
       subtype,
       severity: "info",
       at,
-      label: tools.length ? `Assistant tool use: ${tools.join(", ")}` : thinkingCount ? "Assistant thinking" : "Assistant text",
-      preview: jsonPreview(text || { tools, thinkingBlocks: thinkingCount }),
+      role: "assistant",
+      label: thinkingCount && !text ? "Thinking" : "Assistant",
+      preview: jsonPreview(text || `(${thinkingCount} thinking block${thinkingCount === 1 ? "" : "s"})`),
     };
   }
 
-  if (type === "user" && Array.isArray(obj.message?.content)) {
-    const errored = obj.message.content.some((b: any) => b.type === "tool_result" && b.is_error);
-    return {
-      type,
-      subtype,
-      severity: errored ? "error" : "info",
-      at,
-      label: errored ? "Tool result error" : "Tool/user result",
-      preview: jsonPreview(obj.message.content),
-    };
+  if (type === "user" && obj.message) {
+    const c = obj.message.content;
+    if (typeof c === "string") {
+      return { type, subtype, severity: "info", at, role: "user", label: "You", preview: jsonPreview(c) };
+    }
+    if (Array.isArray(c)) {
+      const results = c.filter((b: any) => b.type === "tool_result");
+      if (results.length) {
+        const errored = results.some((b: any) => b.is_error);
+        return {
+          type, subtype, severity: errored ? "error" : "info", at, role: "tool",
+          label: errored ? "Tool result — error" : "Tool result",
+          preview: jsonPreview(results.map((b: any) => contentText(b.content)).join("\n") || results),
+        };
+      }
+      const text = contentText(c);
+      if (text) return { type, subtype, severity: "info", at, role: "user", label: "You", preview: jsonPreview(text) };
+      return { type, subtype, severity: "info", at, role: "meta", label: "User event", preview: jsonPreview(c) };
+    }
   }
 
   if (type === "result") {
@@ -1570,6 +1666,7 @@ function toTranscriptTurn(obj: any, index: number): LiveTranscriptTurn {
       subtype,
       severity: obj.is_error ? "error" : "info",
       at,
+      role: "meta",
       label: obj.is_error ? "Final result error" : "Final result",
       preview: jsonPreview({ stopReason: obj.stop_reason, durationMs: obj.duration_ms, numTurns: obj.num_turns, usage: obj.usage, costUsd: obj.total_cost_usd }),
     };
@@ -1580,6 +1677,7 @@ function toTranscriptTurn(obj: any, index: number): LiveTranscriptTurn {
     subtype,
     severity: type === "queue-operation" ? "warning" : "info",
     at,
+    role: "meta",
     label: `${type || "Trace"} event ${index}`,
     preview: jsonPreview(obj),
   };
@@ -1608,6 +1706,7 @@ function aggregate(sessions: LiveSession[], scanWarnings: string[] = [], source:
     costUsd: number;
     inputTokens: number;
     outputTokens: number;
+    cacheReadTokens: number;
     toolCalls: number;
     errors: number;
     totalDur: number;
@@ -1662,11 +1761,12 @@ function aggregate(sessions: LiveSession[], scanWarnings: string[] = [], source:
     }
     for (const file of s.fileActivity.touchedFiles) increment(fileSessions, file);
     const key = s.model || "unknown";
-    const cur = byModelMap.get(key) || { model: key, sessions: 0, costUsd: 0, inputTokens: 0, outputTokens: 0, toolCalls: 0, errors: 0, totalDur: 0, totalQuality: 0, missingTokens: 0, missingCost: 0 };
+    const cur = byModelMap.get(key) || { model: key, sessions: 0, costUsd: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, toolCalls: 0, errors: 0, totalDur: 0, totalQuality: 0, missingTokens: 0, missingCost: 0 };
     cur.sessions++;
     cur.costUsd += s.costUsd;
     cur.inputTokens += s.inputTokens;
     cur.outputTokens += s.outputTokens;
+    cur.cacheReadTokens += s.cacheReadTokens;
     cur.toolCalls += s.toolCalls;
     cur.errors += s.toolErrors;
     cur.totalDur += s.durationMs;
@@ -1682,6 +1782,7 @@ function aggregate(sessions: LiveSession[], scanWarnings: string[] = [], source:
     costUsd: m.costUsd,
     inputTokens: m.inputTokens,
     outputTokens: m.outputTokens,
+    cacheReadTokens: m.cacheReadTokens,
     toolCalls: m.toolCalls,
     errors: m.errors,
     avgDurationMs: m.sessions ? m.totalDur / m.sessions : 0,
