@@ -40,8 +40,60 @@ export function redactSensitiveText(value: unknown): string {
   if (value == null) return "";
   return String(value)
     .replace(USER_PATH_RE, "/$1/[redacted]")
-    .replace(/(-Users-)([^-\s/]+)(-)/g, "$1[redacted]$3")
-    .replace(/(-home-)([^-\s/]+)(-)/g, "$1[redacted]$3");
+    // Lookahead, not a captured trailing dash: munged dirs can end the segment
+    // at a slash or end-of-string (e.g. /tmp/claude-501/-Users-alice/uuid).
+    .replace(/(-Users-)([^-\s/]+)(?=[-/\s]|$)/g, "$1[redacted]")
+    .replace(/(-home-)([^-\s/]+)(?=[-/\s]|$)/g, "$1[redacted]");
+}
+
+/**
+ * Scrub bare mentions of known local usernames (e.g. inside bundle ids or
+ * prose), which the path-shaped regexes can't catch. Callers harvest the
+ * usernames from real filesystem paths in their data. Names under 4 chars are
+ * skipped — too collision-prone as bare tokens.
+ */
+// Compiled matchers cached per usernames collection — callers pass stable
+// (memoized, never-mutated) Sets, and hot paths call this per row per render.
+const NAME_MATCHER_CACHE = new WeakMap<object, RegExp[]>();
+
+function nameMatchers(usernames: Iterable<string>): RegExp[] {
+  const cacheable = typeof usernames === "object" && usernames !== null;
+  if (cacheable) {
+    const hit = NAME_MATCHER_CACHE.get(usernames as object);
+    if (hit) return hit;
+  }
+  const matchers: RegExp[] = [];
+  for (const name of usernames) {
+    if (name.length < 4 || name === "[redacted]") continue;
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    matchers.push(new RegExp(`(?<![\\w-])${escaped}(?![\\w-])`, "g"));
+  }
+  if (cacheable) NAME_MATCHER_CACHE.set(usernames as object, matchers);
+  return matchers;
+}
+
+export function redactNamedUsers(value: unknown, usernames: Iterable<string>): string {
+  let text = String(value ?? "");
+  for (const re of nameMatchers(usernames)) text = text.replace(re, "[redacted]");
+  return text;
+}
+
+/** Pull usernames out of /Users/... or /home/... paths in a string. */
+export function collectPathUsernames(value: unknown, into: Set<string>): void {
+  if (typeof value !== "string") return;
+  for (const m of value.matchAll(/\/(?:Users|home)\/([^/\s]+)/g)) into.add(m[1]);
+}
+
+/**
+ * One-call display scrub: path-shaped usernames always; bare username tokens
+ * when the caller supplies harvested names; credential shapes on request
+ * (transcript bodies). Synchronous — safe in render paths.
+ */
+export function redactDisplay(value: unknown, opts: { usernames?: Iterable<string>; secrets?: boolean } = {}): string {
+  let text = redactSensitiveText(value);
+  if (opts.secrets) text = redactSecrets(text);
+  if (opts.usernames) text = redactNamedUsers(text, opts.usernames);
+  return text;
 }
 
 export function compactDisplayPath(value: unknown, redact: boolean): string {
@@ -62,7 +114,11 @@ export function redactSecrets(text: string): string {
 
 async function getRampart(): Promise<any> {
   try {
-    const transformers = await import(RAMPART_IMPORT_SPECIFIER);
+    // webpackIgnore keeps this a NATIVE dynamic import. Without it, webpack
+    // turns the variable specifier into a context module ("Critical
+    // dependency" warning) that poisons the client bundle of every page
+    // importing this file — pages render but never hydrate.
+    const transformers = await import(/* webpackIgnore: true */ RAMPART_IMPORT_SPECIFIER);
     return transformers;
   } catch (error) {
     throw error;

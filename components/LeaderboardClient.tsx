@@ -5,6 +5,7 @@ import Link from "next/link";
 import clsx from "clsx";
 import { Loader2, Trophy, GitCompareArrows, ArrowUp, ArrowDown } from "lucide-react";
 import HarnessBadge from "./HarnessBadge";
+import PageHeader from "./PageHeader";
 import { cachedFetch } from "@/lib/cached-fetch";
 
 interface HarnessAggregate {
@@ -70,10 +71,11 @@ export default function LeaderboardClient() {
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold flex items-center gap-2"><Trophy className="size-6" /> Harness Leaderboard</h1>
-        <p className="text-sm text-fg-muted mt-1">Compare agent CLIs head-to-head: pass rate, cost, tokens, speed. The payoff for running the same suite across harnesses.</p>
-      </header>
+      <PageHeader
+        icon={Trophy}
+        title="Harness Leaderboard"
+        subtitle="Compare agent CLIs head-to-head: pass rate, cost, tokens, speed. The payoff for running the same suite across harnesses."
+      />
 
       {loading ? (
         <div className="flex items-center gap-2 text-sm text-fg-muted"><Loader2 className="size-4 animate-spin" /> Aggregating runs…</div>

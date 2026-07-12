@@ -60,3 +60,6 @@ export function fmtPct(x: number, digits = 0): string {
 export function fmtSigned(x: number, digits = 2): string {
   return (x >= 0 ? "+" : "") + x.toFixed(digits);
 }
+
+/** Monday-first weekday labels — matches the collection heatmap's row order. */
+export const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;

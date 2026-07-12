@@ -1,8 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  collectPathUsernames,
   compactDisplayPath,
   rampartAvailable,
+  redactDisplay,
+  redactNamedUsers,
   redactPii,
   redactSecrets,
   redactSensitiveText,
@@ -50,6 +53,40 @@ test("redactSensitiveText preserves existing path behavior", () => {
     redactSensitiveText("prefix -Users-alice-project suffix"),
     "prefix -Users-[redacted]-project suffix",
   );
+});
+
+test("redactDisplay composes paths, secrets, and named users", () => {
+  const users = new Set(["alicesmith"]);
+  const input = "by alicesmith at /Users/alicesmith/x with sk-abcdefghijklmnopqrstuvwxyz";
+  assert.equal(
+    redactDisplay(input, { usernames: users, secrets: true }),
+    "by [redacted] at /Users/[redacted]/x with [REDACTED:openai-key]",
+  );
+  // without opts it still scrubs path shapes
+  assert.equal(redactDisplay("/home/bob/app"), "/home/[redacted]/app");
+});
+
+test("redactNamedUsers scrubs bare username tokens but not substrings", () => {
+  const users = new Set<string>();
+  collectPathUsernames("/Users/alicesmith/projects/x", users);
+  assert.deepEqual([...users], ["alicesmith"]);
+  assert.equal(
+    redactNamedUsers("bundle com.alicesmith.estate, by alicesmith", users),
+    "bundle com.[redacted].estate, by [redacted]",
+  );
+  // substring of a longer word is left alone
+  assert.equal(redactNamedUsers("malicesmithy", users), "malicesmithy");
+  // short names are too collision-prone to scrub bare
+  assert.equal(redactNamedUsers("ian variant", new Set(["ian"])), "ian variant");
+});
+
+test("redactSensitiveText redacts munged dirs ending at a slash or end-of-string", () => {
+  assert.equal(
+    redactSensitiveText("/private/tmp/claude-501/-Users-alice/uuid/scratchpad"),
+    "/private/tmp/claude-501/-Users-[redacted]/uuid/scratchpad",
+  );
+  assert.equal(redactSensitiveText("x -Users-alice"), "x -Users-[redacted]");
+  assert.equal(redactSensitiveText("y -home-bob"), "y -home-[redacted]");
 });
 
 test("compactDisplayPath collapses a redacted home path", () => {

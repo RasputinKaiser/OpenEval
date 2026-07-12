@@ -99,3 +99,19 @@ test("detectChangePoints stays quiet on a flat series", () => {
   const cps = detectChangePoints(points, [], { window: 20 });
   assert.equal(cps.length, 0);
 });
+
+test("buildRollup heatmap counts session starts by weekday/hour, Monday-first", () => {
+  // 2026-07-08 is a Wednesday (row 2), 15:xx (col 15); 2026-07-06 a Monday 09:xx.
+  const sessions = [
+    session({ startedAt: new Date(2026, 6, 8, 15, 30).getTime() }),
+    session({ startedAt: new Date(2026, 6, 8, 15, 45).getTime() }),
+    session({ startedAt: new Date(2026, 6, 6, 9, 0).getTime() }),
+  ];
+  const r = buildRollup(sessions, { weeks: 2 });
+  assert.equal(r.heatmap.length, 7);
+  assert.equal(r.heatmap[0].length, 24);
+  assert.equal(r.heatmap[2][15], 2);
+  assert.equal(r.heatmap[0][9], 1);
+  assert.equal(r.heatmapSessions, 3);
+  assert.equal(r.heatmap.flat().reduce((a, b) => a + b, 0), 3);
+});

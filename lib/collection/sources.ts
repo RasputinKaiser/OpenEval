@@ -34,6 +34,61 @@ export interface CollectionSourceDef {
  */
 export const KNOWN_COLLECTION_SOURCES: CollectionSourceDef[] = [
   {
+    id: "hermes",
+    label: "Hermes Agent",
+    roots: ["~/.hermes/sessions"],
+    format: "hermes-json",
+    parseable: true,
+    note: "Nous Research Hermes Agent — single-JSON sessions; no token usage recorded.",
+  },
+  {
+    id: "atomic-chat",
+    label: "Atomic Chat",
+    roots: ["~/Library/Application Support/Atomic Chat/data/threads"],
+    format: "jsonl-dir",
+    // Without a field mapping the generic parser yields metric-less sessions
+    // that still inflate counts/model rows — detect-only until a mapping lands.
+    parseable: false,
+    detectExts: [".jsonl"],
+    note: "Atomic Chat threads (messages.jsonl).",
+  },
+  {
+    id: "lmstudio",
+    label: "LM Studio",
+    roots: ["~/.cache/lm-studio/conversations", "~/.lmstudio/conversations"],
+    format: "jsonl-dir",
+    parseable: false,
+    detectExts: [".conversation.json"],
+    note: "LM Studio chats (versioned single-JSON conversations).",
+  },
+  {
+    id: "ollama",
+    label: "Ollama",
+    roots: ["~/Library/Application Support/Ollama"],
+    format: "jsonl-dir",
+    parseable: false,
+    detectExts: [".sqlite"],
+    note: "Ollama app chat DB (SQLite); the CLI keeps no local chat transcripts.",
+  },
+  {
+    id: "chatgpt-app",
+    label: "ChatGPT.app (incl. Codex.app)",
+    roots: ["~/Library/Application Support/com.openai.chat"],
+    format: "jsonl-dir",
+    parseable: false,
+    detectExts: [".data"],
+    note: "ChatGPT desktop (Codex.app merged into it) — encrypted .data conversation cache; CLI sessions still land in ~/.codex/sessions.",
+  },
+  {
+    id: "grok",
+    label: "Grok CLI",
+    roots: ["~/.grok/sessions"],
+    format: "jsonl-dir",
+    parseable: false,
+    detectExts: [".sqlite", ".jsonl", ".json"],
+    note: "Grok CLI session store.",
+  },
+  {
     id: "goose",
     label: "Goose",
     roots: ["~/.local/share/goose/sessions"],
@@ -48,7 +103,7 @@ export const KNOWN_COLLECTION_SOURCES: CollectionSourceDef[] = [
     format: "jsonl-dir",
     parseable: false,
     detectExts: [".json", ".jsonl"],
-    note: "opencode stores per-message JSON; detect-only until a parser lands.",
+    note: "opencode stores per-message JSON.",
   },
   {
     id: "gemini-cli",
@@ -57,7 +112,7 @@ export const KNOWN_COLLECTION_SOURCES: CollectionSourceDef[] = [
     format: "jsonl-dir",
     parseable: false,
     detectExts: [".json", ".jsonl"],
-    note: "Gemini CLI checkpoints/logs; detect-only.",
+    note: "Gemini CLI checkpoints/logs.",
   },
   {
     id: "continue",
@@ -66,7 +121,7 @@ export const KNOWN_COLLECTION_SOURCES: CollectionSourceDef[] = [
     format: "jsonl-dir",
     parseable: false,
     detectExts: [".json"],
-    note: "Continue session JSON; detect-only.",
+    note: "Continue session JSON.",
   },
   {
     id: "cline",
@@ -79,7 +134,7 @@ export const KNOWN_COLLECTION_SOURCES: CollectionSourceDef[] = [
     format: "jsonl-dir",
     parseable: false,
     detectExts: [".json"],
-    note: "Cline VS Code task history (api_conversation_history.json); detect-only.",
+    note: "Cline VS Code task history (api_conversation_history.json).",
   },
   {
     id: "cursor",
@@ -92,7 +147,7 @@ export const KNOWN_COLLECTION_SOURCES: CollectionSourceDef[] = [
     format: "jsonl-dir",
     parseable: false,
     detectExts: [".vscdb", ".sqlite"],
-    note: "Cursor stores chats in a SQLite state DB; detect-only.",
+    note: "Cursor stores chats in a SQLite state DB.",
   },
 ];
 

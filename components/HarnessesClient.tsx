@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import clsx from "clsx";
-import { AlertCircle, CheckCircle2, Loader2, RefreshCw, Terminal, XCircle } from "lucide-react";
+import { AlertCircle, CheckCircle2, Loader2, Plug, RefreshCw, Terminal, XCircle } from "lucide-react";
 import type { DiscoveredHarness } from "@/lib/adapters/discover";
 import { cachedFetch, invalidateCache } from "@/lib/cached-fetch";
+import PageHeader from "./PageHeader";
 
 const STATUS_META: Record<string, { label: string; cls: string }> = {
   available: { label: "available", cls: "bg-ok/10 text-ok" },
@@ -66,18 +67,19 @@ export default function HarnessesClient() {
 
   return (
     <div className="p-8 max-w-6xl mx-auto">
-      <header className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Harnesses</h1>
-          <p className="text-sm text-fg-muted mt-1">Agent CLIs discovered on this machine. Pick one to inspect.</p>
-        </div>
-        <button
-          onClick={() => load(true)}
-          className="flex items-center gap-2 px-3 py-2 text-xs rounded-md border border-bd hover:bg-bg-elev text-fg-muted"
-        >
-          <RefreshCw className={clsx("size-3.5", loading && "animate-spin")} /> Re-probe PATH
-        </button>
-      </header>
+      <PageHeader
+        icon={Plug}
+        title="Harnesses"
+        subtitle="Agent CLIs discovered on this machine. Pick one to inspect."
+        actions={
+          <button
+            onClick={() => load(true)}
+            className="flex items-center gap-1.5 rounded-md border border-bd px-2.5 py-1.5 text-sm text-fg-muted hover:bg-bg-elev hover:text-fg transition-colors"
+          >
+            <RefreshCw className={clsx("size-3.5", loading && "animate-spin")} /> Re-probe PATH
+          </button>
+        }
+      />
 
       {loading ? (
         <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4">

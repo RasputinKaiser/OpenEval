@@ -23,7 +23,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ToastProvider>
           <div className="flex min-h-screen flex-col md:flex-row">
             <Sidebar />
-            <main className="flex-1 min-w-0 overflow-x-hidden">{children}</main>
+            {/* overflow-x-clip, not -hidden: hidden makes <main> a scroll container, which breaks position:sticky inside pages */}
+            <main className="flex-1 min-w-0 overflow-x-clip">{children}</main>
           </div>
           <MobileNav />
           <SidebarNavClient />

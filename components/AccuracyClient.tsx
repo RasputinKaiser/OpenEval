@@ -6,6 +6,7 @@ import clsx from "clsx";
 import { evidenceLabel } from "@/lib/accuracy";
 import type { AccuracyAudit, CaseAccuracyAudit } from "@/lib/accuracy";
 import type { EvidenceTier } from "@/lib/types";
+import PageHeader from "./PageHeader";
 
 interface Props {
   audit: AccuracyAudit;
@@ -64,14 +65,11 @@ export default function AccuracyClient({ audit }: Props) {
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold flex items-center gap-2">
-          <ShieldCheck className="size-6 text-accent-soft" /> Accuracy audit
-        </h1>
-        <p className="text-sm text-fg-muted mt-1">
-          Measures benchmark trust surfaces: oracle coverage, no-op rejection readiness, evidence tiers, and visual contracts.
-        </p>
-      </header>
+      <PageHeader
+        icon={ShieldCheck}
+        title="Accuracy audit"
+        subtitle="Measures benchmark trust surfaces: oracle coverage, no-op rejection readiness, evidence tiers, and visual contracts."
+      />
 
       <section className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
         <Stat

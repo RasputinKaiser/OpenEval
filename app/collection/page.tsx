@@ -14,7 +14,8 @@ export default async function CollectionPage({ searchParams }: { searchParams?: 
     error = e instanceof Error ? e.message : String(e);
     data = {
       sources: [], unknown: [], sessions: [], presentSources: 0, totalFiles: 0,
-      totalParsedSessions: 0, totalArchivedSessions: 0, totalCostUsd: 0, anyEstimatedCost: false, totalInputTokens: 0, totalOutputTokens: 0, totalToolCalls: 0,
+      totalParsedSessions: 0, totalArchivedSessions: 0, totalCostUsd: 0, anyEstimatedCost: false, totalInputTokens: 0, totalOutputTokens: 0,
+      totalCacheReadTokens: 0, totalCacheCreateTokens: 0, totalToolCalls: 0, byModel: [], byTool: [],
     };
   }
   let rollup: RollupReport | undefined;

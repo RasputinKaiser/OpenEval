@@ -3,15 +3,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import clsx from "clsx";
-import { Activity, TrendingUp, TrendingDown, AlertTriangle, ArrowLeft, Puzzle, Plug, Users, Sparkles, Gavel, Scale } from "lucide-react";
+import { Activity, TrendingUp, TrendingDown, AlertTriangle, ArrowLeft, Gavel, Scale, LineChart, GitCompareArrows, Zap, CalendarPlus } from "lucide-react";
 import PageHeader from "./PageHeader";
+import { KIND_COLOR, KIND_ICON, KIND_LABEL } from "./markerKinds";
+import { SectionHeader, SectionNav } from "./Section";
+import OutcomeChart from "./OutcomeChart";
 import { fmtDate, fmtPct as pct, fmtSigned as signed } from "@/lib/format";
 import type { TimelineReport } from "@/lib/insights/collect";
 import type { MarkerKind } from "@/lib/insights/timeline";
 import type { JudgeJobStatus } from "@/lib/insights/judge";
 
-const KIND_ICON: Record<MarkerKind, typeof Puzzle> = { skill: Sparkles, mcp: Plug, subagent: Users, model: Activity };
-const KIND_LABEL: Record<MarkerKind, string> = { skill: "skill", mcp: "plugin", subagent: "subagent", model: "model" };
 
 /** A colored delta chip. `lowerIsBetter` flips the good/bad coloring. */
 function Delta({ value, lowerIsBetter, fmt }: { value: number; lowerIsBetter?: boolean; fmt: (v: number) => string }) {
@@ -21,17 +22,29 @@ function Delta({ value, lowerIsBetter, fmt }: { value: number; lowerIsBetter?: b
   return <span className={clsx("mono tabular-nums", tone)}>{fmt(value)}</span>;
 }
 
-function Sparkline({ series }: { series: TimelineReport["outcomeSeries"] }) {
-  if (series.length < 2) return null;
-  const w = 260, h = 40, pad = 3;
-  const xs = series.map((_, i) => pad + (i / (series.length - 1)) * (w - 2 * pad));
-  const ys = series.map((p) => h - pad - p.value * (h - 2 * pad)); // value 0..1
-  const d = xs.map((x, i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)},${ys[i].toFixed(1)}`).join(" ");
+/** Diverging mini-bar from a center axis — makes the impact ranking scannable. */
+function DeltaBar({ value, max }: { value: number; max: number }) {
+  const frac = max > 1e-9 ? Math.min(1, Math.abs(value) / max) : 0;
+  const good = value > 1e-9;
+  const bad = value < -1e-9;
   return (
-    <svg viewBox={`0 0 ${w} ${h}`} className="w-full max-w-[280px] h-10">
-      <line x1={pad} y1={h - pad - 0.5 * (h - 2 * pad)} x2={w - pad} y2={h - pad - 0.5 * (h - 2 * pad)} stroke="currentColor" className="text-bd" strokeDasharray="2 3" />
-      <path d={d} fill="none" stroke="currentColor" className="text-accent-soft" strokeWidth={1.5} />
-    </svg>
+    <div className="flex items-center justify-end gap-2">
+      <div className="relative h-[5px] w-14 rounded-full bg-bg-elev overflow-hidden shrink-0" aria-hidden>
+        <div className="absolute inset-y-0 left-1/2 w-px bg-bd" />
+        {(good || bad) && (
+          <div
+            className="absolute inset-y-0 rounded-full"
+            style={{
+              left: good ? "50%" : `${50 - frac * 50}%`,
+              width: `${Math.max(3, frac * 50)}%`,
+              background: good ? "var(--color-ok)" : "var(--color-err)",
+              opacity: 0.8,
+            }}
+          />
+        )}
+      </div>
+      <Delta value={value} fmt={(v) => signed(v)} />
+    </div>
   );
 }
 
@@ -159,29 +172,71 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
         }
       />
 
+      <SectionNav
+        sections={[
+          { id: "overview", label: "Overview" },
+          { id: "outcome", label: "Outcome" },
+          { id: "impact", label: "Impact" },
+          ...((data.changePoints ?? []).length > 0 ? [{ id: "shifts", label: "Shifts" }] : []),
+          { id: "adoptions", label: "Adoptions" },
+        ]}
+        summary={`${data.totalSessions} sessions · ${pct(data.signalCoverage)} signal`}
+      />
+
       {err && <div className="card p-3 mb-4 text-sm text-err flex items-center gap-2"><AlertTriangle className="size-4" /> {err}</div>}
       {judgeMsg && <div className="card p-3 mb-4 text-sm text-fg-muted flex items-center gap-2"><Gavel className="size-4 text-accent-soft" /> {judgeMsg}</div>}
       {job && job.startedAt && (
-        <div className="card p-3 mb-4 text-sm text-fg-muted flex items-center gap-2">
-          <Scale className={clsx("size-4 text-accent-soft", job.running && "animate-pulse")} />
-          {job.running
-            ? <>Judging marker windows: <span className="mono tabular-nums">{job.done}/{job.total}</span>{job.failed > 0 && <span className="text-warn"> ({job.failed} failed)</span>} via {job.judge} — safe to leave this page.</>
-            : <>Background judging finished: {job.judged}/{job.total} judged{job.failed > 0 && <span className="text-warn"> ({job.failed} failed{job.lastError ? ` — ${job.lastError}` : ""})</span>} via {job.judge}.</>}
+        <div className="card p-3 mb-4 text-sm text-fg-muted">
+          <div className="flex items-center gap-2">
+            <Scale className={clsx("size-4 text-accent-soft shrink-0", job.running && "animate-pulse")} />
+            {job.running
+              ? <>Judging marker windows: <span className="mono tabular-nums text-fg">{job.done}/{job.total}</span>{job.failed > 0 && <span className="text-warn"> ({job.failed} failed)</span>} via {job.judge} — safe to leave this page.</>
+              : <>Background judging finished: {job.judged}/{job.total} judged{job.failed > 0 && <span className="text-warn"> ({job.failed} failed{job.lastError ? ` — ${job.lastError}` : ""})</span>} via {job.judge}.</>}
+          </div>
+          {job.running && job.total > 0 && (
+            <div className="mt-2 h-[5px] rounded-full bg-bg-elev overflow-hidden" role="progressbar" aria-valuemin={0} aria-valuemax={job.total} aria-valuenow={job.done}>
+              <div
+                className="h-full rounded-full transition-[width] duration-500"
+                style={{ width: `${Math.min(100, (job.done / job.total) * 100)}%`, background: "var(--color-accent)" }}
+              />
+            </div>
+          )}
         </div>
       )}
 
-      <section className="stagger-grid grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+      <section id="overview" className="scroll-mt-16 stagger-grid grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
         <div className="card p-3">
           <div className="text-[10px] uppercase tracking-wider text-fg-muted">Sessions analyzed</div>
           <div className="text-lg mono font-semibold tabular-nums mt-0.5">{data.totalSessions}</div>
-          <div className="text-[11px] text-fg-dim">{fmtDate(data.dateStart)} → {fmtDate(data.dateEnd)}</div>
+          <div className="text-[11px] text-fg-dim mono">{fmtDate(data.dateStart)} → {fmtDate(data.dateEnd)}</div>
+          <div className="flex items-center gap-3 mt-1.5 text-[10px] text-fg-dim">
+            {(["skill", "mcp", "subagent", "model"] as MarkerKind[]).map((k) => {
+              const n = data.markers.filter((m) => m.kind === k).length;
+              if (n === 0) return null;
+              return (
+                <span key={k} className="inline-flex items-center gap-1">
+                  <span className="size-1.5 rounded-full" style={{ background: KIND_COLOR[k] }} />
+                  <span className="tabular-nums mono">{n}</span> {KIND_LABEL[k]}{n === 1 ? "" : "s"}
+                </span>
+              );
+            })}
+          </div>
         </div>
         <div className="card p-3">
           <div className="text-[10px] uppercase tracking-wider text-fg-muted">Outcome trend</div>
-          <div className={clsx("text-lg mono font-semibold tabular-nums mt-0.5 flex items-center gap-1", trend >= 0 ? "text-ok" : "text-err")}>
-            <TrendIcon className="size-4" /> {signed(trend)}
+          <div className="flex items-baseline gap-2 mt-0.5">
+            <span className={clsx("text-lg mono font-semibold tabular-nums flex items-center gap-1", trend >= 0 ? "text-ok" : "text-err")}>
+              <TrendIcon className="size-4" /> {signed(trend)}
+            </span>
+            <span className="text-[11px] text-fg-dim mono tabular-nums">{data.overall.firstHalfOutcome.toFixed(2)} → {data.overall.secondHalfOutcome.toFixed(2)}</span>
           </div>
-          <div className="text-[11px] text-fg-dim">{data.overall.firstHalfOutcome.toFixed(2)} → {data.overall.secondHalfOutcome.toFixed(2)} (median)</div>
+          <div className="text-[11px] text-fg-dim">first half vs. second half (median)</div>
+          <div className="mt-1.5 h-[5px] rounded-full bg-bg-elev overflow-hidden flex" aria-hidden>
+            <div style={{ width: `${data.overall.firstHalfOutcome * 100}%`, background: "color-mix(in srgb, var(--color-accent) 35%, transparent)" }} />
+          </div>
+          <div className="mt-[3px] h-[5px] rounded-full bg-bg-elev overflow-hidden flex" aria-hidden>
+            <div style={{ width: `${data.overall.secondHalfOutcome * 100}%`, background: "color-mix(in srgb, var(--color-accent) 75%, transparent)" }} />
+          </div>
         </div>
         <div className="card p-3">
           <div className="text-[10px] uppercase tracking-wider text-fg-muted">Signal coverage</div>
@@ -190,15 +245,36 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
             had an inferable outcome
             {data.judgedCoverage > 0 && <span className="text-accent-soft"> · {pct(data.judgedCoverage)} LLM-judged</span>}
           </div>
-        </div>
-        <div className="card p-3">
-          <div className="text-[10px] uppercase tracking-wider text-fg-muted mb-1">Outcome over time</div>
-          <Sparkline series={data.outcomeSeries} />
+          <div
+            className="mt-1.5 h-[5px] rounded-full bg-bg-elev overflow-hidden flex"
+            title={`${pct(data.judgedCoverage)} LLM-judged · ${pct(Math.max(0, data.signalCoverage - data.judgedCoverage))} heuristic signal · ${pct(Math.max(0, 1 - data.signalCoverage))} no signal`}
+          >
+            <div style={{ width: `${data.judgedCoverage * 100}%`, background: "var(--color-accent)" }} />
+            <div style={{ width: `${Math.max(0, data.signalCoverage - data.judgedCoverage) * 100}%`, background: "color-mix(in srgb, var(--color-accent) 35%, transparent)" }} />
+          </div>
         </div>
       </section>
 
-      <section className="card overflow-hidden mb-5">
-        <div className="px-3 py-2 border-b border-bd text-[11px] uppercase tracking-wider text-fg-muted">Adoption impact — before vs. after</div>
+      <section id="outcome" className="scroll-mt-16 mb-6">
+        <SectionHeader
+          icon={LineChart}
+          title="Outcome"
+          desc="Inferred session outcomes over time, with every adoption and detected shift overlaid"
+          right={`${data.outcomeSeries.length} sessions plotted`}
+        />
+        <div className="card p-4">
+          <OutcomeChart series={data.outcomeSeries} markers={data.markers} changePoints={data.changePoints ?? []} />
+        </div>
+      </section>
+
+      <section id="impact" className="scroll-mt-16 mb-6">
+        <SectionHeader
+          icon={GitCompareArrows}
+          title="Impact"
+          desc="Before vs. after each adoption — what actually moved when you started using it"
+          right={`${data.impacts.length} measured`}
+        />
+        <div className="card overflow-hidden">
         <div className="px-3 py-2 text-[11px] text-fg-dim border-b border-bd/50">
           Median change in the ~20 sessions after first using each, vs. the ~20 before. <span className="text-warn">Correlational</span> — confounds (model changes, thin samples) are flagged.
         </div>
@@ -218,13 +294,15 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
               {data.impacts.length === 0 && (
                 <tr><td colSpan={6} className="px-3 py-6 text-center text-fg-dim text-sm">Not enough history around any adoption yet.</td></tr>
               )}
-              {data.impacts.map((im) => {
+              {(() => {
+                const maxDelta = Math.max(...data.impacts.map((x) => Math.abs(x.deltas.outcome)), 1e-9);
+                return data.impacts.map((im) => {
                 const Icon = KIND_ICON[im.marker.kind];
                 return (
-                  <tr key={`${im.marker.kind}-${im.marker.name}`}>
+                  <tr key={`${im.marker.kind}-${im.marker.name}`} className={clsx(im.lowConfidence && "opacity-60")}>
                     <td>
                       <div className="flex items-center gap-1.5">
-                        <Icon className="size-3.5 text-fg-dim shrink-0" />
+                        <Icon className="size-3.5 shrink-0" style={{ color: KIND_COLOR[im.marker.kind] }} />
                         <span className="font-medium truncate max-w-[240px]">{im.marker.name}</span>
                       </div>
                       <div className="text-[10px] text-fg-dim mono">
@@ -239,7 +317,7 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
                         )}
                       </div>
                     </td>
-                    <td className="num"><Delta value={im.deltas.outcome} fmt={(v) => signed(v)} /></td>
+                    <td className="num"><DeltaBar value={im.deltas.outcome} max={maxDelta} /></td>
                     <td className="num"><Delta value={im.deltas.toolErrorRate} lowerIsBetter fmt={(v) => signed(v * 100, 0) + "%"} /></td>
                     <td className="num"><Delta value={im.deltas.costUsd} lowerIsBetter fmt={(v) => "$" + v.toFixed(2)} /></td>
                     <td className="num"><Delta value={im.deltas.toolCallsPerTurn} lowerIsBetter fmt={(v) => signed(v, 1)} /></td>
@@ -250,15 +328,23 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
                     </td>
                   </tr>
                 );
-              })}
+                });
+              })()}
             </tbody>
           </table>
+        </div>
         </div>
       </section>
 
       {(data.changePoints ?? []).length > 0 && (
-        <section className="card overflow-hidden mb-5">
-          <div className="px-3 py-2 border-b border-bd text-[11px] uppercase tracking-wider text-fg-muted">Detected shifts — level changes in your metrics</div>
+        <section id="shifts" className="scroll-mt-16 mb-6">
+          <SectionHeader
+            icon={Zap}
+            title="Shifts"
+            desc="Statistical level changes in your metrics, found without assuming a cause"
+            right={`${(data.changePoints ?? []).length} detected`}
+          />
+          <div className="card overflow-hidden">
           <div className="px-3 py-2 text-[11px] text-fg-dim border-b border-bd/50">
             Statistical change points (two-window mean shift, z ≥ 3), found without assuming any cause. Markers first seen within ±7 days are listed as suspects.
           </div>
@@ -278,11 +364,23 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
                   const lowerIsBetter = cp.metric !== "outcome";
                   const good = lowerIsBetter ? cp.delta < 0 : cp.delta > 0;
                   const fmt = (v: number) => (cp.metric === "costUsd" ? "$" + v.toFixed(2) : cp.metric === "toolErrorRate" ? (v * 100).toFixed(0) + "%" : v.toFixed(2));
+                  const metricLabel = cp.metric === "toolErrorRate" ? "tool errors" : cp.metric === "costUsd" ? "cost / session" : "outcome";
+                  const metricColor = cp.metric === "toolErrorRate" ? "var(--color-err)" : cp.metric === "costUsd" ? "var(--color-warn)" : "var(--color-accent-soft)";
                   return (
                     <tr key={`${cp.metric}-${cp.at}`}>
                       <td className="mono text-[12px] text-fg-muted tabular-nums">{fmtDate(cp.at)}</td>
-                      <td className="text-[12px]">{cp.metric === "toolErrorRate" ? "tool errors" : cp.metric === "costUsd" ? "cost / session" : "outcome"}</td>
-                      <td className={clsx("num", good ? "text-ok" : "text-err")}>{fmt(cp.before)} → {fmt(cp.after)}</td>
+                      <td>
+                        <span
+                          className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px]"
+                          style={{ color: metricColor, background: `color-mix(in srgb, ${metricColor} 12%, transparent)` }}
+                        >
+                          <span className="size-1.5 rounded-full" style={{ background: metricColor }} />
+                          {metricLabel}
+                        </span>
+                      </td>
+                      <td className={clsx("num", good ? "text-ok" : "text-err")}>
+                        <span className="text-fg-dim">{fmt(cp.before)}</span> → {fmt(cp.after)}
+                      </td>
                       <td className="num text-fg-dim">{cp.zScore.toFixed(1)}</td>
                       <td className="pl-4 text-[11px] text-fg-muted">
                         {cp.nearMarkers.length ? cp.nearMarkers.join(" · ") : <span className="text-fg-dim">unattributed — nothing new adopted nearby</span>}
@@ -293,35 +391,60 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
               </tbody>
             </table>
           </div>
+          </div>
         </section>
       )}
 
-      <section className="card overflow-hidden">
-        <div className="px-3 py-2 border-b border-bd text-[11px] uppercase tracking-wider text-fg-muted">Adoption timeline — first seen</div>
-        <div className="overflow-x-auto max-h-[480px] overflow-y-auto">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>First seen</th>
-                <th>Type</th>
-                <th>Name</th>
-                <th className="num">Sessions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {[...data.markers].reverse().map((m) => {
-                const Icon = KIND_ICON[m.kind];
-                return (
-                  <tr key={`${m.kind}-${m.name}`}>
-                    <td className="mono text-[12px] text-fg-muted tabular-nums">{fmtDate(m.firstSeenAt)}</td>
-                    <td><span className="inline-flex items-center gap-1 text-[10px] text-fg-dim"><Icon className="size-3" /> {KIND_LABEL[m.kind]}</span></td>
-                    <td className="truncate max-w-[360px]">{m.name}</td>
-                    <td className="num text-fg-muted">{m.sessionCount}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+      <section id="adoptions" className="scroll-mt-16">
+        <SectionHeader
+          icon={CalendarPlus}
+          title="Adoptions"
+          desc="Every skill, plugin, subagent, and model — the day it first appeared in your workflow"
+          right={`${data.markers.length} total`}
+        />
+        <div className="card overflow-hidden">
+        <div className="max-h-[480px] overflow-y-auto px-4 py-3">
+          {(() => {
+            // Newest first, grouped by month; each group renders on a shared rail.
+            const groups: Array<{ label: string; items: typeof data.markers }> = [];
+            for (const m of [...data.markers].reverse()) {
+              const label = new Date(m.firstSeenAt).toLocaleDateString(undefined, { month: "long", year: "numeric" });
+              const last = groups[groups.length - 1];
+              if (last && last.label === label) last.items.push(m);
+              else groups.push({ label, items: [m] });
+            }
+            return groups.map((g) => (
+              <div key={g.label} className="relative pl-4">
+                                <div className="absolute left-[3px] top-1 bottom-0 w-px bg-bd/60" aria-hidden />
+                <div className="sticky top-0 z-[1] -ml-4 pl-4 py-1 bg-bg-subtle text-[10px] uppercase tracking-wider text-fg-muted">
+                  {g.label}
+                </div>
+                <ul>
+                  {g.items.map((m) => {
+                    const Icon = KIND_ICON[m.kind];
+                    return (
+                      <li key={`${m.kind}-${m.name}`} className="relative py-1 group">
+                        <span
+                          className="absolute -left-[15px] top-[9px] size-[7px] rounded-full ring-2 ring-bg-subtle"
+                          style={{ background: KIND_COLOR[m.kind] }}
+                          aria-hidden
+                        />
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="mono text-[10px] text-fg-dim tabular-nums shrink-0 w-14">{fmtDate(m.firstSeenAt).slice(5)}</span>
+                          <Icon className="size-3 shrink-0" style={{ color: KIND_COLOR[m.kind] }} />
+                          <span className="truncate text-[13px] text-fg group-hover:text-accent-soft transition-colors">{m.name}</span>
+                          <span className="ml-auto shrink-0 mono text-[10px] text-fg-dim tabular-nums" title={`used in ${m.sessionCount} session${m.sessionCount === 1 ? "" : "s"}`}>
+                            ×{m.sessionCount}
+                          </span>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ));
+          })()}
+        </div>
         </div>
       </section>
     </div>
