@@ -46,8 +46,11 @@ export const KNOWN_COLLECTION_SOURCES: CollectionSourceDef[] = [
     label: "Atomic Chat",
     roots: ["~/Library/Application Support/Atomic Chat/data/threads"],
     format: "jsonl-dir",
-    parseable: true,
-    note: "Atomic Chat threads (messages.jsonl); timestamps parse, token counts are per-message snapshots we don't trust yet.",
+    // Without a field mapping the generic parser yields metric-less sessions
+    // that still inflate counts/model rows — detect-only until a mapping lands.
+    parseable: false,
+    detectExts: [".jsonl"],
+    note: "Atomic Chat threads (messages.jsonl).",
   },
   {
     id: "lmstudio",

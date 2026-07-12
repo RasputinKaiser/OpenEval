@@ -16,7 +16,7 @@ import type { LiveSession } from "./live";
  * Bump PARSER_VERSION whenever parseLiveSession's output changes shape or
  * semantics; stale-version rows are ignored and overwritten.
  */
-export const PARSER_VERSION = 6; // v6: codex titles/prompt previews skip injected preambles (persona + AGENTS.md)
+export const PARSER_VERSION = 8; // v8: preamble suppression = subagent metadata flag + orchestration-vocabulary fallback for coordinator roots
 
 const CACHE_DB_PATH = path.join(ROOT, "data", "live-cache.db");
 

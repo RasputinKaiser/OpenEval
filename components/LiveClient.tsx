@@ -35,8 +35,8 @@ import HarnessPicker from "./HarnessPicker";
 import PageHeader from "./PageHeader";
 import { SectionHeader, SectionNav } from "./Section";
 import { RedactToggle } from "./RedactToggle";
-import { collectPathUsernames, compactDisplayPath, redactNamedUsers, redactSensitiveText } from "@/lib/redaction";
-import { useRedaction } from "@/lib/use-redaction";
+import { compactDisplayPath, redactNamedUsers, redactSensitiveText } from "@/lib/redaction";
+import { useRedactedShow } from "@/lib/use-redaction";
 import { Sparkline } from "@/components/Sparkline";
 import type { LiveAggregate, LiveMetricSources, LiveSession, LiveTranscriptTurn, MetricSource, TranscriptResult } from "@/lib/live";
 import { useFocusOnSlash } from "@/lib/use-focus-slash";
@@ -53,11 +53,6 @@ type SortMode = "recent" | "quality" | "errors";
 
 const HARNESS_STORAGE_KEY = "openeval.live.harness";
 
-// Usernames harvested from the scanned sessions' real paths — consulted by
-// displayText so bare mentions (bundle ids, prose) get scrubbed everywhere
-// in this page without threading a set through every subcomponent.
-let KNOWN_USERS: ReadonlySet<string> = new Set();
-
 
 export default function LiveClient({ initialData, error: initialError, getTranscript }: LiveClientProps) {
   const [data, setData] = useState<LiveAggregate | null>(initialData ?? null);
@@ -66,7 +61,15 @@ export default function LiveClient({ initialData, error: initialError, getTransc
   const [selected, setSelected] = useState<LiveSession | null>(null);
   const handleSelectSession = useCallback((s: LiveSession) => setSelected(s), []);
   const [selectedHarness, setSelectedHarness] = useState(initialData?.sourceHarness ?? "");
-  const { redact, setRedact } = useRedaction();
+  // Per-instance harvest — no module state, so nothing leaks across SSR
+  // requests or component instances.
+  const harvestFrom = useMemo(() => {
+    const src: unknown[] = [];
+    for (const s of data?.sessions ?? []) src.push(s.project, s.path);
+    for (const root of data?.sourceRoots ?? []) src.push(root);
+    return src;
+  }, [data]);
+  const { redact, setRedact, users } = useRedactedShow(harvestFrom);
   const [filter, setFilter] = useState<FilterMode>("all");
   const [sort, setSort] = useState<SortMode>("recent");
   const [search, setSearch] = useState("");
@@ -141,17 +144,6 @@ export default function LiveClient({ initialData, error: initialError, getTransc
     };
   }, [selectedHarness]);
 
-  // Render-phase on purpose: children call displayText during this same render.
-  useMemo(() => {
-    const names = new Set<string>();
-    for (const s of data?.sessions ?? []) {
-      collectPathUsernames(s.project, names);
-      collectPathUsernames(s.path, names);
-    }
-    for (const root of data?.sourceRoots ?? []) collectPathUsernames(root, names);
-    KNOWN_USERS = names;
-  }, [data]);
-
   const visibleSessions = useMemo(() => {
     const sessions = data?.sessions ?? [];
     const q = debouncedSearch.trim().toLowerCase();
@@ -187,7 +179,7 @@ export default function LiveClient({ initialData, error: initialError, getTransc
         title="Live sessions"
         subtitle={
           <>
-            Live trace sessions from <code className="mono text-xs">{displayText(data.sourceRoots[0] ?? data.sourceLabel, redact)}</code>, with usage
+            Live trace sessions from <code className="mono text-xs">{displayText(data.sourceRoots[0] ?? data.sourceLabel, redact, users)}</code>, with usage
             provenance, parser confidence, and copy-safe redaction for local usernames.
           </>
         }
@@ -223,13 +215,13 @@ export default function LiveClient({ initialData, error: initialError, getTransc
 
       {data.sourceStatus !== "available" && (
         <div className="mb-4 rounded-lg border border-warn/30 bg-warn/10 p-3 text-sm text-warn">
-          {displayText(data.sourceMessage ?? "No live trace source is available for this harness.", redact)}
+          {displayText(data.sourceMessage ?? "No live trace source is available for this harness.", redact, users)}
         </div>
       )}
 
       {data.scanWarnings.length > 0 && (
         <div className="mb-4 rounded-lg border border-warn/30 bg-warn/10 p-3 text-sm text-warn">
-          {data.scanWarnings.map((warning) => <div key={warning}>{displayText(warning, redact)}</div>)}
+          {data.scanWarnings.map((warning) => <div key={warning}>{displayText(warning, redact, users)}</div>)}
         </div>
       )}
 
@@ -319,6 +311,7 @@ export default function LiveClient({ initialData, error: initialError, getTransc
                 key={session.sessionId + session.project}
                 session={session}
                 redact={redact}
+                users={users}
                 onSelect={handleSelectSession}
               />
             ))}
@@ -330,12 +323,13 @@ export default function LiveClient({ initialData, error: initialError, getTransc
       </div>
       </section>
 
-      <TraceIntelligencePanels data={data} redact={redact} />
+      <TraceIntelligencePanels data={data} redact={redact} users={users} />
 
       {selected && (
         <SessionDrawer
           session={selected}
           redact={redact}
+          users={users}
           onClose={() => setSelected(null)}
           getTranscript={getTranscript}
           harness={data.sourceHarness}
@@ -390,7 +384,7 @@ function ModelPanel({ data }: { data: LiveAggregate }) {
   );
 }
 
-function TraceIntelligencePanels({ data, redact }: { data: LiveAggregate; redact: boolean }) {
+function TraceIntelligencePanels({ data, redact, users }: { data: LiveAggregate; redact: boolean; users: ReadonlySet<string> }) {
   const queueTotal = data.queueTotals.enqueue + data.queueTotals.dequeue + data.queueTotals.remove + data.queueTotals.popAll;
   return (
     <section id="intelligence" className="scroll-mt-16 mb-4">
@@ -414,7 +408,7 @@ function TraceIntelligencePanels({ data, redact }: { data: LiveAggregate; redact
             key: branch.branch,
             label: branch.branch,
             value: `${branch.sessions} sessions`,
-          }))} redact={redact} empty="No branch metadata found." />
+          }))} redact={redact} users={users} empty="No branch metadata found." />
         </div>
       </section>
 
@@ -444,7 +438,7 @@ function TraceIntelligencePanels({ data, redact }: { data: LiveAggregate; redact
           <ListStack items={data.queueTotals.preview.map((preview, index) => ({
             key: `${index}-${preview}`,
             label: preview,
-          }))} redact={redact} empty="No queued prompt previews." />
+          }))} redact={redact} users={users} empty="No queued prompt previews." />
         </div>
       </section>
 
@@ -461,7 +455,7 @@ function TraceIntelligencePanels({ data, redact }: { data: LiveAggregate; redact
             key: file.file,
             label: compactDisplayPath(file.file, redact),
             value: `${file.sessions} sessions`,
-          }))} redact={false} empty="No touched files inferred." />
+          }))} redact={false} users={users} empty="No touched files inferred." />
         </div>
       </section>
     </div>
@@ -546,13 +540,13 @@ function DetailPanel({ title, children }: { title: string; children: ReactNode }
   );
 }
 
-function ListStack({ items, redact, empty }: { items: Array<{ key: string; label: string; value?: string }>; redact: boolean; empty: string }) {
+function ListStack({ items, redact, users, empty }: { items: Array<{ key: string; label: string; value?: string }>; redact: boolean; users: ReadonlySet<string>; empty: string }) {
   if (items.length === 0) return <div className="text-sm text-fg-muted">{empty}</div>;
   return (
     <div className="space-y-2">
       {items.map((item) => (
         <div key={item.key} className="flex min-w-0 items-center justify-between gap-3 text-xs">
-          <span className="truncate text-fg-muted">{displayText(item.label, redact)}</span>
+          <span className="truncate text-fg-muted">{displayText(item.label, redact, users)}</span>
           {item.value ? <span className="mono shrink-0 text-[10px] text-fg-dim">{item.value}</span> : null}
         </div>
       ))}
@@ -560,7 +554,7 @@ function ListStack({ items, redact, empty }: { items: Array<{ key: string; label
   );
 }
 
-const SessionRow = React.memo(function SessionRow({ session, redact, onSelect }: { session: LiveSession; redact: boolean; onSelect: (s: LiveSession) => void }) {
+const SessionRow = React.memo(function SessionRow({ session, redact, users, onSelect }: { session: LiveSession; redact: boolean; users: ReadonlySet<string>; onSelect: (s: LiveSession) => void }) {
   const attention = needsAttention(session);
   const edgeColor = session.isError || session.toolErrors > 0 ? "bg-err" : session.hookErrors > 0 ? "bg-warn" : attention ? "bg-warn/50" : session.staleMs > staleThresholdMs() ? "bg-fg-dim" : "bg-ok/40";
   return (
@@ -583,14 +577,14 @@ const SessionRow = React.memo(function SessionRow({ session, redact, onSelect }:
           <span>·</span>
           {session.displayTitle ? (
             <>
-              <span>{displayText(session.displayTitle, redact)}</span>
+              <span>{displayText(session.displayTitle, redact, users)}</span>
               <span>·</span>
             </>
           ) : null}
           <span>{session.model || "model missing"}</span>
           {session.traceGraph.sidechainMessages > 0 ? <span className="rounded bg-accent/10 px-1.5 py-0.5 text-accent-soft">{session.traceGraph.sidechainMessages} side</span> : null}
           {session.traceGraph.agentCount > 0 ? <span className="rounded bg-bg-elev px-1.5 py-0.5 text-fg-muted">{session.traceGraph.agentCount} agent</span> : null}
-          {session.modeSummary.gitBranch ? <span className="rounded bg-bg-elev px-1.5 py-0.5 text-fg-muted">{displayText(session.modeSummary.gitBranch, redact)}</span> : null}
+          {session.modeSummary.gitBranch ? <span className="rounded bg-bg-elev px-1.5 py-0.5 text-fg-muted">{displayText(session.modeSummary.gitBranch, redact, users)}</span> : null}
           <span className={clsx(
             "rounded px-1.5 py-0.5 tabular-nums",
             session.metricSources.tokens === "measured" ? "bg-ok/10 text-ok" : "bg-warn/10 text-warn"
@@ -601,7 +595,7 @@ const SessionRow = React.memo(function SessionRow({ session, redact, onSelect }:
             <Sparkline data={session.usageSegments.map((s) => s.outTokPerSec)} width={36} height={14} color="#a78bff" />
           )}
           {session.parseWarnings.slice(0, 2).map((warning) => (
-            <span key={warning} className="rounded bg-warn/10 px-1.5 py-0.5 text-warn">{displayText(warning, redact)}</span>
+            <span key={warning} className="rounded bg-warn/10 px-1.5 py-0.5 text-warn">{displayText(warning, redact, users)}</span>
           ))}
         </div>
       </div>
@@ -629,12 +623,14 @@ const SessionRow = React.memo(function SessionRow({ session, redact, onSelect }:
 function SessionDrawer({
   session,
   redact,
+  users,
   onClose,
   getTranscript,
   harness,
 }: {
   session: LiveSession;
   redact: boolean;
+  users: ReadonlySet<string>;
   onClose: () => void;
   getTranscript?: (filePath: string, harness?: string) => Promise<TranscriptResult>;
   harness: string;
@@ -721,7 +717,7 @@ function SessionDrawer({
                 <QualityBadge value={session.dataQuality} />
                 <StatusPill session={session} />
               </div>
-              <p className="mono mt-1 break-all text-xs text-fg-muted">{displayText(session.sessionId, redact)}</p>
+              <p className="mono mt-1 break-all text-xs text-fg-muted">{displayText(session.sessionId, redact, users)}</p>
             </div>
             {session.path && (
               <a
@@ -766,10 +762,10 @@ function SessionDrawer({
           {(session.displayTitle || session.lastPromptPreview) && (
             <section className="rounded-lg border border-bd bg-bg/45 p-4">
               <div className="mb-2 text-sm font-medium">Session intent</div>
-              {session.displayTitle ? <div className="text-sm text-fg">{displayText(session.displayTitle, redact)}</div> : null}
+              {session.displayTitle ? <div className="text-sm text-fg">{displayText(session.displayTitle, redact, users)}</div> : null}
               {session.lastPromptPreview ? (
                 <pre className="mono mt-2 max-h-28 overflow-auto whitespace-pre-wrap text-[11px] leading-5 text-fg-muted">
-                  {displayText(session.lastPromptPreview, redact)}
+                  {displayText(session.lastPromptPreview, redact, users)}
                 </pre>
               ) : null}
             </section>
@@ -789,7 +785,7 @@ function SessionDrawer({
               <div className="mt-3 flex flex-wrap gap-1.5">
                 {session.parseWarnings.map((warning) => (
                   <span key={warning} className="rounded border border-warn/30 bg-warn/10 px-2 py-1 text-[10px] text-warn">
-                    {displayText(warning, redact)}
+                    {displayText(warning, redact, users)}
                   </span>
                 ))}
               </div>
@@ -824,7 +820,7 @@ function SessionDrawer({
             </DetailPanel>
             <DetailPanel title="Modes / repo">
               <div className="space-y-2 text-xs text-fg-muted">
-                <div className="flex justify-between gap-3"><span>Branch</span><span className="mono truncate">{displayText(session.modeSummary.gitBranch ?? "missing", redact)}</span></div>
+                <div className="flex justify-between gap-3"><span>Branch</span><span className="mono truncate">{displayText(session.modeSummary.gitBranch ?? "missing", redact, users)}</span></div>
                 <div className="flex justify-between gap-3"><span>Entrypoint</span><span className="mono">{session.modeSummary.entrypoint ?? "missing"}</span></div>
                 <div className="flex flex-wrap gap-1.5">
                   {Object.entries(session.modeSummary.permissionModes).map(([mode, count]) => (
@@ -845,7 +841,7 @@ function SessionDrawer({
             <ListStack items={session.queueSummary.preview.map((preview, index) => ({
               key: `${index}-${preview}`,
               label: preview,
-            }))} redact={redact} empty="No queued prompt previews." />
+            }))} redact={redact} users={users} empty="No queued prompt previews." />
           </DetailPanel>
 
           <DetailPanel title="Tool breakdown">
@@ -890,7 +886,7 @@ function SessionDrawer({
             <ListStack items={session.fileActivity.touchedFiles.map((filePath) => ({
               key: filePath,
               label: compactDisplayPath(filePath, redact),
-            }))} redact={false} empty="No file paths inferred from tools or snapshots." />
+            }))} redact={false} users={users} empty="No file paths inferred from tools or snapshots." />
           </DetailPanel>
 
           <section>
@@ -899,7 +895,7 @@ function SessionDrawer({
               {turns === null && <Loader2 className="size-4 animate-spin text-fg-muted" />}
             </div>
             {transcriptError ? (
-              <div className="rounded-lg border border-warn/30 bg-warn/10 p-4 text-sm text-warn">{displayText(transcriptError, redact)}</div>
+              <div className="rounded-lg border border-warn/30 bg-warn/10 p-4 text-sm text-warn">{displayText(transcriptError, redact, users)}</div>
             ) : turns === null ? (
               <LoadingSkeletonRows />
             ) : turns.length === 0 ? (
@@ -907,7 +903,7 @@ function SessionDrawer({
             ) : (
               <div className="space-y-2">
                 {turns.map((turn, i) => (
-                  <TurnRow key={`${turn.type}-${i}`} turn={turn} redact={redact} />
+                  <TurnRow key={`${turn.type}-${i}`} turn={turn} redact={redact} users={users} />
                 ))}
               </div>
             )}
@@ -918,7 +914,7 @@ function SessionDrawer({
   );
 }
 
-const TurnRow = React.memo(function TurnRow({ turn, redact }: { turn: LiveTranscriptTurn; redact: boolean }) {
+const TurnRow = React.memo(function TurnRow({ turn, redact, users }: { turn: LiveTranscriptTurn; redact: boolean; users: ReadonlySet<string> }) {
   return (
     <div className={clsx(
       "rounded-lg border p-3",
@@ -930,7 +926,7 @@ const TurnRow = React.memo(function TurnRow({ turn, redact }: { turn: LiveTransc
         {turn.at ? <span className="mono text-[10px] text-fg-dim">{new Date(turn.at).toLocaleTimeString()}</span> : null}
       </div>
       <pre className="mono max-h-40 overflow-auto whitespace-pre-wrap text-[11px] leading-5 text-fg-muted">
-        {displayText(turn.preview, redact)}
+        {displayText(turn.preview, redact, users)}
       </pre>
     </div>
   );
@@ -1151,8 +1147,8 @@ function ErrorCard({ message }: { message: string }) {
   );
 }
 
-function displayText(value: unknown, redact: boolean): string {
-  return redact ? redactNamedUsers(redactSensitiveText(value), KNOWN_USERS) : String(value ?? "");
+function displayText(value: unknown, redact: boolean, users: ReadonlySet<string>): string {
+  return redact ? redactNamedUsers(redactSensitiveText(value), users) : String(value ?? "");
 }
 
 function shortId(id: string): string {

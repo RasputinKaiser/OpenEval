@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { collectPathUsernames, redactDisplay } from "./redaction";
 
 /**
  * App-wide redaction preference. One localStorage key (the Live page's
@@ -49,4 +50,30 @@ export function useRedaction(): { redact: boolean; setRedact: (v: boolean | ((v:
   }, []);
 
   return { redact, setRedact };
+}
+
+/**
+ * The one redaction contract for list/content surfaces: harvest local
+ * usernames from the strings in `harvestFrom` (paths, titles, previews —
+ * memoize the array in the caller), and get a `show()` that scrubs paths,
+ * bare username tokens, and (optionally) credential shapes under the
+ * app-wide toggle. Per-instance state — nothing is shared across
+ * components, renders, or SSR requests.
+ */
+export function useRedactedShow(
+  harvestFrom: ReadonlyArray<unknown>,
+  opts: { secrets?: boolean } = {},
+): { redact: boolean; setRedact: (v: boolean | ((v: boolean) => boolean)) => void; show: (v: unknown) => string; users: ReadonlySet<string> } {
+  const { redact, setRedact } = useRedaction();
+  const secrets = opts.secrets ?? false;
+  const users = useMemo(() => {
+    const names = new Set<string>();
+    for (const v of harvestFrom) collectPathUsernames(v, names);
+    return names as ReadonlySet<string>;
+  }, [harvestFrom]);
+  const show = useCallback(
+    (v: unknown) => (redact ? redactDisplay(v, { usernames: users, secrets }) : String(v ?? "")),
+    [redact, users, secrets],
+  );
+  return { redact, setRedact, show, users };
 }

@@ -370,7 +370,7 @@ test("codex titles and prompt previews skip injected persona preambles", () => {
   const preamble =
     "You are Worker 3 for the StorageScope UX fixes. You are one of several agents working in parallel on this repository; coordinate via the shared task list and never push without review.";
   const file = writeSession([
-    { timestamp: "2026-06-29T00:00:00.000Z", type: "session_meta", payload: { id: "subagent", cwd: "/tmp/x" } },
+    { timestamp: "2026-06-29T00:00:00.000Z", type: "session_meta", payload: { id: "subagent", cwd: "/tmp/x", source: { subagent: { thread_spawn: { agent_nickname: "Worker 3" } } } } },
     {
       timestamp: "2026-06-29T00:00:01.000Z",
       type: "response_item",
@@ -388,6 +388,38 @@ test("codex titles and prompt previews skip injected persona preambles", () => {
   assert.equal(session.displayTitle, "Fix the flaky dropdown test");
   // the only user_msg event was the preamble — better no preview than a leaky one
   assert.equal(session.lastPromptPreview, null);
+});
+
+test("coordinator-root preambles are suppressed without a subagent flag", () => {
+  const preamble =
+    "You are `/root`, the primary agent in a team of agents collaborating to fulfill the user's request. Spawn workers via the task tool and coordinate their output before replying.";
+  const file = writeSession([
+    { timestamp: "2026-06-29T00:00:00.000Z", type: "session_meta", payload: { id: "root", cwd: "/tmp/x", source: "vscode" } },
+    {
+      timestamp: "2026-06-29T00:00:01.000Z",
+      type: "response_item",
+      payload: { type: "message", role: "user", content: [{ type: "input_text", text: preamble }] },
+    },
+  ]);
+  const session = summarizeCodexSessionFile(file, "2026/06/29", Date.parse("2026-06-29T00:00:00.000Z"));
+  assert.ok(session);
+  assert.equal(session.displayTitle, null);
+});
+
+test("a human's long 'You are …' prompt keeps its title in non-subagent sessions", () => {
+  const prompt =
+    "You are too verbose lately, please rewrite the following function to be terse and defensive, keeping the public contract identical while trimming every incidental comment.";
+  const file = writeSession([
+    { timestamp: "2026-06-29T00:00:00.000Z", type: "session_meta", payload: { id: "normal", cwd: "/tmp/x" } },
+    {
+      timestamp: "2026-06-29T00:00:01.000Z",
+      type: "response_item",
+      payload: { type: "message", role: "user", content: [{ type: "input_text", text: prompt }] },
+    },
+  ]);
+  const session = summarizeCodexSessionFile(file, "2026/06/29", Date.parse("2026-06-29T00:00:00.000Z"));
+  assert.ok(session);
+  assert.ok(session.displayTitle?.startsWith("You are too verbose"));
 });
 
 test("summarizeCodexSessionFile reads Codex App and CLI rollout usage", () => {

@@ -11,15 +11,14 @@ import {
 import PageHeader from "./PageHeader";
 import { SectionHeader, SectionNav } from "./Section";
 import { RedactToggle } from "./RedactToggle";
-import { collectPathUsernames, compactDisplayPath, redactDisplay } from "@/lib/redaction";
-import { useRedaction } from "@/lib/use-redaction";
-import { fmtNum, fmtNumFull, fmtUsd, fmtUsdFull, fmtRel, fmtDuration } from "@/lib/format";
+import { compactDisplayPath } from "@/lib/redaction";
+import { useRedactedShow } from "@/lib/use-redaction";
+import { DAYS, fmtNum, fmtNumFull, fmtUsd, fmtUsdFull, fmtRel, fmtDuration } from "@/lib/format";
 import type { AllSourcesResult } from "@/lib/collection/aggregate";
 import type { RollupReport } from "@/lib/collection/rollup";
 import type { FtsHit } from "@/lib/live-cache";
 import { WeeklyUsageChart, ActivityHeatmap, ToolHealthList } from "./CollectionCharts";
 
-const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 function StatusPill({ status }: { status: "present" | "empty" | "absent" }) {
   const tone = status === "present" ? "bg-ok/15 text-ok" : status === "empty" ? "bg-warn/15 text-warn" : "bg-bg-elev text-fg-dim";
@@ -117,22 +116,7 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
   const [err, setErr] = useState(error);
   const [q, setQ] = useState(initialQuery ?? "");
   const [hits, setHits] = useState<FtsHit[] | null>(null);
-  const { redact, setRedact } = useRedaction();
   const ranInitial = useRef(false);
-
-  // Usernames harvested from real session paths — lets us scrub bare mentions
-  // (bundle ids, prose) that the path-shaped regexes can't recognize.
-  const localUsers = useMemo(() => {
-    const names = new Set<string>();
-    for (const s of data.sessions) {
-      collectPathUsernames(s.project, names);
-      collectPathUsernames(s.path, names);
-    }
-    return names;
-  }, [data.sessions]);
-
-  /** Display-side scrub for content that may embed local usernames. */
-  const show = (v: unknown) => (redact ? redactDisplay(v, { usernames: localUsers }) : String(v ?? ""));
 
   // A ?q= handoff (e.g. from the dashboard search box) runs immediately.
   useEffect(() => {
@@ -145,6 +129,17 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
   const [searching, setSearching] = useState(false);
   const [indexInfo, setIndexInfo] = useState<{ indexedFiles: number; totalFiles: number } | null>(null);
   const [indexing, setIndexing] = useState(false);
+
+  // Harvest corpus spans BOTH the session list and any search hits — hits come
+  // from the full-history FTS index, whose sessions may predate the recent list.
+  const harvestFrom = useMemo(
+    () => [
+      ...data.sessions.flatMap((s) => [s.project, s.path]),
+      ...(hits ?? []).flatMap((h) => [h.project, h.file]),
+    ],
+    [data.sessions, hits],
+  );
+  const { redact, setRedact, show } = useRedactedShow(harvestFrom);
 
   async function runSearch(query: string) {
     if (!query.trim()) { setHits(null); return; }
@@ -218,7 +213,6 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
     { id: "sessions", label: "Sessions" },
   ], [hasWeekly, hasHeatmap, hasModels, hasTools]);
 
-  // Derived overview stats.
   const distinctTokens = data.totalInputTokens + data.totalOutputTokens;
   const cacheRead = data.totalCacheReadTokens ?? 0;
   const cacheMult = distinctTokens > 0 ? cacheRead / distinctTokens : 0;

@@ -4,7 +4,7 @@ import { useState } from "react";
 import clsx from "clsx";
 import type { RollupReport } from "@/lib/collection/rollup";
 import type { ToolRollup } from "@/lib/collection/aggregate";
-import { fmtNum, fmtNumFull, fmtUsd } from "@/lib/format";
+import { DAYS, fmtNum, fmtNumFull, fmtUsd } from "@/lib/format";
 import { ChartTooltip, useChartTooltip } from "./ChartTooltip";
 
 /**
@@ -115,7 +115,6 @@ export function WeeklyUsageChart({ rollup }: { rollup: RollupReport }) {
 
 // ---- Activity heatmap ----
 
-const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 export function ActivityHeatmap({ heatmap, totalSessions }: { heatmap: number[][]; totalSessions: number }) {
   const { tip, show, hide } = useChartTooltip();

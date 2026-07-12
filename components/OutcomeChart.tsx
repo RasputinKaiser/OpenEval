@@ -7,6 +7,7 @@ import type { SeriesPoint, Marker, MarkerKind } from "@/lib/insights/timeline";
 import type { ChangePoint } from "@/lib/insights/changepoints";
 import { fmtDate, fmtSigned } from "@/lib/format";
 import { ChartTooltip, useChartTooltip } from "./ChartTooltip";
+import { KIND_COLOR, KIND_LABEL } from "./markerKinds";
 
 /**
  * The timeline's centerpiece: the inferred-outcome curve with every adoption
@@ -22,14 +23,7 @@ import { ChartTooltip, useChartTooltip } from "./ChartTooltip";
  * of an overlapping pile.
  */
 
-const KIND_COLOR: Record<MarkerKind, string> = {
-  skill: "var(--color-accent-soft)",
-  mcp: "var(--color-ok)",
-  subagent: "var(--color-warn)",
-  model: "var(--color-fg-dim)",
-};
 
-const KIND_LABEL: Record<MarkerKind, string> = { skill: "skill", mcp: "plugin", subagent: "subagent", model: "model" };
 const LANES: MarkerKind[] = ["skill", "mcp", "subagent", "model"];
 const CLUSTER_PX = 14;
 // The series is downsampled to ~80 points, so extreme zoom reveals nothing new;
@@ -142,8 +136,7 @@ export default function OutcomeChart({
   const laneY = (kind: MarkerKind) => H - PAD_B + 26 + LANES.indexOf(kind) * 12;
   const shownShifts = changePoints.filter((c) => inRange(c.at) && c.metric === "outcome");
 
-  // Month gridlines.
-  const months: number[] = [];
+    const months: number[] = [];
   const d = new Date(t0);
   d.setDate(1); d.setHours(0, 0, 0, 0); d.setMonth(d.getMonth() + 1);
   while (d.getTime() < t1) { months.push(d.getTime()); d.setMonth(d.getMonth() + 1); }
@@ -250,8 +243,7 @@ export default function OutcomeChart({
           </g>
         ))}
 
-        {/* outcome curve */}
-        <path d={area} fill="var(--color-accent)" opacity={0.08} />
+                <path d={area} fill="var(--color-accent)" opacity={0.08} />
         <path d={path} fill="none" stroke="var(--color-accent-soft)" strokeWidth={1.75} strokeLinejoin="round" />
 
         {/* crosshair — hairline + snapped point with a surface ring */}

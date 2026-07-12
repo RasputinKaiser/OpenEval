@@ -52,13 +52,29 @@ export function redactSensitiveText(value: unknown): string {
  * usernames from real filesystem paths in their data. Names under 4 chars are
  * skipped — too collision-prone as bare tokens.
  */
-export function redactNamedUsers(value: unknown, usernames: Iterable<string>): string {
-  let text = String(value ?? "");
+// Compiled matchers cached per usernames collection — callers pass stable
+// (memoized, never-mutated) Sets, and hot paths call this per row per render.
+const NAME_MATCHER_CACHE = new WeakMap<object, RegExp[]>();
+
+function nameMatchers(usernames: Iterable<string>): RegExp[] {
+  const cacheable = typeof usernames === "object" && usernames !== null;
+  if (cacheable) {
+    const hit = NAME_MATCHER_CACHE.get(usernames as object);
+    if (hit) return hit;
+  }
+  const matchers: RegExp[] = [];
   for (const name of usernames) {
     if (name.length < 4 || name === "[redacted]") continue;
     const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    text = text.replace(new RegExp(`(?<![\\w-])${escaped}(?![\\w-])`, "g"), "[redacted]");
+    matchers.push(new RegExp(`(?<![\\w-])${escaped}(?![\\w-])`, "g"));
   }
+  if (cacheable) NAME_MATCHER_CACHE.set(usernames as object, matchers);
+  return matchers;
+}
+
+export function redactNamedUsers(value: unknown, usernames: Iterable<string>): string {
+  let text = String(value ?? "");
+  for (const re of nameMatchers(usernames)) text = text.replace(re, "[redacted]");
   return text;
 }
 
@@ -98,7 +114,11 @@ export function redactSecrets(text: string): string {
 
 async function getRampart(): Promise<any> {
   try {
-    const transformers = await import(RAMPART_IMPORT_SPECIFIER);
+    // webpackIgnore keeps this a NATIVE dynamic import. Without it, webpack
+    // turns the variable specifier into a context module ("Critical
+    // dependency" warning) that poisons the client bundle of every page
+    // importing this file — pages render but never hydrate.
+    const transformers = await import(/* webpackIgnore: true */ RAMPART_IMPORT_SPECIFIER);
     return transformers;
   } catch (error) {
     throw error;

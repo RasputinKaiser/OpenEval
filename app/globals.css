@@ -124,6 +124,14 @@ button:active:not(:disabled) { transform: scale(0.96); }
   contain-intrinsic-size: auto 48px;
 }
 
+/* For taller rows (transcript chat cards) — a closer first-render estimate
+   keeps the scrollbar from jumping on the first pass; `auto` remembers the
+   real height afterwards. */
+.cv-auto-lg {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 120px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .shimmer { animation: none; }
 }

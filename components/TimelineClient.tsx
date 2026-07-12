@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import clsx from "clsx";
-import { Activity, TrendingUp, TrendingDown, AlertTriangle, ArrowLeft, Puzzle, Plug, Users, Sparkles, Gavel, Scale, LineChart, GitCompareArrows, Zap, CalendarPlus } from "lucide-react";
+import { Activity, TrendingUp, TrendingDown, AlertTriangle, ArrowLeft, Gavel, Scale, LineChart, GitCompareArrows, Zap, CalendarPlus } from "lucide-react";
 import PageHeader from "./PageHeader";
+import { KIND_COLOR, KIND_ICON, KIND_LABEL } from "./markerKinds";
 import { SectionHeader, SectionNav } from "./Section";
 import OutcomeChart from "./OutcomeChart";
 import { fmtDate, fmtPct as pct, fmtSigned as signed } from "@/lib/format";
@@ -12,15 +13,6 @@ import type { TimelineReport } from "@/lib/insights/collect";
 import type { MarkerKind } from "@/lib/insights/timeline";
 import type { JudgeJobStatus } from "@/lib/insights/judge";
 
-const KIND_ICON: Record<MarkerKind, typeof Puzzle> = { skill: Sparkles, mcp: Plug, subagent: Users, model: Activity };
-const KIND_LABEL: Record<MarkerKind, string> = { skill: "skill", mcp: "plugin", subagent: "subagent", model: "model" };
-// Same palette as OutcomeChart's legend, so identity reads consistently across the page.
-const KIND_COLOR: Record<MarkerKind, string> = {
-  skill: "var(--color-accent-soft)",
-  mcp: "var(--color-ok)",
-  subagent: "var(--color-warn)",
-  model: "var(--color-fg-dim)",
-};
 
 /** A colored delta chip. `lowerIsBetter` flips the good/bad coloring. */
 function Delta({ value, lowerIsBetter, fmt }: { value: number; lowerIsBetter?: boolean; fmt: (v: number) => string }) {
@@ -423,8 +415,7 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
             }
             return groups.map((g) => (
               <div key={g.label} className="relative pl-4">
-                {/* rail */}
-                <div className="absolute left-[3px] top-1 bottom-0 w-px bg-bd/60" aria-hidden />
+                                <div className="absolute left-[3px] top-1 bottom-0 w-px bg-bd/60" aria-hidden />
                 <div className="sticky top-0 z-[1] -ml-4 pl-4 py-1 bg-bg-subtle text-[10px] uppercase tracking-wider text-fg-muted">
                   {g.label}
                 </div>

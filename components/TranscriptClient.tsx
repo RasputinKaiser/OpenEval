@@ -5,8 +5,7 @@ import clsx from "clsx";
 import { MessageSquare, Wrench, AlertTriangle, ListFilter, Search, X } from "lucide-react";
 import type { LiveTranscriptTurn } from "@/lib/live";
 import { fmtNum } from "@/lib/format";
-import { collectPathUsernames, redactDisplay } from "@/lib/redaction";
-import { useRedaction } from "@/lib/use-redaction";
+import { useRedactedShow } from "@/lib/use-redaction";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import ErrorHopper from "./ErrorHopper";
 import { RedactToggle } from "./RedactToggle";
@@ -39,28 +38,19 @@ export default function TranscriptClient({ turns, file }: { turns: LiveTranscrip
   const [filter, setFilter] = useState<Filter>("all");
   const [q, setQ] = useState("");
   const dq = useDebouncedValue(q, 150).trim().toLowerCase();
-  const { redact, setRedact } = useRedaction();
 
-  // Harvest local usernames from the file path and the transcript itself, so
-  // bare mentions inside prompts/output get scrubbed along with path shapes.
-  const users = useMemo(() => {
-    const names = new Set<string>();
-    collectPathUsernames(file, names);
-    for (const t of turns) {
-      collectPathUsernames(t.preview, names);
-      collectPathUsernames(t.label, names);
-    }
-    return names;
-  }, [turns, file]);
-
-  // Transcript bodies also get the credential-shape scrub — session logs are
-  // exactly where pasted keys and tokens end up.
-  const show = (v: unknown) => (redact ? redactDisplay(v, { usernames: users, secrets: true }) : String(v ?? ""));
+  // Harvest from the file path and the transcript itself so bare mentions in
+  // prompts/output get scrubbed; secrets on — session logs are exactly where
+  // pasted keys and tokens end up.
+  const harvestFrom = useMemo(() => [file, ...turns.flatMap((t) => [t.preview, t.label])], [turns, file]);
+  const { redact, setRedact, show } = useRedactedShow(harvestFrom, { secrets: true });
 
   const counts = useMemo(() => ({
     all: turns.length,
     chat: turns.filter((t) => t.role === "user" || t.role === "assistant").length,
-    tools: turns.filter((t) => t.role === "tool").length,
+    // Must match the filter predicate below — the tools view includes error
+    // turns of any role, so its chip count does too.
+    tools: turns.filter((t) => t.role === "tool" || t.severity === "error").length,
     errors: turns.filter((t) => t.severity === "error").length,
   }), [turns]);
 
@@ -77,6 +67,18 @@ export default function TranscriptClient({ turns, file }: { turns: LiveTranscrip
       !dq || t.preview.toLowerCase().includes(dq) || t.label.toLowerCase().includes(dq);
     return turns.map((t, i) => ({ t, i })).filter(({ t }) => pass(t) && matches(t));
   }, [turns, filter, dq]);
+
+  const visibleErrorIdx = useMemo(
+    () => visible.filter(({ t }) => t.severity === "error").map(({ i }) => i),
+    [visible],
+  );
+
+  // Redacted text per visible turn, cached — the scrub stack is regex-heavy
+  // and must not re-run across thousands of rows on unrelated re-renders.
+  const rendered = useMemo(
+    () => visible.map(({ t, i }) => ({ t, i, label: show(t.label), preview: t.preview ? show(t.preview) : "" })),
+    [visible, show],
+  );
 
   const CHIPS: Array<{ key: Filter; label: string; icon: typeof ListFilter; n: number }> = [
     { key: "all", label: "All", icon: ListFilter, n: counts.all },
@@ -134,16 +136,19 @@ export default function TranscriptClient({ turns, file }: { turns: LiveTranscrip
       </div>
       </div>
 
-      {filter === "all" && !dq && <ErrorHopper errorTurnIndexes={turns.map((t, i) => (t.severity === "error" ? i : -1)).filter((i) => i >= 0)} />}
+      {/* Hops over the errors VISIBLE under the current filter/search — ids keep
+          original indexes, so anchors always exist. Key resets its cursor when
+          the visible set changes shape. */}
+      {visibleErrorIdx.length > 0 && <ErrorHopper key={`${filter}:${dq}`} errorTurnIndexes={visibleErrorIdx} />}
 
       <div className="space-y-1">
-        {visible.length === 0 && (
+        {rendered.length === 0 && (
           <div className="card p-6 text-center text-sm text-fg-dim">{dq ? "No turns match your search." : "Nothing matches this filter."}</div>
         )}
-        {visible.map(({ t, i }) => {
+        {rendered.map(({ t, i, label, preview }) => {
           const meta = t.role === "meta" && t.severity === "info";
           return (
-            <div key={i} id={`turn-${i}`} className={clsx("cv-auto card border rounded-md", SEVERITY_TONE[t.severity], roleTone(t), meta ? "px-3 py-1" : "px-3 py-2")}>
+            <div key={i} id={`turn-${i}`} className={clsx(meta ? "cv-auto" : "cv-auto-lg", "card border rounded-md", SEVERITY_TONE[t.severity], roleTone(t), meta ? "px-3 py-1" : "px-3 py-2")}>
               <div className="flex items-center justify-between gap-3">
                 <span
                   className={clsx(
@@ -156,17 +161,17 @@ export default function TranscriptClient({ turns, file }: { turns: LiveTranscrip
                       : "text-fg-dim",
                   )}
                 >
-                  {show(t.label)}
+                  {label}
                 </span>
                 <span className="text-[10px] text-fg-dim mono shrink-0 tabular-nums">{t.at ? new Date(t.at).toLocaleTimeString() : ""}</span>
               </div>
-              {t.preview && (meta ? (
-                <div className="text-[11px] mono text-fg-dim truncate">{show(t.preview)}</div>
+              {preview && (meta ? (
+                <div className="text-[11px] mono text-fg-dim truncate">{preview}</div>
               ) : (
                 <pre className={clsx(
                   "mt-1 text-[12px] whitespace-pre-wrap break-words max-h-48 overflow-y-auto",
                   t.role === "user" || t.role === "assistant" ? "font-sans text-fg/90 leading-relaxed" : "mono text-fg-muted",
-                )}>{show(t.preview)}</pre>
+                )}>{preview}</pre>
               ))}
             </div>
           );

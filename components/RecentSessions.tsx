@@ -5,23 +5,13 @@ import Link from "next/link";
 import clsx from "clsx";
 import type { AllSourcesResult } from "@/lib/collection/aggregate";
 import { fmtNum, fmtNumFull, fmtRel } from "@/lib/format";
-import { collectPathUsernames, compactDisplayPath, redactDisplay } from "@/lib/redaction";
-import { useRedaction } from "@/lib/use-redaction";
+import { compactDisplayPath } from "@/lib/redaction";
+import { useRedactedShow } from "@/lib/use-redaction";
 
 /** Dashboard recent-sessions list — client-side so titles and project paths obey the app-wide redaction preference. */
 export default function RecentSessions({ sessions }: { sessions: AllSourcesResult["sessions"] }) {
-  const { redact } = useRedaction();
-
-  const users = useMemo(() => {
-    const names = new Set<string>();
-    for (const s of sessions) {
-      collectPathUsernames(s.project, names);
-      collectPathUsernames(s.path, names);
-    }
-    return names;
-  }, [sessions]);
-
-  const show = (v: unknown) => (redact ? redactDisplay(v, { usernames: users }) : String(v ?? ""));
+  const harvestFrom = useMemo(() => sessions.flatMap((s) => [s.project, s.path]), [sessions]);
+  const { redact, show } = useRedactedShow(harvestFrom);
 
   if (sessions.length === 0) {
     return <div className="text-center py-10 text-sm text-fg-dim">No sessions discovered yet.</div>;

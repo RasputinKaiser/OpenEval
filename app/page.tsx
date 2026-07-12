@@ -7,11 +7,11 @@ import { buildTimeline, type TimelineReport } from "@/lib/insights/collect";
 import StatusBadge from "@/components/StatusBadge";
 import HarnessBadge from "@/components/HarnessBadge";
 import RecentSessions from "@/components/RecentSessions";
+import { KIND_ICON } from "@/components/markerKinds";
 import { Sparkline } from "@/components/Sparkline";
-import { fmtNum, fmtNumFull, fmtUsd, fmtUsdFull, fmtRel, fmtDuration, fmtSigned, fmtPct } from "@/lib/format";
+import { fmtNum, fmtNumFull, fmtUsd, fmtUsdFull, fmtDuration, fmtSigned, fmtPct } from "@/lib/format";
 import {
-  Activity, ArrowRight, BarChart3, Boxes, Cpu, DollarSign, FileText,
-  Gavel, Plug, Radio, Search, Sparkles, Timer, TrendingDown, TrendingUp, Users,
+  Activity, ArrowRight, BarChart3, Boxes, Cpu, DollarSign, FileText, Gavel, Radio, Search, Timer, TrendingDown, TrendingUp,
 } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +23,6 @@ const CAT_COLORS: Record<string, string> = {
   "visual-code": "bg-blue-500",
 };
 
-const KIND_ICON = { skill: Sparkles, mcp: Plug, subagent: Users, model: Activity } as const;
 
 export default async function Page() {
   const runs = listRuns(5);

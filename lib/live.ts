@@ -1149,23 +1149,31 @@ export function summarizeCodexSessionFile(file: string, projectDir: string, mtim
   return summarizeWithCache(file, projectDir, mtime, parseCodexSession);
 }
 
+const ORCHESTRATION_MARKERS = /\b(team of agents|coordinator|orchestrat\w*|primary agent|worker \d|subagent|multi-agent)\b/i;
+
 /**
- * Orchestrator-injected persona preambles ("You are Worker 1 for …", "You are
- * `/root`, the primary agent in a team of agents …") arrive recorded as user
- * text in subagent sessions. They are plumbing, not the user's ask — using
+ * Orchestrator-injected preambles are plumbing, not the user's ask — using
  * them as titles/prompt previews leaks system-prompt text all over list UIs.
- * Short persona prompts a human might really type stay eligible.
+ * Subagent sessions are flagged deterministically by
+ * session_meta.source.subagent, so any "You are …" there is injected. Root
+ * coordinator sessions carry NO metadata flag (source is just "vscode"), so
+ * they fall back to orchestration vocabulary — which a human's own persona
+ * prompt ("You are too verbose, rewrite …") won't contain. AGENTS.md
+ * injection happens in normal sessions too and stays a plain text check.
  */
-function isInjectedPersonaPreamble(text: string): boolean {
+function isInjectedPreamble(text: string, subagentSession: boolean): boolean {
   const t = text.trimStart();
-  if (t.startsWith("# AGENTS.md instructions")) return true; // harness-injected repo instructions
-  return /^You are\b/.test(t) && t.length > 120;
+  if (t.startsWith("# AGENTS.md instructions")) return true;
+  if (!/^You are\b/.test(t)) return false;
+  if (subagentSession) return true;
+  return t.length > 120 && ORCHESTRATION_MARKERS.test(t);
 }
 
 function parseCodexSession(file: string, lines: Iterable<string>, bytes: number, projectDir: string, mtime: number): LiveSession | null {
   let sessionId: string | null = null;
   let displayTitle: string | null = null;
   let lastPromptPreview: string | null = null;
+  let isSubagent = false;
   let project = projectDir;
   let model: string | null = null;
   let inputTokens = 0;
@@ -1234,6 +1242,7 @@ function parseCodexSession(file: string, lines: Iterable<string>, bytes: number,
         project = payload.cwd ?? project;
         originator = payload.originator ?? originator;
         source = payload.source ?? source;
+        if (payload.source?.subagent) isSubagent = true;
         cliVersion = payload.cli_version ?? cliVersion;
         model = payload.model ?? payload.model_slug ?? model;
         displayTitle = displayTitle ?? payload.thread_name ?? null;
@@ -1304,7 +1313,7 @@ function parseCodexSession(file: string, lines: Iterable<string>, bytes: number,
           // Injected wrappers ("<permissions instructions>", "<environment_context>")
           // and orchestrator persona preambles make useless titles — wait for
           // the first real message.
-          if (text && !text.trim().startsWith("<") && !isInjectedPersonaPreamble(text)) displayTitle = displayTitle ?? jsonPreview(text, 80);
+          if (text && !text.trim().startsWith("<") && !isInjectedPreamble(text, isSubagent)) displayTitle = displayTitle ?? jsonPreview(text, 80);
         }
         if (payload.type === "function_call") {
           toolCalls++;
@@ -1342,7 +1351,7 @@ function parseCodexSession(file: string, lines: Iterable<string>, bytes: number,
         }
       } else if (obj.type === "user_msg" || obj.type === "user_message") {
         const text = String(obj.payload?.message ?? obj.payload?.text ?? obj.message ?? obj.text ?? "");
-        if (text && !text.trim().startsWith("<") && !isInjectedPersonaPreamble(text)) lastPromptPreview = jsonPreview(text, 260);
+        if (text && !text.trim().startsWith("<") && !isInjectedPreamble(text, isSubagent)) lastPromptPreview = jsonPreview(text, 260);
         const trimmed = text.trim();
         if (trimmed && trimmed.length <= 600 && !trimmed.startsWith("<")) {
           const sent = classifySentiment(trimmed);
@@ -1551,6 +1560,7 @@ function toTranscriptTurn(obj: any, index: number): LiveTranscriptTurn {
         originator: obj.payload?.originator,
         cliVersion: obj.payload?.cli_version,
         modelProvider: obj.payload?.model_provider,
+        source: obj.payload?.source,
       }),
     };
   }
@@ -1563,10 +1573,14 @@ function toTranscriptTurn(obj: any, index: number): LiveTranscriptTurn {
     if (payload.type === "user_message") {
       return { type, subtype: payload.type, severity: "info", at, role: "user", label: "You", preview: jsonPreview(payload.message ?? "") };
     }
+    // Misc events are quiet meta — EXCEPT genuine failure events (error,
+    // stream_error, turn_aborted, turn_failed…), which must stay visible and
+    // counted in the viewer's warning tally.
+    const failureEvent = /error|abort|fail/i.test(String(payload.type ?? ""));
     return {
       type,
       subtype: payload.type,
-      severity: "info",
+      severity: failureEvent ? "warning" : "info",
       at,
       role: "meta",
       label: payload.type === "token_count" ? "Usage" : `Event: ${payload.type ?? index}`,
@@ -1622,10 +1636,13 @@ function toTranscriptTurn(obj: any, index: number): LiveTranscriptTurn {
     const thinkingCount = obj.message.content.filter((b: any) => b.type === "thinking").length;
     if (tools.length) {
       const names = tools.map((b: any) => b.name).filter(Boolean);
+      // Keep the assistant's prose — a record often carries intent text AND
+      // the tool call, and this is the only turn that text appears in.
+      const parts = [text, ...tools.map((b: any) => argsPreview(b.input))].filter(Boolean);
       return {
         type, subtype, severity: "info", at, role: "tool",
         label: `Tool: ${names.join(", ") || "(unknown)"}`,
-        preview: argsPreview(tools[0]?.input),
+        preview: parts.join("\n"),
       };
     }
     return {
