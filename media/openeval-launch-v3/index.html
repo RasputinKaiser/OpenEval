@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js" integrity="sha384-sG0Hv1tP1lZCk9KQmrIbY/XNwi+OY84GQqhMscbnsoBFqAz8KNCil1kvfL3Hbbk2" crossorigin="anonymous"></script>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #000; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #09090b; }
+      .scene { position: absolute; inset: 0; width: 100%; height: 100%; }
+      #root > video:not(.td-pulse-layer) {
+        filter: brightness(1.14) contrast(1.08) saturate(1.05);
+      }
+      #el-01-make-it-evidence-overview-video,
+      #el-01-make-it-evidence-components-video,
+      #oev-f2-session,
+      #oev-f2-usage,
+      #v03-history-into-signal-context-video,
+      #v03-history-into-signal-trend-video,
+      #v04-make-it-repeatable-builder-video,
+      #v04-make-it-repeatable-history-video,
+      #v05-compare-what-matters-leaderboard-video,
+      #v05-compare-what-matters-compare-runs-video,
+      #v06-trust-needs-coverage-confidence-video,
+      #v06-trust-needs-coverage-library-video,
+      #f7-telemetry-video,
+      #f7-audit-video {
+        z-index: 1000;
+      }
+      #oev-f2-session,
+      #v03-history-into-signal-trend-video,
+      #v04-make-it-repeatable-builder-video,
+      #v05-compare-what-matters-compare-runs-video,
+      #v06-trust-needs-coverage-confidence-video,
+      #f7-audit-video {
+        filter: brightness(1.24) contrast(1.12) saturate(1.08);
+        box-shadow: 0 0 0 2px #7c5cff;
+      }
+      #oe-brand-strap {
+        position: absolute;
+        top: 30px;
+        right: 76px;
+        z-index: 5000;
+        width: 350px;
+        height: 64px;
+        display: grid;
+        grid-template-columns: 5px 1fr;
+        grid-template-rows: 34px 18px;
+        align-items: center;
+        column-gap: 14px;
+        padding: 6px 18px 6px 14px;
+        background: #09090b;
+        color: #e8e8ea;
+        font-family: sans-serif;
+        white-space: nowrap;
+      }
+      #oe-brand-marker {
+        width: 5px;
+        height: 36px;
+        background: #7c5cff;
+        transform-origin: 50% 50%;
+        grid-row: 1 / 3;
+      }
+      #oe-brand-name {
+        align-self: end;
+        font-size: 31px;
+        font-weight: 900;
+        letter-spacing: -0.035em;
+      }
+      #oe-brand-category {
+        align-self: start;
+        color: #b3b3bb;
+        font-family: monospace;
+        font-size: 15px;
+        font-weight: 700;
+        letter-spacing: 0.09em;
+      }
+      .master-overlay {
+        position: absolute;
+        z-index: 4100;
+        pointer-events: none;
+        font-family: monospace;
+        text-transform: uppercase;
+      }
+      .master-badge {
+        top: 650px;
+        height: 50px;
+        display: grid;
+        place-items: center;
+        background: #7c5cff;
+        color: #09090b;
+        font-size: 22px;
+        font-weight: 800;
+        letter-spacing: 0.10em;
+      }
+      #master-f3-context { left: 107px; width: 154px; }
+      #master-f3-trend { left: 1021px; width: 144px; }
+      #master-f5-rank { left: 104px; top: 660px; width: 150px; }
+      #master-f5-detail { left: 1004px; top: 660px; width: 228px; }
+      #master-f6-proof-stack {
+        left: 78px;
+        top: 425px;
+        width: 370px;
+        height: 258px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+      }
+      .master-proof-line {
+        width: 370px;
+        height: 72px;
+        display: grid;
+        grid-template-columns: 54px 1fr;
+        align-items: center;
+        padding: 0 20px;
+        border-top: 2px solid #7c5cff;
+        background: rgba(9, 9, 11, 0.95);
+        color: #e8e8ea;
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.28);
+      }
+      .master-proof-line span {
+        color: #7c5cff;
+        font-size: 17px;
+        font-weight: 800;
+      }
+      .master-proof-line strong {
+        font-size: 21px;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+      }
+      .master-f7-evidence-tag {
+        min-height: 50px;
+        display: flex;
+        align-items: center;
+        gap: 13px;
+        padding: 0 17px;
+        border-top: 2px solid #7c5cff;
+        background: rgba(9, 9, 11, 0.94);
+        color: #e8e8ea;
+        font-size: 21px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+      }
+      .master-f7-evidence-tag span {
+        color: #7c5cff;
+        font-size: 16px;
+      }
+      #master-f7-cost { left: 166px; top: 630px; width: 230px; }
+      #master-f7-performance { left: 422px; top: 630px; width: 310px; }
+      #master-f7-accuracy { left: 1494px; top: 570px; width: 260px; }
+      #master-hook-copy {
+        position: absolute;
+        left: 1110px;
+        top: 114px;
+        z-index: 4200;
+        width: 704px;
+        color: #e8e8ea;
+        font-family: sans-serif;
+        font-size: 66px;
+        font-weight: 900;
+        line-height: 0.93;
+        letter-spacing: -0.04em;
+        text-transform: lowercase;
+        text-shadow: 0 3px 18px #09090b, 0 1px 4px #09090b;
+        pointer-events: none;
+      }
+      .master-hook-line {
+        display: block;
+        width: max-content;
+        max-width: 704px;
+        will-change: transform, opacity;
+      }
+      #master-hook-shipped { color: #7c5cff; }
+      #master-hook-question {
+        margin-top: 18px;
+        font-size: 58px;
+      }
+      .transition-panel,
+      .transition-shutter,
+      #transition-focus-ring {
+        position: absolute;
+        pointer-events: none;
+        will-change: transform, opacity;
+      }
+      .transition-panel {
+        inset: 0;
+        z-index: 9800;
+        opacity: 0;
+      }
+      #transition-panel-dark { background: #09090b; }
+      #transition-panel-violet { z-index: 9801; background: #7c5cff; }
+      .transition-shutter {
+        left: 0;
+        width: 1920px;
+        height: 540px;
+        z-index: 9802;
+        background: #7c5cff;
+        opacity: 0;
+      }
+      #transition-shutter-top { top: 0; }
+      #transition-shutter-bottom { bottom: 0; }
+      #transition-focus-ring {
+        left: 322px;
+        top: 154px;
+        width: 1276px;
+        height: 772px;
+        z-index: 9803;
+        border: 3px solid #7c5cff;
+        opacity: 0;
+        transform-origin: 50% 50%;
+      }
+    </style>
+  </head>
+  <body>
+    <div data-hf-id="hf-la9c" id="root" data-composition-id="main" data-start="0" data-duration="29.5" data-width="1920" data-height="1080">
+      <div data-hf-id="hf-6p5h" id="el-01-make-it-evidence" class="scene" data-composition-id="01-make-it-evidence" data-composition-src="compositions/frames/01-make-it-evidence.html" data-start="0" data-duration="5.4" data-track-index="0"></div>
+      <div data-hf-id="hf-jyhy" id="el-02-see-the-system" class="scene" data-composition-id="02-see-the-system" data-composition-src="compositions/frames/02-see-the-system.html" data-start="5" data-duration="4" data-track-index="1"></div>
+      <div data-hf-id="hf-xs24" id="el-03-history-into-signal" class="scene" data-composition-id="03-history-into-signal" data-composition-src="compositions/frames/03-history-into-signal.html" data-start="8.5" data-duration="4" data-track-index="0"></div>
+      <div data-hf-id="hf-lw3k" id="el-04-make-it-repeatable" class="scene" data-composition-id="04-make-it-repeatable" data-composition-src="compositions/frames/04-make-it-repeatable.html" data-start="12" data-duration="3.9" data-track-index="1"></div>
+      <div data-hf-id="hf-52dk" id="el-05-compare-what-matters" class="scene" data-composition-id="05-compare-what-matters" data-composition-src="compositions/frames/05-compare-what-matters.html" data-start="15.5" data-duration="4.1" data-track-index="0"></div>
+      <div data-hf-id="hf-en3j" id="el-06-trust-needs-coverage" class="scene" data-composition-id="06-trust-needs-coverage" data-composition-src="compositions/frames/06-trust-needs-coverage.html" data-start="19" data-duration="3.9" data-track-index="1"></div>
+      <div data-hf-id="hf-75i3" id="el-07-know-what-to-ship" class="scene" data-composition-id="07-know-what-to-ship" data-composition-src="compositions/frames/07-know-what-to-ship.html" data-start="22.5" data-duration="7" data-track-index="0"></div>
+
+      <video data-hf-id="hf-et48" id="el-01-make-it-evidence-overview-video" src="assets/01-dashboard-overview.mp4" preload="auto" muted playsinline loop class="clip" style="position:absolute;left:106px;top:136px;width:1708px;height:558px;object-fit:cover" data-start="0" data-duration="2" data-track-index="1002"></video>
+      <video data-hf-id="hf-eka7" id="el-01-make-it-evidence-components-video" src="assets/02-dashboard-components.mp4" preload="auto" muted playsinline loop class="clip" style="position:absolute;left:1110px;top:350px;width:704px;height:350px;object-fit:cover" data-start="0" data-duration="2" data-track-index="1003"></video>
+      <video data-hf-id="hf-qidw" id="td-evidence-pulse" src="assets/td-evidence-pulse.mp4" preload="auto" muted playsinline class="clip td-pulse-layer" style="position:absolute;inset:0;width:1920px;height:1080px;object-fit:cover;mix-blend-mode:screen;opacity:0.30;pointer-events:none;z-index:1005" data-start="0" data-duration="1.2" data-track-index="1004"></video>
+      <video data-hf-id="hf-td-promise" id="td-promise-pulse" src="assets/td-evidence-pulse.mp4" preload="auto" muted playsinline class="clip td-pulse-layer" style="position:absolute;inset:0;width:1920px;height:1080px;object-fit:cover;mix-blend-mode:screen;opacity:0.10;pointer-events:none;z-index:1005" data-start="2.12" data-duration="1.2" data-track-index="1006"></video>
+      <video data-hf-id="hf-td-proof" id="td-proof-pulse" src="assets/td-evidence-pulse.mp4" preload="auto" muted playsinline class="clip td-pulse-layer" style="position:absolute;inset:0;width:1920px;height:1080px;object-fit:cover;mix-blend-mode:screen;opacity:0.09;pointer-events:none;z-index:1005" data-start="22.70" data-duration="1.2" data-track-index="1007"></video>
+
+      <video data-hf-id="hf-4bwp" id="oev-f2-usage" src="assets/03-live-usage-quality.mp4" preload="auto" aria-label="OpenEval live usage and quality observability" muted playsinline loop class="clip" style="position:absolute;left:658px;top:158px;width:1154px;height:548px;object-fit:cover" data-start="5" data-duration="4" data-track-index="2021"></video>
+      <video data-hf-id="hf-zztl" id="oev-f2-session" src="assets/04-live-sessions-intelligence.mp4" preload="auto" aria-label="OpenEval live session intelligence" muted playsinline loop class="clip" style="position:absolute;left:988px;top:540px;width:804px;height:382px;object-fit:cover" data-start="5" data-duration="4" data-track-index="2023"></video>
+
+      <video data-hf-id="hf-aoiy" id="v03-history-into-signal-context-video" src="assets/05-collection-overview.mp4" preload="auto" muted playsinline loop class="clip" style="position:absolute;left:107px;top:293px;width:794px;height:424px;object-fit:cover" data-start="8.5" data-duration="4" data-track-index="3005"></video>
+      <video data-hf-id="hf-vrv7" id="v03-history-into-signal-trend-video" src="assets/06-timeline-trends.mp4" preload="auto" muted playsinline loop class="clip" style="position:absolute;left:1021px;top:293px;width:794px;height:424px;object-fit:cover" data-start="8.5" data-duration="4" data-track-index="3006"></video>
+
+      <video data-hf-id="hf-2akg" id="v04-make-it-repeatable-builder-video" src="assets/07-new-run-builder.mp4" preload="auto" aria-label="OpenEval new evaluation run builder" muted playsinline loop class="clip" style="position:absolute;left:108px;top:358px;width:816px;height:414px;object-fit:cover" data-start="12" data-duration="3.9" data-track-index="4010"></video>
+      <video data-hf-id="hf-v9r2" id="v04-make-it-repeatable-history-video" src="assets/08-runs-history.mp4" preload="auto" aria-label="OpenEval evaluation run history" muted playsinline loop class="clip" style="position:absolute;left:996px;top:358px;width:816px;height:414px;object-fit:cover" data-start="12" data-duration="3.9" data-track-index="4012"></video>
+
+      <video data-hf-id="hf-n2qq" id="v05-compare-what-matters-leaderboard-video" src="assets/09-leaderboard.mp4" preload="auto" muted playsinline loop class="clip" style="position:absolute;left:104px;top:284px;width:812px;height:410px;object-fit:cover" data-start="15.5" data-duration="4.1" data-track-index="5004"></video>
+      <video data-hf-id="hf-r3n0" id="v05-compare-what-matters-compare-runs-video" src="assets/10-compare-runs.mp4" preload="auto" muted playsinline loop class="clip" style="position:absolute;left:1004px;top:284px;width:812px;height:410px;object-fit:cover" data-start="15.5" data-duration="4.1" data-track-index="5005"></video>
+
+      <video data-hf-id="hf-xadm" id="v06-trust-needs-coverage-confidence-video" src="assets/11-run-confidence.mp4" preload="auto" aria-label="OpenEval run confidence and proof coverage" muted playsinline loop class="clip" style="position:absolute;left:106px;top:369px;width:1030px;height:453px;object-fit:cover" data-start="19" data-duration="3.9" data-track-index="6004"></video>
+      <video data-hf-id="hf-ji30" id="v06-trust-needs-coverage-library-video" src="assets/12-cases-library.mp4" preload="auto" aria-label="OpenEval reusable evaluation cases library" muted playsinline loop class="clip" style="position:absolute;left:1168px;top:369px;width:646px;height:453px;object-fit:contain;background:#09090b" data-start="19" data-duration="3.9" data-track-index="6005"></video>
+
+      <video data-hf-id="hf-6u8y" id="f7-telemetry-video" src="assets/13-bench-telemetry.mp4" preload="auto" aria-label="OpenEval cost and performance bench telemetry" muted playsinline loop class="clip" style="position:absolute;left:126px;top:258px;width:870px;height:438px;object-fit:cover" data-start="22.66" data-duration="3.34" data-track-index="7011"></video>
+      <video data-hf-id="hf-gbte" id="f7-audit-video" src="assets/14-accuracy-audit.mp4" preload="auto" aria-label="OpenEval accuracy audit and evidence review" muted playsinline loop class="clip" style="position:absolute;left:810px;top:145px;width:982px;height:496px;object-fit:cover" data-start="22.66" data-duration="3.34" data-track-index="7013"></video>
+
+      <div data-hf-id="hf-master-hook" id="master-hook-copy" class="clip" data-start="0" data-duration="2" data-track-index="9050" aria-label="Your agents shipped. Can you prove it?">
+        <span data-hf-id="hf-master-hook-agents" id="master-hook-agents" class="master-hook-line">your agents</span>
+        <span data-hf-id="hf-master-hook-shipped" id="master-hook-shipped" class="master-hook-line">shipped.</span>
+        <span data-hf-id="hf-master-hook-question" id="master-hook-question" class="master-hook-line">can you prove it?</span>
+      </div>
+
+      <div data-hf-id="hf-master-f3-context" id="master-f3-context" class="clip master-overlay master-badge" data-start="8.5" data-duration="4" data-track-index="9100">CONTEXT</div>
+      <div data-hf-id="hf-master-f3-trend" id="master-f3-trend" class="clip master-overlay master-badge" data-start="8.5" data-duration="4" data-track-index="9101">TREND</div>
+      <div data-hf-id="hf-master-f5-rank" id="master-f5-rank" class="clip master-overlay master-badge" data-start="15.5" data-duration="4.1" data-track-index="9102">RANK</div>
+      <div data-hf-id="hf-master-f5-detail" id="master-f5-detail" class="clip master-overlay master-badge" data-start="15.5" data-duration="4.1" data-track-index="9103">RUN DETAIL</div>
+
+      <div data-hf-id="hf-master-f6-stack" id="master-f6-proof-stack" class="clip master-overlay" data-start="19" data-duration="3.9" data-track-index="9104" aria-label="Coverage, known-bad cases, and reusable evidence">
+        <div data-hf-id="hf-master-f6-coverage" id="master-f6-coverage" class="master-proof-line"><span data-hf-id="hf-master-f6-i1">01</span><strong data-hf-id="hf-master-f6-t1">COVERAGE</strong></div>
+        <div data-hf-id="hf-master-f6-known" id="master-f6-known" class="master-proof-line"><span data-hf-id="hf-master-f6-i2">02</span><strong data-hf-id="hf-master-f6-t2">KNOWN-BAD CASES</strong></div>
+        <div data-hf-id="hf-master-f6-reusable" id="master-f6-reusable" class="master-proof-line"><span data-hf-id="hf-master-f6-i3">03</span><strong data-hf-id="hf-master-f6-t3">REUSABLE EVIDENCE</strong></div>
+      </div>
+
+      <div data-hf-id="hf-master-f7-cost" id="master-f7-cost" class="clip master-overlay master-f7-evidence-tag" data-start="22.5" data-duration="3.5" data-track-index="9105"><span data-hf-id="hf-master-f7-i1">01</span>COST</div>
+      <div data-hf-id="hf-master-f7-performance" id="master-f7-performance" class="clip master-overlay master-f7-evidence-tag" data-start="22.5" data-duration="3.5" data-track-index="9106"><span data-hf-id="hf-master-f7-i2">02</span>PERFORMANCE</div>
+      <div data-hf-id="hf-master-f7-accuracy" id="master-f7-accuracy" class="clip master-overlay master-f7-evidence-tag" data-start="22.5" data-duration="3.5" data-track-index="9107"><span data-hf-id="hf-master-f7-i3">03</span>ACCURACY</div>
+
+      <div data-hf-id="hf-2brf" id="transition-panel-dark" class="transition-panel" data-layout-ignore="" aria-hidden="true"></div>
+      <div data-hf-id="hf-gybe" id="transition-panel-violet" class="transition-panel" data-layout-ignore="" aria-hidden="true"></div>
+      <div data-hf-id="hf-4zlg" id="transition-shutter-top" class="transition-shutter" data-layout-ignore="" aria-hidden="true"></div>
+      <div data-hf-id="hf-qtqe" id="transition-shutter-bottom" class="transition-shutter" data-layout-ignore="" aria-hidden="true"></div>
+      <div data-hf-id="hf-kbrk" id="transition-focus-ring" data-layout-ignore="" aria-hidden="true"></div>
+
+      <audio data-hf-id="hf-6ca4" id="el-bgm" src="assets/audio/openeval-pulse.v4-tight.mp3" data-start="0" data-duration="29.5" data-track-index="11" data-volume="1"></audio>
+
+      <div data-hf-id="hf-oe-brand" id="oe-brand-strap" class="clip" data-start="0" data-duration="26" data-track-index="9000" aria-label="OpenEval agent evaluation platform">
+        <span data-hf-id="hf-oe-marker" id="oe-brand-marker" aria-hidden="true"></span>
+        <span data-hf-id="hf-oe-name" id="oe-brand-name">OpenEval</span>
+        <span data-hf-id="hf-oe-category" id="oe-brand-category">AGENT EVALUATION PLATFORM</span>
+      </div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["main"] = gsap.timeline({ paused: true });
+      // ── frame transitions (injected by transitions.mjs) ──
+      (function () { var tl = window.__timelines["main"];
+        const scene01 = ["#el-01-make-it-evidence"];
+        const scene02 = ["#el-02-see-the-system", "#oev-f2-usage", "#oev-f2-session"];
+        const scene03 = ["#el-03-history-into-signal", "#v03-history-into-signal-context-video", "#v03-history-into-signal-trend-video", "#master-f3-context", "#master-f3-trend"];
+        const scene04 = ["#el-04-make-it-repeatable", "#v04-make-it-repeatable-builder-video", "#v04-make-it-repeatable-history-video"];
+        const scene05 = ["#el-05-compare-what-matters", "#v05-compare-what-matters-leaderboard-video", "#v05-compare-what-matters-compare-runs-video", "#master-f5-rank", "#master-f5-detail"];
+        const scene06 = ["#el-06-trust-needs-coverage", "#v06-trust-needs-coverage-confidence-video", "#v06-trust-needs-coverage-library-video", "#master-f6-proof-stack"];
+        const precisionWipe = (outgoing, incomingShell, at, direction) => {
+          const enterX = direction > 0 ? -1960 : 1960;
+          const exitX = -enterX;
+          tl.set(["#transition-panel-dark", "#transition-panel-violet"], { x: enterX, opacity: 1 }, at - 0.01);
+          tl.set(incomingShell, { opacity: 0 }, at);
+          tl.to("#transition-panel-dark", { x: 0, duration: 0.26, ease: "power4.inOut" }, at);
+          tl.to("#transition-panel-violet", { x: 0, duration: 0.23, ease: "expo.inOut" }, at + 0.055);
+          tl.set(outgoing, { opacity: 0 }, at + 0.205);
+          tl.set(incomingShell, { opacity: 1 }, at + 0.205);
+          tl.to("#transition-panel-dark", { x: exitX, duration: 0.28, ease: "expo.out" }, at + 0.25);
+          tl.to("#transition-panel-violet", { x: exitX, duration: 0.25, ease: "power4.out" }, at + 0.31);
+          tl.set(["#transition-panel-dark", "#transition-panel-violet"], { opacity: 0 }, at + 0.57);
+        };
+
+        precisionWipe(scene01, "#el-02-see-the-system", 5, 1);
+        precisionWipe(scene02, "#el-03-history-into-signal", 8.5, -1);
+        precisionWipe(scene03, "#el-04-make-it-repeatable", 12, 1);
+
+        tl.set("#el-05-compare-what-matters", { opacity: 0 }, 15.5);
+        tl.fromTo("#transition-shutter-top", { y: -550, opacity: 1 }, { y: 0, duration: 0.22, ease: "power4.in" }, 15.5);
+        tl.fromTo("#transition-shutter-bottom", { y: 550, opacity: 1 }, { y: 0, duration: 0.22, ease: "power4.in" }, 15.5);
+        tl.set(scene04, { opacity: 0 }, 15.68);
+        tl.set("#el-05-compare-what-matters", { opacity: 1 }, 15.68);
+        tl.to("#transition-shutter-top", { y: -550, duration: 0.31, ease: "expo.out" }, 15.72);
+        tl.to("#transition-shutter-bottom", { y: 550, duration: 0.31, ease: "expo.out" }, 15.72);
+        tl.set(["#transition-shutter-top", "#transition-shutter-bottom"], { opacity: 0 }, 16.04);
+
+        tl.set("#el-06-trust-needs-coverage", { opacity: 0 }, 19);
+        tl.to(scene05, { filter: "blur(6px)", scale: 1.025, opacity: 0, duration: 0.38, ease: "power2.in" }, 19);
+        tl.fromTo("#transition-focus-ring", { scale: 0.62, opacity: 0 }, { scale: 1.08, opacity: 0.82, duration: 0.24, ease: "power4.out" }, 19.02);
+        tl.set("#el-06-trust-needs-coverage", { opacity: 1 }, 19.22);
+        tl.to("#transition-focus-ring", { scale: 1.32, opacity: 0, duration: 0.30, ease: "expo.out" }, 19.24);
+
+        precisionWipe(scene06, "#el-07-know-what-to-ship", 22.5, -1);
+        tl.to({}, { duration: 29.5 }, 0); // full-span anchor — main.duration() == composition total (Studio master duration)
+      })();
+      (function () {
+        const tl = window.__timelines["main"];
+
+        tl.fromTo("#oe-brand-strap", { opacity: 0, x: 22 }, { opacity: 1, x: 0, duration: 0.28, ease: "power4.out" }, 0.04);
+        [2, 5, 8.5, 12, 15.5, 19, 22.5].forEach((at) => {
+          tl.fromTo("#oe-brand-marker", { scaleY: 0.28, opacity: 0.42 }, { scaleY: 1, opacity: 1, duration: 0.30, ease: "power4.out" }, at + 0.04);
+        });
+        tl.to("#oe-brand-strap", { opacity: 0, x: 18, duration: 0.24, ease: "power3.in" }, 25.72);
+
+        tl.fromTo("#el-01-make-it-evidence-overview-video", { scaleX: 0.02, opacity: 0.25, transformOrigin: "0% 0%" }, { scaleX: 1, opacity: 0.72, duration: 0.24, ease: "power4.out" }, 0.02);
+        tl.to("#el-01-make-it-evidence-overview-video", { x: -30, y: 30, scaleX: 0.57, scaleY: 0.95, opacity: 0.62, duration: 0.42, ease: "power3.inOut" }, 0.24);
+        tl.fromTo("#el-01-make-it-evidence-components-video", { x: 420, scale: 0.82, opacity: 0.2, transformOrigin: "0% 0%" }, { x: 0, scale: 1, opacity: 0.72, duration: 0.48, ease: "power3.out" }, 0.28);
+        [
+          ["#master-hook-agents", 0.06, 86, "power4.out"],
+          ["#master-hook-shipped", 0.24, 110, "expo.out"],
+          ["#master-hook-question", 0.46, 134, "circ.out"]
+        ].forEach(([selector, at, x, ease]) => {
+          tl.fromTo(selector, { x, opacity: 0 }, { x: 0, opacity: 1, duration: 0.34, ease }, at);
+        });
+        tl.to("#el-01-make-it-evidence-overview-video", { x: 0, y: 574, scaleX: 0.58, scaleY: 0.22, opacity: 0.48, duration: 0.46, ease: "power4.inOut" }, 1.72);
+        tl.to("#el-01-make-it-evidence-components-video", { x: 0, y: 360, scaleX: 0.96, scaleY: 0.34, opacity: 0.5, duration: 0.46, ease: "power4.inOut" }, 1.72);
+
+        const proofReveals = [
+          { selector: "#oev-f2-usage", at: 5.08, x: 96, y: -10, opacity: 0.84, duration: 0.66, ease: "power4.out" },
+          { selector: "#oev-f2-session", at: 5.34, x: 112, y: 18, opacity: 1, duration: 0.58, ease: "expo.out" },
+          { selector: "#v03-history-into-signal-context-video", at: 8.58, x: -92, y: 0, opacity: 0.82, duration: 0.64, ease: "power4.out" },
+          { selector: "#v03-history-into-signal-trend-video", at: 8.78, x: 106, y: 0, opacity: 1, duration: 0.56, ease: "expo.out" },
+          { selector: "#v04-make-it-repeatable-builder-video", at: 12.18, x: -106, y: 16, opacity: 1, duration: 0.62, ease: "expo.out" },
+          { selector: "#v04-make-it-repeatable-history-video", at: 12.40, x: 92, y: -12, opacity: 0.86, duration: 0.68, ease: "power4.out" },
+          { selector: "#v05-compare-what-matters-leaderboard-video", at: 15.74, x: -120, y: 0, opacity: 0.82, duration: 0.58, ease: "power4.out" },
+          { selector: "#v05-compare-what-matters-compare-runs-video", at: 15.92, x: 120, y: 0, opacity: 1, duration: 0.62, ease: "expo.out" },
+          { selector: "#v06-trust-needs-coverage-confidence-video", at: 19.16, x: -74, y: 12, opacity: 1, duration: 0.66, ease: "power4.out" },
+          { selector: "#v06-trust-needs-coverage-library-video", at: 19.48, x: 82, y: -10, opacity: 0.90, duration: 0.58, ease: "expo.out" },
+          { selector: "#f7-telemetry-video", at: 22.76, x: -82, y: 18, opacity: 0.72, duration: 0.64, ease: "power4.out" },
+          { selector: "#f7-audit-video", at: 22.64, x: 92, y: -16, opacity: 1, duration: 0.58, ease: "expo.out" }
+        ];
+        proofReveals.forEach(({ selector, at, x, y, opacity, duration, ease }) => {
+          tl.fromTo(selector, { opacity: 0, x, y, scale: 0.965, transformOrigin: "50% 50%" }, { opacity, x: 0, y: 0, scale: 1, duration, ease }, at);
+        });
+
+        [
+          ["#oev-f2-session", 6.10, -8, -4],
+          ["#v03-history-into-signal-trend-video", 9.64, 8, -4],
+          ["#v04-make-it-repeatable-builder-video", 13.12, -7, -4],
+          ["#v05-compare-what-matters-compare-runs-video", 16.82, 8, -3],
+          ["#v06-trust-needs-coverage-confidence-video", 20.10, -7, -4],
+          ["#f7-audit-video", 23.70, 7, -4]
+        ].forEach(([selector, at, x, y]) => {
+          tl.to(selector, { x, y, scale: 1.008, duration: 1.35, ease: "sine.inOut" }, at);
+        });
+
+        const overlayReveals = [
+          ["#master-f3-context", 9.16, -28], ["#master-f3-trend", 9.42, 28],
+          ["#master-f5-rank", 16.18, -28], ["#master-f5-detail", 16.44, 28],
+          ["#master-f6-coverage", 19.72, -34], ["#master-f6-known", 20.22, -34], ["#master-f6-reusable", 20.72, -34],
+          ["#master-f7-cost", 23.00, -34], ["#master-f7-performance", 23.48, -34], ["#master-f7-accuracy", 23.96, 34]
+        ];
+        overlayReveals.forEach(([selector, at, x], index) => {
+          const eases = ["power4.out", "expo.out", "circ.out"];
+          const durations = [0.38, 0.46, 0.42];
+          tl.fromTo(selector, { opacity: 0, x, scaleX: 0.82, transformOrigin: x < 0 ? "0% 50%" : "100% 50%" }, { opacity: 1, x: 0, scaleX: 1, duration: durations[index % 3], ease: eases[index % 3] }, at);
+        });
+
+        tl.to({}, { duration: 29.5 }, 0);
+      })();
+    </script>
+  </body>
+</html>

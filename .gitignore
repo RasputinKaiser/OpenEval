@@ -1,5 +1,6 @@
 node_modules/
 .next/
+.next.pre-release-build-*/
 out/
 dist/
 coverage/
@@ -27,7 +28,8 @@ data/
 # HyperFrames preview/render/cache output.
 media/**/.hyperframes/
 media/**/.thumbnails/
-media/**/renders/
+media/**/renders/*
+!media/openeval-launch-v3/renders/video.mp4
 
 # Fixture runtime clutter.
 fixtures/**/node_modules/
