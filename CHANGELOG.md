@@ -25,7 +25,7 @@ OpenEval's first tagged public release.
 ### Launch media
 
 - Final 29.5-second OpenEval launch film with real dashboard footage and an integrated Right to Intelligence acknowledgment.
-- Curated reproducible HyperFrames composition, referenced footage, TouchDesigner project, release checks, poster, 1280×640 GitHub/X social preview, and delivery master under `media/openeval-launch-v3/`.
+- Delivery master, poster, and 1280×640 GitHub/X social preview attached directly to the GitHub Release; production source stays outside the product repository.
 - Explicit application and launch-film model credits in the README.
 
 [0.1.0]: https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.0

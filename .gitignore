@@ -29,7 +29,10 @@ data/
 media/**/.hyperframes/
 media/**/.thumbnails/
 media/**/renders/*
-!media/openeval-launch-v3/renders/video.mp4
+
+# Launch-film production projects and source assets stay outside the product repository.
+media/openeval-launch/
+media/openeval-launch-v3/
 
 # Fixture runtime clutter.
 fixtures/**/node_modules/

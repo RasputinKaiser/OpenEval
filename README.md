@@ -11,11 +11,11 @@ The project is designed for people who want to compare agent behavior on practic
 
 ## Launch Film
 
-[![OpenEval launch film poster](media/openeval-launch-v3/openeval-launch-v3-poster.jpg)](media/openeval-launch-v3/renders/video.mp4)
+[![OpenEval launch film poster](https://github.com/RasputinKaiser/OpenEval/releases/download/v0.1.0/openeval-launch-v0.1.0-poster.jpg)](https://github.com/RasputinKaiser/OpenEval/releases/download/v0.1.0/openeval-launch-v0.1.0.mp4)
 
 The 29.5-second v0.1 launch film shows the real OpenEval dashboard: live sessions, collection history, repeatable runs, comparisons, coverage, telemetry, and accuracy audits.
 
-[Watch the MP4](media/openeval-launch-v3/renders/video.mp4) · [Browse the reproducible source](media/openeval-launch-v3) · [Open the v0.1.0 release](https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.0)
+[Watch the MP4](https://github.com/RasputinKaiser/OpenEval/releases/download/v0.1.0/openeval-launch-v0.1.0.mp4) · [Open the v0.1.0 release](https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.0)
 
 ### Build Credits
 
@@ -267,18 +267,6 @@ The repository includes public-facing GitHub scaffolding:
 
 OpenEval is open source under the [MIT License](LICENSE).
 
-## Launch Film Source
-
-The repository includes the curated HyperFrames source, referenced product footage, TouchDesigner project, release checks, poster, and final delivery master for the v0.1 launch film:
-
-```bash
-cd media/openeval-launch-v3
-npm run check
-npm run dev
-```
-
-Run `npm run release:preflight` before editing and `npm run release:verify` after rendering. The public bundle intentionally excludes intermediate renders, snapshots, contact sheets, capture caches, and redundant source copies. The original 14-second prototype remains under `media/openeval-launch/` for history.
-
 ## Project Layout
 
 ```text
@@ -299,8 +287,6 @@ cases/                       public case definitions and oracle scripts
 fixtures/                    tiny repositories and inputs copied into workdirs
 harnesses/                   descriptor-driven harness definitions
 scripts/                     maintenance and public-readiness helpers
-media/openeval-launch-v3/    Current launch film source, referenced assets, poster, and delivery master
-media/openeval-launch/       Original 14-second HyperFrames launch prototype
 data/                        ignored local SQLite DB, transcripts, and workdirs
 ```
 
