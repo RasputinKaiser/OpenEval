@@ -29,10 +29,19 @@
       "type": "file_contains",
       "path": "src/shapes.js",
       "pattern": "class Rectangle extends Shape"
+    },
+    {
+      "type": "files_unchanged",
+      "paths": [
+        "src/shapes.test.js",
+        "package.json"
+      ],
+      "forbidden": true
     }
   ],
   "pass_threshold": 1,
   "oracle": {
-    "solve": "oracle/swe-add-rectangle.sh"
+    "solve": "oracle/swe-add-rectangle.sh",
+    "noop_max_score": 0.34
   }
 }

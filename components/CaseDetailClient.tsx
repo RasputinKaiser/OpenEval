@@ -1,15 +1,17 @@
 "use client";
 
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useRef, useState } from "react";
 import Link from "next/link";
 import clsx from "clsx";
 import {
-  ChevronRight, Hash, Wrench, Terminal, FileText, Gauge,
+  ChevronRight, Hash, Wrench, Terminal, Gauge,
   CornerDownRight, Clock, User, Cpu, DollarSign, AlertTriangle, CheckCircle2, XCircle,
   Eye, FileCode,
 } from "lucide-react";
 import type { RunCaseRecord, RunnerResult } from "@/lib/types";
 import { useVisibilityPoll } from "@/lib/use-visibility-poll";
+import ArtifactPreview from "./ArtifactPreview";
+import { isTerminalCaseStatus } from "@/lib/status";
 
 const GRADER_TIER: Record<string, string> = {
   exit_code: "bg-ok/10 text-ok",
@@ -35,12 +37,11 @@ export default function CaseDetailClient({ caseId, runId, initial }: Props) {
   const [openTools, setOpenTools] = useState(true);
   const [openTranscript, setOpenTranscript] = useState(true);
   const [openPreview, setOpenPreview] = useState(true);
-  const [previewContent, setPreviewContent] = useState<{ path: string; content: string; kind: "svg" | "html" } | null>(null);
+  const [previewContent, setPreviewContent] = useState<{ path: string; content: string } | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const lastEnd = useRef(initial?.ended_at ?? 0);
 
-  const terminal = (status?: string) => !!status && ["passed", "failed", "error", "skipped"].includes(status);
-  const shouldPoll = !terminal(initial?.status);
+  const shouldPoll = !isTerminalCaseStatus(rc?.status);
 
   useVisibilityPoll(
     async () => {
@@ -51,9 +52,6 @@ export default function CaseDetailClient({ caseId, runId, initial }: Props) {
         if (data.case) {
           setRc(data.case);
           if (data.case.ended_at) lastEnd.current = data.case.ended_at;
-          if (terminal(data.case.status)) {
-            // stop polling when terminal
-          }
         }
       } catch {}
     },
@@ -75,12 +73,9 @@ export default function CaseDetailClient({ caseId, runId, initial }: Props) {
       }
       const data = await res.json();
       if (data.content) {
-        const isSvg = artifactPath.endsWith(".svg");
-        const isHtml = artifactPath.endsWith(".html") || artifactPath.endsWith(".htm");
         setPreviewContent({
           path: artifactPath,
           content: data.content,
-          kind: isSvg ? "svg" : isHtml ? "html" : "svg",
         });
       }
     } catch {
@@ -103,7 +98,7 @@ export default function CaseDetailClient({ caseId, runId, initial }: Props) {
 
       {runner && <RunSummary runner={runner} />}
 
-      {openTools && runner && (
+      {runner && (
         <Section title="Tool calls" icon={Wrench} count={runner.toolCalls.length} open={openTools} onToggle={() => setOpenTools(!openTools)}>
           <div className="divide-y divide-bd-subtle">
             {runner.toolCalls.length === 0 && <div className="px-4 py-6 text-center text-fg-muted text-sm">No tool calls recorded.</div>}
@@ -114,13 +109,13 @@ export default function CaseDetailClient({ caseId, runId, initial }: Props) {
         </Section>
       )}
 
-      {openTranscript && runner && (
+      {runner && (
         <Section title="Transcript" icon={Terminal} count={runner.transcript.length} open={openTranscript} onToggle={() => setOpenTranscript(!openTranscript)}>
           <Transcript runner={runner} />
         </Section>
       )}
 
-      {rc.case_def?.visual?.expected_artifacts?.length && (
+      {!!rc.case_def?.visual?.expected_artifacts?.length && (
         <Section title="Visual preview" icon={Eye} count={rc.case_def.visual.expected_artifacts.length} open={openPreview} onToggle={() => setOpenPreview(!openPreview)}>
           <div className="px-4 py-3 space-y-3">
             <div className="flex flex-wrap gap-2">
@@ -141,20 +136,8 @@ export default function CaseDetailClient({ caseId, runId, initial }: Props) {
               ))}
             </div>
             {previewLoading && <div className="text-xs text-fg-muted">Loading artifact…</div>}
-            {previewContent && previewContent.kind === "svg" && (
-              <div className="rounded-lg overflow-hidden bg-white p-4 ring-1 ring-white/10">
-                <div dangerouslySetInnerHTML={{ __html: previewContent.content }} />
-              </div>
-            )}
-            {previewContent && previewContent.kind === "html" && (
-              <iframe
-                sandbox=""
-                loading="lazy"
-                srcDoc={previewContent.content}
-                className="w-full rounded-lg ring-1 ring-white/10"
-                style={{ minHeight: "400px", background: "#fff" }}
-                title="Preview"
-              />
+            {previewContent && (
+              <ArtifactPreview path={previewContent.path} content={previewContent.content} />
             )}
             {!previewContent && !previewLoading && (
               <div className="text-xs text-fg-muted">
@@ -247,7 +230,8 @@ function Section({ title, icon: Icon, count, open, onToggle, children }: { title
         </div>
         <ChevronRight className={clsx("size-4 text-fg-dim", open && "rotate-90")} />
       </button>
-      {open && <div>{children}</div>}
+      {/* CSS-hide instead of unmount so per-item open state survives collapse */}
+      <div className={clsx(!open && "hidden")}>{children}</div>
     </div>
   );
 }

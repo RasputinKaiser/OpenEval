@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { listSourceFiles } from "../live";
-import { allCollectionSources, defToSpec, type CollectionSourceDef } from "./sources";
+import { allCollectionSources, defToSpec } from "./sources";
 
 export interface DiscoveredSource {
   id: string;
@@ -113,10 +113,34 @@ export function discoverKnownSources(): DiscoveredSource[] {
   return out;
 }
 
+/**
+ * Classification needs only the first few lines — never read the whole file
+ * (stray session files reach hundreds of MB, and readFileSync throws
+ * ERR_STRING_TOO_LONG past ~512MB, misclassifying the biggest transcripts).
+ */
+const HEAD_BYTES = 64 * 1024;
+
+function readFileHead(file: string): string | null {
+  let fd: number;
+  try { fd = fs.openSync(file, "r"); } catch { return null; }
+  try {
+    const buf = Buffer.alloc(HEAD_BYTES);
+    const bytesRead = fs.readSync(fd, buf, 0, HEAD_BYTES, 0);
+    let head = buf.toString("utf8", 0, bytesRead);
+    // A full buffer likely cut the last line mid-JSON — drop the partial tail.
+    if (bytesRead === HEAD_BYTES) head = head.slice(0, head.lastIndexOf("\n") + 1);
+    return head;
+  } catch {
+    return null;
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
 /** Does a JSONL file's first few lines look like an agent transcript? */
 export function looksLikeTranscriptFile(file: string): boolean {
-  let raw: string;
-  try { raw = fs.readFileSync(file, "utf8"); } catch { return false; }
+  const raw = readFileHead(file);
+  if (raw == null) return false;
   const lines = raw.split("\n").filter((l) => l.trim()).slice(0, 8);
   if (lines.length === 0) return false;
   let hits = 0;

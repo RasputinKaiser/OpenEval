@@ -19,11 +19,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "next lint --max-warnings=0",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test tests/*.test.ts",
-    "test:live": "node --import tsx --test tests/live.test.ts",
-    "test:telemetry": "node --import tsx --test tests/telemetry.test.ts",
+    "test": "OPENEVAL_DATA_ROOT=.test-data node --import tsx --test tests/*.test.ts",
+    "test:live": "OPENEVAL_DATA_ROOT=.test-data node --import tsx --test tests/live.test.ts",
+    "test:telemetry": "OPENEVAL_DATA_ROOT=.test-data node --import tsx --test tests/telemetry.test.ts",
     "run:eval": "tsx lib/cli/run.ts",
     "run:case": "tsx lib/cli/run.ts --case",
     "run:headless": "tsx lib/cli/run.ts --runner headless",
@@ -33,7 +33,7 @@
     "audit:accuracy:strict": "tsx lib/cli/accuracy.ts --strict",
     "live": "echo \"Live evals run on demand at http://localhost:3000/live\"",
     "report": "tsx lib/cli/report.ts",
-    "test:redaction": "node --import tsx --test tests/redaction.test.ts"
+    "test:redaction": "OPENEVAL_DATA_ROOT=.test-data node --import tsx --test tests/redaction.test.ts"
   },
   "dependencies": {
     "better-sqlite3": "^11.3.0",

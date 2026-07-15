@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getRun, getRunCaseByCaseId } from "@/lib/db";
+import { isTerminalCaseStatus } from "@/lib/status";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,7 @@ export async function GET(
   if (!rc) {
     return NextResponse.json({ error: "Case not found" }, { status: 404 });
   }
-  const isTerminal = ["passed", "failed", "error", "skipped"].includes(rc.status);
+  const isTerminal = isTerminalCaseStatus(rc.status);
   const cacheHeaders = isTerminal
     ? { "Cache-Control": "private, max-age=120, stale-while-revalidate=600" }
     : { "Cache-Control": "no-cache" };

@@ -2,6 +2,8 @@
 
 Cases are `.case.json` files under `cases/<category>/`. They are validated by `CaseDefinitionSchema` in `lib/cases.ts`, whose TypeScript shape is `CaseDefinition` in `lib/types.ts`.
 
+The schema is strict: an unknown or typo'd key anywhere in a case (top level, `setup`, `runner`, `budget`, `oracle`, `visual`, or any grader spec) is a load error, not silently stripped. A grader that ignored an author's mistyped field would grade something weaker than intended, so validation fails loudly instead. The case loader is also mtime-aware — edits to `.case.json` files invalidate the in-process cache without a restart.
+
 ## Fields
 
 | Field | Type / default | Purpose |
@@ -61,9 +63,11 @@ Budget checks run after the runner result is available. If exceeded, `budget_exc
 | `solve` | string | Shell script path relative to the case category directory. `selftest` runs it inside a prepared workdir. |
 | `final_text` | string | Synthetic final answer used by `selftest` when no solve script is needed. |
 | `noop_max_score` | number, default `0` | Maximum allowed pass ratio for an unchanged/no-op baseline in `selftest`. |
-| `known_bad` | string[] | Metadata consumed by the accuracy audit as known-bad coverage. |
+| `known_bad` | string[] | Script paths (relative to the case category directory) that produce plausible-but-wrong answers. Executed by `npm run selftest`; also counted by the accuracy audit as known-bad coverage. |
 
 Oracles matter because `npm run selftest` first grades a no-op baseline and fails if it scores above `noop_max_score`. When an oracle exists, selftest applies the oracle solve script or final text and checks that the graders pass. This catches graders that are too weak, impossible, or miswired.
+
+`known_bad` scripts are executed, not just counted: each one runs like a solve oracle in a freshly prepared workdir (its stdout becomes the bad final text; file-writing scripts populate the workdir), and the graders MUST fail the result. A known-bad answer that passes the graders — or a declared script that is missing — fails selftest. `rubric_llm` graders are skipped unless selftest runs with `--with-llm-judge`, so a case whose only graders are rubric-based records a skip instead.
 
 ## Visual
 
@@ -124,11 +128,17 @@ This is `cases/agentic-swe/swe-fix-fizzbuzz.case.json`, annotated field by field
     {
       "type": "exit_code",
       "command": "node -e \"const {fizzbuzz}=require('./src/fizzbuzz'); const p=fizzbuzz(30).split(','); if(p[14]!=='FizzBuzz'||p[29]!=='FizzBuzz') process.exit(1)\""
+    },
+    {
+      "type": "files_unchanged",
+      "paths": ["src/fizzbuzz.test.js", "package.json"],
+      "forbidden": true
     }
   ],
   "pass_threshold": 1,
   "oracle": {
-    "solve": "oracle/swe-fix-fizzbuzz.sh"
+    "solve": "oracle/swe-fix-fizzbuzz.sh",
+    "noop_max_score": 0.25
   }
 }
 ```
@@ -138,9 +148,10 @@ Annotations:
 - `setup.fixture` pairs the case with `fixtures/fizzbuzz-repo`, which contains `package.json`, `src/fizzbuzz.js`, and `src/fizzbuzz.test.js`.
 - No `init_git` is set, so graders do not depend on a baseline commit.
 - The runner has a shorter turn and timeout budget than the executor defaults.
-- The three graders require passing tests, source text containing `FizzBuzz`, and a direct runtime assertion for indices 15 and 30.
+- The first three graders require passing tests, source text containing `FizzBuzz`, and a direct runtime assertion for indices 15 and 30.
+- The `files_unchanged` grader is test-file protection: with `forbidden: true`, an agent that "passes the tests" by rewriting `src/fizzbuzz.test.js` or `package.json` hard-fails the case regardless of the weighted score. The SWE cases use this pattern wherever a test file defines the proof surface. `files_unchanged` needs the fixture baseline to compare against, so it only works with `setup.type: "fixture"`.
 - `pass_threshold: 1` means all weighted graders must pass.
-- `oracle.solve` points to `cases/agentic-swe/oracle/swe-fix-fizzbuzz.sh`, which selftest runs from the prepared workdir.
+- `oracle.solve` points to `cases/agentic-swe/oracle/swe-fix-fizzbuzz.sh`, which selftest runs from the prepared workdir; `noop_max_score: 0.25` tolerates the one grader a pristine fixture already satisfies (the untouched protected files) while still failing selftest if a no-op scores any higher.
 
 ## Fixtures Pairing
 

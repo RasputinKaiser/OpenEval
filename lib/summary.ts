@@ -8,6 +8,7 @@ export function computeSummary(cases: RunCaseRecord[]): RunSummary {
   let failed = 0;
   let errored = 0;
   let skipped = 0;
+  let stranded = 0;
   let totalCostUsd = 0;
   let totalTokensIn = 0;
   let totalTokensOut = 0;
@@ -30,6 +31,10 @@ export function computeSummary(cases: RunCaseRecord[]): RunSummary {
     else if (c.status === "failed") { failed++; byCategory[cat].failed++; byDifficulty[diff].failed++; }
     else if (c.status === "error") { errored++; byCategory[cat].errored++; byDifficulty[diff].errored++; }
     else if (c.status === "skipped") skipped++;
+    // Non-terminal (running/grading/pending) on a finished run: the loop lost
+    // this case. Counting it in `total` but NO outcome bucket silently deflated
+    // every rate; surface it instead.
+    else stranded++;
     if (c.runner_result) {
       totalCostUsd += c.runner_result.usage.costUsd || 0;
       totalTokensIn += c.runner_result.usage.inputTokens || 0;
@@ -66,6 +71,7 @@ export function computeSummary(cases: RunCaseRecord[]): RunSummary {
     failed,
     errored,
     skipped,
+    stranded,
     passRate: total ? passed / total : 0,
     passAt1,
     passAtK,
@@ -163,7 +169,11 @@ export function computeTelemetry(cases: RunCaseRecord[]): RunTelemetry {
   }
   const topTools = Object.entries(toolCounts).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count).slice(0, 8);
 
-  const errored = cases.filter((c) => c.status === "error" || c.status === "failed").length;
+  // "Error" means the INFRASTRUCTURE broke (runner/grader crash, judge
+  // unavailable); a grader failure is the agent getting it wrong. Conflating
+  // them made a run of honest failures read as a 100% error rate.
+  const infraErrored = cases.filter((c) => c.status === "error").length;
+  const graderFailed = cases.filter((c) => c.status === "failed").length;
   const totalTurns = completed.reduce((a, c) => a + c.runner_result!.numTurns, 0);
 
   let forbiddenViolations = 0;
@@ -216,7 +226,8 @@ export function computeTelemetry(cases: RunCaseRecord[]): RunTelemetry {
     totalToolCalls: Object.values(toolCounts).reduce((a, b) => a + b, 0),
     topTools,
     cacheHitRate: cacheTotalAll > 0 ? cacheRead / cacheTotalAll : 0,
-    errorRate: cases.length ? errored / cases.length : 0,
+    errorRate: cases.length ? infraErrored / cases.length : 0,
+    failRate: cases.length ? graderFailed / cases.length : 0,
     avgTurns: completed.length ? totalTurns / completed.length : 0,
     forbiddenViolationRate: completed.length ? forbiddenViolations / completed.length : 0,
     failsSafelyRate: completed.length ? (completed.length - forbiddenViolations) / completed.length : 1,

@@ -34,14 +34,24 @@ export interface RollupReport {
   heatmapSessions: number;
 }
 
-const WEEK_MS = 7 * 86_400_000;
-
 /** Monday 00:00 local time of the week containing `ms`. */
 export function weekStart(ms: number): number {
   const d = new Date(ms);
   d.setHours(0, 0, 0, 0);
   const day = d.getDay(); // 0 = Sunday
   d.setDate(d.getDate() - ((day + 6) % 7));
+  return d.getTime();
+}
+
+/**
+ * `weekStartMs` shifted by `n` calendar weeks. Date arithmetic (not fixed
+ * 7*86400000) so keys stay on local Monday 00:00 across DST transitions —
+ * fixed-ms stepping drifts an hour and orphans every session past the shift.
+ */
+function addWeeks(weekStartMs: number, n: number): number {
+  const d = new Date(weekStartMs);
+  d.setDate(d.getDate() + n * 7);
+  d.setHours(0, 0, 0, 0);
   return d.getTime();
 }
 
@@ -60,10 +70,10 @@ export function buildRollup(sessionsIn?: Array<LiveSession>, opts: { weeks?: num
 
   const now = Date.now();
   const newestWeek = weekStart(now);
-  const oldestWeek = newestWeek - (weeks - 1) * WEEK_MS;
 
   const buckets = new Map<number, RollupBucket>();
-  for (let w = oldestWeek; w <= newestWeek; w += WEEK_MS) {
+  for (let i = weeks - 1; i >= 0; i--) {
+    const w = addWeeks(newestWeek, -i);
     buckets.set(w, {
       startMs: w,
       label: new Date(w).toLocaleDateString(undefined, { month: "short", day: "numeric" }),

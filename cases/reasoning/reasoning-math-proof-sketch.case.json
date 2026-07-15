@@ -25,15 +25,11 @@
     "final_text": "Let S = 1 + 2 + 3 + ... + n. Write the sum forwards and backwards:\nS = 1 + 2 + ... + (n-1) + n\nS = n + (n-1) + ... + 2 + 1\nAdding the two equations term by term gives 2S = (n+1) + (n+1) + ... + (n+1), with n copies of (n+1). Therefore 2S = n(n+1), and dividing by 2 yields S = n(n+1)/2.",
     "known_bad": [
       "oracle/reasoning-math-proof-sketch-bad.sh"
-    ],
-    "known_bad_final_text": [
-      "The sum grows like n^2/2 because each term is about n on average. By inspecting small cases, the closed form is n^2/2 + 1."
     ]
   },
   "graders": [
     {
       "type": "rubric_llm",
-      "model": "glm-5.2[1m]",
       "rubric": "The answer must state the formula n(n+1)/2, explain the pairing argument or induction approach, and conclude with the closed form. Score 0-1.",
       "min_score": 0.7
     },

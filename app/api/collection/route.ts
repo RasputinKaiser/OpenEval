@@ -13,7 +13,7 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const mode = searchParams.get("mode");
   const parsedLimit = Number(searchParams.get("limit") || 200);
-  const limit = Number.isFinite(parsedLimit) ? Math.max(1, Math.min(1000, parsedLimit)) : 200;
+  const limit = Number.isFinite(parsedLimit) ? Math.max(1, Math.min(10_000, parsedLimit)) : 200;
 
   if (mode === "discover") {
     const report = discoverAll();
@@ -23,9 +23,9 @@ export async function GET(request: Request) {
     );
   }
 
-  const data = scanAllSources(limit);
+  const data = scanAllSources(limit, { fresh: true });
   return NextResponse.json(
     data,
-    { headers: { "Cache-Control": "private, max-age=5, stale-while-revalidate=15" } },
+    { headers: { "Cache-Control": "private, no-store" } },
   );
 }

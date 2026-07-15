@@ -89,7 +89,9 @@ export function parseCodexLine(line: string, into: ParseAccumulator): RunnerEven
     into.result = {
       ...(into.result || {}),
       exitCode: 1, durationMs: at - into.startedAt, startedAt: into.startedAt, endedAt: at,
-      transcript: into.transcript, toolCalls: into.toolCalls, finalText: into.finalText || msg,
+      // Diagnostics belong in resultText. A failed Codex turn with no agent
+      // output must not satisfy final_text graders via its error message.
+      transcript: into.transcript, toolCalls: into.toolCalls, finalText: into.finalText,
       resultText: msg,
       usage: into.result?.usage ?? { ...EMPTY_USAGE },
       numTurns: into.result?.numTurns ?? 0, stopReason: "error",

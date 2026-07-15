@@ -58,7 +58,11 @@ export default function LeaderboardClient() {
     return sorted;
   }, [rows, sortKey, sortDir]);
 
-  const best = sortedRows[0];
+  // "Leading harness" is the pass-rate leader regardless of the table's sort.
+  const best = useMemo(
+    () => (rows.length ? rows.reduce((acc, r) => (r.passRate > acc.passRate ? r : acc)) : undefined),
+    [rows],
+  );
 
   function toggleSort(key: keyof HarnessAggregate) {
     if (sortKey === key) {
@@ -93,6 +97,7 @@ export default function LeaderboardClient() {
               <div className="text-sm">
                 <span className="text-fg-muted">Leading harness: </span>
                 <HarnessBadge harness={best.harness} />
+                {best.model && <span className="ml-1.5 text-[11px] mono text-fg-dim">{best.model}</span>}
                 <span className="ml-2 mono font-medium">{(best.passRate * 100).toFixed(0)}%</span>
                 <span className="text-fg-dim"> across {best.totalCases} case(s) in {best.runCount} run(s)</span>
               </div>
@@ -138,7 +143,7 @@ export default function LeaderboardClient() {
                 </thead>
                 <tbody className="divide-y divide-bd-subtle">
                   {sortedRows.map((r, idx) => (
-                    <tr key={r.harness} className={clsx("hover:bg-bg-elev", idx === 0 && sortKey === "passRate" && sortDir === "desc" && "bg-ok/5")}>
+                    <tr key={`${r.harness}::${r.model ?? ""}`} className={clsx("hover:bg-bg-elev", idx === 0 && sortKey === "passRate" && sortDir === "desc" && "bg-ok/5")}>
                       <td className="px-2 py-2.5 text-center">
                         <span className={clsx(
                           "inline-flex items-center justify-center size-5 rounded-full text-[10px] mono font-semibold tabular-nums",

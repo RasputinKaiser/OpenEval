@@ -72,11 +72,11 @@ function transcriptToText(r: RunnerResult): string {
     if (m.role === "assistant") {
       for (const b of m.content) {
         if (b.type === "text") lines.push(`ASSISTANT: ${b.text}`);
-        else if (b.type === "tool_use") lines.push(`TOOL_USE(${b.name}): ${JSON.stringify(b.input).slice(0, 400)}`);
+        else if (b.type === "tool_use") lines.push(`TOOL_USE(${b.name}): ${JSON.stringify(b.input).slice(0, 1000)}`);
       }
     } else if (m.role === "user") {
       for (const b of m.content) {
-        if (b.type === "tool_result") lines.push(`TOOL_RESULT(${b.tool_use_id}): ${b.content.slice(0, 400)}`);
+        if (b.type === "tool_result") lines.push(`TOOL_RESULT(${b.tool_use_id}): ${b.content.slice(0, 2000)}`);
       }
     }
   }
@@ -105,7 +105,7 @@ export async function executeCase(
     const errRec: RunCaseRecord & { seq: number } = {
       id: rcId, run_id: runId, case_id: def.id, case_name: def.name, category: def.category,
       difficulty: def.difficulty, status: "error", started_at: now, ended_at: now,
-      workdir_path: "", transcript_path: null, runner_kind: runnerKind, runner_result: null,
+      workdir_path: path.join(WORKDIRS_DIR, runId, `${def.id}__s${sample}`), transcript_path: null, runner_kind: runnerKind, runner_result: null,
       grader_result: null, evaluation: null, budget_exceeded: false,
       error_msg: `Workdir preparation failed: ${String(e?.stack || e)}`,
       case_def: def, seq, sample,
@@ -216,13 +216,35 @@ export async function executeCase(
     const evaluation = evaluate(graderResults, def.pass_threshold ?? 1);
     rec.evaluation = evaluation;
     rec.grader_result = evaluation;
-    if (rec.budget_exceeded) {
+    const infraGraderFailure = graderResults.some((g) => g.infraError && !g.passed);
+    const agentGraderFailure = graderResults.some((g) => !g.passed && !g.infraError);
+    if (runnerResult.isError) {
+      // A runner that never completed cannot pass vacuously through negated or
+      // absence-based graders. Preserve partial grader evidence, but status is
+      // an infrastructure error regardless of the computed pass ratio.
+      rec.status = "error";
+    } else if (rec.budget_exceeded) {
       rec.status = "failed";
       if (!rec.error_msg) rec.error_msg = "Budget exceeded";
+    } else if (agentGraderFailure) {
+      // Real evidence that the agent failed must not be masked by a concurrent
+      // unavailable LLM judge.
+      rec.status = "failed";
+    } else if (infraGraderFailure) {
+      // A grader's INFRASTRUCTURE failed (LLM judge unavailable). That says
+      // nothing about the agent — record an error, not a failure, so pass
+      // thresholds cannot silently absorb a missing judge CLI into a pass.
+      rec.status = "error";
+      const why = graderResults.find((g) => g.infraError && !g.passed)?.detail ?? "grader infrastructure failed";
+      rec.error_msg = (rec.error_msg ? rec.error_msg + " | " : "") + why.slice(0, 300);
     } else {
-      rec.status = evaluation.passed ? "passed" : (runnerResult.isError ? "error" : "failed");
+      rec.status = evaluation.passed ? "passed" : "failed";
     }
-    if (rec.status === "error" && !rec.error_msg) rec.error_msg = "Runner reported error";
+    if (rec.status === "error" && !rec.error_msg) {
+      rec.error_msg = runnerResult.isError && runnerResult.resultText
+        ? `Runner error: ${runnerResult.resultText.slice(0, 500)}`
+        : "Runner reported error";
+    }
   } catch (e: any) {
     rec.status = "error";
     rec.error_msg = `Grader threw: ${String(e?.stack || e)}`;

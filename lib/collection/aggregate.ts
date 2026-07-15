@@ -157,7 +157,10 @@ export function mergeToolRollups(lists: ToolRollup[][], top = 12): ToolRollup[] 
  */
 const FULL_HISTORY = 100_000;
 
-export function scanAllSources(limit = 200): AllSourcesResult {
+/** Sessions retained in the memoized result; per-call `limit` slices down from this. */
+const SESSION_ITEM_CAP = 10_000;
+
+function computeAllSources(): AllSourcesResult {
   const discovered = discoverKnownSources();
   const byId = new Map(discovered.map((d) => [d.id, d]));
 
@@ -218,7 +221,7 @@ export function scanAllSources(limit = 200): AllSourcesResult {
   }
 
   allSessions.sort((a, b) => b.lastEventAt - a.lastEventAt);
-  const sessions = allSessions.slice(0, limit);
+  const sessions = allSessions.slice(0, SESSION_ITEM_CAP);
 
   // Unknown candidates: exclude every known root from the heuristic scan.
   const knownRoots = discovered.flatMap((d) => d.roots);
@@ -242,4 +245,27 @@ export function scanAllSources(limit = 200): AllSourcesResult {
     byModel: mergeModelRollups(modelLists),
     byTool: mergeToolRollups(toolLists),
   };
+}
+
+/**
+ * Full discovery + scan is 0.4–2s and runs synchronously inside server-
+ * component renders, so consecutive page loads share one result for a few
+ * seconds. Callers that must observe the latest files (the scan API) pass
+ * `fresh: true` to bypass and re-prime the memo.
+ */
+const SCAN_MEMO_TTL_MS = 5_000;
+
+let scanMemo: { at: number; result: AllSourcesResult } | null = null;
+
+function withLimit(result: AllSourcesResult, limit: number): AllSourcesResult {
+  return { ...result, sessions: result.sessions.slice(0, limit) };
+}
+
+export function scanAllSources(limit = 200, opts: { fresh?: boolean } = {}): AllSourcesResult {
+  if (!opts.fresh && scanMemo && Date.now() - scanMemo.at < SCAN_MEMO_TTL_MS) {
+    return withLimit(scanMemo.result, limit);
+  }
+  const result = computeAllSources();
+  scanMemo = { at: Date.now(), result };
+  return withLimit(result, limit);
 }

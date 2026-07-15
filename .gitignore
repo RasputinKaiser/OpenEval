@@ -21,6 +21,9 @@ tsconfig.tsbuildinfo
 # SQLite WAL files, and run artifacts that should stay on the operator machine.
 data/
 
+# Throwaway data root used by `npm test` (OPENEVAL_DATA_ROOT=.test-data).
+.test-data/
+
 # HyperFrames preview/render/cache output.
 media/**/.hyperframes/
 media/**/.thumbnails/

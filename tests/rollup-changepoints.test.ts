@@ -64,6 +64,32 @@ test("buildRollup buckets sessions by week and ranks projects by cost", () => {
   assert.equal(r.anyEstimatedCost, true);
 });
 
+test("buildRollup keeps sessions on the far side of a DST transition", (t) => {
+  const realTZ = process.env.TZ;
+  process.env.TZ = "America/New_York";
+  try {
+    // Vantage: Wed 2026-12-16 (EST). Session: Wed 2026-10-21 (EDT), 8 weeks
+    // back across the Nov 1 fall-back. Fixed 7*86400000 stepping put bucket
+    // keys an hour off local Monday midnight past the transition, so the
+    // session's weekStart missed every key and it vanished from the chart.
+    const now = new Date(2026, 11, 16, 12, 0).getTime();
+    t.mock.method(Date, "now", () => now);
+    const s = session({ startedAt: new Date(2026, 9, 21, 12, 0).getTime() });
+    const r = buildRollup([s], { weeks: 12 });
+    for (const b of r.weekly) {
+      const d = new Date(b.startMs);
+      assert.equal(d.getDay(), 1, `bucket ${d.toISOString()} starts on Monday`);
+      assert.equal(d.getHours(), 0, `bucket ${d.toISOString()} starts at local midnight`);
+    }
+    assert.equal(r.weekly.reduce((a, b) => a + b.sessions, 0), 1, "pre-DST session is bucketed");
+    const target = r.weekly.find((b) => b.startMs === weekStart(s.startedAt));
+    assert.equal(target?.sessions, 1);
+  } finally {
+    if (realTZ === undefined) delete process.env.TZ;
+    else process.env.TZ = realTZ;
+  }
+});
+
 // ---- change points ----
 
 test("detectChangePoints finds a step shift and attributes a nearby marker", () => {

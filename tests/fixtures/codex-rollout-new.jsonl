@@ -1,0 +1,10 @@
+{"timestamp":"2026-01-06T09:00:00.000Z","type":"session_meta","payload":{"id":"golden-codex-new","cwd":"/Users/tester/projects/demo","originator":"codex_cli","source":"cli","cli_version":"0.99.0"}}
+{"timestamp":"2026-01-06T09:00:00.500Z","type":"turn_context","payload":{"cwd":"/Users/tester/projects/demo","model":"test-codex-model"}}
+{"timestamp":"2026-01-06T09:00:01.000Z","type":"event_msg","payload":{"type":"user_message","message":"# Context from my IDE setup:\n\n## Active file: lib/parser.ts\n\n## My request for Codex:\nRefactor the parser to stream lines"}}
+{"timestamp":"2026-01-06T09:00:01.500Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"# Context from my IDE setup:\n\n## Active file: lib/parser.ts\n\n## My request for Codex:\nRefactor the parser to stream lines"}]}}
+{"timestamp":"2026-01-06T09:00:02.000Z","type":"response_item","payload":{"type":"function_call","call_id":"c1","name":"shell","arguments":"{\"command\":\"node --test\"}"}}
+{"timestamp":"2026-01-06T09:00:04.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"c1","output":"{\"output\":\"1 failing\\n\",\"metadata\":{\"exit_code\":2,\"duration_seconds\":1.9}}"}}
+{"timestamp":"2026-01-06T09:00:05.000Z","type":"response_item","payload":{"type":"reasoning","summary":[{"type":"summary_text","text":"Streaming rewrite plan"}]}}
+{"timestamp":"2026-01-06T09:00:06.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":5000,"cached_input_tokens":1500,"output_tokens":400},"total_token_usage":{"input_tokens":5000,"cached_input_tokens":1500,"output_tokens":400,"total_tokens":5400}}}}
+{"timestamp":"2026-01-06T09:00:07.000Z","type":"event_msg","payload":{"type":"agent_message","message":"Rewrote the reader to stream lines and reran the suite."}}
+{"timestamp":"2026-01-06T09:00:08.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":3000,"cached_input_tokens":1000,"output_tokens":250},"total_token_usage":{"input_tokens":8000,"cached_input_tokens":2500,"output_tokens":650,"total_tokens":8650}}}}

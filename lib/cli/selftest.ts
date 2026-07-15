@@ -1,5 +1,5 @@
 #!/usr/bin/env tsx
-import { execSync, execFileSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 import { loadCases } from '../cases';
@@ -34,15 +34,6 @@ function printError(e: unknown, json: boolean, verbose: boolean): never {
     console.error(e.stack);
   }
   process.exit(1);
-}
-
-function runShell(cmd: string, cwd: string, timeoutMs = 30_000) {
-  try {
-    execSync(cmd, { cwd, stdio: 'pipe', timeout: timeoutMs });
-    return { code: 0, stdout: '', stderr: '' };
-  } catch (e: any) {
-    return { code: e.status ?? 1, stdout: e.stdout?.toString() ?? '', stderr: e.stderr?.toString() ?? '' };
-  }
 }
 
 function emptyRunnerResult(): RunnerResult {
@@ -199,6 +190,16 @@ async function runChecks(json: boolean, verbose: boolean, withLlmJudge: boolean)
 
   for (const def of cases) {
     const checkName = 'case:' + def.id;
+
+    // Lint: the oracle loop grades an empty transcript and zero tool calls, so
+    // step graders and transcript-sourced regexes can never be validated here.
+    const unvalidatable = def.graders
+      .filter((g) => g.type === 'step' || (g.type === 'regex_match' && g.source === 'transcript'))
+      .map((g) => (g.type === 'step' ? 'step' : 'regex_match(transcript)'));
+    if (unvalidatable.length > 0) {
+      record(checkName + ':oracle-lint', 'skip', 'oracle loop cannot validate: ' + unvalidatable.join(', ') + ' (empty transcript)');
+    }
+
     const noop = await prepareWorkdir(tmpRun, def.id + '-noop', def, 0);
     const noopRunner = emptyRunnerResult();
     const noopResults = [];
@@ -213,6 +214,52 @@ async function runChecks(json: boolean, verbose: boolean, withLlmJudge: boolean)
       fail++;
       record(checkName, 'fail', 'no-op baseline scored ' + noopEval.passRatio.toFixed(2) + ' (max ' + noopMax + ')');
       continue;
+    }
+
+    // Known-bad rejection: each declared known_bad script runs like a solve
+    // oracle (its stdout is the bad final text; file-writing scripts populate
+    // the workdir) and the graders MUST fail it — a known-bad that passes, or
+    // a missing script, is a selftest failure.
+    const knownBad = def.oracle?.known_bad ?? [];
+    for (let i = 0; i < knownBad.length; i++) {
+      const badName = checkName + ':known-bad[' + i + ']';
+      const badScript = path.resolve('cases', def.category, knownBad[i]);
+      if (!fs.existsSync(badScript)) {
+        fail++;
+        record(badName, 'fail', 'known_bad script missing: ' + knownBad[i]);
+        continue;
+      }
+      const bad = await prepareWorkdir(tmpRun, def.id + '-bad' + i, def, 0);
+      let badStdout = '';
+      try {
+        badStdout = execFileSync('bash', [badScript], { cwd: bad.dir, stdio: 'pipe', timeout: 30_000 }).toString();
+      } catch (e: any) {
+        fail++;
+        record(badName, 'fail', 'known_bad script errored — ' + (e.stderr?.toString() || e.message || '').slice(0, 300));
+        continue;
+      }
+      const badRunner = emptyRunnerResult();
+      if (badStdout.trim()) {
+        badRunner.finalText = badStdout.trim();
+        badRunner.resultText = badRunner.finalText;
+      }
+      const badResults = [];
+      for (const spec of def.graders) {
+        if (spec.type === 'rubric_llm' && !withLlmJudge) continue;
+        badResults.push(await runGrader(spec, { workdir: bad.dir, runner: badRunner, transcriptText: '', fixtureSrc: bad.fixtureSrc }));
+      }
+      if (badResults.length === 0) {
+        record(badName, 'skip', 'only rubric_llm graders — needs --with-llm-judge');
+        continue;
+      }
+      const badEval = evaluate(badResults, def.pass_threshold ?? 1);
+      if (badEval.passed) {
+        fail++;
+        record(badName, 'fail', 'known-bad output PASSED graders (score ' + badEval.passRatio.toFixed(2) + ') — graders do not reject this wrong answer');
+      } else {
+        pass++;
+        record(badName, 'pass', 'rejected (score ' + badEval.passRatio.toFixed(2) + ')');
+      }
     }
 
     if (!def.oracle?.solve && !def.oracle?.final_text) {

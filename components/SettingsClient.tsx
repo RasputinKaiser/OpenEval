@@ -4,45 +4,55 @@ import { useEffect, useState } from "react";
 import clsx from "clsx";
 import { Save, RotateCcw, Settings as SettingsIcon } from "lucide-react";
 import PageHeader from "./PageHeader";
+import { useRedaction } from "@/lib/use-redaction";
+
+/**
+ * Run defaults consumed by NewRunClient when creating a run (URL params win).
+ * Kept intentionally small: every control on this page must actually do
+ * something — placebo settings erode trust in an accuracy-focused tool.
+ */
+export const RUN_DEFAULTS_KEY = "openeval-settings";
 
 const DEFAULTS = {
   defaultHarness: "",
   defaultModel: "",
   defaultParallel: 1,
   defaultSamples: 1,
-  pollInterval: 1500,
-  itemsPerPage: 50,
-  redactPaths: true,
-  staggerAnimations: true,
 };
 
 type Settings = typeof DEFAULTS;
+
+export function readRunDefaults(): Settings {
+  try {
+    const stored = localStorage.getItem(RUN_DEFAULTS_KEY);
+    if (stored) return { ...DEFAULTS, ...JSON.parse(stored) };
+  } catch {}
+  return { ...DEFAULTS };
+}
 
 export default function SettingsClient() {
   const [settings, setSettings] = useState<Settings>(DEFAULTS);
   const [saved, setSaved] = useState(false);
   const [harnessOptions, setHarnessOptions] = useState<Array<{ id: string; label: string }>>([]);
+  const { redact, setRedact } = useRedaction();
 
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem("openeval-settings");
-      if (stored) setSettings({ ...DEFAULTS, ...JSON.parse(stored) });
-    } catch {}
+    setSettings(readRunDefaults());
     fetch("/api/harnesses")
       .then((r) => r.json())
-      .then((d) => setHarnessOptions((d.harnesses ?? []).map((h: any) => ({ id: h.id, label: h.label }))))
+      .then((d) => setHarnessOptions((d.harnesses ?? []).map((h: { id: string; label: string }) => ({ id: h.id, label: h.label }))))
       .catch(() => {});
   }, []);
 
   function save() {
-    try { localStorage.setItem("openeval-settings", JSON.stringify(settings)); } catch {}
+    try { localStorage.setItem(RUN_DEFAULTS_KEY, JSON.stringify(settings)); } catch {}
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   }
 
   function reset() {
     setSettings(DEFAULTS);
-    try { localStorage.removeItem("openeval-settings"); } catch {}
+    try { localStorage.removeItem(RUN_DEFAULTS_KEY); } catch {}
   }
 
   function update<K extends keyof Settings>(key: K, value: Settings[K]) {
@@ -55,7 +65,8 @@ export default function SettingsClient() {
 
       <section className="space-y-4">
         <div className="card p-5">
-          <h2 className="text-sm font-medium mb-4">Run defaults</h2>
+          <h2 className="text-sm font-medium mb-1">Run defaults</h2>
+          <p className="text-[11px] text-fg-dim mb-4">Pre-filled on the New Run form. Explicit URL parameters (e.g. re-run links) take precedence.</p>
           <div className="space-y-3">
             <Field label="Default harness">
               <select value={settings.defaultHarness} onChange={(e) => update("defaultHarness", e.target.value)} className="w-full px-3 py-2 text-sm bg-bg border border-bd rounded-md mono focus:outline-none focus:border-accent">
@@ -66,7 +77,7 @@ export default function SettingsClient() {
               </select>
             </Field>
             <Field label="Default model">
-              <input value={settings.defaultModel} onChange={(e) => update("defaultModel", e.target.value)} className="w-full px-3 py-2 text-sm bg-bg border border-bd rounded-md mono focus:outline-none focus:border-accent" />
+              <input value={settings.defaultModel} onChange={(e) => update("defaultModel", e.target.value)} placeholder="(harness default)" className="w-full px-3 py-2 text-sm bg-bg border border-bd rounded-md mono focus:outline-none focus:border-accent" />
             </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Default parallel">
@@ -77,41 +88,27 @@ export default function SettingsClient() {
               </Field>
             </div>
           </div>
-        </div>
-
-        <div className="card p-5">
-          <h2 className="text-sm font-medium mb-4">Dashboard preferences</h2>
-          <div className="space-y-3">
-            <Field label="Poll interval (ms)">
-              <input type="number" min={500} step={500} value={settings.pollInterval} onChange={(e) => update("pollInterval", Number(e.target.value))} className="w-full px-3 py-2 text-sm bg-bg border border-bd rounded-md mono focus:outline-none focus:border-accent" />
-            </Field>
-            <Field label="Items per page">
-              <select value={settings.itemsPerPage} onChange={(e) => update("itemsPerPage", Number(e.target.value))} className="w-full px-3 py-2 text-sm bg-bg border border-bd rounded-md mono focus:outline-none focus:border-accent">
-                <option value={25}>25</option>
-                <option value={50}>50</option>
-                <option value={100}>100</option>
-                <option value={200}>200</option>
-              </select>
-            </Field>
-            <Toggle label="Redact sensitive paths" checked={settings.redactPaths} onChange={(v) => update("redactPaths", v)} />
-            <Toggle label="Stagger entrance animations" checked={settings.staggerAnimations} onChange={(v) => update("staggerAnimations", v)} />
+          <div className="flex items-center gap-3 mt-4">
+            <button
+              onClick={save}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-md bg-accent hover:bg-accent/90 active:scale-[0.96] text-white text-sm font-medium transition-colors"
+            >
+              <Save className="size-4" /> Save run defaults
+            </button>
+            <button
+              onClick={reset}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-md border border-bd text-sm text-fg-muted hover:bg-bg-elev transition-colors"
+            >
+              <RotateCcw className="size-4" /> Reset
+            </button>
+            {saved && <span className="text-sm text-ok">Saved!</span>}
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <button
-            onClick={save}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-md bg-accent hover:bg-accent/90 active:scale-[0.96] text-white text-sm font-medium transition-colors"
-          >
-            <Save className="size-4" /> Save settings
-          </button>
-          <button
-            onClick={reset}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-md border border-bd text-sm text-fg-muted hover:bg-bg-elev transition-colors"
-          >
-            <RotateCcw className="size-4" /> Reset to defaults
-          </button>
-          {saved && <span className="text-sm text-ok">Saved!</span>}
+        <div className="card p-5">
+          <h2 className="text-sm font-medium mb-1">Privacy</h2>
+          <p className="text-[11px] text-fg-dim mb-4">The same app-wide toggle shown on Live, Collection, and transcript pages. Applies immediately.</p>
+          <Toggle label="Redact local usernames and paths" checked={redact} onChange={setRedact} />
         </div>
       </section>
     </div>

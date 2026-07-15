@@ -12,13 +12,13 @@ export type PermissionMode =
 
 export type GraderSpecVariant =
   | { type: "exit_code"; command: string; cwd?: string; env?: Record<string, string>; timeout_ms?: number; weight?: number }
-  | { type: "tests_pass"; command: string; cwd?: string; env?: Record<string, string>; timeout_ms?: number; weight?: number }
+  | { type: "tests_pass"; command: string; cwd?: string; env?: Record<string, string>; timeout_ms?: number; min_passed?: number; weight?: number }
   | { type: "file_contains"; path: string; pattern: string; negate?: boolean; weight?: number }
   | { type: "file_exists"; path: string; negate?: boolean; weight?: number }
   | { type: "file_eq"; path: string; expected: string; trim?: boolean; weight?: number }
   | { type: "regex_match"; pattern: string; source?: "stdout" | "final_text" | "transcript"; negate?: boolean; weight?: number }
   | { type: "json_path"; path: string; jsonpath: string; equals: unknown; weight?: number }
-  | { type: "files_unchanged"; paths: string[]; fixture?: string; weight?: number }
+  | { type: "files_unchanged"; paths: string[]; weight?: number }
   | { type: "file_deleted"; path: string; weight?: number }
   | { type: "git_diff_contains"; pattern: string; negate?: boolean; pathFilter?: string; weight?: number }
   | { type: "checksum"; path: string; algorithm?: "sha256" | "md5"; expected: string; weight?: number }
@@ -171,7 +171,10 @@ export interface RunTelemetry {
   totalToolCalls: number;
   topTools: Array<{ name: string; count: number }>;
   cacheHitRate: number;
+  /** Infrastructure errors only (status "error") — NOT grader failures. */
   errorRate: number;
+  /** Cases whose graders failed (status "failed") — the agent got it wrong. */
+  failRate: number;
   avgTurns: number;
   forbiddenViolationRate: number;
   failsSafelyRate: number;
@@ -210,6 +213,8 @@ export interface GraderResult {
   evidenceTier?: EvidenceTier;
   evidenceLabel?: string;
   output?: string;
+  /** True when the GRADER infrastructure failed (judge unavailable, etc.) — the failure says nothing about the agent. */
+  infraError?: boolean;
 }
 
 export interface CaseEvaluation {
@@ -273,6 +278,8 @@ export interface RunSummary {
   failed: number;
   errored: number;
   skipped: number;
+  /** Cases left in a non-terminal status (running/grading/pending) when the run finished — should be 0; >0 means the run loop lost track of work. */
+  stranded?: number;
   passRate: number;
   passAt1?: number;
   passAtK?: number;

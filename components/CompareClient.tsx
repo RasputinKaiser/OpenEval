@@ -9,7 +9,7 @@ import PageHeader from "./PageHeader";
 interface RunLite { id: string; name: string; createdAt: number; status: string; passRate: number | null; model?: string; }
 interface Props { runs: RunLite[]; initialA?: string; initialB?: string; }
 
-interface CaseRow { caseId: string; caseName: string; category: string; difficulty?: string;
+interface CaseRow { caseId: string; sample: number; caseName: string; category: string; difficulty?: string;
   aStatus: string | null; bStatus: string | null;
   aTokPerSec: number; bTokPerSec: number; aCost: number; bCost: number; aTurns: number; bTurns: number;
   aModel?: string | null; bModel?: string | null; }
@@ -34,18 +34,23 @@ export default function CompareClient({ runs, initialA, initialB }: Props) {
     ]).then(([da, db]: [any, any]) => {
       setSummaryA(da.run?.summary);
       setSummaryB(db.run?.summary);
-      const mapA = new Map<string, any>((da.cases || []).map((c: any) => [c.case_id, c]));
-      const mapB = new Map<string, any>((db.cases || []).map((c: any) => [c.case_id, c]));
-      const ids = new Set<string>([...mapA.keys(), ...mapB.keys()]);
+      // Key by case AND sample so pass@k runs diff sample-to-sample instead of
+      // collapsing to whichever sample was inserted last.
+      const keyOf = (c: any) => `${c.case_id}::${c.sample ?? 0}`;
+      const mapA = new Map<string, any>((da.cases || []).map((c: any) => [keyOf(c), c]));
+      const mapB = new Map<string, any>((db.cases || []).map((c: any) => [keyOf(c), c]));
+      const keys = new Set<string>([...mapA.keys(), ...mapB.keys()]);
       const out: CaseRow[] = [];
-      for (const id of ids) {
-        const ca = mapA.get(id); const cb = mapB.get(id);
+      for (const key of keys) {
+        const ca = mapA.get(key); const cb = mapB.get(key);
+        const src = cb || ca;
         const rate = (c: any) => c?.runner_result ? c.runner_result.usage.outputTokens / Math.max(c.runner_result.durationMs / 1000, 0.001) : 0;
         out.push({
-          caseId: id,
-          caseName: (cb || ca)?.case_name || id,
-          category: (cb || ca)?.category || "",
-          difficulty: (cb || ca)?.difficulty,
+          caseId: src.case_id,
+          sample: src.sample ?? 0,
+          caseName: src?.case_name || src.case_id,
+          category: src?.category || "",
+          difficulty: src?.difficulty,
           aStatus: ca?.status ?? null,
           bStatus: cb?.status ?? null,
           aTokPerSec: rate(ca), bTokPerSec: rate(cb),
@@ -56,13 +61,16 @@ export default function CompareClient({ runs, initialA, initialB }: Props) {
           aModel: ca?.runner_result?.model, bModel: cb?.runner_result?.model,
         });
       }
-      out.sort((x, y) => cmp(x.caseName, y.caseName));
+      out.sort((x, y) => cmp(x.caseName, y.caseName) || x.sample - y.sample);
       setRows(out);
     }).finally(() => setLoading(false));
   }, [a, b]);
 
   const regressions = rows.filter((r) => r.aStatus === "passed" && r.bStatus && r.bStatus !== "passed");
   const improvements = rows.filter((r) => r.aStatus && r.aStatus !== "passed" && r.bStatus === "passed");
+  const sampleCounts = new Map<string, number>();
+  for (const row of rows) sampleCounts.set(row.caseId, (sampleCounts.get(row.caseId) ?? 0) + 1);
+  const multiSample = new Set([...sampleCounts].filter(([, count]) => count > 1).map(([caseId]) => caseId));
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
@@ -131,13 +139,13 @@ export default function CompareClient({ runs, initialA, initialB }: Props) {
                     const regressed = r.aStatus === "passed" && r.bStatus && r.bStatus !== "passed";
                     const improved = r.aStatus && r.aStatus !== "passed" && r.bStatus === "passed";
                     return (
-                      <tr key={r.caseId} className={clsx(regressed && "bg-err/5", improved && "bg-ok/5", "hover:bg-bg-elev")}>
+                      <tr key={`${r.caseId}::${r.sample}`} className={clsx(regressed && "bg-err/5", improved && "bg-ok/5", "hover:bg-bg-elev")}>
                         <td className="px-4 py-2 pl-3 relative">
                           {(regressed || improved) && (
                             <div className={clsx("absolute left-0 top-0 bottom-0 w-0.5", regressed ? "bg-err" : "bg-ok")} />
                           )}
                           <Link href={`/runs/${b}/case/${r.caseId}`} className="hover:text-accent-soft">{r.caseName}</Link>
-                          <div className="text-[10px] text-fg-dim mono">{r.caseId} · {r.category}{r.difficulty ? ` · ${r.difficulty}` : ""}</div>
+                          <div className="text-[10px] text-fg-dim mono">{r.caseId}{multiSample.has(r.caseId) ? ` · sample ${r.sample}` : ""} · {r.category}{r.difficulty ? ` · ${r.difficulty}` : ""}</div>
                         </td>
                         <td className="px-4 py-2"><StatusPill status={r.aStatus} /></td>
                         <td className="px-4 py-2"><StatusPill status={r.bStatus} /></td>
@@ -245,5 +253,4 @@ function fmtCi(ci?: { lo: number; hi: number }): string {
 }
 
 function fmtPct(x?: number) { return x == null ? "—" : `${(x * 100).toFixed(0)}%`; }
-function fmtDelta(x: number, digits = 2) { return `${x > 0 ? "+" : ""}${x.toFixed(digits)}`; }
 function cmp(a: string, b: string) { return a < b ? -1 : a > b ? 1 : 0; }

@@ -18,6 +18,26 @@ test("classifySentiment: word boundaries avoid false hits", () => {
   assert.equal(classifySentiment("the notebook is fine"), "neutral");
 });
 
+test("classifySentiment: neutral grammar does not fire as a verdict", () => {
+  // Determiner "no" is not a rejection.
+  assert.equal(classifySentiment("no rush, take your time"), "neutral");
+  assert.equal(classifySentiment("make sure there are no regressions"), "neutral");
+  assert.equal(classifySentiment("no errors now, thanks!"), "positive"); // praise, not correction
+  // Bare "works"/"correct" are descriptions, not approval.
+  assert.equal(classifySentiment("explain how the login works"), "neutral");
+  assert.equal(classifySentiment("the correct behavior should be X"), "neutral");
+  // Evaluative forms still fire.
+  assert.equal(classifySentiment("No, that's wrong"), "negative");
+  assert.equal(classifySentiment("that works"), "positive");
+  assert.equal(classifySentiment("that's correct"), "positive");
+});
+
+test("classifySentiment: short rejection replies remain negative", () => {
+  assert.equal(classifySentiment("no"), "negative");
+  assert.equal(classifySentiment("no thanks"), "negative");
+  assert.equal(classifySentiment("no rush, take your time"), "neutral");
+});
+
 test("isRephrase: lead-ins and high overlap", () => {
   assert.equal(isRephrase("actually, make it blue", null), true);
   assert.equal(isRephrase("no, I meant the header", null), true);
@@ -38,6 +58,10 @@ test("looksLikeApologyOrFailure", () => {
 test("looksLikeTestsPassed", () => {
   assert.equal(looksLikeTestsPassed("All tests passed"), true);
   assert.equal(looksLikeTestsPassed("12 passing"), true);
+  assert.equal(looksLikeTestsPassed("Build succeeded in 3.2s"), true);
+  assert.equal(looksLikeTestsPassed("build successful"), true);
+  assert.equal(looksLikeTestsPassed("✓ all good"), true);
+  assert.equal(looksLikeTestsPassed("tests: ✔"), true);
   assert.equal(looksLikeTestsPassed("here is the code"), false);
 });
 

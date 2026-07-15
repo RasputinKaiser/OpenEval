@@ -15,11 +15,18 @@
 export const JUDGE_PROMPT_MARKER = "You are grading whether an AI coding-agent session";
 
 // Word-boundary matches so "no" doesn't fire inside "nothing", etc.
-const POSITIVE = /\b(?:thanks?|thank you|thankyou|perfect|great|awesome|nice|excellent|beautiful|love it|lgtm|works?( now| great)?|that works|exactly|correct|nailed it|ship it|well done|good job)\b/i;
-const NEGATIVE = /\b(?:no,?|nope|wrong|incorrect|not right|that's not|thats not|still (?:broken|failing|not|wrong)|doesn'?t work|does not work|didn'?t work|broken|revert|undo|rollback|that broke|you broke|not what i|isn'?t what)\b/i;
+// Bare determiner-"no" ("no rush", "make sure there are no regressions") and
+// bare "works"/"correct" ("explain how login works", "the correct behavior
+// should be X") are NEUTRAL grammar, not verdicts — only clearly evaluative
+// phrasings may fire, because negative outweighs everything in the score.
+const POSITIVE = /\b(?:thanks?|thank you|thankyou|perfect|great|awesome|nice|excellent|beautiful|love it|lgtm|(?:that|it) works|works (?:now|great|perfectly)|exactly|that'?s correct|nailed it|ship it|well done|good job)\b/i;
+const NEGATIVE = /(?:^\s*no(?:\s*$|[,.!]|\s+thanks?\b)|\b(?:nope|wrong|incorrect|not right|that's not|thats not|still (?:broken|failing|not|wrong)|doesn'?t work|does not work|didn'?t work|broken|revert|undo|rollback|that broke|you broke|not what i|isn'?t what)\b)/i;
 const REPHRASE_LEAD = /^\s*(?:no,|actually,|i meant|i said|to be clear|let me rephrase|what i (?:meant|want)|try again|again,|instead,)/i;
 const APOLOGY_FAILURE = /\b(?:sorry|apolog|i was wrong|my mistake|unable to|couldn'?t|could not|failed to|i can'?t|cannot complete|didn'?t work|not able to)\b/i;
-const TESTS_PASSED = /\b(?:all tests? passed?|tests? pass(?:ing|ed)?|\d+ pass(?:ing|ed)|build succe|✓|✔|passing)\b/i;
+// Per-alternative boundaries: a blanket \b(...)\b silently killed "build
+// succeeded" (trailing \b inside the word) and ✓/✔ (\b next to a non-word
+// char needs a word char beside it — never true after a space).
+const TESTS_PASSED = /(?:\ball tests? passed?\b|\btests? pass(?:ing|ed)?\b|\b\d+ pass(?:ing|ed)\b|\bbuild succe(?:eded|ss(?:ful(?:ly)?)?)?\b|✓|✔|\bpassing\b)/i;
 
 export type Sentiment = "positive" | "negative" | "neutral";
 

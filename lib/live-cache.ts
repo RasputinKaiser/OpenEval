@@ -16,7 +16,7 @@ import type { LiveSession } from "./live";
  * Bump PARSER_VERSION whenever parseLiveSession's output changes shape or
  * semantics; stale-version rows are ignored and overwritten.
  */
-export const PARSER_VERSION = 8; // v8: preamble suppression = subagent metadata flag + orchestration-vocabulary fallback for coordinator roots
+export const PARSER_VERSION = 11; // v11: unify Codex user-message normalization/marker filtering across rollout shapes; v10: sentiment lexicon and verification-tail fixes
 
 const CACHE_DB_PATH = path.join(ROOT, "data", "live-cache.db");
 
@@ -33,6 +33,14 @@ function getCacheDb(): Database.Database | null {
     try { conn.pragma("journal_mode = WAL"); } catch {}
     conn.pragma("synchronous = NORMAL");
     conn.exec(SCHEMA);
+    // Additive migration for DBs created before prompt versioning existed.
+    try { conn.exec("ALTER TABLE outcome_judgments ADD COLUMN prompt_version INTEGER"); } catch {}
+    // Permanent means the SESSION itself is unjudgeable (missing file or no
+    // conversational text). Backend outages remain retryable after recovery.
+    try { conn.exec("ALTER TABLE judge_failures ADD COLUMN permanent INTEGER NOT NULL DEFAULT 0"); } catch {}
+    // Additive migration: remember each file's fts rowid so re-indexing can
+    // delete by rowid instead of scanning the UNINDEXED `file` column.
+    try { conn.exec("ALTER TABLE fts_meta ADD COLUMN fts_rowid INTEGER"); } catch {}
     db = conn;
     return conn;
   } catch {
@@ -57,7 +65,15 @@ CREATE TABLE IF NOT EXISTS outcome_judgments (
   score REAL NOT NULL,
   reasons_json TEXT NOT NULL,
   judge TEXT NOT NULL,
-  judged_at INTEGER NOT NULL
+  judged_at INTEGER NOT NULL,
+  prompt_version INTEGER
+);
+CREATE TABLE IF NOT EXISTS judge_failures (
+  file TEXT PRIMARY KEY,
+  attempts INTEGER NOT NULL,
+  last_error TEXT,
+  last_attempt_at INTEGER NOT NULL,
+  permanent INTEGER NOT NULL DEFAULT 0
 );
 CREATE VIRTUAL TABLE IF NOT EXISTS session_fts USING fts5(
   user_text, assistant_text, title,
@@ -67,7 +83,8 @@ CREATE TABLE IF NOT EXISTS fts_meta (
   file TEXT PRIMARY KEY,
   mtime_ms REAL NOT NULL,
   size INTEGER NOT NULL,
-  indexed_at INTEGER NOT NULL
+  indexed_at INTEGER NOT NULL,
+  fts_rowid INTEGER
 );
 `;
 
@@ -139,6 +156,8 @@ export interface StoredJudgment {
   reasons: string[];
   judge: string; // "harness/model" that produced it
   judgedAt: number;
+  /** JUDGE_PROMPT_VERSION the verdict was produced under (null = pre-versioning). */
+  promptVersion?: number | null;
 }
 
 /** All persisted LLM-judge outcome scores, keyed by session file. */
@@ -149,7 +168,7 @@ export function loadJudgments(): Map<string, StoredJudgment> {
   try {
     const rows = conn.prepare("SELECT * FROM outcome_judgments").all() as Array<{
       file: string; session_id: string | null; mtime_ms: number; score: number;
-      reasons_json: string; judge: string; judged_at: number;
+      reasons_json: string; judge: string; judged_at: number; prompt_version: number | null;
     }>;
     for (const r of rows) {
       let reasons: string[] = [];
@@ -162,6 +181,7 @@ export function loadJudgments(): Map<string, StoredJudgment> {
         reasons,
         judge: r.judge,
         judgedAt: r.judged_at,
+        promptVersion: r.prompt_version ?? null,
       });
     }
   } catch {}
@@ -174,13 +194,77 @@ export function saveJudgment(j: StoredJudgment): void {
   try {
     conn
       .prepare(
-        `INSERT INTO outcome_judgments (file, session_id, mtime_ms, score, reasons_json, judge, judged_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO outcome_judgments (file, session_id, mtime_ms, score, reasons_json, judge, judged_at, prompt_version)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(file) DO UPDATE SET session_id = excluded.session_id, mtime_ms = excluded.mtime_ms,
            score = excluded.score, reasons_json = excluded.reasons_json, judge = excluded.judge,
-           judged_at = excluded.judged_at`,
+           judged_at = excluded.judged_at, prompt_version = excluded.prompt_version`,
       )
-      .run(j.file, j.sessionId, j.mtimeMs, j.score, JSON.stringify(j.reasons), j.judge, j.judgedAt);
+      .run(j.file, j.sessionId, j.mtimeMs, j.score, JSON.stringify(j.reasons), j.judge, j.judgedAt, j.promptVersion ?? null);
+  } catch {}
+}
+
+// ---------- Judge failure ledger ----------
+
+/** After this many failed attempts a file is skipped by future judge passes. */
+export const MAX_JUDGE_ATTEMPTS = 3;
+
+export interface JudgeFailure {
+  file: string;
+  attempts: number;
+  lastError: string | null;
+  lastAttemptAt: number;
+  permanent: boolean;
+}
+
+/**
+ * Failed judge attempts, keyed by session file. Without this ledger, a file
+ * that can never be judged (deleted, unparseable, or a judge-killing prompt)
+ * is retried on EVERY pass and judge-all never converges.
+ */
+export function loadJudgeFailures(): Map<string, JudgeFailure> {
+  const out = new Map<string, JudgeFailure>();
+  const conn = getCacheDb();
+  if (!conn) return out;
+  try {
+    const rows = conn.prepare("SELECT * FROM judge_failures").all() as Array<{
+      file: string; attempts: number; last_error: string | null; last_attempt_at: number; permanent: number;
+    }>;
+    for (const r of rows) {
+      out.set(r.file, {
+        file: r.file,
+        attempts: r.attempts,
+        lastError: r.last_error,
+        lastAttemptAt: r.last_attempt_at,
+        permanent: !!r.permanent,
+      });
+    }
+  } catch {}
+  return out;
+}
+
+export function recordJudgeFailure(file: string, error: string, opts: { permanent?: boolean } = {}): void {
+  const conn = getCacheDb();
+  if (!conn) return;
+  try {
+    const bump = opts.permanent ? MAX_JUDGE_ATTEMPTS : 1;
+    conn
+      .prepare(
+        `INSERT INTO judge_failures (file, attempts, last_error, last_attempt_at, permanent) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(file) DO UPDATE SET attempts = judge_failures.attempts + ${bump},
+           last_error = excluded.last_error, last_attempt_at = excluded.last_attempt_at,
+           permanent = MAX(judge_failures.permanent, excluded.permanent)`,
+      )
+      .run(file, bump, error.slice(0, 300), Date.now(), opts.permanent ? 1 : 0);
+  } catch {}
+}
+
+/** A successful judgment wipes the failure history (transient errors resolved). */
+export function clearJudgeFailure(file: string): void {
+  const conn = getCacheDb();
+  if (!conn) return;
+  try {
+    conn.prepare("DELETE FROM judge_failures WHERE file = ?").run(file);
   } catch {}
 }
 
@@ -224,16 +308,25 @@ export function ftsUpsert(doc: FtsDoc, mtimeMs: number, size: number): void {
   if (!conn) return;
   try {
     const tx = conn.transaction(() => {
-      conn.prepare("DELETE FROM session_fts WHERE file = ?").run(doc.file);
-      conn
+      // `file` is UNINDEXED in the fts5 table, so DELETE … WHERE file = ? is a
+      // full-table scan (O(N²) across an index build). Delete by the rowid
+      // remembered in fts_meta; scan only for rows indexed before fts_rowid
+      // existed. No fts_meta row means nothing was indexed — skip the delete.
+      const prev = conn.prepare("SELECT fts_rowid FROM fts_meta WHERE file = ?").get(doc.file) as
+        | { fts_rowid: number | null }
+        | undefined;
+      if (prev?.fts_rowid != null) conn.prepare("DELETE FROM session_fts WHERE rowid = ?").run(prev.fts_rowid);
+      else if (prev) conn.prepare("DELETE FROM session_fts WHERE file = ?").run(doc.file);
+      const inserted = conn
         .prepare("INSERT INTO session_fts (user_text, assistant_text, title, project, source_id, file, at) VALUES (?, ?, ?, ?, ?, ?, ?)")
         .run(doc.userText, doc.assistantText, doc.title, doc.project, doc.sourceId, doc.file, doc.at);
       conn
         .prepare(
-          `INSERT INTO fts_meta (file, mtime_ms, size, indexed_at) VALUES (?, ?, ?, ?)
-           ON CONFLICT(file) DO UPDATE SET mtime_ms = excluded.mtime_ms, size = excluded.size, indexed_at = excluded.indexed_at`,
+          `INSERT INTO fts_meta (file, mtime_ms, size, indexed_at, fts_rowid) VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(file) DO UPDATE SET mtime_ms = excluded.mtime_ms, size = excluded.size,
+             indexed_at = excluded.indexed_at, fts_rowid = excluded.fts_rowid`,
         )
-        .run(doc.file, mtimeMs, size, Date.now());
+        .run(doc.file, mtimeMs, size, Date.now(), Number(inserted.lastInsertRowid));
     });
     tx();
   } catch {}

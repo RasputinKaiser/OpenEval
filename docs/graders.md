@@ -69,6 +69,10 @@ Parameters: `pattern`, optional `source`, `negate`, `weight`. `source` is `stdou
 
 Applies `new RegExp(pattern, "m")` to the selected source. `stdout` uses `runner.resultText + runner.finalText`; `transcript` uses a synthesized transcript string. Evidence tier: `deterministic`.
 
+When the runner errored, `resultText` is a synthesized diagnostic (stderr, timeout message), not the agent's answer — so on error runs both `stdout` and `final_text` read only genuinely parsed agent text (`runner.finalText`), and runner diagnostics are carried in `error_msg` instead. This prevents a stack trace from matching a pass pattern or tripping a forbidden one.
+
+The synthesized `transcript` source is capped per entry: each `TOOL_USE` line includes at most 1000 characters of the tool input JSON, and each `TOOL_RESULT` line at most 2000 characters of the result. Anchor transcript patterns on text that appears early in a tool input/result, or they may be truncated away.
+
 ```json
 { "type": "regex_match", "source": "final_text", "pattern": "answer\\s*:\\s*42" }
 ```
@@ -89,6 +93,10 @@ Parameters: `paths`, optional `fixture`, `weight`.
 
 Compares selected workdir files against the fixture source using SHA-256 content hashes. Passing proves all listed files still match the fixture baseline. The optional `fixture` field is accepted, but current code uses the executor-provided fixture source path. Evidence tier: `deterministic`.
 
+This grader requires a fixture baseline: the case must declare `setup.type: "fixture"`. Without one there is nothing to compare against, so the grader fails with `infraError: true` — the case is recorded as `error` (an authoring problem), never as a `failed` verdict about the agent.
+
+The SWE cases use `files_unchanged` with `forbidden: true` as test-file protection — e.g. `swe-fix-fizzbuzz` protects `src/fizzbuzz.test.js` and `package.json` so an agent cannot pass by rewriting the tests.
+
 ```json
 { "type": "files_unchanged", "paths": ["src/fizzbuzz.test.js"] }
 ```
@@ -107,7 +115,7 @@ Passes when reading the file fails. Passing proves the path is absent. Evidence 
 
 Parameters: `pattern`, optional `negate`, `pathFilter`, `weight`.
 
-Runs `git diff --no-color`, optionally restricted by `pathFilter`, and matches the diff with `new RegExp(pattern, "m")`. Passing proves the final diff contains or does not contain a pattern. Evidence tier: `deterministic`.
+Runs `git diff HEAD --no-color` first (so with a `setup.init_git` baseline commit, staged agent work stays visible in the diff), falling back to a plain worktree `git diff` when `HEAD` does not exist. `pathFilter` is passed as a git pathspec argument, never interpolated through a shell. The diff is matched with `new RegExp(pattern, "m")`. Passing proves the final diff contains or does not contain a pattern. Evidence tier: `deterministic`.
 
 ```json
 { "type": "git_diff_contains", "pathFilter": "src/fizzbuzz.js", "pattern": "FizzBuzz" }
@@ -135,9 +143,18 @@ Inspects parsed runner tool calls. Passing proves a tool-call shape, count, posi
 
 ## `rubric_llm`
 
-Parameters: `rubric`, optional `min_score`, `model`, `judge_harness`, `judge_model`, `weight`.
+Parameters: `rubric`, optional `min_score`, `model`, `judge_harness`, `judge_model`, `weight`. All of these (including the two judge overrides) are accepted by the zod case schema.
 
-Calls a separate judge harness with the final output and transcript excerpt, expects JSON containing `passed`, `score`, and `reason`, and passes when `passed` is true or `score >= min_score`. Default `min_score` is `0.7`. `GraderSpecVariant` includes `judge_harness` and `judge_model`, and `runGrader()` reads them before falling back to `JUDGE_HARNESS`, `claude-code`, `JUDGE_MODEL`, or `model`; the zod case schema currently does not list those two override fields. Evidence tier: `llm_judge`.
+Calls a separate judge backend with the final output and a transcript excerpt (each capped at 4000 characters in the prompt), expects JSON containing `passed`, `score`, and `reason`, and passes when `passed` is true or `score >= min_score`. Default `min_score` is `0.7`. Evidence tier: `llm_judge`.
+
+Judge backend resolution (`resolveJudge()` in `lib/grader/judge.ts` — the same chain the Timeline's session-outcome judge uses):
+
+1. `judge_harness` on the spec, else `JUDGE_HARNESS`, else `openrouter` when `OPENROUTER_API_KEY` is set, else `codex`.
+2. Model: `judge_model` on the spec, else `model` on the spec, else `JUDGE_MODEL`, else the backend default (`tencent/hy3:free` for `openrouter`, `gpt-5.5` for `codex`).
+
+`openrouter` is an HTTP backend (with 429 backoff), not a harness adapter. CLI judges run in a throwaway scratch tmp directory with the restricted `default` permission mode — a judge only reads its prompt and emits JSON, and judge prompts embed text the evaluated agent controls. Every judge prompt starts with the `JUDGE_PROMPT_MARKER` prefix so the session parsers drop the judge's own CLI session files instead of polluting Collection totals.
+
+Judge failure is an infrastructure error, not evidence about the agent. A timed-out judge, nonzero exit, unavailable backend, out-of-range score (scores outside 0..1 are malformed, never clamped), or unparseable reply returns a failed result with `infraError: true`; the executor records the case as `error` (never `failed`), and the run CLI exits `2`.
 
 ```json
 {

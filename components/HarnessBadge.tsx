@@ -1,5 +1,3 @@
-import clsx from "clsx";
-
 const HARNESS_COLORS: Record<string, string> = {
   "ncode": "#a78bff",
   "claude-code": "#d97757",

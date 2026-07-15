@@ -9,111 +9,117 @@ export const CASE_CATEGORIES = ["agentic-swe", "single-tool", "reasoning", "visu
 
 const CATEGORIES = new Set<string>(CASE_CATEGORIES);
 
-const GraderSpecSchema = z.intersection(
-  z.discriminatedUnion("type", [
-    z.object({
-      type: z.literal("exit_code"),
-      command: z.string(),
-      cwd: z.string().optional(),
-      env: z.record(z.string()).optional(),
-      timeout_ms: z.number().optional(),
-      weight: z.number().optional(),
-    }),
-    z.object({
-      type: z.literal("tests_pass"),
-      command: z.string(),
-      cwd: z.string().optional(),
-      env: z.record(z.string()).optional(),
-      timeout_ms: z.number().optional(),
-      weight: z.number().optional(),
-    }),
-    z.object({
-      type: z.literal("file_contains"),
-      path: z.string(),
-      pattern: z.string(),
-      negate: z.boolean().optional(),
-      weight: z.number().optional(),
-    }),
-    z.object({
-      type: z.literal("file_exists"),
-      path: z.string(),
-      negate: z.boolean().optional(),
-      weight: z.number().optional(),
-    }),
-    z.object({
-      type: z.literal("file_eq"),
-      path: z.string(),
-      expected: z.string(),
-      trim: z.boolean().optional(),
-      weight: z.number().optional(),
-    }),
-    z.object({
-      type: z.literal("regex_match"),
-      pattern: z.string(),
-      source: z.enum(["stdout", "final_text", "transcript"]).optional(),
-      negate: z.boolean().optional(),
-      weight: z.number().optional(),
-    }),
-    z.object({
-      type: z.literal("json_path"),
-      path: z.string(),
-      jsonpath: z.string(),
-      equals: z.unknown(),
-      weight: z.number().optional(),
-    }),
-    z.object({
-      type: z.literal("files_unchanged"),
-      paths: z.array(z.string()),
-      fixture: z.string().optional(),
-      weight: z.number().optional(),
-    }),
-    z.object({
-      type: z.literal("file_deleted"),
-      path: z.string(),
-      weight: z.number().optional(),
-    }),
-    z.object({
-      type: z.literal("git_diff_contains"),
-      pattern: z.string(),
-      negate: z.boolean().optional(),
-      pathFilter: z.string().optional(),
-      weight: z.number().optional(),
-    }),
-    z.object({
-      type: z.literal("checksum"),
-      path: z.string(),
-      algorithm: z.enum(["sha256", "md5"]).optional(),
-      expected: z.string(),
-      weight: z.number().optional(),
-    }),
-    z.object({
-      type: z.literal("step"),
-      tool: z.string().optional(),
-      input_includes: z.string().optional(),
-      input_includes_any: z.array(z.string()).optional(),
-      at_index: z.number().optional(),
-      min_count: z.number().optional(),
-      before_tool: z.string().optional(),
-      negate: z.boolean().optional(),
-      weight: z.number().optional(),
-    }),
-    z.object({
-      type: z.literal("rubric_llm"),
-      rubric: z.string(),
-      min_score: z.number().optional(),
-      model: z.string().optional(),
-      judge_harness: z.string().optional(),
-      judge_model: z.string().optional(),
-      weight: z.number().optional(),
-    }),
-    z.object({
-      type: z.literal("manual"),
-      note: z.string().optional(),
-      weight: z.number().optional(),
-    }),
-  ]),
-  z.object({ forbidden: z.boolean().optional() })
-);
+// Strict schemas: a typo'd or unknown key must be a load error, not silently
+// stripped (a grader that ignores an author's field grades something weaker
+// than intended). `forbidden` lives on every member because .strict() cannot
+// coexist with the old intersection wrapper.
+const GraderCommonShape = {
+  weight: z.number().optional(),
+  forbidden: z.boolean().optional(),
+};
+
+const GraderSpecSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("exit_code"),
+    command: z.string(),
+    cwd: z.string().optional(),
+    env: z.record(z.string()).optional(),
+    timeout_ms: z.number().optional(),
+    ...GraderCommonShape,
+  }).strict(),
+  z.object({
+    type: z.literal("tests_pass"),
+    command: z.string(),
+    cwd: z.string().optional(),
+    env: z.record(z.string()).optional(),
+    timeout_ms: z.number().optional(),
+    min_passed: z.number().int().nonnegative().optional(),
+    ...GraderCommonShape,
+  }).strict(),
+  z.object({
+    type: z.literal("file_contains"),
+    path: z.string(),
+    pattern: z.string(),
+    negate: z.boolean().optional(),
+    ...GraderCommonShape,
+  }).strict(),
+  z.object({
+    type: z.literal("file_exists"),
+    path: z.string(),
+    negate: z.boolean().optional(),
+    ...GraderCommonShape,
+  }).strict(),
+  z.object({
+    type: z.literal("file_eq"),
+    path: z.string(),
+    expected: z.string(),
+    trim: z.boolean().optional(),
+    ...GraderCommonShape,
+  }).strict(),
+  z.object({
+    type: z.literal("regex_match"),
+    pattern: z.string(),
+    source: z.enum(["stdout", "final_text", "transcript"]).optional(),
+    negate: z.boolean().optional(),
+    ...GraderCommonShape,
+  }).strict(),
+  z.object({
+    type: z.literal("json_path"),
+    path: z.string(),
+    jsonpath: z.string(),
+    equals: z.unknown(),
+    ...GraderCommonShape,
+  }).strict(),
+  z.object({
+    type: z.literal("files_unchanged"),
+    paths: z.array(z.string()),
+    ...GraderCommonShape,
+  }).strict(),
+  z.object({
+    type: z.literal("file_deleted"),
+    path: z.string(),
+    ...GraderCommonShape,
+  }).strict(),
+  z.object({
+    type: z.literal("git_diff_contains"),
+    pattern: z.string(),
+    negate: z.boolean().optional(),
+    pathFilter: z.string().optional(),
+    ...GraderCommonShape,
+  }).strict(),
+  z.object({
+    type: z.literal("checksum"),
+    path: z.string(),
+    algorithm: z.enum(["sha256", "md5"]).optional(),
+    expected: z.string(),
+    ...GraderCommonShape,
+  }).strict(),
+  z.object({
+    type: z.literal("step"),
+    tool: z.string().optional(),
+    input_includes: z.string().optional(),
+    input_includes_any: z.array(z.string()).optional(),
+    at_index: z.number().optional(),
+    min_count: z.number().optional(),
+    before_tool: z.string().optional(),
+    negate: z.boolean().optional(),
+    ...GraderCommonShape,
+  }).strict(),
+  z.object({
+    type: z.literal("rubric_llm"),
+    rubric: z.string(),
+    min_score: z.number().optional(),
+    model: z.string().optional(),
+    judge_harness: z.string().optional(),
+    judge_model: z.string().optional(),
+    ...GraderCommonShape,
+  }).strict(),
+  z.object({
+    type: z.literal("manual"),
+    note: z.string().optional(),
+    ...GraderCommonShape,
+  }).strict(),
+]);
 
 const SetupSchema = z
   .object({
@@ -123,6 +129,7 @@ const SetupSchema = z
     workdir_name: z.string().optional(),
     init_git: z.boolean().optional(),
   })
+  .strict()
   .refine((s) => s.type !== "git-clone" || s.repo !== undefined, {
     message: "repo is required when type is git-clone",
     path: ["repo"],
@@ -131,7 +138,7 @@ const VisualSchema = z.object({
   kind: z.enum(["svg", "threejs", "web_ui", "app_ui", "screenshot"]),
   requires_vision_input: z.boolean().optional(),
   expected_artifacts: z.array(z.string()).optional(),
-});
+}).strict();
 
 export const CaseDefinitionSchema = z.object({
   id: z.string().min(1),
@@ -150,21 +157,21 @@ export const CaseDefinitionSchema = z.object({
     permission_mode: z.enum(["bypassPermissions", "default", "acceptEdits", "dontAsk", "plan", "auto"]).optional(),
     model: z.string().optional(),
     extra_args: z.array(z.string()).optional(),
-  }).optional(),
+  }).strict().optional(),
   budget: z.object({
     max_cost_usd: z.number().optional(),
     max_turns: z.number().optional(),
-  }).optional(),
+  }).strict().optional(),
   oracle: z.object({
     solve: z.string().optional(),
     final_text: z.string().optional(),
     noop_max_score: z.number().optional(),
     known_bad: z.array(z.string()).optional(),
-  }).optional(),
+  }).strict().optional(),
   visual: VisualSchema.optional(),
   graders: z.array(GraderSpecSchema).min(1),
   pass_threshold: z.number().optional(),
-});
+}).strict();
 
 export type ZodCaseDefinition = z.infer<typeof CaseDefinitionSchema>;
 
@@ -189,10 +196,53 @@ export function formatCaseLoadErrors(errors: CaseLoadError[]): string[] {
 }
 
 let casesWithErrorsCache: { cases: CaseDefinition[]; errors: CaseLoadError[] } | null = null;
+let casesCacheSignature: string | null = null;
+let casesSignatureMemo: { at: number; value: string } | null = null;
+const CASE_SIGNATURE_TTL_MS = 1_000;
+
+// Cheap stat pass so edits to case files invalidate the module-level cache:
+// the signature is file count + max mtime over cases/**/*.case.json.
+async function computeCasesSignature(force = false): Promise<string> {
+  if (!force && casesSignatureMemo && Date.now() - casesSignatureMemo.at < CASE_SIGNATURE_TTL_MS) {
+    return casesSignatureMemo.value;
+  }
+  let count = 0;
+  let entries: Dirent[] = [];
+  try {
+    entries = await fs.readdir(CASES_DIR, { withFileTypes: true });
+  } catch {
+    return "0:0";
+  }
+  const caseFiles: string[] = [];
+  for (const ent of entries) {
+    if (!ent.isDirectory() || !CATEGORIES.has(ent.name)) continue;
+    const catDir = path.join(CASES_DIR, ent.name);
+    let files: string[] = [];
+    try {
+      files = await fs.readdir(catDir);
+    } catch {
+      continue;
+    }
+    for (const f of files) {
+      if (!f.endsWith(".case.json")) continue;
+      caseFiles.push(path.join(catDir, f));
+    }
+  }
+  count = caseFiles.length;
+  const stats = await Promise.all(caseFiles.map((file) => fs.stat(file).catch(() => null)));
+  const maxMtimeMs = stats.reduce((max, stat) => Math.max(max, stat?.mtimeMs ?? 0), 0);
+  const value = `${count}:${maxMtimeMs}`;
+  casesSignatureMemo = { at: Date.now(), value };
+  return value;
+}
+
 export async function loadCasesWithErrors(
   opts: { force?: boolean } = {}
 ): Promise<{ cases: CaseDefinition[]; errors: CaseLoadError[] }> {
-  if (casesWithErrorsCache && !opts.force) return casesWithErrorsCache;
+  const signature = await computeCasesSignature(!!opts.force);
+  if (casesWithErrorsCache && !opts.force && signature === casesCacheSignature) {
+    return casesWithErrorsCache;
+  }
   const cases: CaseDefinition[] = [];
   const errors: CaseLoadError[] = [];
   let entries: Dirent[] = [];
@@ -200,6 +250,7 @@ export async function loadCasesWithErrors(
     entries = await fs.readdir(CASES_DIR, { withFileTypes: true });
   } catch {
     casesWithErrorsCache = { cases, errors };
+    casesCacheSignature = signature;
     return casesWithErrorsCache;
   }
   const categorySet = CATEGORIES;
@@ -238,12 +289,12 @@ export async function loadCasesWithErrors(
   }
   cases.sort((a, b) => a.id.localeCompare(b.id));
   casesWithErrorsCache = { cases, errors };
+  casesCacheSignature = signature;
   return casesWithErrorsCache;
 }
 export async function loadCases(
   opts: { force?: boolean } = {}
 ): Promise<CaseDefinition[]> {
-  if (casesWithErrorsCache && !opts.force) return casesWithErrorsCache.cases;
   const { cases } = await loadCasesWithErrors(opts);
   return cases;
 }

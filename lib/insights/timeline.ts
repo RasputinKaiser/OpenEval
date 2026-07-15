@@ -139,12 +139,15 @@ export interface MetricAgg {
 
 const MIN_JUDGED_FOR_MEDIAN = 5;
 
-function aggregate(points: SessionPoint[]): MetricAgg {
+type OutcomePool = "judged" | "heuristic";
+
+function aggregate(points: SessionPoint[]): { agg: MetricAgg; outcomePool: OutcomePool } {
   // Judged verdicts are strictly better signal than the heuristic — once a
   // window has enough of them, the heuristic scores only add noise.
   const judged = points.filter((p) => p.outcomeProvenance === "judged");
-  const outcomePool = judged.length >= MIN_JUDGED_FOR_MEDIAN ? judged : points.filter((p) => p.outcomeHasSignal);
-  return {
+  const useJudged = judged.length >= MIN_JUDGED_FOR_MEDIAN;
+  const outcomePool = useJudged ? judged : points.filter((p) => p.outcomeHasSignal);
+  const agg: MetricAgg = {
     outcome: median(outcomePool.map((p) => p.outcome)),
     toolErrorRate: median(points.map((p) => p.toolErrorRate)),
     costUsd: median(points.map((p) => p.costUsd)),
@@ -152,6 +155,7 @@ function aggregate(points: SessionPoint[]): MetricAgg {
     subagentRate: points.length ? points.filter((p) => p.subagentSpawns > 0).length / points.length : 0,
     durationMin: median(points.map((p) => p.durationMin)),
   };
+  return { agg, outcomePool: useJudged ? "judged" : "heuristic" };
 }
 
 export interface MarkerImpact {
@@ -176,7 +180,8 @@ export interface MarkerImpact {
 export function markerImpact(points: SessionPoint[], marker: Marker, window = 20, minSamples = 5): MarkerImpact {
   const before = points.filter((p) => p.at < marker.firstSeenAt).slice(-window);
   const after = points.filter((p) => p.at >= marker.firstSeenAt).slice(0, window);
-  const a = aggregate(before), b = aggregate(after);
+  const { agg: a, outcomePool: poolBefore } = aggregate(before);
+  const { agg: b, outcomePool: poolAfter } = aggregate(after);
   const deltas: MetricAgg = {
     outcome: b.outcome - a.outcome,
     toolErrorRate: b.toolErrorRate - a.toolErrorRate,
@@ -190,6 +195,12 @@ export function markerImpact(points: SessionPoint[], marker: Marker, window = 20
   const afterModel = mode(after.map((p) => p.model).filter(Boolean) as string[]);
   if (beforeModel && afterModel && beforeModel !== afterModel) {
     confounds.push(`dominant model changed ${beforeModel} → ${afterModel} around this point`);
+  }
+  // A delta whose sides come from different scoring instruments measures the
+  // instrument switch, not the marker: heuristic scores cluster near the 0.5
+  // prior while judged scores use the full 0..1 range.
+  if (poolBefore !== poolAfter) {
+    confounds.push(`outcome medians mix ${poolAfter} (after) with ${poolBefore} (before) scores`);
   }
   const lowConfidence = before.length < minSamples || after.length < minSamples;
   if (lowConfidence) confounds.push(`thin sample (${before.length} before / ${after.length} after)`);

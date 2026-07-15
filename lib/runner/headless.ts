@@ -43,7 +43,10 @@ function failure(
     endedAt: Date.now(),
     transcript: acc.transcript,
     toolCalls: acc.toolCalls,
-    finalText: acc.finalText || msg,
+    // finalText carries only text the agent actually produced. The diagnostic
+    // lives in resultText, and graders skip resultText on error runs — stderr
+    // matching a final_text regex must never count as a pass.
+    finalText: acc.finalText,
     resultText: msg,
     usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreateTokens: 0, costUsd: 0 },
     numTurns: 0,

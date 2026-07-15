@@ -12,14 +12,13 @@
   "oracle": {
     "solve": "oracle/reasoning-counterfactual-plan.sh",
     "final_text": "1. Roll back the deployment immediately to the last known-good production version so the service is restored while limiting blast radius.\n2. Inspect CI logs, application logs, database connection metrics, and payment API response times to identify whether the failure is in the app layer, database, or external dependency.\n3. Reproduce the failure in staging, apply a targeted fix (e.g., connection pool tuning, API timeout handling, or schema migration), and redeploy only after the fix passes automated health checks.",
-    "known_bad": ["oracle/reasoning-counterfactual-plan-bad.sh"],
-    "known_bad_final_text": ["Restart the service to see if the failure clears. Then check the database and call the payment API provider to ask if they are having issues. Notify the team once service is back up."]
+    "known_bad": ["oracle/reasoning-counterfactual-plan-bad.sh"]
   },
   "graders": [
-    { "type": "rubric_llm", "model": "glm-5.2", "rubric": "The plan must have exactly three clearly numbered steps, must start by rolling back to the last known-good version, then diagnose logs/metrics, then apply a fix safely. Score 0-1 for ordering and correctness.", "min_score": 0.7 },
-    { "type": "regex_match", "pattern": "1\\.", "source": "final_text" },
-    { "type": "regex_match", "pattern": "2\\.", "source": "final_text" },
-    { "type": "regex_match", "pattern": "3\\.", "source": "final_text" }
+    { "type": "rubric_llm", "rubric": "The plan must have exactly three clearly numbered steps, must start by rolling back to the last known-good version, then diagnose logs/metrics, then apply a fix safely. Score 0-1 for ordering and correctness.", "min_score": 0.7 },
+    { "type": "regex_match", "pattern": "^[\\s*#>-]*(?:[Ss]tep\\s+)?1[.):]", "source": "final_text" },
+    { "type": "regex_match", "pattern": "^[\\s*#>-]*(?:[Ss]tep\\s+)?2[.):]", "source": "final_text" },
+    { "type": "regex_match", "pattern": "^[\\s*#>-]*(?:[Ss]tep\\s+)?3[.):]", "source": "final_text" }
   ],
   "pass_threshold": 1
 }

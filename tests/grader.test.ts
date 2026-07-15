@@ -1,10 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { execSync } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { runGrader, evaluate } from "../lib/grader";
 import { extractJudgeJson } from "../lib/grader/judge";
+import { MAX_RETAINED_BYTES } from "../lib/runner/spawn";
 import type { GraderResult, GraderSpec, RunnerResult } from "../lib/types";
 
 function makeRunner(overrides: Partial<RunnerResult> = {}): RunnerResult {
@@ -133,6 +135,16 @@ test("regex_match reads final_text, stdout and transcript sources", async () => 
 
 // ---- files_unchanged ----
 
+test("files_unchanged without a fixture baseline is an infra error, not agent evidence", async () => {
+  await withWorkdir(async (dir) => {
+    await fs.writeFile(path.join(dir, "a.txt"), "x");
+    const r = await runGrader({ type: "files_unchanged", paths: ["a.txt"] }, ctxFor(dir));
+    assert.equal(r.passed, false);
+    assert.equal(r.infraError, true);
+    assert.match(r.detail, /fixture/i);
+  });
+});
+
 test("files_unchanged detects unchanged, modified, created, and deleted files", async () => {
   await withWorkdir(async (dir) => {
     const fixture = await fs.mkdtemp(path.join(os.tmpdir(), "grader-fixture-"));
@@ -219,6 +231,96 @@ test("tests_pass parses passed/failed counts", async () => {
     const bad = await runGrader({ type: "tests_pass", command: "echo '2 passed 1 failed'; exit 1" }, ctxFor(dir));
     assert.equal(bad.passed, false);
     assert.match(bad.detail, /failed=1/);
+
+    const tap = await runGrader({ type: "tests_pass", command: "printf '# pass 4\\n# fail 0\\n'" }, ctxFor(dir));
+    assert.equal(tap.passed, true);
+    assert.match(tap.detail, /passed=4 failed=0/);
+  });
+});
+
+test("tests_pass rejects vacuous zero-test success unless explicitly allowed", async () => {
+  await withWorkdir(async (dir) => {
+    const zero = await runGrader({ type: "tests_pass", command: "echo '0 passed 0 failed'" }, ctxFor(dir));
+    assert.equal(zero.passed, false);
+    const allowed = await runGrader({ type: "tests_pass", command: "echo '0 passed 0 failed'", min_passed: 0 }, ctxFor(dir));
+    assert.equal(allowed.passed, true);
+  });
+});
+
+test("shell grader caps retained output at MAX_RETAINED_BYTES", async () => {
+  await withWorkdir(async (dir) => {
+    const r = await runGrader(
+      { type: "exit_code", command: "head -c 9000000 /dev/zero | tr '\\0' a" },
+      ctxFor(dir),
+    );
+    assert.equal(r.passed, true);
+    // 9MB written, at most the cap retained (+ room for the truncation marker,
+    // which only appears when a single chunk crosses the boundary).
+    assert.ok((r.output ?? "").length <= MAX_RETAINED_BYTES + 40);
+    assert.ok((r.output ?? "").length < 9_000_000);
+  });
+});
+
+test("shell grader timeout kills the whole process group, not just the shell", async () => {
+  await withWorkdir(async (dir) => {
+    const r = await runGrader(
+      { type: "exit_code", command: "sleep 30 & echo child=$!; wait", timeout_ms: 500 },
+      ctxFor(dir),
+    );
+    assert.equal(r.passed, false);
+    assert.match(r.detail, /timeout/);
+    const m = (r.output ?? "").match(/child=(\d+)/);
+    assert.ok(m, "child pid was not captured before the timeout");
+    const pid = parseInt(m![1], 10);
+    // SIGKILL to the group is immediate; allow a moment for reaping.
+    const deadline = Date.now() + 3000;
+    let alive = true;
+    while (Date.now() < deadline) {
+      try { process.kill(pid, 0); } catch { alive = false; break; }
+      await new Promise((res) => setTimeout(res, 100));
+    }
+    assert.equal(alive, false, `agent-spawned child ${pid} survived the timeout`);
+  });
+});
+
+// ---- git_diff_contains ----
+
+function initGitBaseline(dir: string): void {
+  execSync("git init -q && git add -A && git -c user.email=eval@local -c user.name=eval commit -q -m baseline", { cwd: dir, stdio: "pipe" });
+}
+
+test("git_diff_contains sees unstaged and staged changes against the baseline commit", async () => {
+  await withWorkdir(async (dir) => {
+    await fs.writeFile(path.join(dir, "f.txt"), "before\n");
+    initGitBaseline(dir);
+    await fs.writeFile(path.join(dir, "f.txt"), "after\n");
+    assert.equal((await runGrader({ type: "git_diff_contains", pattern: "\\+after" }, ctxFor(dir))).passed, true);
+    // Staged work still shows (a plain worktree diff would be blind to this).
+    execSync("git add -A", { cwd: dir, stdio: "pipe" });
+    assert.equal((await runGrader({ type: "git_diff_contains", pattern: "\\+after" }, ctxFor(dir))).passed, true);
+    assert.equal((await runGrader({ type: "git_diff_contains", pattern: "\\+after", pathFilter: "f.txt" }, ctxFor(dir))).passed, true);
+    assert.equal((await runGrader({ type: "git_diff_contains", pattern: "\\+after", pathFilter: "other.txt" }, ctxFor(dir))).passed, false);
+  });
+});
+
+test("git_diff_contains pathFilter is a pathspec, not shell input", async () => {
+  await withWorkdir(async (dir) => {
+    await fs.writeFile(path.join(dir, "f.txt"), "x\n");
+    initGitBaseline(dir);
+    await fs.writeFile(path.join(dir, "f.txt"), "y\n");
+    const evil = `f.txt; touch ${path.join(dir, "pwned")}`;
+    const r = await runGrader({ type: "git_diff_contains", pattern: "\\+y", pathFilter: evil }, ctxFor(dir));
+    assert.equal(r.passed, false);
+    await assert.rejects(fs.access(path.join(dir, "pwned")), "pathFilter was shell-interpreted");
+  });
+});
+
+test("git_diff_contains falls back to a plain diff when HEAD does not exist", async () => {
+  await withWorkdir(async (dir) => {
+    await fs.writeFile(path.join(dir, "f.txt"), "one\n");
+    execSync("git init -q && git add -A", { cwd: dir, stdio: "pipe" });
+    await fs.writeFile(path.join(dir, "f.txt"), "two\n");
+    assert.equal((await runGrader({ type: "git_diff_contains", pattern: "\\+two" }, ctxFor(dir))).passed, true);
   });
 });
 

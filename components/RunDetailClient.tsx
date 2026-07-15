@@ -19,6 +19,7 @@ import { useFocusOnSlash } from "@/lib/use-focus-slash";
 import { useVisibilityPoll } from "@/lib/use-visibility-poll";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useRunEvents } from "@/lib/use-run-events";
+import ArtifactPreview, { artifactKind } from "./ArtifactPreview";
 
 interface Props { runId: string; runName?: string; initialCases: RunCaseRecord[]; running: boolean; model?: string; harness?: string; harnessInfo?: { id: string; bin: string | null; version: string | null }; }
 
@@ -30,8 +31,25 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
   const debouncedCaseSearch = useDebouncedValue(caseSearch, 200);
   const [caseFilter, setCaseFilter] = useState<string>("all");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [cancelPhase, setCancelPhase] = useState<"idle" | "cancelling" | "cancelled">("idle");
   const caseSearchRef = useRef<HTMLInputElement>(null);
   useFocusOnSlash(caseSearchRef);
+
+  async function cancelRun() {
+    if (cancelPhase !== "idle") return;
+    setCancelPhase("cancelling");
+    try {
+      const res = await fetch(`/api/runs/${runId}/cancel`, { method: "POST" });
+      if (!res.ok) throw new Error("cancel failed");
+      // Optimistic: the server marked the run aborted; in-flight cases still
+      // finish naturally and land via the final refetch.
+      setCancelPhase("cancelled");
+      setLive(false);
+      refetchLite();
+    } catch {
+      setCancelPhase("idle");
+    }
+  }
 
   function toggleSelect(caseId: string) {
     setSelectedIds((prev) => {
@@ -98,7 +116,7 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
     onEvent: (ev) => {
       if (ev.kind === "case_started" || ev.kind === "case_grading" || ev.kind === "case_finished" || ev.kind === "grader_result") {
         refetchLite();
-      } else if (ev.kind === "run_completed" || ev.kind === "run_fatal") {
+      } else if (ev.kind === "run_completed" || ev.kind === "run_fatal" || ev.kind === "run_aborted") {
         setLive(false);
       }
     },
@@ -140,7 +158,7 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
                 <CircleDot className={clsx("absolute inset-0 size-3", live && "opacity-0")} />
                 <Loader2 className={clsx("absolute inset-0 size-3 animate-spin", live ? "opacity-100" : "opacity-0")} />
               </span>
-              {live ? "Running eval" : "Eval complete"}
+              {live ? "Running eval" : cancelPhase === "cancelled" ? "Run cancelled" : "Eval complete"}
               </span>
               {harness && <HarnessBadge harness={harness} bin={harnessInfo?.bin} version={harnessInfo?.version} />}
               <span className="mono">{runId}</span>
@@ -152,6 +170,20 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
               >
                 Report .md
               </a>
+              {live && (
+                <button
+                  onClick={cancelRun}
+                  disabled={cancelPhase !== "idle"}
+                  className="inline-flex items-center gap-1 rounded border border-err/30 bg-bg/60 px-2 py-1 text-err hover:bg-err/10 disabled:opacity-50"
+                  title="Stop this run — queued cases are skipped; in-flight cases finish naturally"
+                >
+                  {cancelPhase === "cancelling" ? <Loader2 className="size-3 animate-spin" /> : <XCircle className="size-3" />}
+                  Cancel run
+                </button>
+              )}
+              {cancelPhase === "cancelled" && (
+                <span className="text-warn">Cancelled — queued cases skipped; in-flight cases finish naturally</span>
+              )}
             </div>
             <h1 className="mt-3 text-2xl font-semibold tracking-normal text-fg md:text-3xl">{runName || "Run output"}</h1>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-fg-muted">
@@ -693,7 +725,7 @@ function ArtifactStage({
   status: RunCaseRecord["status"];
 }) {
   const [selected, setSelected] = useState(artifacts[0] ?? "");
-  const [preview, setPreview] = useState<{ path: string; content: string; kind: "svg" | "html" | "text" } | null>(null);
+  const [preview, setPreview] = useState<{ path: string; content: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const { redact } = useRedaction();
@@ -716,7 +748,7 @@ function ArtifactStage({
             // HTML still renders without the optional stylesheet while the run is in flight.
           }
         }
-        if (!cancelled) setPreview({ path: selected, content, kind });
+        if (!cancelled) setPreview({ path: selected, content });
       } catch (e) {
         if (!cancelled) {
           setPreview(null);
@@ -765,17 +797,7 @@ function ArtifactStage({
             Rendering artifact
           </div>
         ) : preview ? (
-          preview.kind === "text" ? (
-            <pre className="max-h-[420px] overflow-auto rounded-md bg-white p-4 text-[11px] text-[#20242d]">{preview.content}</pre>
-          ) : (
-            <iframe
-              sandbox=""
-              loading="lazy"
-              srcDoc={preview.kind === "svg" ? svgDocument(preview.content) : preview.content}
-              title={`Preview of ${preview.path}`}
-              className="h-[420px] w-full rounded-md bg-white ring-1 ring-white/10"
-            />
-          )
+          <ArtifactPreview path={preview.path} content={preview.content} />
         ) : (
           <div className="flex min-h-[280px] flex-col items-center justify-center rounded-md border border-dashed border-[#cbd2df] bg-white px-6 text-center">
             <Sparkles className="mb-2 size-6 text-[#7c5cff]" />
@@ -796,20 +818,10 @@ async function fetchArtifact(runId: string, caseId: string, artifact: string) {
   return (await res.json()) as { path: string; content: string };
 }
 
-function artifactKind(path: string, content: string): "svg" | "html" | "text" {
-  if (path.endsWith(".svg") || content.trimStart().startsWith("<svg")) return "svg";
-  if (path.endsWith(".html") || path.endsWith(".htm") || content.includes("<html")) return "html";
-  return "text";
-}
-
 function inlineStyles(html: string, css: string) {
   const style = `<style>${css}</style>`;
   if (html.includes("</head>")) return html.replace("</head>", `${style}</head>`);
   return `${style}${html}`;
-}
-
-function svgDocument(svg: string) {
-  return `<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;min-height:100%;background:#fff;display:grid;place-items:center}svg{max-width:100%;max-height:100%;width:100%;height:auto}</style></head><body>${svg}</body></html>`;
 }
 
 type EvidenceCounts = Record<EvidenceTier, { passed: number; total: number }>;

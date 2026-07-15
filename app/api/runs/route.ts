@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   const runs = listRuns(10);
-  const lite = runs.map((r) => ({ id: r.id, name: r.name }));
+  const lite = runs.map((r) => ({ id: r.id, name: r.name, status: r.status }));
   return NextResponse.json(
     { runs: lite },
     { headers: { "Cache-Control": "private, max-age=10, stale-while-revalidate=30" } }
@@ -26,6 +26,10 @@ export async function POST(req: Request) {
       tags: cleanStrings(body.tags),
       difficulty: cleanStrings(body.difficulty),
     };
+    // An explicit-but-empty selection must not fall through to "run everything".
+    if (Array.isArray(body.caseIds) && filter.caseIds.length === 0) {
+      return NextResponse.json({ error: "caseIds must include at least one case id" }, { status: 400 });
+    }
     const normalizedFilter = Object.fromEntries(
       Object.entries(filter).filter(([, value]) => value.length > 0)
     );

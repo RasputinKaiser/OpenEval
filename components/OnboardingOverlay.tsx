@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Check, Terminal, Activity, Radio } from "lucide-react";
+import { ArrowRight, Check, Terminal } from "lucide-react";
 import { cachedFetch } from "@/lib/cached-fetch";
 
 export default function OnboardingOverlay() {

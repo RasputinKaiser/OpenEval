@@ -103,7 +103,9 @@ function fail(
     endedAt: Date.now(),
     transcript: acc.transcript,
     toolCalls: acc.toolCalls,
-    finalText: acc.finalText || message,
+    // Match headless semantics: synthesized diagnostics never become agent
+    // output that a regex grader can accidentally accept.
+    finalText: acc.finalText,
     resultText: message,
     usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreateTokens: 0, costUsd: 0 },
     numTurns: 0,
