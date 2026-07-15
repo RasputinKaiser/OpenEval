@@ -80,6 +80,34 @@ test("live-cache: listCachedSessionsUnder filters by root prefix", () => {
   });
 });
 
+test("live-cache: ftsUpsert deletes by remembered rowid and still replaces legacy rows", () => {
+  withMemoryDb(() => {
+    const conn = new Database(":memory:");
+    _setCacheDbForTest(conn);
+    // Legacy state: fts row + fts_meta row indexed before fts_rowid existed.
+    conn
+      .prepare("INSERT INTO session_fts (user_text, assistant_text, title, project, source_id, file, at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .run("legacy text", "", "t", "/p", "src", "/legacy.jsonl", 1);
+    conn.prepare("INSERT INTO fts_meta (file, mtime_ms, size, indexed_at) VALUES (?, ?, ?, ?)").run("/legacy.jsonl", 1, 1, 1);
+    assert.equal(ftsSearch("legacy")[0]?.file, "/legacy.jsonl");
+
+    // Re-index replaces the legacy row via the file-scan fallback and records the rowid.
+    ftsUpsert({ file: "/legacy.jsonl", sourceId: "src", project: "/p", title: "t", at: 2, userText: "fresh text", assistantText: "" }, 2, 2);
+    assert.equal(ftsSearch("legacy").length, 0);
+    assert.equal(ftsSearch("fresh")[0]?.file, "/legacy.jsonl");
+    const meta = conn.prepare("SELECT fts_rowid FROM fts_meta WHERE file = ?").get("/legacy.jsonl") as { fts_rowid: number | null };
+    assert.ok(meta.fts_rowid != null);
+
+    // The next re-index goes through the rowid delete and must not duplicate.
+    ftsUpsert({ file: "/legacy.jsonl", sourceId: "src", project: "/p", title: "t", at: 3, userText: "third pass", assistantText: "" }, 3, 3);
+    assert.equal(ftsSearch("fresh").length, 0);
+    assert.equal(ftsSearch("third")[0]?.file, "/legacy.jsonl");
+    const count = conn.prepare("SELECT count(*) AS n FROM session_fts").get() as { n: number };
+    assert.equal(count.n, 1);
+    conn.close();
+  });
+});
+
 test("live-cache: FTS index round-trips, replaces on re-index, and survives odd queries", () => {
   withMemoryDb(() => {
     ftsUpsert(

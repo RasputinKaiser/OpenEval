@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "node:fs";
+import path from "node:path";
 import { getRunCaseByCaseId } from "@/lib/db";
 import { resolveWithin } from "@/lib/config";
+import { isTerminalCaseStatus } from "@/lib/status";
 
 export async function GET(
   req: NextRequest,
@@ -19,6 +21,9 @@ export async function GET(
   if (!rc) {
     return NextResponse.json({ error: "Case not found" }, { status: 404 });
   }
+  if (!rc.workdir_path || !path.isAbsolute(rc.workdir_path)) {
+    return NextResponse.json({ error: "Case has no artifact workdir" }, { status: 404 });
+  }
 
   // Resolve within the case workdir: blocks `..`/absolute-path escapes while
   // still allowing nested artifact subpaths (e.g. dist/index.html).
@@ -29,7 +34,7 @@ export async function GET(
 
   try {
     const content = fs.readFileSync(fullPath, "utf8");
-    const isTerminal = ["passed", "failed", "error", "skipped"].includes(rc.status);
+    const isTerminal = isTerminalCaseStatus(rc.status);
     const headers = isTerminal
       ? { "Cache-Control": "private, max-age=300, stale-while-revalidate=600" }
       : { "Cache-Control": "no-cache" };

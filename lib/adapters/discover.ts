@@ -1,8 +1,6 @@
 import { execFile } from "node:child_process";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import { listAdapters, hasAdapter, getAdapter } from "./registry";
+import { expandHomePath, isExecutable, resolveOnPath } from "./generic";
 import type { AdapterCapabilities, HarnessAdapter } from "./types";
 import type { RunnerContext } from "../types";
 
@@ -36,37 +34,15 @@ function sampleCtx(): RunnerContext {
   };
 }
 
-function expand(p: string): string {
-  if (p.startsWith("~")) return path.join(os.homedir(), p.slice(1));
-  return p;
-}
-
-function isExecutable(file: string): boolean {
-  try {
-    const stat = fs.statSync(file);
-    return stat.isFile() && (stat.mode & 0o111) !== 0;
-  } catch {
-    return false;
-  }
-}
-
-function resolveOnPath(bin: string): string | null {
-  const PATH = process.env.PATH || "";
-  for (const dir of PATH.split(path.delimiter)) {
-    if (!dir) continue;
-    const candidate = path.join(dir, bin);
-    if (isExecutable(candidate)) return candidate;
-  }
-  return null;
-}
-
+// Resolution helpers (PATH walk, well-known paths) live in generic.ts so
+// buildCommand spawns the exact binary discovery reports as "available".
 function resolveBin(adapter: HarnessAdapter): { bin: string | null; source: DiscoveredHarness["source"] } {
   for (const name of adapter.binNames) {
     const onPath = resolveOnPath(name);
     if (onPath) return { bin: onPath, source: "path" };
   }
   for (const candidate of adapter.wellKnownPaths ?? []) {
-    const expanded = expand(candidate);
+    const expanded = expandHomePath(candidate);
     if (isExecutable(expanded)) return { bin: expanded, source: "well_known" };
   }
   return { bin: null, source: "none" };

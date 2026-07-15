@@ -11,26 +11,23 @@ npm run dev
 
 Open http://localhost:3000 to use the dashboard.
 
-Before sending a change, run:
+Before sending a change, run the same checks CI runs:
 
 ```bash
-npm run typecheck
-npm run lint -- --max-warnings=0
-npm run test:live
+npm run typecheck && npm test && npm run lint
 bash scripts/public-upload-audit.sh
 ```
 
-For changes touching runner telemetry, parsing, or live trace behavior, also run:
+`npm test` runs the full suite (`tests/*.test.ts`), not just the live-trace subset — a change that only passes `test:live` can still be CI-red.
+
+For changes touching cases or graders, also run:
 
 ```bash
-npm run test:telemetry
-```
-
-For changes touching cases or graders, run:
-
-```bash
+npm run selftest
 npm run audit:accuracy
 ```
+
+`npm run selftest` grades a no-op baseline for every case, executes each `oracle.known_bad` script, and fails if the graders pass a known-bad answer.
 
 ## Contribution Areas
 
@@ -59,9 +56,9 @@ For a new case:
 1. Add a fixture under `fixtures/<name>/` only when the case needs files.
 2. Add a `.case.json` file under the appropriate `cases/<category>/` folder.
 3. Include at least one deterministic grader when possible.
-4. Add a known-bad oracle script when it meaningfully improves confidence.
+4. Add a known-bad oracle script when it meaningfully improves confidence. `npm run selftest` executes every `known_bad` script and fails if the graders accept its output.
 5. Run the case locally and inspect the transcript.
-6. Run `npm run audit:accuracy`.
+6. Run `npm run selftest` and `npm run audit:accuracy`.
 
 Avoid committing generated run output, local transcripts, workdirs, SQLite files, `.codex/`, `.ncode/`, or `state.yaml`.
 

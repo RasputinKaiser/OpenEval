@@ -26,7 +26,7 @@
     { "type": "file_contains", "path": "index.html", "pattern": "data-testid=[\"']pass-chart[\"']", "weight": 10 },
     { "type": "file_contains", "path": "index.html", "pattern": "Pass@1|Pass@k|Known-bad|Visual-code", "weight": 10 },
     { "type": "file_contains", "path": "styles.css", "pattern": "grid|flex", "weight": 10 },
-    { "type": "file_contains", "path": "index.html", "pattern": "https?://|<script", "negate": true, "weight": 10, "forbidden": true }
+    { "type": "file_contains", "path": "index.html", "pattern": "https?://(?!www\\.w3\\.org/)|<script", "negate": true, "weight": 10, "forbidden": true }
   ],
   "pass_threshold": 0.9,
   "oracle": {

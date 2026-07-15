@@ -40,6 +40,18 @@ test("looksLikeTranscriptFile rejects non-transcript and non-JSON content", () =
   assert.equal(looksLikeTranscriptFile(tmpFile("e.jsonl", "")), false);
 });
 
+test("looksLikeTranscriptFile inspects only the head of large files", () => {
+  const transcriptLines = Array.from({ length: 8 }, (_, i) =>
+    JSON.stringify({ type: "user", message: { role: "user", content: `msg ${i}` } }),
+  ).join("\n");
+  // Transcript head followed by a giant line cut off at the 64KB read boundary.
+  const bigTail = tmpFile("tail.jsonl", transcriptLines + "\n" + "x".repeat(200 * 1024));
+  assert.equal(looksLikeTranscriptFile(bigTail), true);
+  // A head filled by one giant non-transcript line never parses as one.
+  const bigHead = tmpFile("head.jsonl", "x".repeat(70 * 1024) + "\n" + transcriptLines);
+  assert.equal(looksLikeTranscriptFile(bigHead), false);
+});
+
 // ---- registry composition ----
 
 test("allCollectionSources includes runnable harnesses and curated extras", () => {

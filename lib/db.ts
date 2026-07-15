@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
 import { DB_PATH, ensureDirs } from "./config";
-import type { CaseDefinition, RunCaseRecord, RunRecord, RunSummary } from "./types";
+import type { RunCaseRecord, RunRecord, RunSummary } from "./types";
 
 let db: Database.Database | null = null;
 
@@ -136,6 +136,15 @@ export function getRun(id: string): RunRecord | null {
   return r ? rowToRun(r) : null;
 }
 
+export function getRunStatus(id: string): RunRecord["status"] | null {
+  return (getDb().prepare(`SELECT status FROM runs WHERE id = ?`).pluck().get(id) as RunRecord["status"] | undefined) ?? null;
+}
+
+export function listRunsByStatus(status: RunRecord["status"]): RunRecord[] {
+  const rows = getDb().prepare(`SELECT * FROM runs WHERE status = ? ORDER BY created_at DESC`).all(status) as any[];
+  return rows.map(rowToRun);
+}
+
 export function listRunCases(runId: string): RunCaseRecord[] {
   const rows = getDb().prepare(`SELECT * FROM run_cases WHERE run_id = ? ORDER BY seq ASC`).all(runId) as any[];
   return rows.map(rowToRunCase);
@@ -226,6 +235,11 @@ export function appendEvent(runId: string, kind: string, payload: unknown, caseI
 
 export function listEvents(runId: string, sinceId = 0, limit = 500): Array<{ id: number; run_id: string; case_id: string | null; kind: string; payload_json: string; at: number }> {
   return getDb().prepare(`SELECT * FROM events WHERE run_id = ? AND id > ? ORDER BY id ASC LIMIT ?`).all(runId, sinceId, limit) as any[];
+}
+
+export function getLastEventAt(runId: string): number | null {
+  const at = getDb().prepare(`SELECT at FROM events WHERE run_id = ? ORDER BY id DESC LIMIT 1`).pluck().get(runId) as number | undefined;
+  return at ?? null;
 }
 
 // Defensive parse: a single truncated/corrupt JSON column (e.g. a run killed

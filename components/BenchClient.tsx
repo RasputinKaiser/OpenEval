@@ -127,8 +127,8 @@ export default function BenchClient({ runId, runName }: Props) {
               <Stat label="Avg turns" value={t.avgTurns.toFixed(1)} icon={Hash} />
             </MetricGroup>
             <MetricGroup label="Reliability">
-              <Stat label="Cache hit" value={`${(t.cacheHitRate * 100).toFixed(0)}%`} icon={Layers} tone={t.cacheHitRate > 0.3 ? "ok" : undefined} />
-              <Stat label="Error rate" value={`${(t.errorRate * 100).toFixed(0)}%`} icon={AlertTriangle} tone={t.errorRate > 0 ? "err" : "ok"} />
+              <Stat label="Fail rate" value={`${((t.failRate ?? 0) * 100).toFixed(0)}%`} icon={AlertTriangle} tone={(t.failRate ?? 0) > 0 ? "warn" : "ok"} />
+              <Stat label="Infra errors" value={`${(t.errorRate * 100).toFixed(0)}%`} icon={AlertTriangle} tone={t.errorRate > 0 ? "err" : "ok"} />
               <Stat label="Fails safely" value={`${(t.failsSafelyRate * 100).toFixed(0)}%`} icon={Layers} tone={t.failsSafelyRate >= 1 ? "ok" : "warn"} />
             </MetricGroup>
             <MetricGroup label="Cost & tooling">

@@ -33,10 +33,20 @@
       "type": "file_contains",
       "path": "counter.mjs",
       "pattern": "export function makeCounter"
+    },
+    {
+      "type": "files_unchanged",
+      "paths": [
+        "counter.test.mjs",
+        "counter.cjs",
+        "package.json"
+      ],
+      "forbidden": true
     }
   ],
   "pass_threshold": 1,
   "oracle": {
-    "solve": "oracle/swe-cjs-to-esm.sh"
+    "solve": "oracle/swe-cjs-to-esm.sh",
+    "noop_max_score": 0.25
   }
 }

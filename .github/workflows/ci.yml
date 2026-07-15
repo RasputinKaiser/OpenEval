@@ -18,6 +18,15 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test
+      # Grades every case's no-op baseline and executes known-bad oracle
+      # scripts locally; harness binary checks record "skip" when absent and
+      # rubric_llm graders are skipped without --with-llm-judge, so no LLM or
+      # agent CLI is ever invoked here.
+      - run: npm run selftest
+      # Sole automated enforcement of the public-identity and local-data rules.
+      # The script falls back to grep -E when ripgrep is absent, so no extra
+      # install step is needed.
+      - run: bash scripts/public-upload-audit.sh
       - run: npm run build
         env:
           NEXT_TELEMETRY_DISABLED: "1"

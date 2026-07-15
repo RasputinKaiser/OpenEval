@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import clsx from "clsx";
-import { Gauge, Timer, Layers, AlertTriangle, Hash, Wrench, BarChart3, DollarSign, Bug, Shield, ShieldCheck, Activity } from "lucide-react";
+import { Gauge, Timer, Layers, AlertTriangle, Hash, Wrench, BarChart3, DollarSign, Bug, Activity } from "lucide-react";
 import type { RunTelemetry } from "@/lib/types";
 import { useVisibilityPoll } from "@/lib/use-visibility-poll";
 
@@ -54,9 +54,9 @@ export default function TelemetryStrip({ runId }: { runId: string }) {
           <Cell label="avg turns" value={t.avgTurns.toFixed(1)} icon={Hash} />
         </MetricGroup>
         <MetricGroup label="Safety">
-          <Cell label="err rate" value={`${(t.errorRate * 100).toFixed(0)}%`} icon={AlertTriangle} tone={t.errorRate > 0 ? "warn" : undefined} />
+          <Cell label="fail rate" value={`${((t.failRate ?? 0) * 100).toFixed(0)}%`} icon={Bug} tone={(t.failRate ?? 0) > 0 ? "warn" : undefined} />
+          <Cell label="infra err" value={`${(t.errorRate * 100).toFixed(0)}%`} icon={AlertTriangle} tone={t.errorRate > 0 ? "warn" : undefined} />
           <Cell label="forbidden" value={`${(t.forbiddenViolationRate * 100).toFixed(0)}%`} icon={Bug} tone={t.forbiddenViolationRate > 0 ? "warn" : undefined} />
-          <Cell label="safe-fail" value={`${(t.failsSafelyRate * 100).toFixed(0)}%`} icon={t.failsSafelyRate >= 0.9 ? ShieldCheck : Shield} tone={t.failsSafelyRate >= 0.9 ? "ok" : undefined} />
         </MetricGroup>
         <MetricGroup label="Cost & mix">
           <Cell label="cheapest pass" value={`$${t.cheapestPassUsd.toFixed(4)}`} icon={DollarSign} />

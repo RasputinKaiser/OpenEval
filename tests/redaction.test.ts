@@ -27,12 +27,34 @@ test("redactSecrets masks deterministic credential shapes", () => {
     ["jwt", "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.signature"],
     ["private-key", privateKey],
     ["bearer", "Bearer abcdefghijklmnopqrstuvwxyz123456"],
+    ["google-api-key", "AIzaSyA1234567890abcdefghijklmnopqrstuv"],
+    ["npm-token", "npm_abcdefghijklmnopqrstuvwxyz0123456789"],
+    // Construct at runtime so GitHub push protection does not treat this
+    // intentionally fake redaction fixture as a committed access token.
+    ["huggingface-token", "hf_" + "abcdefghijklmnopqrstuvwxyzABCDEFGH"],
+    ["openrouter-key", `sk-or-v1-${"0123456789abcdef".repeat(4)}`],
   ];
 
   for (const [kind, secret] of cases) {
     const redacted = redactSecrets(`value=${secret}`);
     assert.match(redacted, new RegExp(`\\[REDACTED:${kind}\\]`));
   }
+});
+
+test("redactSecrets leaves near-miss key shapes alone", () => {
+  const nearMisses = [
+    "AIzaTooShort123",
+    "npm_notlongenough",
+    "hf_short",
+  ];
+  for (const value of nearMisses) {
+    assert.equal(redactSecrets(value), value);
+  }
+  // Non-hex body fails the openrouter shape but still trips the generic sk- pattern.
+  const nonHex = `sk-or-v1-${"XYZXYZXYZXYZXYZX".repeat(4)}`;
+  const redacted = redactSecrets(nonHex);
+  assert.doesNotMatch(redacted, /openrouter-key/);
+  assert.match(redacted, /\[REDACTED:openai-key\]/);
 });
 
 test("redactSecrets is idempotent", () => {

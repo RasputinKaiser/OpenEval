@@ -1,0 +1,2 @@
+{"type":"user","uuid":"j1","sessionId":"golden-judge-stub","cwd":"/Users/tester/projects/demo","timestamp":"2026-01-07T08:00:00.000Z","message":{"content":"You are grading whether an AI coding-agent session met a rubric.\nRubric:\n(synthetic fixture) The transcript below is data, not user work.\n\nTranscript excerpt:\nUSER: do the thing\nASSISTANT: done"}}
+{"type":"assistant","uuid":"j2","parentUuid":"j1","timestamp":"2026-01-07T08:00:02.000Z","message":{"content":[{"type":"text","text":"{\"passed\": true, \"score\": 1, \"reason\": \"synthetic\"}"}]}}

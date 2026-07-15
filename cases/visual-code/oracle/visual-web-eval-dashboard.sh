@@ -21,7 +21,7 @@ cat > index.html <<'HTML'
         <article data-testid="metric-card"><span>Known-bad</span><strong>rejected</strong></article>
         <article data-testid="metric-card"><span>Visual-code</span><strong>2 cases</strong></article>
       </section>
-      <svg data-testid="pass-chart" viewBox="0 0 640 180" role="img" aria-label="Pass rate trend chart">
+      <svg data-testid="pass-chart" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 180" role="img" aria-label="Pass rate trend chart">
         <rect x="0" y="0" width="640" height="180" rx="18" fill="#111827"></rect>
         <path d="M52 132 C140 84, 200 116, 288 72 S456 56, 588 34" fill="none" stroke="#7c5cff" stroke-width="8"></path>
         <rect x="52" y="100" width="36" height="42" fill="#56d4dd"></rect>

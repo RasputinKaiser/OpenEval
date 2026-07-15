@@ -29,10 +29,15 @@ let pipelinePromise: Promise<any> | null = null;
 const SECRET_PATTERNS: Array<[kind: string, pattern: RegExp]> = [
   ["private-key", /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g],
   ["jwt", /eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g],
+  // Before openai-key: sk-or-v1-… also matches the generic sk- shape.
+  ["openrouter-key", /sk-or-v1-[a-f0-9]{64}/g],
   ["openai-key", /sk-[A-Za-z0-9_-]{20,}/g],
   ["github-token", /gh[pousr]_[A-Za-z0-9]{36}/g],
   ["aws-key", /AKIA[0-9A-Z]{16}/g],
   ["slack-token", /xox[baprs]-[A-Za-z0-9-]{10,}/g],
+  ["google-api-key", /AIza[0-9A-Za-z_-]{35}/g],
+  ["npm-token", /npm_[A-Za-z0-9]{36}/g],
+  ["huggingface-token", /hf_[A-Za-z0-9]{34,}/g],
   ["bearer", /(?<=Bearer\s)[A-Za-z0-9._~+/=-]{16,}/g],
 ];
 

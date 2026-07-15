@@ -33,10 +33,19 @@
       "type": "file_contains",
       "path": "lib/leap.js",
       "pattern": "400"
+    },
+    {
+      "type": "files_unchanged",
+      "paths": [
+        "test/leap.test.js",
+        "package.json"
+      ],
+      "forbidden": true
     }
   ],
   "pass_threshold": 1,
   "oracle": {
-    "solve": "oracle/swe-fix-leap-year.sh"
+    "solve": "oracle/swe-fix-leap-year.sh",
+    "noop_max_score": 0.25
   }
 }

@@ -1,0 +1,5 @@
+{"timestamp":"2026-01-04T14:00:00.000Z","type":"session_meta","payload":{"id":"golden-codex-old","cwd":"/Users/tester/projects/ledger","originator":"codex_cli","cli_version":"0.20.0"}}
+{"timestamp":"2026-01-04T14:00:01.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Sum the totals column in data.csv"}]}}
+{"timestamp":"2026-01-04T14:00:02.000Z","type":"response_item","payload":{"type":"function_call","call_id":"c1","name":"shell","arguments":"{\"command\":\"awk -F, '{s+=$2} END {print s}' data.csv\"}"}}
+{"timestamp":"2026-01-04T14:00:03.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"c1","output":"Exit code: 0\nOutput:\n42"}}
+{"timestamp":"2026-01-04T14:00:04.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"The total is 42."}]}}

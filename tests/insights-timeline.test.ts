@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { scoreOutcome } from "../lib/insights/outcome";
 import { toPoints, detectMarkers, metricSeries, markerImpact } from "../lib/insights/timeline";
 import type { LiveSession, OutcomeSignals } from "../lib/live";
+import type { StoredJudgment } from "../lib/live-cache";
 
 function session(over: Partial<LiveSession> & { startedAt: number }): LiveSession & { sourceLabel: string } {
   const sig: OutcomeSignals = { userPositive: 0, userNegative: 0, rephrases: 0, errorTail: false, testsPassedTail: false, reworkFiles: 0 };
@@ -77,6 +78,50 @@ test("markerImpact compares before/after and flags a model-switch confound", () 
   assert.ok(impact.nBefore >= 3 && impact.nAfter >= 3);
   assert.ok(impact.deltas.toolErrorRate < 0); // error rate dropped after
   assert.ok(impact.confounds.some((c) => /model changed/.test(c))); // opus → fable flagged
+});
+
+const POOL_MIX = /outcome medians mix/;
+
+function judgmentsFor(files: string[], score: number): Map<string, StoredJudgment> {
+  return new Map(files.map((file) => [file, {
+    file, sessionId: null, mtimeMs: 0, score, reasons: ["judge verdict"], judge: "test/judge", judgedAt: 0, promptVersion: 2,
+  }]));
+}
+
+// 6 sessions before the "planning" marker (at=7) and 6 after, all on one model.
+function poolMixPoints(judgments?: Map<string, StoredJudgment>) {
+  const sessions = [
+    ...[1, 2, 3, 4, 5, 6].map((v) => session({ startedAt: v, path: `/t/${v}.jsonl` })),
+    ...[7, 8, 9, 10, 11, 12].map((v) => session({ startedAt: v, path: `/t/${v}.jsonl`, skillsUsed: ["planning"] })),
+  ];
+  const pts = toPoints(sessions, judgments);
+  const marker = detectMarkers(pts).find((m) => m.name === "planning")!;
+  return { pts, marker };
+}
+
+test("markerImpact: both sides heuristic → no pool-mix confound", () => {
+  const { pts, marker } = poolMixPoints();
+  const impact = markerImpact(pts, marker, 10, 3);
+  assert.equal(impact.judgedBefore, 0);
+  assert.equal(impact.judgedAfter, 0);
+  assert.ok(!impact.confounds.some((c) => POOL_MIX.test(c)));
+});
+
+test("markerImpact flags judged-vs-heuristic pool asymmetry as a confound", () => {
+  const { pts, marker } = poolMixPoints(judgmentsFor(["7", "8", "9", "10", "11", "12"].map((v) => `/t/${v}.jsonl`), 0.9));
+  const impact = markerImpact(pts, marker, 10, 3);
+  assert.equal(impact.judgedBefore, 0);
+  assert.equal(impact.judgedAfter, 6);
+  assert.ok(impact.confounds.some((c) => POOL_MIX.test(c)));
+  assert.ok(impact.confounds.some((c) => c.includes("judged (after)") && c.includes("heuristic (before)")));
+});
+
+test("markerImpact: both sides judged → no pool-mix confound", () => {
+  const { pts, marker } = poolMixPoints(judgmentsFor([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((v) => `/t/${v}.jsonl`), 0.7));
+  const impact = markerImpact(pts, marker, 10, 3);
+  assert.equal(impact.judgedBefore, 6);
+  assert.equal(impact.judgedAfter, 6);
+  assert.ok(!impact.confounds.some((c) => POOL_MIX.test(c)));
 });
 
 test("markerImpact flags thin samples as low confidence", () => {

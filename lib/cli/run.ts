@@ -3,6 +3,7 @@ import { createAndStartRun } from '../run';
 import { selectCases } from '../cases';
 import { getRun, listRunCases } from '../db';
 import { computeSummary } from '../summary';
+import { isTerminalCaseStatus } from '../status';
 import { listAdapters, getDefaultHarness } from '../adapters/registry';
 import { discoverHarnesses } from '../adapters/discover';
 import type { RunnerKind } from '../types';
@@ -96,7 +97,6 @@ function listHarnesses(): Promise<void> {
       if (!h) { console.log(`  ${a.id}${tag}  — ${a.label}  [bin: ${a.defaultBin}]`); continue; }
       const bin = h.bin ?? '—';
       const ver = h.version ?? '';
-      const detail = h.status === 'available' ? ver : h.status === 'not_found' ? 'NOT FOUND' : `ERROR: ${h.detail ?? ''}`;
       console.log(`  ${h.id}${tag}  ${h.status.padEnd(11)} ${bin}${ver ? '  ' + ver : ''}${h.status !== 'available' && h.detail ? '  (' + h.detail + ')' : ''}`);
     }
     const avail = discovered.filter((h) => h.status === 'available').length;
@@ -219,7 +219,7 @@ async function waitForRun(id: string, live: boolean, label: string): Promise<voi
       if (sig !== lastSig) {
         lastSig = sig;
         const counts = cases.reduce<Record<string, number>>((a, c) => { a[c.status] = (a[c.status] || 0) + 1; return a; }, {});
-        const done = cases.filter((c) => ['passed', 'failed', 'error', 'skipped'].includes(c.status)).length;
+        const done = cases.filter((c) => isTerminalCaseStatus(c.status)).length;
         const body = `${label}[${done}/${cases.length}] passed=${counts.passed || 0}  failed=${counts.failed || 0}  error=${counts.error || 0}  running=${(counts.running || 0) + (counts.grading || 0)}  pending=${counts.pending || 0}`;
         // Fan-out prints full lines (concurrent \r would clobber each other);
         // a single run updates one line in place.
@@ -235,9 +235,14 @@ async function waitForRun(id: string, live: boolean, label: string): Promise<voi
 function exitCodeForRun(status: string | null, finalCases: ReturnType<typeof listRunCases>): number {
   if (status === 'failed') return 1;
   const graderCrash = finalCases.some((c) => c.status === 'error' && (c.error_msg ?? '').startsWith('Grader threw:'));
-  const runnerCrash = finalCases.some((c) => c.status === 'error' && ((c.error_msg ?? '').startsWith('Runner threw:') || c.runner_result?.isError));
   if (graderCrash) return 3;
-  if (runnerCrash) return 2;
+  // ANY infra error — runner crash, workdir prep failure, judge unavailable,
+  // stranded case — must be a nonzero exit; CI treating a broken eval as green
+  // is worse than a false alarm.
+  const anyInfraError = finalCases.some(
+    (c) => c.status === 'error' || !isTerminalCaseStatus(c.status),
+  );
+  if (anyInfraError) return 2;
   return 0;
 }
 

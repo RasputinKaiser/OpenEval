@@ -33,10 +33,19 @@
     {
       "type": "exit_code",
       "command": "node -e \"const {fizzbuzz}=require('./src/fizzbuzz'); const p=fizzbuzz(30).split(','); if(p[14]!=='FizzBuzz'||p[29]!=='FizzBuzz') process.exit(1)\""
+    },
+    {
+      "type": "files_unchanged",
+      "paths": [
+        "src/fizzbuzz.test.js",
+        "package.json"
+      ],
+      "forbidden": true
     }
   ],
   "pass_threshold": 1,
   "oracle": {
-    "solve": "oracle/swe-fix-fizzbuzz.sh"
+    "solve": "oracle/swe-fix-fizzbuzz.sh",
+    "noop_max_score": 0.25
   }
 }

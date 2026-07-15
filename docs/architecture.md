@@ -144,6 +144,9 @@ Primary pages from the app and README:
 | `/harnesses` | Harness discovery and descriptor issues. |
 | `/accuracy` | Case quality audit. |
 | `/live` | Live local trace summaries. |
+| `/collection` | All sources at once: full-history totals, weekly rollups, full-text search. |
+| `/collection/session` | Read-only transcript viewer for a discovered session file. |
+| `/collection/timeline` | Adoption timeline, impact deltas, change points, LLM-judge refinement. |
 | `/cases` | Case library. |
 | `/settings` | Local settings surface. |
 
@@ -164,7 +167,16 @@ API routes:
 | `GET /api/runs/[id]/case/[caseId]` | Full run case record. |
 | `GET /api/runs/[id]/case/[caseId]/artifact?path=<filename>` | Reads a top-level artifact file from the case workdir. |
 | `GET /api/runs/[id]/telemetry` | Computed run telemetry. |
+| `GET /api/runs/[id]/report` | Run report (Markdown or bundle download). |
+| `POST /api/runs/[id]/cancel` | Cancel a running run. |
 | `GET /api/runs/[id]/events/stream` | Server-sent events from the SQLite `events` table. |
+| `GET /api/collection` | Cross-source collection aggregate (totals, rollups, archive). |
+| `GET /api/collection/search` | Full-text search over indexed transcripts. |
+| `POST /api/collection/search/index` | (Re)build the transcript FTS index. |
+| `GET /api/collection/timeline` | Adoption timeline, impact deltas, change points. |
+| `GET`/`POST /api/collection/timeline/judge` | Judge status / run LLM-judge outcome refinement. |
+
+Cross-site mutation requests are rejected in `middleware.ts` (Sec-Fetch-Site first, then an Origin/Host comparison), so the local dashboard's mutating APIs cannot be driven by a hostile web page.
 
 The SSE endpoint polls `listEvents()` every 600 ms, starts with `retry: 2000`, sends heartbeat comments, and emits frames whose event name is the stored event `kind`.
 
@@ -187,6 +199,23 @@ The live aggregate reports source status, source roots, session counts, usage su
 
 Metric provenance is explicit: each live session marks model, tokens, cost, duration, and turns as `measured`, `inferred`, `missing`, or `malformed`.
 
+## Collection, Timeline, and the Live Cache
+
+The Collection subsystem (`lib/insights/*`, `lib/live-cache.ts`) extends live scanning from "recent sessions" to full local history across every parseable source.
+
+`data/live-cache.db` is a persistent SQLite cache with four jobs:
+
+- `session_cache`: parsed sessions keyed by `(file, mtime, size)` and stamped with `PARSER_VERSION` (`lib/live-cache.ts`). The contract: bump `PARSER_VERSION` whenever the parser's output changes shape or semantics — stale-version rows are ignored and re-parsed. `tests/golden-parse.test.ts` pins parser output on synthetic fixture transcripts so a behavior change (and therefore a version bump) is a conscious choice, not an accident. Cached parses of files later pruned from disk surface as archived sessions, so history survives harness log rotation.
+- `outcome_judgments`: LLM-judge verdicts per session, stamped with the `prompt_version` (`JUDGE_PROMPT_VERSION` in `lib/insights/judge.ts`) they were produced under, so re-judging after a prompt change is detectable.
+- `judge_failures`: a retry ledger for judge runs. Failures persist with an attempt count; after `MAX_JUDGE_ATTEMPTS` (3) a file is skipped. Missing files and sessions with no extractable text are recorded as permanent failures. `judgeSkipSet()` unions already-judged and dead files so judge sweeps never spin on the same broken input.
+- A full-text (FTS5) index over transcript conversational text, backing `/collection` search.
+
+Judging uses the same backend chain as the `rubric_llm` grader (`resolveJudge()`: `JUDGE_HARNESS`, else OpenRouter when a key exists, else the Codex CLI), and session parsers drop any session whose first user text starts with the judge-prompt marker — the judge's own CLI sessions are instrumentation, not user work.
+
+The Timeline (`/collection/timeline`) derives adoption markers (skills, MCP servers, subagents, models) from parsed sessions, computes before/after impact deltas with confound flags, and detects metric change points. Heuristic outcome scores can be refined by persisted judge verdicts.
+
+The whole cache file is disposable — deleting `data/live-cache.db` only forces a re-parse.
+
 ## Local Data Layout
 
 Source-backed runtime paths from `lib/config.ts`:
@@ -195,6 +224,7 @@ Source-backed runtime paths from `lib/config.ts`:
 data/eval.db
 data/eval.db-wal
 data/eval.db-shm
+data/live-cache.db
 data/workdirs/
 data/transcripts/
 data/reports/

@@ -54,6 +54,24 @@ async function makeRedactor(redact?: boolean): Promise<Redactor> {
   return async (value) => redactSensitiveText(value);
 }
 
+// Rebuilds the value (never mutates the input), redacting every string leaf —
+// covers finalText/resultText, tool call inputs/outputs, transcript text and
+// tool_result content, grader detail/output, and anything nested in rawJson.
+async function redactJsonValue(value: unknown, redactor: Redactor): Promise<unknown> {
+  if (typeof value === "string") return redactor(value);
+  if (Array.isArray(value)) {
+    const out: unknown[] = [];
+    for (const item of value) out.push(await redactJsonValue(item, redactor));
+    return out;
+  }
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(value)) out[key] = await redactJsonValue(entry, redactor);
+    return out;
+  }
+  return value;
+}
+
 function manifestRows(run: RunRecord): Array<[string, string]> | null {
   const manifest = run.manifest as any;
   if (!manifest || typeof manifest !== "object") return null;
@@ -193,12 +211,14 @@ export async function writeRunBundle(
   if (!run) throw new Error(`run not found: ${runId}`);
   const cases = listRunCases(runId);
   const files: string[] = [];
+  const redactor = opts?.redact ? await makeRedactor(true) : null;
   await fs.mkdir(outDir, { recursive: true });
 
   async function writeJson(rel: string, value: unknown) {
     const target = path.join(outDir, rel);
     await fs.mkdir(path.dirname(target), { recursive: true });
-    await fs.writeFile(target, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+    const payload = redactor ? await redactJsonValue(value, redactor) : value;
+    await fs.writeFile(target, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
     files.push(rel);
   }
 

@@ -76,15 +76,23 @@ The dashboard currently exposes these primary routes:
 | --- | --- | --- |
 | `dev` | `next dev` | Start the local Next.js dashboard. |
 | `build` | `next build` | Build the production Next.js app. |
+| `start` | `next start` | Serve the production build. |
+| `lint` | `next lint` | Run the Next.js ESLint pass. |
 | `typecheck` | `tsc --noEmit` | Run TypeScript without emitting files. |
-| `test:live` | `node --import tsx --test tests/live.test.ts` | Run live-trace tests. |
-| `test:telemetry` | `node --import tsx --test tests/telemetry.test.ts` | Run telemetry tests. |
+| `test` | `node --import tsx --test tests/*.test.ts` | Run the full test suite (what CI runs). |
+| `test:live` | `node --import tsx --test tests/live.test.ts` | Run only the live-trace tests. |
+| `test:telemetry` | `node --import tsx --test tests/telemetry.test.ts` | Run only the telemetry tests. |
+| `test:redaction` | `node --import tsx --test tests/redaction.test.ts` | Run only the redaction-pipeline tests. |
 | `run:eval` | `tsx lib/cli/run.ts` | Start evaluation runs from the CLI. |
 | `run:case` | `tsx lib/cli/run.ts --case` | Run one case id through the evaluation CLI. |
-| `selftest` | `tsx lib/cli/selftest.ts` | Validate DB access, cases, harness descriptors/parsers, no-op baselines, and oracles. |
+| `run:headless` | `tsx lib/cli/run.ts --runner headless` | Run evaluations with the headless runner preselected. |
+| `selftest` | `tsx lib/cli/selftest.ts` | Validate DB access, cases, harness descriptors/parsers, no-op baselines, known-bad rejection, and oracles. |
+| `judge:windows` | `tsx scripts/judge-windows.ts` | Timeline helper: judge sessions inside adoption-marker windows. |
 | `audit:accuracy` | `tsx lib/cli/accuracy.ts` | Audit case proof strength, oracle coverage, known-bad coverage, and evidence tiers. |
+| `audit:accuracy:strict` | `tsx lib/cli/accuracy.ts --strict` | Accuracy audit that fails on warnings. |
 | `report` | `tsx lib/cli/report.ts` | Generate a Markdown run report or portable bundle (`--bundle`, `--redact`); every run also records a reproducibility manifest. |
-| `test:redaction` | `node --import tsx --test tests/redaction.test.ts` | Run redaction-pipeline tests. |
+
+The `test*` scripts set `OPENEVAL_DATA_ROOT=.test-data` so test runs never touch your real `data/` history.
 
 ## What OpenEval Tests
 
@@ -204,10 +212,10 @@ CLI exit codes:
 
 | Code | Meaning |
 | --- | --- |
-| `0` | Run completed without infrastructure failure. Individual cases may still fail. |
-| `1` | General error. |
-| `2` | Runner crash. |
-| `3` | Grader crash. |
+| `0` | Every case reached a terminal status with no infrastructure error. Individual cases may still be `failed`. |
+| `1` | The run itself failed, or a general CLI error. |
+| `2` | Infrastructure error: any case ended in `error` (runner crash, workdir prep failure, judge unavailable) or never reached a terminal status (stranded). |
+| `3` | A grader crashed. Takes precedence over `2`. |
 
 ## Local Data and Privacy
 
@@ -218,6 +226,7 @@ Ignored runtime data:
 - `data/eval.db`
 - `data/eval.db-wal`
 - `data/eval.db-shm`
+- `data/live-cache.db`
 - `data/transcripts/`
 - `data/workdirs/`
 - `.codex/`
@@ -307,11 +316,18 @@ Verify TypeScript:
 npm run typecheck
 ```
 
-Run focused tests:
+Run the full test suite (what CI runs):
+
+```bash
+npm test
+```
+
+Or focused subsets:
 
 ```bash
 npm run test:live
 npm run test:telemetry
+npm run test:redaction
 ```
 
 Run internal selftests:

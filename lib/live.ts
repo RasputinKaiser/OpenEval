@@ -8,7 +8,7 @@ import { hermesJsonToRecords } from "./adapters/hermes";
 import { estimateCostUsd } from "./pricing";
 import { cacheGet, cachePut, listCachedSessionsUnder } from "./live-cache";
 import { classifySentiment, isRephrase, looksLikeApologyOrFailure, looksLikeTestsPassed, mcpServerFromTool, JUDGE_PROMPT_MARKER } from "./insights/signals";
-import { listAdapters, hasAdapter, getAdapter, getDefaultHarness, invalidateRegistry } from "./adapters/registry";
+import { hasAdapter, getAdapter, getDefaultHarness, invalidateRegistry } from "./adapters/registry";
 import { invalidateDescriptorCache } from "./adapters/loader";
 
 export type MetricSource = "measured" | "inferred" | "missing" | "malformed";
@@ -369,6 +369,27 @@ export function looksLikeToolError(output: string): boolean {
     /\b(?:error|fatal|panic)\s*:/i.test(output) ||
     /\b(?:command not found|no such file or directory|permission denied|segmentation fault|command failed)\b/i.test(output)
   );
+}
+
+/**
+ * Codex shell outputs carry a structured exit marker — either a leading
+ * "Exit code: N" line or a JSON envelope {"output": …, "metadata":
+ * {"exit_code": N}} (both shapes verified against real ~/.codex/sessions
+ * rollouts). Trust the marker when present so exit-0 output that merely
+ * MENTIONS "error:" (compiler diagnostics, grep hits) isn't flagged; fall back
+ * to text sniffing only when no marker exists.
+ */
+export function codexToolOutputError(output: string): boolean {
+  if (!output) return false;
+  const head = output.match(/^Exit code: (-?\d+)/);
+  if (head) return head[1] !== "0";
+  if (output.startsWith("{")) {
+    try {
+      const exit = JSON.parse(output)?.metadata?.exit_code;
+      if (typeof exit === "number") return exit !== 0;
+    } catch {}
+  }
+  return looksLikeToolError(output);
 }
 
 const MIN_PLAUSIBLE_MS = 1_577_836_800_000; // 2020-01-01
@@ -746,6 +767,10 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
   let userPositive = 0, userNegative = 0, rephrases = 0;
   let lastUserText: string | null = null;
   let lastAssistantText = "";
+  let userTextTurns = 0;
+  let firstTsMs = Infinity;
+  let lastTsMs = 0;
+  let tsCount = 0;
   let inputTokens = 0;
   let outputTokens = 0;
   let cacheReadTokens = 0;
@@ -815,6 +840,9 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
       if (at) {
         startedAt = Math.min(startedAt, at);
         lastEventAt = Math.max(lastEventAt, at);
+        firstTsMs = Math.min(firstTsMs, at);
+        lastTsMs = Math.max(lastTsMs, at);
+        tsCount++;
       }
 
       if (typeof obj.uuid === "string") seenUuids.add(obj.uuid);
@@ -840,12 +868,15 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
         const trimmed = userText.trim();
         // A claude-CLI-backed judge leaves its own session files; drop them.
         if (trimmed.startsWith(JUDGE_PROMPT_MARKER)) return null;
-        if (trimmed && trimmed.length <= 600 && !trimmed.startsWith("<") && !trimmed.startsWith("Caveat:")) {
-          const sent = classifySentiment(trimmed);
-          if (sent === "positive") userPositive++;
-          else if (sent === "negative") userNegative++;
-          if (isRephrase(trimmed, lastUserText)) rephrases++;
-          lastUserText = trimmed;
+        if (trimmed && !trimmed.startsWith("<") && !trimmed.startsWith("Caveat:")) {
+          userTextTurns++;
+          if (trimmed.length <= 600) {
+            const sent = classifySentiment(trimmed);
+            if (sent === "positive") userPositive++;
+            else if (sent === "negative") userNegative++;
+            if (isRephrase(trimmed, lastUserText)) rephrases++;
+            lastUserText = trimmed;
+          }
         }
       }
 
@@ -1034,8 +1065,20 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
   if (numTurns === 0 && messageCount > 0) {
     numTurns = messageCount;
     metricSources.turns = "inferred";
+  } else if (numTurns === 0 && userTextTurns > 0) {
+    // Interactive sessions carry no result/messageCount record; the count of
+    // real (non-sidechain, non-injected) user prompts is the honest fallback.
+    numTurns = userTextTurns;
+    metricSources.turns = "inferred";
   } else if (numTurns > 0 && metricSources.turns === "missing") {
     metricSources.turns = sawResult ? "measured" : "inferred";
+  }
+  // Interactive sessions also lack duration records, but nearly every record
+  // carries a timestamp — infer the observed span rather than reporting 0
+  // (same derivation the Codex parser uses, tagged "inferred" not "measured").
+  if (metricSources.duration === "missing" && tsCount >= 2 && lastTsMs > firstTsMs) {
+    durationMs = Math.max(durationMs, lastTsMs - firstTsMs);
+    metricSources.duration = "inferred";
   }
   if (malformedLineCount > 0 && lineCount === malformedLineCount) {
     metricSources.model = "malformed";
@@ -1064,6 +1107,7 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
   if (usageSegments.length === 0) {
     usageSegments = buildUsageSegments(startedAt, durationMs, inputTokens, outputTokens);
   }
+  usageSegments = downsampleUsageSegments(usageSegments);
   const toolSummaries = topEntries(toolCallsByName, 8).map(({ key, count }) => ({
     name: key,
     calls: count,
@@ -1169,6 +1213,19 @@ function isInjectedPreamble(text: string, subagentSession: boolean): boolean {
   return t.length > 120 && ORCHESTRATION_MARKERS.test(t);
 }
 
+/**
+ * IDE-launched Codex sessions wrap the user's prompt in an editor-context
+ * preamble; the actual ask follows the "## My request for Codex:" header
+ * (shape verified against real rollouts). Return the ask, or the text
+ * unchanged when unwrapped.
+ */
+function stripIdeContextWrapper(text: string): string {
+  if (!text.startsWith("# Context from my IDE setup")) return text;
+  const marker = "## My request for Codex:";
+  const idx = text.indexOf(marker);
+  return idx >= 0 ? text.slice(idx + marker.length) : text;
+}
+
 function parseCodexSession(file: string, lines: Iterable<string>, bytes: number, projectDir: string, mtime: number): LiveSession | null {
   let sessionId: string | null = null;
   let displayTitle: string | null = null;
@@ -1213,6 +1270,22 @@ function parseCodexSession(file: string, lines: Iterable<string>, bytes: number,
     cost: "missing",
     duration: "inferred",
     turns: "inferred",
+  };
+
+  const recordCodexUserText = (raw: string): "judge" | "recorded" | "ignored" => {
+    const trimmed = stripIdeContextWrapper(raw).trim();
+    if (trimmed.startsWith(JUDGE_PROMPT_MARKER)) return "judge";
+    if (!trimmed || trimmed.startsWith("<") || isInjectedPreamble(trimmed, isSubagent)) return "ignored";
+    lastPromptPreview = jsonPreview(trimmed, 260);
+    displayTitle = displayTitle ?? jsonPreview(trimmed, 80);
+    if (trimmed.length <= 600) {
+      const sent = classifySentiment(trimmed);
+      if (sent === "positive") userPositive++;
+      else if (sent === "negative") userNegative++;
+      if (isRephrase(trimmed, lastUserText)) rephrases++;
+      lastUserText = trimmed;
+    }
+    return "recorded";
   };
 
   try {
@@ -1265,7 +1338,10 @@ function parseCodexSession(file: string, lines: Iterable<string>, bytes: number,
           displayTitle = displayTitle ?? jsonPreview(payload.message, 80);
           lastAgentText = payload.message;
         } else if (payload.type === "user_message" && typeof payload.message === "string") {
-          if (payload.message.trim().startsWith(JUDGE_PROMPT_MARKER)) return null; // judge stub, not user work
+          // Real rollouts carry user text HERE (event_msg/user_message), never
+          // as a top-level user_msg record — this branch feeds the preview,
+          // title fallback, and sentiment/rephrase signals for Codex sessions.
+          if (recordCodexUserText(payload.message) === "judge") return null;
         } else if (payload.type === "token_count") {
           const info = payload.info ?? {};
           const last = info.last_token_usage;
@@ -1328,7 +1404,7 @@ function parseCodexSession(file: string, lines: Iterable<string>, bytes: number,
         if (payload.type === "function_call_output") {
           const output = String(payload.output ?? "");
           extractFilePaths(output, touchedFiles);
-          const errored = looksLikeToolError(output);
+          const errored = codexToolOutputError(output);
           if (typeof payload.call_id === "string") {
             const startMs = toolStartByCallIdMs.get(payload.call_id);
             if (startMs != null && at != null) {
@@ -1351,15 +1427,7 @@ function parseCodexSession(file: string, lines: Iterable<string>, bytes: number,
         }
       } else if (obj.type === "user_msg" || obj.type === "user_message") {
         const text = String(obj.payload?.message ?? obj.payload?.text ?? obj.message ?? obj.text ?? "");
-        if (text && !text.trim().startsWith("<") && !isInjectedPreamble(text, isSubagent)) lastPromptPreview = jsonPreview(text, 260);
-        const trimmed = text.trim();
-        if (trimmed && trimmed.length <= 600 && !trimmed.startsWith("<")) {
-          const sent = classifySentiment(trimmed);
-          if (sent === "positive") userPositive++;
-          else if (sent === "negative") userNegative++;
-          if (isRephrase(trimmed, lastUserText)) rephrases++;
-          lastUserText = trimmed;
-        }
+        if (recordCodexUserText(text) === "judge") return null;
       }
     }
   } catch {
@@ -1413,7 +1481,7 @@ function parseCodexSession(file: string, lines: Iterable<string>, bytes: number,
     cacheCreateTokens,
     totalTokens,
     costUsd,
-    usageSegments,
+    usageSegments: downsampleUsageSegments(usageSegments),
     toolCalls,
     toolErrors,
     numTurns: Math.max(messageCount, 1),
@@ -1495,6 +1563,37 @@ function coalesceString(value: unknown, fallback: string | null): string | null 
 function numericOrNull(value: unknown): number | null {
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Cap usageSegments at a bounded count. One segment is pushed per usage
+ * record, so a single huge session produced 4,100 segments (~595KB of JSON)
+ * that were persisted to the cache and shipped whole in /api/live responses.
+ * Halving by merging adjacent pairs (deltas summed, the later point's
+ * cumulative snapshot kept) preserves the curve at sub-pixel resolution.
+ */
+export const MAX_USAGE_SEGMENTS = 500;
+
+function downsampleUsageSegments(segments: LiveUsageSegment[]): LiveUsageSegment[] {
+  let out = segments;
+  while (out.length > MAX_USAGE_SEGMENTS) {
+    const merged: LiveUsageSegment[] = [];
+    for (let i = 0; i + 1 < out.length; i += 2) {
+      const a = out[i];
+      const b = out[i + 1];
+      merged.push({
+        atMs: b.atMs,
+        cumulativeInput: b.cumulativeInput,
+        cumulativeOutput: b.cumulativeOutput,
+        deltaInput: a.deltaInput + b.deltaInput,
+        deltaOutput: a.deltaOutput + b.deltaOutput,
+        outTokPerSec: b.outTokPerSec,
+      });
+    }
+    if (out.length % 2 === 1) merged.push(out[out.length - 1]);
+    out = merged;
+  }
+  return out;
 }
 
 function buildUsageSegments(startedAt: number, durationMs: number, inputTokens: number, outputTokens: number): LiveUsageSegment[] {
@@ -1607,7 +1706,7 @@ function toTranscriptTurn(obj: any, index: number): LiveTranscriptTurn {
     }
     if (payload.type === "function_call_output") {
       const out = String(payload.output ?? "");
-      const errored = looksLikeToolError(out);
+      const errored = codexToolOutputError(out);
       return { type, subtype: payload.type, severity: errored ? "error" : "info", at, role: "tool", label: errored ? "Tool output — error" : "Tool output", preview: jsonPreview(out) };
     }
     if (payload.type === "reasoning") {

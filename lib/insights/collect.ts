@@ -1,6 +1,6 @@
 import { collectSourceSessions, type LiveSession } from "../live";
 import { allCollectionSources, defToSpec } from "../collection/sources";
-import { loadJudgments } from "../live-cache";
+import { loadCurrentJudgments } from "./judge";
 import {
   toPoints, detectMarkers, metricSeries, markerImpact,
   type Marker, type MarkerImpact, type SeriesPoint, type SessionPoint,
@@ -45,7 +45,7 @@ export function collectAllPoints(limitPerSource = 100_000): { points: SessionPoi
       sessions.push({ ...s, sourceLabel: def.label });
     }
   }
-  const points = toPoints(sessions, loadJudgments());
+  const points = toPoints(sessions, loadCurrentJudgments());
   return { points, markers: detectMarkers(points) };
 }
 

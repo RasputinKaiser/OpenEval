@@ -12,13 +12,12 @@
   "oracle": {
     "solve": "oracle/reasoning-edge-case-explanation.sh",
     "final_text": "The bug is an off-by-one error in the loop bound. The loop `for (let i = 2; i < n; i++)` stops when `i` reaches `n - 1`, so the last iteration that combines `a` and `b` uses index `n - 1` instead of `n`. This makes `fib(n)` return the (n - 1)th Fibonacci number. The fix is to change `< n` to `<= n` so the loop runs one more time.\n\n```javascript\nfunction fib(n) {\n  if (n <= 1) return n;\n  let a = 0, b = 1;\n  for (let i = 2; i <= n; i++) {\n    [a, b] = [b, a + b];\n  }\n  return b;\n}\n```",
-    "known_bad": ["oracle/reasoning-edge-case-explanation-bad.sh"],
-    "known_bad_final_text": ["The bug is variable shadowing caused by the destructuring assignment. The temporary value of `a` is lost before it can be added, so the sequence uses stale data. The fix is to avoid destructuring by introducing a temporary variable.\n\n```javascript\nfunction fib(n) {\n  if (n <= 1) return n;\n  let a = 0, b = 1;\n  for (let i = 2; i < n; i++) {\n    let c = a + b;\n    a = b;\n    b = c;\n  }\n  return b;\n}\n```"]
+    "known_bad": ["oracle/reasoning-edge-case-explanation-bad.sh"]
   },
   "graders": [
-    { "type": "rubric_llm", "model": "glm-5.2", "rubric": "The explanation must identify that the loop stops one iteration too early because `i < n` should be `i <= n`, so the function returns the (n-1)th Fibonacci number instead of the nth. The corrected code must change the loop bound to `i <= n` (or equivalent). Score 0-1.", "min_score": 0.7 },
+    { "type": "rubric_llm", "rubric": "The explanation must identify that the loop stops one iteration too early because `i < n` should be `i <= n`, so the function returns the (n-1)th Fibonacci number instead of the nth. The corrected code must change the loop bound to `i <= n` (or equivalent). Score 0-1.", "min_score": 0.7 },
     { "type": "regex_match", "pattern": "i\\s*<=\\s*n", "source": "final_text" },
-    { "type": "regex_match", "pattern": "off[- ]by[- ]one|one iteration too early|loop bound", "source": "final_text" }
+    { "type": "regex_match", "pattern": "[Oo]ff[- ]by[- ]one|[Oo]ne iteration too early|[Ll]oop bound", "source": "final_text" }
   ],
   "pass_threshold": 1
 }

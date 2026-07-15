@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getRun, listRunCases } from "@/lib/db";
+import { sweepOrphanRunsIfDue } from "@/lib/run";
 import type { RunCaseRecord } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -26,6 +27,9 @@ function stripHeavyFields(cases: RunCaseRecord[]): RunCaseRecord[] {
 
 export async function GET(request: Request, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
+  // Self-heal: runs stranded at "running" by a crash/recompile would otherwise
+  // keep SSE streams and client polls alive forever.
+  try { sweepOrphanRunsIfDue(); } catch {}
   const run = getRun(params.id);
   if (!run) {
     return NextResponse.json({ error: "Run not found" }, { status: 404 });

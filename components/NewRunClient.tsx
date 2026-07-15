@@ -1,14 +1,15 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import { Loader2, Play, Check, Filter, Cpu, Search } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Loader2, Play, Check, Filter, Search } from "lucide-react";
 import clsx from "clsx";
 import type { CaseDefinition } from "@/lib/types";
 import { useFocusOnSlash } from "@/lib/use-focus-slash";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import ModelPicker from "./ModelPicker";
 import HarnessPicker from "./HarnessPicker";
+import { readRunDefaults } from "./SettingsClient";
 
 interface Props { cases: CaseDefinition[]; initialCaseIds?: string[]; }
 
@@ -16,17 +17,31 @@ const CATEGORIES = ["agentic-swe", "single-tool", "reasoning", "visual-code"] as
 
 export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [runner, setRunner] = useState<"headless" | "tmux">("headless");
-  const [harness, setHarness] = useState<string | undefined>(undefined);
+  // Seed from URL params so "Re-run selected" links keep the original harness/model.
+  const [harness, setHarness] = useState<string | undefined>(() => searchParams.get("harness") ?? undefined);
   const [parallel, setParallel] = useState(1);
   const [samples, setSamples] = useState(1);
   const [name, setName] = useState("");
-  const [model, setModel] = useState<string | undefined>(undefined);
+  const [model, setModel] = useState<string | undefined>(() => searchParams.get("model") ?? undefined);
   const [selected, setSelected] = useState<Record<string, boolean>>(() => Object.fromEntries(initialCaseIds.map((id) => [id, true])));
   const [filterCats, setFilterCats] = useState<Set<string>>(new Set(cases.map((c) => c.category)));
   const [filterDiff, setFilterDiff] = useState<Set<string>>(new Set());
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Saved Settings-page run defaults, applied after mount (localStorage is
+  // client-only; a lazy initializer would desync SSR hydration). Explicit URL
+  // params — re-run links — always win.
+  useEffect(() => {
+    const d = readRunDefaults();
+    if (d.defaultHarness && !searchParams.get("harness")) setHarness(d.defaultHarness);
+    if (d.defaultModel && !searchParams.get("model")) setModel(d.defaultModel);
+    if (d.defaultParallel >= 1 && d.defaultParallel <= 8) setParallel(d.defaultParallel);
+    if (d.defaultSamples >= 1 && d.defaultSamples <= 8) setSamples(d.defaultSamples);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const allTags = Array.from(new Set(cases.flatMap((c) => c.tags ?? []))).sort();
   const [filterTags, setFilterTags] = useState<Set<string>>(new Set());
@@ -78,7 +93,11 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
     setSubmitting(true);
     setError(null);
     const useSelection = selectedCount > 0;
-    const caseIds = useSelection ? Object.entries(selected).filter(([, v]) => v).map(([k]) => k) : undefined;
+    // Always send resolved ids: server-side filter reconstruction dropped the
+    // search query and disagreed with the UI on "untiered", so the preview lied.
+    const caseIds = useSelection
+      ? Object.entries(selected).filter(([, v]) => v).map(([k]) => k)
+      : visible.map((c) => c.id);
     try {
       const res = await fetch("/api/runs", {
         method: "POST",
@@ -91,9 +110,6 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
           samples,
           model,
           caseIds,
-          categories: useSelection ? undefined : Array.from(filterCats),
-          tags: useSelection ? undefined : Array.from(filterTags),
-          difficulty: useSelection ? undefined : Array.from(filterDiff),
         }),
       });
       if (!res.ok) {

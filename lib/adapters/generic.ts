@@ -1,6 +1,9 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import type { BuiltCommand, HarnessAdapter, ParseAccumulator } from "./types";
 import type { PermissionMode, RunnerContext, RunnerEvent } from "../types";
-import type { FieldMapping, HarnessDescriptorInput, LiveTraceDescriptor, NormalizedDescriptor } from "./schema";
+import type { FieldMapping, HarnessDescriptorInput, NormalizedDescriptor } from "./schema";
 import { parseStreamLine } from "./stream-json";
 import { parseCodexLine } from "./codex";
 
@@ -32,17 +35,67 @@ function maybeNum(v: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+/**
+ * Substitution uses a replacer FUNCTION and a single pass: with plain string
+ * replacement, `$&`/`` $` ``/`$'` patterns inside prompt/case text are
+ * interpreted as replacement patterns and corrupt the command line, and
+ * chained replaces re-substitute tokens that arrive inside earlier values
+ * (a prompt that itself mentions "{workdir}").
+ */
 function substitute(token: string, ctx: RunnerContext): string {
-  return token
-    .replace("{prompt}", ctx.prompt)
-    .replace("{workdir}", ctx.workdir)
-    .replace("{model}", ctx.model ?? "")
-    .replace("{maxTurns}", String(ctx.maxTurns))
-    .replace("{permissionMode}", ctx.permissionMode);
+  const values: Record<string, string> = {
+    prompt: ctx.prompt,
+    workdir: ctx.workdir,
+    model: ctx.model ?? "",
+    maxTurns: String(ctx.maxTurns),
+    permissionMode: ctx.permissionMode,
+  };
+  return token.replace(/\{(prompt|workdir|model|maxTurns|permissionMode)\}/g, (_, key: string) => values[key]);
 }
 
+export function expandHomePath(p: string): string {
+  if (p.startsWith("~")) return path.join(os.homedir(), p.slice(1));
+  return p;
+}
+
+export function isExecutable(file: string): boolean {
+  try {
+    const stat = fs.statSync(file);
+    return stat.isFile() && (stat.mode & 0o111) !== 0;
+  } catch {
+    return false;
+  }
+}
+
+export function resolveOnPath(bin: string): string | null {
+  const PATH = process.env.PATH || "";
+  for (const dir of PATH.split(path.delimiter)) {
+    if (!dir) continue;
+    const candidate = path.join(dir, bin);
+    if (isExecutable(candidate)) return candidate;
+  }
+  return null;
+}
+
+/**
+ * The binary buildCommand spawns. Resolution mirrors discovery (discover.ts):
+ * env override → PATH → wellKnownPaths — previously only the env var and bare
+ * defaultBin were consulted, so a harness that discovery reported "available"
+ * via a well-known path (e.g. ~/.claude/local/claude) ENOENTed at spawn time.
+ * Bare names stay bare when PATH can resolve them; only the well-known
+ * fallback returns an absolute path.
+ */
 export function resolveDescriptorBin(desc: NormalizedDescriptor): string {
   if (desc.binEnvVar && process.env[desc.binEnvVar]) return process.env[desc.binEnvVar]!;
+  if (desc.defaultBin.includes("/")) return expandHomePath(desc.defaultBin);
+  if (resolveOnPath(desc.defaultBin)) return desc.defaultBin;
+  for (const name of desc.binNames) {
+    if (name !== desc.defaultBin && !name.includes("/") && resolveOnPath(name)) return name;
+  }
+  for (const candidate of desc.wellKnownPaths ?? []) {
+    const expanded = expandHomePath(candidate);
+    if (isExecutable(expanded)) return expanded;
+  }
   return desc.defaultBin;
 }
 

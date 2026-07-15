@@ -38,7 +38,7 @@ import { RedactToggle } from "./RedactToggle";
 import { compactDisplayPath, redactNamedUsers, redactSensitiveText } from "@/lib/redaction";
 import { useRedactedShow } from "@/lib/use-redaction";
 import { Sparkline } from "@/components/Sparkline";
-import type { LiveAggregate, LiveMetricSources, LiveSession, LiveTranscriptTurn, MetricSource, TranscriptResult } from "@/lib/live";
+import type { LiveAggregate, LiveSession, LiveTranscriptTurn, MetricSource, TranscriptResult } from "@/lib/live";
 import { useFocusOnSlash } from "@/lib/use-focus-slash";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 

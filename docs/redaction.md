@@ -5,7 +5,7 @@ OpenEval redaction is a layered pipeline. The deterministic layers stay on by de
 ## Layers
 
 1. Deterministic path redaction masks local user path segments such as `/Users/<name>/...`, `/home/<name>/...`, and dashed live-trace path forms like `-Users-name-`.
-2. Deterministic secret redaction masks credential-shaped strings such as OpenAI keys, GitHub tokens, AWS access keys, Slack tokens, JWTs, private key blocks, and bearer tokens.
+2. Deterministic secret redaction masks credential-shaped strings such as OpenAI keys, OpenRouter keys, GitHub tokens, AWS access keys, Slack tokens, Google API keys, npm tokens, Hugging Face tokens, JWTs, private key blocks, and bearer tokens.
 3. Optional Rampart PII redaction detects person, location, organization, and other PII-like entities. It is additive, off by default, and never replaces the deterministic path or secret layers.
 
 ## Rampart PII Layer
@@ -66,5 +66,5 @@ For the `pii` layer, `applied` is true only when the option is enabled and Rampa
 Redaction is used in:
 
 - live view username masking in `lib/live.ts`
-- the `report --redact` CLI flag and report flow
+- the `report --redact` CLI flag: `report.md` and every JSON file in the bundle (`manifest.json`, `summary.json`, per-case `runner-result.json`, `grader-result.json`, `transcript.json`) have all string fields run through the secrets + paths pipeline
 - data exports

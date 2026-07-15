@@ -12,6 +12,7 @@ import {
   summarizeLiveSessionFile,
 } from "../lib/live";
 import { HARNESS_DESC_DIR } from "../lib/config";
+import { JUDGE_PROMPT_MARKER } from "../lib/insights/signals";
 import { GET as liveGet } from "../app/api/live/route";
 
 function writeSession(lines: unknown[], extras: string[] = []): string {
@@ -364,6 +365,145 @@ test("summarizeCodexSessionFile sums per-turn usage across a context reset (comp
   assert.equal(session.inputTokens, 1400);
   assert.equal(session.outputTokens, 100);
   assert.equal(session.totalTokens, 2100); // 1400 + 100 + 600 = summed input(2000) + output(100)
+});
+
+test("codex event_msg user_message feeds preview, title, and sentiment signals", () => {
+  // Real rollouts carry user text as event_msg/user_message (verified against
+  // ~/.codex/sessions); the parser must not depend on top-level user_msg
+  // records, which never occur in real files.
+  const file = writeSession([
+    { timestamp: "2026-06-29T00:00:00.000Z", type: "session_meta", payload: { id: "ev-user", cwd: "/tmp/x" } },
+    {
+      timestamp: "2026-06-29T00:00:01.000Z",
+      type: "event_msg",
+      payload: { type: "user_message", message: "Fix the flaky dropdown test in CI" },
+    },
+    {
+      timestamp: "2026-06-29T00:01:00.000Z",
+      type: "event_msg",
+      payload: { type: "user_message", message: "no, that's wrong — it still fails" },
+    },
+  ]);
+  const session = summarizeCodexSessionFile(file, "2026/06/29", Date.parse("2026-06-29T00:00:00.000Z"));
+  assert.ok(session);
+  assert.equal(session.displayTitle, "Fix the flaky dropdown test in CI");
+  assert.equal(session.lastPromptPreview, "no, that's wrong — it still fails");
+  assert.equal(session.outcomeSignals.userNegative, 1);
+  assert.equal(session.outcomeSignals.rephrases, 1);
+});
+
+test("codex event_msg user_message strips the IDE-context wrapper", () => {
+  const wrapped =
+    "# Context from my IDE setup:\n\n## Active file: AGENTS.md\n\n## Open tabs:\n- agents.md\n\n## My request for Codex:\nBuild the eval dashboard page";
+  const file = writeSession([
+    { timestamp: "2026-06-29T00:00:00.000Z", type: "session_meta", payload: { id: "ide-wrap", cwd: "/tmp/x" } },
+    { timestamp: "2026-06-29T00:00:01.000Z", type: "event_msg", payload: { type: "user_message", message: wrapped } },
+  ]);
+  const session = summarizeCodexSessionFile(file, "2026/06/29", Date.parse("2026-06-29T00:00:00.000Z"));
+  assert.ok(session);
+  assert.equal(session.displayTitle, "Build the eval dashboard page");
+  assert.equal(session.lastPromptPreview, "Build the eval dashboard page");
+});
+
+test("legacy codex user_msg uses the same wrapper stripping and judge filtering", () => {
+  const wrapped = "# Context from my IDE setup:\n\n## Active file: app/page.tsx\n\n## My request for Codex:\nFix the page";
+  const file = writeSession([
+    { timestamp: "2026-06-29T00:00:00.000Z", type: "session_meta", payload: { id: "legacy-user", cwd: "/repo" } },
+    { timestamp: "2026-06-29T00:00:01.000Z", type: "user_msg", payload: { message: wrapped } },
+  ]);
+  const parsed = summarizeCodexSessionFile(file, "2026/06/29", Date.parse("2026-06-29T00:00:00.000Z"));
+  assert.equal(parsed?.lastPromptPreview, "Fix the page");
+
+  const judgeFile = writeSession([
+    { timestamp: "2026-06-29T00:00:00.000Z", type: "session_meta", payload: { id: "legacy-judge", cwd: "/repo" } },
+    { timestamp: "2026-06-29T00:00:01.000Z", type: "user_msg", payload: { message: `${JUDGE_PROMPT_MARKER} met the goal` } },
+  ]);
+  const judge = summarizeCodexSessionFile(judgeFile, "2026/06/29", Date.parse("2026-06-29T00:00:00.000Z"));
+  assert.equal(judge, null);
+});
+
+test("codex sessions opened by the judge marker are dropped", () => {
+  const file = writeSession([
+    { timestamp: "2026-06-29T00:00:00.000Z", type: "session_meta", payload: { id: "judge-stub", cwd: "/tmp/x" } },
+    {
+      timestamp: "2026-06-29T00:00:01.000Z",
+      type: "event_msg",
+      payload: { type: "user_message", message: `${JUDGE_PROMPT_MARKER} went well. Transcript follows.` },
+    },
+  ]);
+  const session = summarizeCodexSessionFile(file, "2026/06/29", Date.parse("2026-06-29T00:00:00.000Z"));
+  assert.equal(session, null);
+});
+
+test("codex tool errors are grounded in exit-code markers, sniffing only without one", () => {
+  const call = (t: string, id: string) => ({
+    timestamp: t,
+    type: "response_item",
+    payload: { type: "function_call", call_id: id, name: "exec_command", arguments: "{}" },
+  });
+  const output = (t: string, id: string, out: string) => ({
+    timestamp: t,
+    type: "response_item",
+    payload: { type: "function_call_output", call_id: id, output: out },
+  });
+  const file = writeSession([
+    { timestamp: "2026-06-29T00:00:00.000Z", type: "session_meta", payload: { id: "exit-codes", cwd: "/tmp/x" } },
+    call("2026-06-29T00:00:01.000Z", "c1"),
+    // Exit 0 that merely MENTIONS "error:" must not be flagged.
+    output("2026-06-29T00:00:02.000Z", "c1", "Exit code: 0\nWall time: 0.3 seconds\nOutput:\nerror: handling docs updated"),
+    call("2026-06-29T00:00:03.000Z", "c2"),
+    // JSON envelope with structured exit_code (the dominant real shape).
+    output("2026-06-29T00:00:04.000Z", "c2", JSON.stringify({ output: "boom", metadata: { exit_code: 2, duration_seconds: 0.1 } })),
+    call("2026-06-29T00:00:05.000Z", "c3"),
+    // No marker at all → fall back to the text heuristic.
+    output("2026-06-29T00:00:06.000Z", "c3", "zsh: command not found: florp"),
+  ]);
+  const session = summarizeCodexSessionFile(file, "2026/06/29", Date.parse("2026-06-29T00:00:00.000Z"));
+  assert.ok(session);
+  assert.equal(session.toolCalls, 3);
+  assert.equal(session.toolErrors, 2);
+});
+
+test("codex usageSegments are downsampled to a bounded count", () => {
+  const base = Date.parse("2026-06-29T00:00:00.000Z");
+  const lines: unknown[] = [
+    { timestamp: "2026-06-29T00:00:00.000Z", type: "session_meta", payload: { id: "segments", model: "gpt-5.5" } },
+  ];
+  const total = 1100;
+  for (let i = 1; i <= total; i++) {
+    lines.push({
+      timestamp: new Date(base + i * 1000).toISOString(),
+      type: "event_msg",
+      payload: { type: "token_count", info: {
+        total_token_usage: { input_tokens: i * 10, cached_input_tokens: 0, output_tokens: i * 2 },
+      } },
+    });
+  }
+  const session = summarizeCodexSessionFile(writeSession(lines), "2026/06/29", base);
+  assert.ok(session);
+  // 1100 → 550 → 275 (halved until ≤ 500); the curve's endpoints and delta
+  // sums survive the merge.
+  assert.equal(session.usageSegments.length, 275);
+  assert.equal(session.usageSegments[session.usageSegments.length - 1].cumulativeOutput, total * 2);
+  assert.equal(session.usageSegments.reduce((sum, s) => sum + s.deltaOutput, 0), total * 2);
+});
+
+test("claude interactive sessions infer duration and turns from record timestamps", () => {
+  const file = writeSession([
+    { type: "user", timestamp: "2026-06-28T20:00:00.000Z", message: { content: "Fix the login bug" } },
+    { type: "assistant", timestamp: "2026-06-28T20:00:05.000Z", message: { content: [{ type: "text", text: "Looking." }] } },
+    // Tool results and sidechain prompts are not user turns.
+    { type: "user", timestamp: "2026-06-28T20:05:00.000Z", message: { content: [{ type: "tool_result", tool_use_id: "t1", content: "ok" }] } },
+    { type: "user", timestamp: "2026-06-28T20:06:00.000Z", isSidechain: true, message: { content: "subagent brief" } },
+    { type: "user", timestamp: "2026-06-28T20:10:00.000Z", message: { content: "now add a regression test for it" } },
+    { type: "assistant", timestamp: "2026-06-28T20:10:30.000Z", message: { content: [{ type: "text", text: "Done." }] } },
+  ]);
+  const session = summarizeLiveSessionFile(file, "-Users-ralto-Documents-AgentEvals", Date.parse("2026-06-28T20:10:30.000Z"));
+  assert.ok(session);
+  assert.equal(session.durationMs, 630_000);
+  assert.equal(session.metricSources.duration, "inferred");
+  assert.equal(session.numTurns, 2);
+  assert.equal(session.metricSources.turns, "inferred");
 });
 
 test("codex titles and prompt previews skip injected persona preambles", () => {
