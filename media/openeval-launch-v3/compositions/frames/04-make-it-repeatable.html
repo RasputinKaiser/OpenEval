@@ -1,0 +1,331 @@
+<template>
+  <div data-hf-id="hf-4dlq" id="root" data-composition-id="04-make-it-repeatable" data-start="0" data-duration="3.9" data-width="1920" data-height="1080">
+    <div data-hf-id="hf-lqb3" class="clip ground" data-start="0" data-duration="3.9" data-track-index="0">
+      <div data-hf-id="hf-mep2" class="frame-rule frame-rule-top"></div>
+      <div data-hf-id="hf-y1ec" class="frame-rule frame-rule-bottom"></div>
+      <div data-hf-id="hf-gqbb" class="catalogue">04 / EVIDENCE LOOP</div>
+    </div>
+
+    <div data-hf-id="hf-30tt" class="clip builder-layer" data-start="0" data-duration="3.9" data-track-index="9">
+      <div data-hf-id="hf-bloc" class="camera-outer builder-camera-outer">
+        <div data-hf-id="hf-v796" class="camera-inner builder-camera-inner">
+          <div data-hf-id="hf-hbb3" class="proof-shell builder-shell">
+            <div data-hf-id="hf-85t8" class="window-bar">
+              <span data-hf-id="hf-k43s">NEW EVALUATION RUN</span>
+              <span data-hf-id="hf-m5ei">BUILD / CONFIGURE</span>
+            </div>
+            <div data-hf-id="hf-clas" class="shell-edge"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- approved frame video hoisted by assemble-index -->
+
+    <div data-hf-id="hf-5nf0" class="clip history-layer" data-start="0" data-duration="3.9" data-track-index="11">
+      <div data-hf-id="hf-ilru" class="proof-shell history-shell">
+        <div data-hf-id="hf-ws90" class="window-bar">
+          <span data-hf-id="hf-urun">EVALUATION RUNS</span>
+          <span data-hf-id="hf-8lbr">HISTORY / EVIDENCE</span>
+        </div>
+        <div data-hf-id="hf-m86k" class="shell-edge"></div>
+      </div>
+    </div>
+
+    <!-- approved frame video hoisted by assemble-index -->
+
+    <div data-hf-id="hf-kd52" class="clip step-rail" data-start="0" data-duration="3.9" data-track-index="30">
+      <div data-hf-id="hf-cjpy" class="rail-spine"></div>
+      <div data-hf-id="hf-q6u3" class="step step-build"><span data-hf-id="hf-p81i">01</span><strong data-hf-id="hf-gz0y">BUILD</strong></div>
+      <div data-hf-id="hf-7ios" class="step step-run"><span data-hf-id="hf-pmcj">02</span><strong data-hf-id="hf-66tn">RUN</strong></div>
+      <div data-hf-id="hf-314m" class="step step-keep"><span data-hf-id="hf-q0nk">03</span><strong data-hf-id="hf-a6r3">KEEP</strong></div>
+      <div data-hf-id="hf-xkak" class="step step-repeat"><span data-hf-id="hf-n8id">04</span><strong data-hf-id="hf-ozl1">REPEAT</strong></div>
+    </div>
+
+    <div data-hf-id="hf-mzfn" class="clip payoff" data-start="0" data-duration="3.9" data-track-index="40">
+      <div data-hf-id="hf-i2n8" class="payoff-rule"></div>
+      <div data-hf-id="hf-ujzp" class="payoff-copy">repeat the <span data-hf-id="hf-crfl">proof.</span></div>
+    </div>
+  </div>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    #root {
+      position: relative;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      container-type: size;
+      color: #e8e8ea;
+      font-family: sans-serif;
+    }
+
+    .clip {
+      position: absolute;
+    }
+
+    .ground {
+      inset: 0;
+      z-index: 0;
+      overflow: hidden;
+      background: #7c5cff;
+    }
+
+    .frame-rule {
+      position: absolute;
+      left: 106px;
+      right: 106px;
+      height: 1px;
+      background: rgba(9, 9, 11, 0.42);
+    }
+
+    .frame-rule-top {
+      top: 92px;
+    }
+
+    .frame-rule-bottom {
+      top: 895px;
+    }
+
+    .catalogue,
+    .window-bar,
+    .step {
+      font-family: monospace;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    .catalogue {
+      position: absolute;
+      top: 52px;
+      left: 106px;
+      color: #09090b;
+      font-size: 16px;
+    }
+
+    .builder-layer,
+    .history-layer {
+      inset: 0;
+      z-index: 9;
+      overflow: hidden;
+    }
+
+    .camera-outer,
+    .camera-inner {
+      position: absolute;
+      inset: 0;
+      transform-origin: 50% 50%;
+      will-change: transform;
+    }
+
+    .proof-shell {
+      position: absolute;
+      top: 310px;
+      width: 820px;
+      height: 470px;
+      overflow: hidden;
+      background: #1a1818;
+      border: 2px solid #09090b;
+      transform-origin: 50% 50%;
+      will-change: transform, opacity;
+    }
+
+    .builder-shell { left: 106px; }
+    .history-shell { left: 994px; }
+
+    .window-bar {
+      position: absolute;
+      inset: 0 0 auto;
+      height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 18px;
+      border-bottom: 1px solid #26262b;
+      background: #111113;
+      color: #8b8b94;
+      font-size: 15px;
+      letter-spacing: 0.09em;
+    }
+
+    .window-bar span:first-child {
+      color: #e8e8ea;
+    }
+
+    .shell-edge {
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 3px;
+      background: #e8e8ea;
+      transform-origin: 50% 0;
+    }
+
+    .proof-media {
+      display: block;
+      object-fit: cover;
+      background: #1a1818;
+      transform-origin: 50% 50%;
+      will-change: transform, opacity;
+    }
+
+    .builder-media,
+    .history-media {
+      left: 362px;
+      top: 190px;
+      width: 1376px;
+      height: 694px;
+    }
+
+    .step-rail {
+      left: 106px;
+      top: 824px;
+      width: 1708px;
+      height: 82px;
+      z-index: 30;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+    }
+
+    .rail-spine {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 3px;
+      background: rgba(9, 9, 11, 0.86);
+      transform-origin: 0 50%;
+    }
+
+    .step {
+      position: relative;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 72px;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      padding-left: 22px;
+      border-left: 1px solid rgba(9, 9, 11, 0.34);
+      border-bottom: 2px solid rgba(9, 9, 11, 0.58);
+      background: rgba(232, 232, 234, 0.18);
+      color: #09090b;
+      font-size: 18px;
+      will-change: transform, opacity;
+    }
+
+    .step span {
+      color: #09090b;
+      font-size: 19px;
+      font-weight: 800;
+      opacity: 0.72;
+    }
+
+    .step strong {
+      color: #09090b;
+      font-size: 29px;
+      font-weight: 900;
+    }
+
+    .step:last-child {
+      border-right: 1px solid rgba(9, 9, 11, 0.34);
+    }
+
+    .step-build, .step-run, .step-keep, .step-repeat { top: 0; }
+
+    .payoff {
+      left: 106px;
+      top: 92px;
+      width: 1708px;
+      height: 170px;
+      z-index: 40;
+      display: flex;
+      align-items: center;
+      gap: 26px;
+      overflow: hidden;
+    }
+
+    .payoff-rule {
+      width: 36px;
+      height: 2px;
+      flex: 0 0 auto;
+      background: #09090b;
+      transform-origin: 0 50%;
+      will-change: transform, opacity;
+    }
+
+    .payoff-copy {
+      color: #09090b;
+      font-size: 136px;
+      font-weight: 900;
+      line-height: 0.9;
+      letter-spacing: -0.04em;
+      text-transform: lowercase;
+      white-space: nowrap;
+      will-change: transform, opacity;
+    }
+
+    .payoff-copy span {
+      color: #e8e8ea;
+    }
+  </style>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+
+    tl.fromTo(
+      ".payoff-copy",
+      { opacity: 0, y: 42 },
+      { opacity: 1, y: 0, duration: 0.56, ease: "power4.out" },
+      0.02
+    );
+    tl.fromTo(
+      ".payoff-rule",
+      { opacity: 0, scaleX: 0 },
+      { opacity: 1, scaleX: 1, duration: 0.38, ease: "power3.out" },
+      0.22
+    );
+    tl.fromTo(
+      ".builder-shell",
+      { opacity: 0, x: -72, scale: 0.97 },
+      { opacity: 1, x: 0, scale: 1, duration: 0.62, ease: "power3.out" },
+      0.24
+    );
+    tl.fromTo(
+      ".history-shell",
+      { opacity: 0, x: 72, scale: 0.97 },
+      { opacity: 1, x: 0, scale: 1, duration: 0.62, ease: "power3.out" },
+      0.46
+    );
+    tl.fromTo(
+      ".shell-edge",
+      { opacity: 0, scaleY: 0 },
+      { opacity: 1, scaleY: 1, duration: 0.42, stagger: 0.12, ease: "power3.out" },
+      0.54
+    );
+    tl.fromTo(
+      ".rail-spine",
+      { opacity: 0, scaleX: 0 },
+      { opacity: 1, scaleX: 1, duration: 0.72, ease: "power2.out" },
+      0.76
+    );
+    [".step-build", ".step-run", ".step-keep", ".step-repeat"].forEach((selector, index) => {
+      tl.fromTo(
+        selector,
+        { opacity: 0, y: 24 },
+        { opacity: 1, y: 0, duration: 0.42, ease: "power3.out" },
+        0.88 + index * 0.28
+      );
+    });
+
+    window.__timelines["04-make-it-repeatable"] = tl;
+  </script>
+</template>

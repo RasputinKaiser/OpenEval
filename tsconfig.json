@@ -17,5 +17,9 @@
     "paths": { "@/*": ["./*"] }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules", "fixtures/**/node_modules"]
+  "exclude": [
+    "node_modules",
+    "fixtures/**/node_modules",
+    ".claude/worktrees/**"
+  ]
 }

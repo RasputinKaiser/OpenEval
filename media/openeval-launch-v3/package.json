@@ -1,0 +1,15 @@
+{
+  "name": "openeval-launch-v3",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npx --yes hyperframes@0.7.58 preview",
+    "check": "npx --yes hyperframes@0.7.58 check",
+    "render": "npx --yes hyperframes@0.7.58 render",
+    "publish": "npx --yes hyperframes@0.7.58 publish",
+    "release:preflight": "node scripts/release-loop.mjs preflight",
+    "review:story": "node scripts/release-loop.mjs story",
+    "review:seams": "node scripts/release-loop.mjs seams",
+    "release:verify": "node scripts/release-loop.mjs verify-render"
+  }
+}

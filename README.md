@@ -1,20 +1,28 @@
-Developed primarily with Noumena Code, Claude Code (Fable 5, Sonnet 5), OpenAI Codex (GPT-5.5)
-
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/W7W7C9TC7)
-
 # OpenEval
+
+[![CI](https://github.com/RasputinKaiser/OpenEval/actions/workflows/ci.yml/badge.svg)](https://github.com/RasputinKaiser/OpenEval/actions/workflows/ci.yml)
+[![GitHub release](https://img.shields.io/github/v/release/RasputinKaiser/OpenEval?display_name=tag)](https://github.com/RasputinKaiser/OpenEval/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-7c5cff.svg)](LICENSE)
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/W7W7C9TC7)
 
 OpenEval is a local-first, harness-agnostic evaluation dashboard for agent CLIs. Every harness is a JSON descriptor; the bundled Claude Code, Codex, and ncode adapters use the same format as user descriptors under `harnesses/`. OpenEval runs repeatable cases, grades results with deterministic and rubric-based checks, persists run history to SQLite, and turns the results into an operator-friendly Next.js dashboard.
 
 The project is designed for people who want to compare agent behavior on practical software tasks, inspect the exact traces behind a score, and keep their private run history on their own machine.
 
-Repository: [RasputinKaiser/OpenEval](https://github.com/RasputinKaiser/OpenEval)
+## Launch Film
 
-## Launch Video
+[![OpenEval launch film poster](media/openeval-launch-v3/openeval-launch-v3-poster.jpg)](media/openeval-launch-v3/renders/video.mp4)
 
-[Watch the OpenEval launch video](https://github.com/user-attachments/assets/2353204b-81c9-4d63-9c22-fb7c1c19017e)
+The 29.5-second v0.1 launch film shows the real OpenEval dashboard: live sessions, collection history, repeatable runs, comparisons, coverage, telemetry, and accuracy audits.
 
-[![OpenEval launch video poster](https://github.com/user-attachments/assets/2353204b-81c9-4d63-9c22-fb7c1c19017e)](https://github.com/user-attachments/assets/2353204b-81c9-4d63-9c22-fb7c1c19017e)
+[Watch the MP4](media/openeval-launch-v3/renders/video.mp4) · [Browse the reproducible source](media/openeval-launch-v3) · [Open the v0.1.0 release](https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.0)
+
+### Build Credits
+
+- **OpenEval:** developed with Noumena Code, Claude Code (including Fable 5 and Sonnet 5), and OpenAI Codex. Fable 5 contributed substantially to the application itself.
+- **Launch film:** GPT-5.6 Sol (High) led the edit, composition, visual QA, and final release pass; GPT-5.6 Luna (xhigh) contributed additional iteration passes.
+- **Production stack:** Codex, ImageGen, TouchDesigner, HyperFrames, GSAP, CDP Recorder, and FFmpeg.
+- **Acknowledgment:** huge thanks to [@KingBootoshi](https://x.com/KingBootoshi) from [righttointelligence.org](https://righttointelligence.org).
 
 ## Highlights
 
@@ -259,18 +267,17 @@ The repository includes public-facing GitHub scaffolding:
 
 OpenEval is open source under the [MIT License](LICENSE).
 
-## Launch Video Source
+## Launch Film Source
 
-The repository includes a HyperFrames source composition for an OpenEval launch/demo video:
+The repository includes the curated HyperFrames source, referenced product footage, TouchDesigner project, release checks, poster, and final delivery master for the v0.1 launch film:
 
 ```bash
-cd media/openeval-launch
-npm install
+cd media/openeval-launch-v3
 npm run check
 npm run dev
 ```
 
-The composition lives in `media/openeval-launch/index.html`, with visual identity notes in `media/openeval-launch/DESIGN.md`. Its npm scripts pin project-local FFmpeg/FFprobe binaries so renders do not depend on a machine-specific Homebrew encoder install. Generated preview, inspection, and render output should stay local.
+Run `npm run release:preflight` before editing and `npm run release:verify` after rendering. The public bundle intentionally excludes intermediate renders, snapshots, contact sheets, capture caches, and redundant source copies. The original 14-second prototype remains under `media/openeval-launch/` for history.
 
 ## Project Layout
 
@@ -292,7 +299,8 @@ cases/                       public case definitions and oracle scripts
 fixtures/                    tiny repositories and inputs copied into workdirs
 harnesses/                   descriptor-driven harness definitions
 scripts/                     maintenance and public-readiness helpers
-media/openeval-launch/       HyperFrames source for the OpenEval launch video
+media/openeval-launch-v3/    Current launch film source, referenced assets, poster, and delivery master
+media/openeval-launch/       Original 14-second HyperFrames launch prototype
 data/                        ignored local SQLite DB, transcripts, and workdirs
 ```
 
