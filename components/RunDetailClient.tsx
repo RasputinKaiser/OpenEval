@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import type { EvidenceTier, GraderResult, GraderSpec, RunCaseRecord, TranscriptEntry } from "@/lib/types";
 import { redactSensitiveText } from "@/lib/redaction";
+import { exportCsv, exportJson } from "@/lib/export";
 import { useRedaction } from "@/lib/use-redaction";
 import { useFocusOnSlash } from "@/lib/use-focus-slash";
 import { useVisibilityPoll } from "@/lib/use-visibility-poll";
@@ -139,6 +140,30 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
   const activeCase = selectedIdx === null ? null : cases[selectedIdx] ?? null;
   const confidence = summarizeRunConfidence(cases);
 
+  function exportCaseCsv() {
+    exportCsv(`openeval-${runId}-cases.csv`, cases.map((c) => ({
+      case_id: c.case_id,
+      case_name: c.case_name,
+      category: c.category,
+      difficulty: c.difficulty ?? "",
+      status: c.status,
+      score: c.evaluation?.passRatio ?? "",
+      duration_ms: c.evaluation?.durationMs ?? "",
+      budget_exceeded: c.budget_exceeded ?? false,
+      error: c.error_msg ?? "",
+    })));
+  }
+
+  function exportRunJson() {
+    exportJson(`openeval-${runId}.json`, {
+      run_id: runId,
+      run_name: runName ?? "Run output",
+      harness: harness ?? null,
+      model: model ?? null,
+      cases,
+    });
+  }
+
   return (
     <div>
       <TelemetryStrip runId={runId} />
@@ -150,7 +175,7 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
           live={live}
         />
       )}
-      <section className="mb-4 overflow-hidden rounded-lg border border-bd bg-[linear-gradient(135deg,rgba(124,92,255,0.18),rgba(17,17,19,0.96)_42%,rgba(63,185,80,0.09))]">
+      <section className="run-hero mb-4 overflow-hidden rounded-lg border border-bd">
         <div className="stagger-grid grid gap-4 p-4 xl:grid-cols-[1fr_360px] xl:items-end">
           <div>
             <div className="flex flex-wrap items-center gap-2 text-[11px] text-fg-muted">
@@ -162,8 +187,8 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
               {live ? "Running eval" : cancelPhase === "cancelled" ? "Run cancelled" : "Eval complete"}
               </span>
               {harness && <HarnessBadge harness={harness} bin={harnessInfo?.bin} version={harnessInfo?.version} />}
-              <span className="mono">{runId}</span>
-              {model && <span className="mono">{model}</span>}
+              <span className="mono text-fg">{runId}</span>
+              {model && <span className="mono text-fg">{model}</span>}
               <a
                 href={`/api/runs/${runId}/report?redact=1`}
                 className="inline-flex items-center gap-1 rounded border border-bd-subtle bg-bg/60 px-2 py-1 text-fg-muted hover:text-fg"
@@ -171,6 +196,22 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
               >
                 Report .md
               </a>
+              <button
+                type="button"
+                onClick={exportCaseCsv}
+                className="inline-flex items-center gap-1 rounded border border-bd-subtle bg-bg/60 px-2 py-1 text-fg-muted hover:text-fg"
+                title="Download case results as CSV"
+              >
+                Export CSV
+              </button>
+              <button
+                type="button"
+                onClick={exportRunJson}
+                className="inline-flex items-center gap-1 rounded border border-bd-subtle bg-bg/60 px-2 py-1 text-fg-muted hover:text-fg"
+                title="Download this run as JSON"
+              >
+                Export JSON
+              </button>
               {live && (
                 <button
                   onClick={cancelRun}

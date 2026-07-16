@@ -1,4 +1,6 @@
 import { spawn } from "node:child_process";
+import { rm, writeFile, readFile } from "node:fs/promises";
+import path from "node:path";
 import { getAdapter } from "../adapters/registry";
 import { resolveDefaultModel } from "../models";
 import { normalizeParsedResult } from "./headless";
@@ -32,6 +34,10 @@ export function paneCaptureDelta(previous: string, current: string): string {
   return current;
 }
 
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
 export class TmuxRunner implements Runner {
   kind = "tmux" as const;
 
@@ -56,41 +62,54 @@ export class TmuxRunner implements Runner {
 
     const envPrefix = Object.entries(extraEnv).map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(" ");
     const shellCmd = (envPrefix ? envPrefix + " " : "") + ncmd;
+    // A very short-lived harness can finish before tmux's pane capture is
+    // observable. Persist the merged stream from inside the shell so the
+    // runner retains result events even when the session disappears quickly.
+    const logPath = path.join(ctx.workdir, `.openeval-tmux-${session}.jsonl`);
+    await writeFile(logPath, "", "utf8");
+    const loggedShellCmd = `${shellCmd} 2>&1 | tee ${shellQuote(logPath)}`;
     const newSession = await tmux([
       "new-session", "-d", "-s", session, "-x", "220", "-y", "50",
-      "bash -lc " + JSON.stringify(shellCmd),
+      "bash -lc " + JSON.stringify(loggedShellCmd),
     ], { cwd: ctx.workdir });
 
     if (newSession.code !== 0) {
+      await rm(logPath, { force: true });
       return fail(ctx, acc, startedAt, `tmux new-session failed: ${newSession.stderr}`);
     }
 
     let lastCapture = "";
+    const readCapture = async () => {
+      const output = await readFile(logPath, "utf8").catch(() => "");
+      return output.slice(0, 8 * 1024 * 1024);
+    };
     const deadline = startedAt + ctx.timeoutMs;
     while (Date.now() < deadline) {
-      // No shell here: "2>/dev/null" would be passed as a literal arg and make
-      // `tmux ls` error out, breaking the poll loop on its first iteration.
-      const list = await tmux(["ls", "-F", "#{session_name}"]);
-      if (!list.stdout.split("\n").includes(session)) break;
-
-      const cap = await tmux(["capture-pane", "-p", "-S", "-", "-E", "-", "-t", session]);
-      if (cap.stdout !== lastCapture) {
-        const diff = paneCaptureDelta(lastCapture, cap.stdout);
-        lastCapture = cap.stdout;
+      const capture = await readCapture();
+      if (capture !== lastCapture) {
+        const diff = paneCaptureDelta(lastCapture, capture);
+        lastCapture = capture;
         emit(ctx, { kind: "log", stream: "stdout", chunk: diff, at: Date.now() });
         for (const line of diff.split("\n")) {
           for (const ev of adapter.parseLine(line, acc)) emit(ctx, ev);
         }
       }
+
+      // No shell here: "2>/dev/null" would be passed as a literal arg and make
+      // `tmux ls` error out, breaking the poll loop on its first iteration.
+      const list = await tmux(["ls", "-F", "#{session_name}"]);
+      if (!list.stdout.split("\n").includes(session)) break;
       await sleep(400);
     }
 
-    const finalCap = await tmux(["capture-pane", "-p", "-S", "-", "-E", "-", "-t", session]);
-    const finalDelta = paneCaptureDelta(lastCapture, finalCap.stdout);
-    for (const line of finalDelta.split("\n")) {
+    const finalCapture = await readCapture();
+    const remaining = paneCaptureDelta(lastCapture, finalCapture);
+    if (remaining) emit(ctx, { kind: "log", stream: "stdout", chunk: remaining, at: Date.now() });
+    for (const line of remaining.split("\n")) {
       for (const ev of adapter.parseLine(line, acc)) emit(ctx, ev);
     }
     await tmux(["kill-session", "-t", session]).catch(async () => ({ code: 0, stdout: "", stderr: "" }));
+    await rm(logPath, { force: true });
 
     const durationMs = Date.now() - startedAt;
     const exitCode = acc.result?.isError ? 1 : 0;

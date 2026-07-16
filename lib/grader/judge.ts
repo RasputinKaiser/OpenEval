@@ -4,6 +4,7 @@ import path from "node:path";
 import { getAdapter } from "../adapters/registry";
 import type { RunnerContext } from "../types";
 import { spawnHarnessProcess, emptyRunnerResult } from "../runner/spawn";
+import { readAppSettings } from "../settings";
 
 export interface JudgeResult {
   ok: boolean;
@@ -59,16 +60,17 @@ export function validJudgeScore(score: unknown): number | null {
 }
 
 /**
- * Judge backend order: JUDGE_HARNESS always wins; otherwise prefer OpenRouter
- * when a key is available (free tier — judging shouldn't burn CLI plan quota),
- * falling back to the Codex CLI. "openrouter" is an HTTP backend, not a
- * harness adapter; JUDGE_MODEL picks the model for either.
+ * Judge backend order: explicit environment variables win, then the local
+ * Settings-page selection, then automatic discovery (OpenRouter when a key is
+ * available, otherwise the pinned Codex CLI fallback). "openrouter" is an
+ * HTTP backend, not a harness adapter; the selected model works for either.
  */
 export function resolveJudge(): { harness: string; model?: string; judgeName: string } {
-  const harness = process.env.JUDGE_HARNESS || (process.env.OPENROUTER_API_KEY ? "openrouter" : "codex");
+  const settings = readAppSettings();
+  const harness = process.env.JUDGE_HARNESS || settings.judgeSource || (process.env.OPENROUTER_API_KEY ? "openrouter" : "codex");
   // A concrete Codex default avoids inheriting a configured model an older CLI
   // cannot run. Per-harness defaults also apply to explicit grader overrides.
-  const model = process.env.JUDGE_MODEL || defaultJudgeModel(harness);
+  const model = process.env.JUDGE_MODEL || settings.judgeModel || defaultJudgeModel(harness);
   return { harness, model, judgeName: `${harness}${model ? "/" + model : ""}` };
 }
 

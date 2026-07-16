@@ -4,6 +4,7 @@ function variance(arr) {
   const avg = sum(arr) / arr.length;
   let s = 0;
   for (const x of arr) s = s + (x - avg) ** 2;
-  return s / arr.length;
+  // bug: forgot to divide by n
+  return s;
 }
 module.exports = { variance };

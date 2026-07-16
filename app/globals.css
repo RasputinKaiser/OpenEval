@@ -10,35 +10,61 @@ html { scroll-behavior: smooth; }
 :root {
   color-scheme: dark;
   --color-bg: #0a0a0b;
+  --color-bg-rgb: 10 10 11;
   --color-bg-subtle: #111113;
+  --color-bg-subtle-rgb: 17 17 19;
   --color-bg-elev: #16161a;
+  --color-bg-elev-rgb: 22 22 26;
   --color-bd: #26262b;
+  --color-bd-rgb: 38 38 43;
   --color-bd-subtle: #1d1d22;
+  --color-bd-subtle-rgb: 29 29 34;
   --color-fg: #e8e8ea;
+  --color-fg-rgb: 232 232 234;
   --color-fg-muted: #8b8b94;
+  --color-fg-muted-rgb: 139 139 148;
   --color-fg-dim: #5a5a63;
+  --color-fg-dim-rgb: 90 90 99;
   --color-accent: #7c5cff;
+  --color-accent-rgb: 124 92 255;
   --color-accent-soft: #a78bff;
+  --color-accent-soft-rgb: 167 139 255;
   --color-ok: #3fb950;
+  --color-ok-rgb: 63 185 80;
   --color-warn: #d29922;
+  --color-warn-rgb: 210 153 34;
   --color-err: #f85149;
+  --color-err-rgb: 248 81 73;
 }
 
 :root.light {
   color-scheme: light;
   --color-bg: #ffffff;
+  --color-bg-rgb: 255 255 255;
   --color-bg-subtle: #f6f6f8;
+  --color-bg-subtle-rgb: 246 246 248;
   --color-bg-elev: #ececf0;
+  --color-bg-elev-rgb: 236 236 240;
   --color-bd: #d1d1d6;
+  --color-bd-rgb: 209 209 214;
   --color-bd-subtle: #e0e0e5;
+  --color-bd-subtle-rgb: 224 224 229;
   --color-fg: #1a1a1f;
+  --color-fg-rgb: 26 26 31;
   --color-fg-muted: #6b6b75;
+  --color-fg-muted-rgb: 107 107 117;
   --color-fg-dim: #9e9ea8;
+  --color-fg-dim-rgb: 158 158 168;
   --color-accent: #7c5cff;
+  --color-accent-rgb: 124 92 255;
   --color-accent-soft: #6344e6;
+  --color-accent-soft-rgb: 99 68 230;
   --color-ok: #2da44e;
+  --color-ok-rgb: 45 164 78;
   --color-warn: #bf8700;
+  --color-warn-rgb: 191 135 0;
   --color-err: #cf222e;
+  --color-err-rgb: 207 34 46;
 }
 
 html, body { background: var(--color-bg); color: var(--color-fg); }
@@ -73,6 +99,17 @@ button:active:not(:disabled) { transform: scale(0.96); }
   box-shadow:
     0 1px 1px rgba(0, 0, 0, 0.18),
     0 8px 24px rgba(0, 0, 0, 0.18);
+}
+
+/* Keep the run summary readable in both themes. The previous fixed dark
+   middle stop made theme-aware foreground text unreadable in light mode. */
+.run-hero {
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--color-accent) 18%, transparent),
+    var(--color-bg-subtle) 42%,
+    color-mix(in srgb, var(--color-ok) 9%, transparent)
+  );
 }
 
 /* Keyboard navigation must be visibly trackable everywhere. */

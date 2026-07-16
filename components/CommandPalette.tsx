@@ -135,6 +135,9 @@ export default function CommandPalette({ runs }: { runs: Array<{ id: string; nam
     <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh]">
       <div className="absolute inset-0 bg-black/50 transition-opacity duration-150" onClick={() => setOpen(false)} />
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Command palette"
         className="relative w-full max-w-xl mx-4 rounded-lg border border-bd bg-bg-subtle shadow-2xl overflow-hidden"
         style={{ animation: "menu-enter 120ms cubic-bezier(0.2, 0, 0, 1)" }}
       >
@@ -145,6 +148,7 @@ export default function CommandPalette({ runs }: { runs: Array<{ id: string; nam
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search commands, runs, pages…"
+            aria-label="Search commands"
             className="flex-1 bg-transparent text-sm outline-none placeholder:text-fg-dim"
           />
           <kbd className="text-[10px] text-fg-dim rounded bg-bg-elev px-1.5 py-0.5">ESC</kbd>

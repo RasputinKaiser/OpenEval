@@ -210,7 +210,7 @@ The Collection subsystem (`lib/insights/*`, `lib/live-cache.ts`) extends live sc
 - `judge_failures`: a retry ledger for judge runs. Failures persist with an attempt count; after `MAX_JUDGE_ATTEMPTS` (3) a file is skipped. Missing files and sessions with no extractable text are recorded as permanent failures. `judgeSkipSet()` unions already-judged and dead files so judge sweeps never spin on the same broken input.
 - A full-text (FTS5) index over transcript conversational text, backing `/collection` search.
 
-Judging uses the same backend chain as the `rubric_llm` grader (`resolveJudge()`: `JUDGE_HARNESS`, else OpenRouter when a key exists, else the Codex CLI), and session parsers drop any session whose first user text starts with the judge-prompt marker — the judge's own CLI sessions are instrumentation, not user work.
+Judging uses the same backend chain as the `rubric_llm` grader (`resolveJudge()`: explicit `JUDGE_HARNESS`/`JUDGE_MODEL`, then the local `/settings` selection, then OpenRouter when a key exists, else the Codex CLI), and session parsers drop any session whose first user text starts with the judge-prompt marker — the judge's own CLI sessions are instrumentation, not user work.
 
 The Timeline (`/collection/timeline`) derives adoption markers (skills, MCP servers, subagents, models) from parsed sessions, computes before/after impact deltas with confound flags, and detects metric change points. Heuristic outcome scores can be refined by persisted judge verdicts.
 

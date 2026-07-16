@@ -1,7 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import Database from "better-sqlite3";
+import fs from "node:fs";
+import path from "node:path";
 import { defaultJudgeModel, resolveJudge, validJudgeScore } from "../lib/grader/judge";
+import { saveAppSettings } from "../lib/settings";
 import {
   _setCacheDbForTest,
   MAX_JUDGE_ATTEMPTS,
@@ -76,6 +79,24 @@ test("resolveJudge: OPENROUTER_API_KEY selects the openrouter backend by default
     assert.equal(r.harness, "openrouter");
     assert.equal(r.model, "tencent/hy3:free");
   });
+});
+
+test("resolveJudge: Settings-page source and model are used beneath explicit env overrides", () => {
+  const root = process.env.OPENEVAL_DATA_ROOT ?? ".test-data";
+  const settingsPath = path.join(process.cwd(), root, "data", "settings.json");
+  const previous = fs.existsSync(settingsPath) ? fs.readFileSync(settingsPath, "utf8") : null;
+  try {
+    saveAppSettings({ judgeSource: "codex", judgeModel: "gpt-5.5" });
+    withEnv({ JUDGE_HARNESS: undefined, JUDGE_MODEL: undefined, OPENROUTER_API_KEY: "sk-test" }, () => {
+      const r = resolveJudge();
+      assert.equal(r.harness, "codex");
+      assert.equal(r.model, "gpt-5.5");
+      assert.equal(r.judgeName, "codex/gpt-5.5");
+    });
+  } finally {
+    if (previous === null) fs.rmSync(settingsPath, { force: true });
+    else fs.writeFileSync(settingsPath, previous);
+  }
 });
 
 test("resolveJudge: with no env at all, falls back to codex with a pinned model", () => {

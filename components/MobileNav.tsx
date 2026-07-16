@@ -31,11 +31,22 @@ export default function MobileNav() {
       {open && (
         <div className="fixed inset-0 z-[90] md:hidden">
           <div className="absolute inset-0 bg-black/50" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-0 h-full w-72 bg-bg-subtle border-l border-bd p-4 overflow-y-auto" style={{ animation: "menu-enter 150ms cubic-bezier(0.2, 0, 0, 1)" }}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Mobile navigation"
+            className="absolute right-0 top-0 h-full w-72 bg-bg-subtle border-l border-bd p-4 overflow-y-auto"
+            style={{ animation: "menu-enter 150ms cubic-bezier(0.2, 0, 0, 1)" }}
+          >
             <div className="flex items-center justify-between mb-4">
               <span className="text-sm font-semibold">Navigation</span>
-              <button type="button" onClick={() => setOpen(false)} className="min-h-10 min-w-10 flex items-center justify-center rounded hover:bg-bg-elev">
-                <X className="size-5 text-fg-muted" />
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="min-h-10 min-w-10 flex items-center justify-center rounded hover:bg-bg-elev"
+                aria-label="Close navigation menu"
+              >
+                <X className="size-5 text-fg-muted" aria-hidden="true" />
               </button>
             </div>
             <nav className="space-y-1">

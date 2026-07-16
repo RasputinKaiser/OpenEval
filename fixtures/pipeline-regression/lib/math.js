@@ -12,7 +12,7 @@ function average(arr) {
 function max(arr) {
   // bug: returns min instead of max
   let m = arr[0];
-  for (const x of arr) if (x < m) m = x;
+  for (const x of arr) if (x > m) m = x;
   return m;
 }
 module.exports = { sum, average, max };

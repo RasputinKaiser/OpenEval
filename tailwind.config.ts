@@ -1,5 +1,11 @@
 import type { Config } from "tailwindcss";
 
+// Tailwind can only emit opacity modifiers for colors that expose an
+// alpha-capable value. The dashboard theme is runtime-switched via CSS
+// variables, so keep the public hex variables for inline styles and expose
+// parallel RGB channels for classes such as `bg-accent/10`.
+const token = (name: string) => `rgb(var(--color-${name}-rgb) / <alpha-value>)`;
+
 const config: Config = {
   content: [
     "./app/**/*.{ts,tsx}",
@@ -9,13 +15,13 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        bg: { DEFAULT: "var(--color-bg)", subtle: "var(--color-bg-subtle)", elev: "var(--color-bg-elev)" },
-        bd: { DEFAULT: "var(--color-bd)", subtle: "var(--color-bd-subtle)" },
-        fg: { DEFAULT: "var(--color-fg)", muted: "var(--color-fg-muted)", dim: "var(--color-fg-dim)" },
-        accent: { DEFAULT: "var(--color-accent)", soft: "var(--color-accent-soft)" },
-        ok: "var(--color-ok)",
-        warn: "var(--color-warn)",
-        err: "var(--color-err)",
+        bg: { DEFAULT: token("bg"), subtle: token("bg-subtle"), elev: token("bg-elev") },
+        bd: { DEFAULT: token("bd"), subtle: token("bd-subtle") },
+        fg: { DEFAULT: token("fg"), muted: token("fg-muted"), dim: token("fg-dim") },
+        accent: { DEFAULT: token("accent"), soft: token("accent-soft") },
+        ok: token("ok"),
+        warn: token("warn"),
+        err: token("err"),
       },
       fontFamily: {
         sans: ["ui-sans-serif", "system-ui", "-apple-system", "Segoe UI", "Roboto"],

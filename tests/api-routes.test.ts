@@ -6,6 +6,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { NextRequest } from "next/server";
 import type { RunCaseRecord, RunRecord } from "../lib/types";
+import { execFileSync } from "node:child_process";
 
 // lib/config captures ROOT from process.cwd() at import time, so every
 // cwd-rooted path (data/eval.db, cases/, workdirs/) must be redirected into a
@@ -23,8 +24,10 @@ async function importRoutes() {
   const runsRoute = await import("../app/api/runs/route");
   const cancelRoute = await import("../app/api/runs/[id]/cancel/route");
   const artifactRoute = await import("../app/api/runs/[id]/case/[caseId]/artifact/route");
+  const reportRoute = await import("../app/api/runs/[id]/report/route");
+  const runDetailRoute = await import("../app/api/runs/[id]/route");
   const db = await import("../lib/db");
-  return { runsRoute, cancelRoute, artifactRoute, db };
+  return { runsRoute, cancelRoute, artifactRoute, reportRoute, runDetailRoute, db };
 }
 
 function postRuns(body: unknown): Request {
@@ -123,6 +126,75 @@ test("GET /api/runs: list shape includes id, name, status", async () => {
   assert.ok(row, "inserted run appears in the list");
   assert.deepEqual(Object.keys(row).sort(), ["id", "name", "status"]);
   assert.equal(row.status, "completed");
+});
+
+test("GET /api/runs/[id]?lite=1 strips heavy runner and grader payloads", async () => {
+  const { runDetailRoute, db } = await importRoutes();
+  const run = makeRun({ id: "liteload", status: "completed", ended_at: Date.now() });
+  db.insertRun(run);
+  db.insertRunCase(makeRunCase(run.id, 1, {
+    runner_result: {
+      exitCode: 0,
+      durationMs: 5,
+      startedAt: Date.now() - 10,
+      endedAt: Date.now(),
+      transcript: [],
+      toolCalls: [{ name: "tool", input: "x".repeat(500), output: "y".repeat(500), at: Date.now() }],
+      finalText: "z".repeat(700),
+      resultText: "ok",
+      usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheCreateTokens: 0, costUsd: 0 },
+      numTurns: 1,
+      stopReason: "end",
+      sessionId: "session",
+      model: "test",
+      isError: false,
+      rawJson: { secret: "heavy" },
+      tokenSegments: [],
+      toolCallCounts: { tool: 1 },
+    } as unknown as RunCaseRecord["runner_result"],
+    grader_result: {
+      passed: true,
+      score: 1,
+      results: [{ graderId: "g", passed: true, score: 1, output: "heavy grader output" }],
+    } as unknown as RunCaseRecord["grader_result"],
+  }));
+
+  const res = await runDetailRoute.GET(
+    new Request(`http://localhost:3000/api/runs/${run.id}?lite=1`),
+    { params: Promise.resolve({ id: run.id }) },
+  );
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get("cache-control"), "no-cache");
+  const body = await res.json();
+  const row = body.cases[0];
+  assert.equal(row.runner_result.rawJson, null);
+  assert.equal(row.runner_result.finalText.length, 500);
+  assert.equal(row.runner_result.toolCalls[0].input.length, 200);
+  assert.equal(row.runner_result.toolCalls[0].output.length, 200);
+  assert.equal(row.grader_result.results[0].output, undefined);
+});
+
+test("GET /api/runs/[id]/report?bundle=1 returns a portable redacted archive", async () => {
+  const { reportRoute, db } = await importRoutes();
+  const runId = "bundlerun";
+  db.insertRun(makeRun({ id: runId, name: "Bundle me", status: "completed", ended_at: Date.now(), manifest: { harness: { id: "test" } } }));
+  const res = await reportRoute.GET(
+    new Request(`http://localhost:3000/api/runs/${runId}/report?bundle=1&redact=1`),
+    { params: Promise.resolve({ id: runId }) },
+  );
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get("content-type"), "application/gzip");
+  assert.match(res.headers.get("content-disposition") ?? "", /openeval-run-bundlerun\.tar\.gz/);
+  const archive = path.join(os.tmpdir(), `openeval-api-${randomUUID()}.tar.gz`);
+  try {
+    fs.writeFileSync(archive, Buffer.from(await res.arrayBuffer()));
+    const listing = execFileSync("tar", ["-tzf", archive], { encoding: "utf8" });
+    assert.match(listing, /openeval-run-bundlerun\/report\.md/);
+    assert.match(listing, /openeval-run-bundlerun\/manifest\.json/);
+    assert.match(listing, /openeval-run-bundlerun\/summary\.json/);
+  } finally {
+    fs.rmSync(archive, { force: true });
+  }
 });
 
 test("POST /api/runs/[id]/cancel: nonexistent run → 404", async () => {

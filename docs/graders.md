@@ -149,8 +149,10 @@ Calls a separate judge backend with the final output and a transcript excerpt (e
 
 Judge backend resolution (`resolveJudge()` in `lib/grader/judge.ts` — the same chain the Timeline's session-outcome judge uses):
 
-1. `judge_harness` on the spec, else `JUDGE_HARNESS`, else `openrouter` when `OPENROUTER_API_KEY` is set, else `codex`.
-2. Model: `judge_model` on the spec, else `model` on the spec, else `JUDGE_MODEL`, else the backend default (`tencent/hy3:free` for `openrouter`, `gpt-5.5` for `codex`).
+1. `judge_harness` on the spec, else `JUDGE_HARNESS`, else the judge source selected on `/settings`, else `openrouter` when `OPENROUTER_API_KEY` is set, else `codex`.
+2. Model: `judge_model` on the spec, else `model` on the spec, else `JUDGE_MODEL`, else the model selected on `/settings`, else the backend default (`tencent/hy3:free` for `openrouter`, `gpt-5.5` for `codex`).
+
+The Settings page persists its local selection in `data/settings.json`; explicit environment variables always win, which makes CI and deployment configuration deterministic while still allowing a convenient dashboard default for local runs.
 
 `openrouter` is an HTTP backend (with 429 backoff), not a harness adapter. CLI judges run in a throwaway scratch tmp directory with the restricted `default` permission mode — a judge only reads its prompt and emits JSON, and judge prompts embed text the evaluated agent controls. Every judge prompt starts with the `JUDGE_PROMPT_MARKER` prefix so the session parsers drop the judge's own CLI session files instead of polluting Collection totals.
 

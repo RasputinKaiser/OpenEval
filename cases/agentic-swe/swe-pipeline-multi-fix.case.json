@@ -15,7 +15,7 @@
   "prompt": "There are three bugs in this small pipeline:\n1. In lib/math.js, average() divides by the wrong count.\n2. In lib/math.js, max() returns the minimum instead of the maximum.\n3. In lib/stats.js, variance() is not divided by the number of elements.\n\nDiagnose each, fix them, and run `npm test` until all tests pass. Do not modify the test file.",
   "setup": {
     "type": "fixture",
-    "fixture": "pipeline",
+    "fixture": "pipeline-regression",
     "init_git": true
   },
   "runner": {
