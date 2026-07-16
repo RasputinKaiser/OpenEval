@@ -240,6 +240,9 @@ export function discoverModels(harnessId?: string): ModelInfo[] {
 }
 
 export function isValidModelId(id: string | undefined | null): boolean {
-  if (!id) return false;
-  return true;
+  if (typeof id !== "string") return false;
+  const normalized = id.trim();
+  // Custom provider ids are intentionally allowed, but never accept control
+  // characters or an unbounded value that could poison command/API surfaces.
+  return normalized.length > 0 && normalized.length <= 200 && !/[\u0000-\u001f\u007f]/.test(normalized);
 }

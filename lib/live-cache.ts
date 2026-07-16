@@ -16,7 +16,7 @@ import type { LiveSession } from "./live";
  * Bump PARSER_VERSION whenever parseLiveSession's output changes shape or
  * semantics; stale-version rows are ignored and overwritten.
  */
-export const PARSER_VERSION = 12; // v12: Hermes tool-error normalization and transcript format support; v11: unify Codex user-message normalization/marker filtering across rollout shapes
+export const PARSER_VERSION = 14; // v14: Codex turn-context/user-message turn counts; v13: accurate Hermes user-turn counts, old Codex prompt previews, and generic boolean parsing; v12: Hermes tool-error normalization and transcript format support; v11: unify Codex user-message normalization/marker filtering across rollout shapes
 
 const CACHE_DB_PATH = path.join(ROOT, "data", "live-cache.db");
 

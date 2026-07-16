@@ -35,6 +35,17 @@ function maybeNum(v: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+function maybeBool(v: unknown): boolean | null {
+  if (typeof v === "boolean") return v;
+  if (typeof v === "number" && Number.isFinite(v)) return v !== 0;
+  if (typeof v === "string") {
+    const normalized = v.trim().toLowerCase();
+    if (["true", "1", "yes", "y", "on"].includes(normalized)) return true;
+    if (["false", "0", "no", "n", "off", ""].includes(normalized)) return false;
+  }
+  return null;
+}
+
 /**
  * Substitution uses a replacer FUNCTION and a single pass: with plain string
  * replacement, `$&`/`` $` ``/`$'` patterns inside prompt/case text are
@@ -207,8 +218,9 @@ export function parseGenericJsonlLine(
     const id = str(getPath(obj, f.toolCallId)) || into.toolCalls[into.toolCalls.length - 1]?.id || "";
     const output = str(toolOut);
     const tc = into.toolCalls.find((t) => t.id === id);
-    if (tc) { tc.output = output; tc.isError = !!getPath(obj, f.toolCallError); }
-    events.push({ kind: "tool_result", id, output, isError: !!getPath(obj, f.toolCallError), at });
+    const isError = maybeBool(getPath(obj, f.toolCallError)) === true;
+    if (tc) { tc.output = output; tc.isError = isError; }
+    events.push({ kind: "tool_result", id, output, isError, at });
     return events;
   }
 
@@ -224,12 +236,13 @@ export function parseGenericJsonlLine(
   const inputTokens = getPath(obj, f.inputTokens);
   const outputTokens = getPath(obj, f.outputTokens);
   const isError = getPath(obj, f.isError);
+  const errorFlag = maybeBool(isError);
   if (durationMs != null || inputTokens != null || outputTokens != null || isError != null || evtType === "result" || evtType === "turn.completed" || evtType === "done") {
     const toolCallCounts: Record<string, number> = {};
     for (const tc of into.toolCalls) toolCallCounts[tc.name] = (toolCallCounts[tc.name] || 0) + 1;
     into.result = {
       ...(into.result || {}),
-      exitCode: isError ? 1 : 0,
+      exitCode: errorFlag === true ? 1 : 0,
       durationMs: maybeNum(durationMs) || (at - into.startedAt),
       startedAt: into.startedAt,
       endedAt: at,
@@ -248,7 +261,7 @@ export function parseGenericJsonlLine(
       stopReason: str(getPath(obj, f.stopReason)) || null,
       sessionId: into.result?.sessionId ?? (into as any)._lastSessionId ?? null,
       model: into.result?.model ?? (str(getPath(obj, f.model)) || null),
-      isError: !!isError,
+      isError: errorFlag === true,
       rawJson: obj,
       tokenSegments: [],
       toolCallCounts,

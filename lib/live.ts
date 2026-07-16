@@ -833,6 +833,8 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
   let durationMs = 0;
   let stopReason: string | null = null;
   let isError = false;
+  let declaredTurnCount: number | null = null;
+  let turnInferenceSource: "messageCount" | "userMessages" | undefined;
   let startedAt = mtime;
   let lastEventAt = mtime;
   let pathBytes = 0;
@@ -942,6 +944,7 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
         stopReason = obj.stopReason ?? stopReason;
         hookErrors += Number(obj.hookErrors ?? 0) || 0;
         messageCount = Math.max(messageCount, Number(obj.messageCount ?? 0) || 0);
+        if (Number.isFinite(Number(obj.turnCount))) declaredTurnCount = Math.max(0, Number(obj.turnCount));
         if (typeof obj.durationMs === "number") {
           durationMs = Math.max(durationMs, obj.durationMs);
           metricSources.duration = "measured";
@@ -1099,8 +1102,8 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
           metricSources.turns = "measured";
         }
         stopReason = coalesceString(getPath(obj, f.stopReason), stopReason);
-        const genericError = getPath(obj, f.isError);
-        if (genericError != null) isError = Boolean(genericError);
+        const genericError = booleanOrNull(getPath(obj, f.isError));
+        if (genericError != null) isError = genericError;
       }
     }
   } catch {
@@ -1113,16 +1116,23 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
     model = inferredModel;
     metricSources.model = "inferred";
   }
-  if (numTurns === 0 && messageCount > 0) {
+  if (numTurns === 0 && declaredTurnCount != null) {
+    numTurns = declaredTurnCount;
+    metricSources.turns = "inferred";
+    turnInferenceSource = "userMessages";
+  } else if (numTurns === 0 && messageCount > 0) {
     numTurns = messageCount;
     metricSources.turns = "inferred";
+    turnInferenceSource = "messageCount";
   } else if (numTurns === 0 && userTextTurns > 0) {
     // Interactive sessions carry no result/messageCount record; the count of
     // real (non-sidechain, non-injected) user prompts is the honest fallback.
     numTurns = userTextTurns;
     metricSources.turns = "inferred";
+    turnInferenceSource = "userMessages";
   } else if (numTurns > 0 && metricSources.turns === "missing") {
     metricSources.turns = sawResult ? "measured" : "inferred";
+    turnInferenceSource = "messageCount";
   }
   // Interactive sessions also lack duration records, but nearly every record
   // carries a timestamp — infer the observed span rather than reporting 0
@@ -1148,7 +1158,7 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
     }
   }
 
-  const parseWarnings = buildWarnings(metricSources, malformedLineCount, lineCount, hookErrors, sawResult, model);
+  const parseWarnings = buildWarnings(metricSources, malformedLineCount, lineCount, hookErrors, sawResult, model, turnInferenceSource);
   const toolErrorRate = toolCalls > 0 ? toolErrors / toolCalls : 0;
   const toolCallsPerTurn = numTurns > 0 ? toolCalls / numTurns : 0;
   const textAvailability = lineCount > 0 ? textBlocks / lineCount : 0;
@@ -1298,6 +1308,9 @@ function parseCodexSession(file: string, lines: Iterable<string>, bytes: number,
   let toolCalls = 0;
   let toolErrors = 0;
   let messageCount = 0;
+  let turnContextCount = 0;
+  let eventUserMessageCount = 0;
+  let responseUserMessageCount = 0;
   let textBlocks = 0;
   let thinkingBlocks = 0;
   let startedAt = mtime;
@@ -1372,6 +1385,7 @@ function parseCodexSession(file: string, lines: Iterable<string>, bytes: number,
         displayTitle = displayTitle ?? payload.thread_name ?? null;
         if (payload.model || payload.model_slug) metricSources.model = "measured";
       } else if (obj.type === "turn_context") {
+        turnContextCount++;
         const payload = obj.payload ?? {};
         project = payload.cwd ?? project;
         displayTitle = displayTitle ?? payload.thread_name ?? payload.title ?? null;
@@ -1392,7 +1406,9 @@ function parseCodexSession(file: string, lines: Iterable<string>, bytes: number,
           // Real rollouts carry user text HERE (event_msg/user_message), never
           // as a top-level user_msg record — this branch feeds the preview,
           // title fallback, and sentiment/rephrase signals for Codex sessions.
-          if (recordCodexUserText(payload.message) === "judge") return null;
+          const recorded = recordCodexUserText(payload.message);
+          if (recorded === "judge") return null;
+          if (recorded === "recorded") eventUserMessageCount++;
         } else if (payload.type === "token_count") {
           const info = payload.info ?? {};
           const last = info.last_token_usage;
@@ -1434,9 +1450,10 @@ function parseCodexSession(file: string, lines: Iterable<string>, bytes: number,
           const text = Array.isArray(payload.content)
             ? payload.content.map((item: any) => item.text).filter(Boolean).join(" ")
             : "";
+          if (payload.role === "user") responseUserMessageCount++;
           // OpenEval's own CLI-backed judge invocations leave codex_exec stub
           // sessions behind; they are instrumentation, not user work.
-          if (payload.role === "user" && text.trim().startsWith(JUDGE_PROMPT_MARKER)) return null;
+          if (payload.role === "user" && !lastPromptPreview && recordCodexUserText(text) === "judge") return null;
           // Injected wrappers ("<permissions instructions>", "<environment_context>")
           // and orchestrator persona preambles make useless titles — wait for
           // the first real message.
@@ -1513,7 +1530,12 @@ function parseCodexSession(file: string, lines: Iterable<string>, bytes: number,
     metricSources.cost = "inferred";
   }
 
-  const parseWarnings = buildWarnings(metricSources, malformedLineCount, lineCount, 0, true);
+  const turnInferenceSource: "turnContext" | "userMessages" | "messageCount" = turnContextCount > 0
+    ? "turnContext"
+    : Math.max(responseUserMessageCount, eventUserMessageCount) > 0
+      ? "userMessages"
+      : "messageCount";
+  const parseWarnings = buildWarnings(metricSources, malformedLineCount, lineCount, 0, true, model, turnInferenceSource);
   if (originator) parseWarnings.push(`source: ${originator}${source ? ` / ${source}` : ""}${cliVersion ? ` ${cliVersion}` : ""}`);
   const toolErrorRate = toolCalls > 0 ? toolErrors / toolCalls : 0;
 
@@ -1535,7 +1557,12 @@ function parseCodexSession(file: string, lines: Iterable<string>, bytes: number,
     usageSegments: downsampleUsageSegments(usageSegments),
     toolCalls,
     toolErrors,
-    numTurns: Math.max(messageCount, 1),
+    numTurns: Math.max(
+      turnContextCount > 0
+        ? turnContextCount
+        : Math.max(responseUserMessageCount, eventUserMessageCount),
+      1,
+    ),
     stopReason: null,
     isError: toolErrors > 0,
     pathBytes,
@@ -1554,7 +1581,9 @@ function parseCodexSession(file: string, lines: Iterable<string>, bytes: number,
     metricSources,
     parseWarnings,
     toolErrorRate,
-    toolCallsPerTurn: messageCount > 0 ? toolCalls / messageCount : toolCalls,
+    toolCallsPerTurn: turnContextCount > 0 || responseUserMessageCount > 0 || eventUserMessageCount > 0
+      ? toolCalls / Math.max(turnContextCount, responseUserMessageCount, eventUserMessageCount)
+      : toolCalls,
     textAvailability: lineCount > 0 ? textBlocks / lineCount : 0,
     staleMs: Math.max(0, Date.now() - lastEventAt),
     traceGraph: {
@@ -1591,14 +1620,29 @@ function parseCodexSession(file: string, lines: Iterable<string>, bytes: number,
   };
 }
 
-function buildWarnings(sources: LiveMetricSources, malformedLineCount: number, lineCount: number, hookErrors: number, sawResult: boolean, model?: string | null): string[] {
+function buildWarnings(
+  sources: LiveMetricSources,
+  malformedLineCount: number,
+  lineCount: number,
+  hookErrors: number,
+  sawResult: boolean,
+  model?: string | null,
+  turnInferenceSource?: "messageCount" | "userMessages" | "turnContext",
+): string[] {
   const warnings: string[] = [];
   if (sources.model === "missing") warnings.push("model missing from trace");
   if (sources.model === "inferred") warnings.push(`model inferred as ${model ?? "unknown"} from the harness descriptor's liveTrace default`);
   if (sources.tokens === "missing") warnings.push("token usage missing from trace");
   if (sources.cost === "missing") warnings.push("cost missing from trace");
   if (sources.duration === "missing") warnings.push("duration missing from trace");
-  if (sources.turns === "inferred") warnings.push("turn count inferred from messageCount");
+  if (sources.turns === "inferred") {
+    const label = turnInferenceSource === "userMessages"
+      ? "user messages"
+      : turnInferenceSource === "turnContext"
+        ? "turn context records"
+        : "messageCount";
+    warnings.push(`turn count inferred from ${label}`);
+  }
   if (!sawResult) warnings.push("no final result event found");
   if (malformedLineCount > 0) warnings.push(`${malformedLineCount}/${lineCount} malformed line(s) skipped`);
   if (hookErrors > 0) warnings.push(`${hookErrors} hook error(s) reported`);
@@ -1614,6 +1658,17 @@ function coalesceString(value: unknown, fallback: string | null): string | null 
 function numericOrNull(value: unknown): number | null {
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+function booleanOrNull(value: unknown): boolean | null {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number" && Number.isFinite(value)) return value !== 0;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["true", "1", "yes", "y", "on"].includes(normalized)) return true;
+    if (["false", "0", "no", "n", "off", ""].includes(normalized)) return false;
+  }
+  return null;
 }
 
 /**

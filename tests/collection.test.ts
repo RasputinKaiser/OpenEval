@@ -262,7 +262,9 @@ test("hermes-json sessions parse into model, tools, and duration", () => {
   assert.equal(s.sessionId, "20260531_000552_3e2fd6");
   assert.equal(s.toolCalls, 1);
   assert.equal(s.durationMs, 60000);
+  assert.equal(s.numTurns, 1);
   assert.equal(s.metricSources.duration, "measured");
   assert.equal(s.metricSources.tokens, "missing"); // Hermes records no usage
+  assert.ok(s.parseWarnings.includes("turn count inferred from user messages"));
   assert.equal(s.startedAt, Date.parse("2026-05-31T00:05:53.370621"));
 });

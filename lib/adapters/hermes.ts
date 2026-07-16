@@ -52,13 +52,18 @@ export function hermesJsonToRecords(raw: string): string[] {
   if (!doc || typeof doc !== "object" || !Array.isArray(doc.messages)) return [];
 
   const model = typeof doc.model === "string" && doc.model ? doc.model : undefined;
+  const userTurnCount = doc.messages.filter((message: HermesMessage) => message?.role === "user" && textOf(message.content).trim()).length;
   const records: unknown[] = [];
   records.push({
     type: "system",
     model,
     session_id: typeof doc.session_id === "string" ? doc.session_id : undefined,
     timestamp: doc.session_start,
+    // Hermes' message_count includes assistant/tool messages. Keep that
+    // useful raw count separate from the conversational turn count; treating
+    // every tool result as a user turn inflated Hermes turn totals badly.
     messageCount: Number(doc.message_count) || doc.messages.length,
+    turnCount: userTurnCount,
   });
 
   for (const m of doc.messages as HermesMessage[]) {

@@ -4,9 +4,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { BUILTIN_DESCRIPTORS } from "../lib/adapters/builtin";
 import { validateDescriptor } from "../lib/adapters/schema";
-import { buildDescriptorCommand, resolveDescriptorBinInfo } from "../lib/adapters/generic";
-import { discoverModels, resolveDefaultModel } from "../lib/models";
-import { runProbe } from "../lib/adapters/discover";
+import { buildDescriptorCommand, parseGenericJsonlLine, resolveDescriptorBinInfo } from "../lib/adapters/generic";
+import { discoverModels, isValidModelId, resolveDefaultModel } from "../lib/models";
+import { probeFlagObserved, runProbe } from "../lib/adapters/discover";
 
 test("Codex declares the image flag exposed by its installed CLI", () => {
   const raw = BUILTIN_DESCRIPTORS.find((descriptor) => descriptor.id === "codex");
@@ -113,4 +113,28 @@ test("harness probing verifies version and help without running a model", async 
   const help = await runProbe(process.execPath, ["--help"]);
   assert.equal(version.ok, true);
   assert.equal(help.ok, true);
+});
+
+test("harness probing matches the descriptor flag, not a hardcoded image option", () => {
+  assert.equal(probeFlagObserved("Usage: agent --attach FILE\n--other VALUE", "--attach"), true);
+  assert.equal(probeFlagObserved("Usage: agent --attach FILE", "--image"), false);
+  assert.equal(probeFlagObserved("  --attach=FILE", "--attach"), true);
+  assert.equal(probeFlagObserved("  --image FILE", "-i"), false);
+});
+
+test("generic JSONL boolean fields preserve textual false values", () => {
+  const acc: any = { startedAt: Date.now(), transcript: [], toolCalls: [], finalText: "", result: null };
+  parseGenericJsonlLine('{"name":"shell","id":"c1"}', acc, { fields: { toolCallName: "name", toolCallId: "id" } });
+  parseGenericJsonlLine('{"id":"c1","output":"ok","error":"false"}', acc, { fields: { toolCallOutput: "output", toolCallId: "id", toolCallError: "error" } });
+  parseGenericJsonlLine('{"type":"done","error":"false"}', acc, { fields: { isError: "error" } });
+  assert.equal(acc.toolCalls[0].isError, false);
+  assert.equal(acc.result.isError, false);
+  assert.equal(acc.result.exitCode, 0);
+});
+
+test("model id validation accepts custom ids but rejects blank and control-filled values", () => {
+  assert.equal(isValidModelId("provider/model-v1"), true);
+  assert.equal(isValidModelId("  provider/model-v1  "), true);
+  assert.equal(isValidModelId("   "), false);
+  assert.equal(isValidModelId("provider/model\n-v1"), false);
 });

@@ -30,6 +30,14 @@ export interface DiscoveredHarness {
   detail?: string;
 }
 
+/** Match the exact descriptor-declared option, including `--flag=VALUE`. */
+export function probeFlagObserved(output: string, flag: string): boolean {
+  const normalized = flag.trim();
+  if (!normalized) return false;
+  const escaped = normalized.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?:^|[\\s,\\[])${escaped}(?=$|[\\s,=,\\]])`, "m").test(output);
+}
+
 let cache: DiscoveredHarness[] | null = null;
 
 function sampleCtx(model?: string): RunnerContext {
@@ -89,8 +97,8 @@ async function probe(adapter: HarnessAdapter): Promise<DiscoveredHarness> {
   const status: HarnessStatus = versionResult.ok && (helpResult == null || helpResult.ok) ? "available" : "error";
   const defaultModel = resolveDefaultModel(adapter.id).id;
   const sample = adapter.buildCommand(sampleCtx(defaultModel));
-  const imageFlagObserved = helpResult
-    ? /(?:^|\s)(?:--image|-i)(?:\s|,|$)/m.test(helpResult.output)
+  const imageFlagObserved = helpResult && adapter.descriptor.imageFlag
+    ? probeFlagObserved(helpResult.output, adapter.descriptor.imageFlag)
     : null;
   const failure = !versionResult.ok ? versionResult : helpResult && !helpResult.ok ? helpResult : null;
   return {

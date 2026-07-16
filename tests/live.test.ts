@@ -554,8 +554,9 @@ test("codex titles and prompt previews skip injected persona preambles", () => {
   const session = summarizeCodexSessionFile(file, "2026/06/29", Date.parse("2026-06-29T00:00:00.000Z"));
   assert.ok(session);
   assert.equal(session.displayTitle, "Fix the flaky dropdown test");
-  // the only user_msg event was the preamble — better no preview than a leaky one
-  assert.equal(session.lastPromptPreview, null);
+  // The real response_item user record is now used when the legacy user_msg
+  // stream contains only the injected preamble.
+  assert.equal(session.lastPromptPreview, "Fix the flaky dropdown test");
 });
 
 test("coordinator-root preambles are suppressed without a subagent flag", () => {
