@@ -37,6 +37,12 @@ function writeTmp(lines: unknown[]): string {
   return file;
 }
 
+function writeTmpJson(value: unknown): string {
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "judge-test-")), "t.json");
+  fs.writeFileSync(file, JSON.stringify(value, null, 2));
+  return file;
+}
+
 test("extractJudgeDigest pulls the conversational spine from a Claude-shaped transcript", () => {
   const file = writeTmp([
     { type: "user", message: { role: "user", content: "Fix the login bug please" } },
@@ -60,6 +66,30 @@ test("extractJudgeDigest understands Codex event_msg payloads", () => {
   const d = extractJudgeDigest(file);
   assert.equal(d.firstUser, "add a retry to the fetch");
   assert.equal(d.lastAssistant, "Added exponential backoff.");
+});
+
+test("extractJudgeDigest understands legacy Codex response_item messages", () => {
+  const file = writeTmp([
+    { type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "repair the ledger totals" }] } },
+    { type: "response_item", payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: "The ledger now balances." }] } },
+  ]);
+  const d = extractJudgeDigest(file);
+  assert.equal(d.firstUser, "repair the ledger totals");
+  assert.equal(d.lastAssistant, "The ledger now balances.");
+});
+
+test("extractJudgeDigest understands Hermes single-JSON conversations", () => {
+  const file = writeTmpJson({
+    session_id: "hermes-judge",
+    messages: [
+      { role: "user", content: "trace the missing invoice" },
+      { role: "assistant", content: "The invoice was restored." },
+      { role: "tool", content: "internal tool noise" },
+    ],
+  });
+  const d = extractJudgeDigest(file);
+  assert.equal(d.firstUser, "trace the missing invoice");
+  assert.equal(d.lastAssistant, "The invoice was restored.");
 });
 
 test("buildJudgePrompt embeds the digest and demands bare JSON", () => {

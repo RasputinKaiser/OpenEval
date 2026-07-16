@@ -1,5 +1,4 @@
 import fs from "node:fs";
-import { readFileLines } from "../live";
 import {
   extractJudgeJson,
   resolveJudge,
@@ -15,6 +14,7 @@ import {
 } from "../live-cache";
 import { JUDGE_PROMPT_MARKER } from "./signals";
 import type { SessionPoint, Marker } from "./timeline";
+import { readConversationMessages } from "../collection/conversation";
 
 // Kept for the existing public test/import surface. New code should import the
 // canonical backend module directly.
@@ -59,25 +59,13 @@ export interface JudgeDigest {
 
 const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n) + "…" : s);
 
-function textFromContent(content: unknown, opts: { dropAngleBlocks?: boolean } = {}): string {
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
-  return content
-    .filter((b): b is { type: string; text: string } => !!b && typeof b === "object" && (b as { type?: unknown }).type === "text" && typeof (b as { text?: unknown }).text === "string")
-    // User turns carry injected <system-reminder>-style blocks alongside the
-    // human's words; joining them would feed harness boilerplate to the judge.
-    .filter((b) => !(opts.dropAngleBlocks && b.text.trimStart().startsWith("<")))
-    .map((b) => b.text)
-    .join(" ");
-}
-
 /**
  * Pull just the conversational spine out of a transcript: the user's words and
  * the closing assistant message. Understands the Claude-projects shape
- * (message.content string/blocks) and the Codex shape (event_msg payloads);
- * anything else simply yields an empty digest and is skipped. Subagent
- * sidechain turns are ignored — they are the agent talking to itself, not the
- * user's judgment of the work.
+ * (message.content string/blocks), both Codex generations, and Hermes
+ * single-JSON sessions. Unknown formats yield an empty digest and are skipped.
+ * Subagent sidechain turns are ignored — they are the agent talking to itself,
+ * not the user's judgment of the work.
  */
 export function extractJudgeDigest(file: string): JudgeDigest {
   let firstUser: string | null = null;
@@ -88,31 +76,12 @@ export function extractJudgeDigest(file: string): JudgeDigest {
   };
   let lastAssistant: string | null = null;
   try {
-    for (const line of readFileLines(file)) {
-      if (!line.trim()) continue;
-      let obj: Record<string, unknown>;
-      try { obj = JSON.parse(line); } catch { continue; }
-      if ((obj as { isSidechain?: boolean }).isSidechain) continue;
-      const type = obj.type;
-      const message = obj.message as { role?: string; content?: unknown } | undefined;
-      if (type === "user" && message && !(obj as { isMeta?: boolean }).isMeta) {
-        // Tool results also arrive as "user" turns; only keep real text.
-        const text = textFromContent(message.content, { dropAngleBlocks: true }).trim();
-        if (text && !text.startsWith("<")) {
-          if (firstUser == null) firstUser = text;
-          else keepRecentUser(text);
-        }
-      } else if (type === "assistant" && message) {
-        const text = textFromContent(message.content).trim();
-        if (text) lastAssistant = text;
-      } else if (type === "event_msg") {
-        const payload = obj.payload as { type?: string; message?: unknown } | undefined;
-        if (payload?.type === "user_message" && typeof payload.message === "string" && payload.message.trim()) {
-          if (firstUser == null) firstUser = payload.message.trim();
-          else keepRecentUser(payload.message.trim());
-        } else if (payload?.type === "agent_message" && typeof payload.message === "string" && payload.message.trim()) {
-          lastAssistant = payload.message.trim();
-        }
+    for (const message of readConversationMessages(file)) {
+      if (message.role === "user") {
+        if (firstUser == null) firstUser = message.text;
+        else keepRecentUser(message.text);
+      } else {
+        lastAssistant = message.text;
       }
     }
   } catch {

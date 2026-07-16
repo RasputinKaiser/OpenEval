@@ -57,6 +57,9 @@ async function copyDir(src: string, dest: string): Promise<void> {
     if (ent.name === "node_modules" || ent.name === ".git") continue;
     const s = path.join(src, ent.name);
     const d = path.join(dest, ent.name);
+    if (ent.isSymbolicLink()) {
+      throw new Error(`Fixture symlinks are not supported: ${s}`);
+    }
     if (ent.isDirectory()) {
       await fs.mkdir(d, { recursive: true });
       await copyDir(s, d);
@@ -72,6 +75,7 @@ async function resolveInputImages(def: CaseDefinition, workdir: string): Promise
     throw new Error("This case requires vision input but declares no visual.input_images");
   }
   const images: string[] = [];
+  const realWorkdir = await fs.realpath(workdir);
   for (const relative of requested) {
     if (path.isAbsolute(relative)) throw new Error(`Visual input must be relative to the case workdir: ${relative}`);
     const absolute = path.resolve(workdir, relative);
@@ -79,9 +83,15 @@ async function resolveInputImages(def: CaseDefinition, workdir: string): Promise
     if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) {
       throw new Error(`Visual input escapes the case workdir: ${relative}`);
     }
-    const stat = await fs.stat(absolute).catch(() => null);
+    const realAbsolute = await fs.realpath(absolute).catch(() => null);
+    if (!realAbsolute) throw new Error(`Visual input file is missing: ${relative}`);
+    const realRel = path.relative(realWorkdir, realAbsolute);
+    if (!realRel || realRel.startsWith("..") || path.isAbsolute(realRel)) {
+      throw new Error(`Visual input escapes the case workdir: ${relative}`);
+    }
+    const stat = await fs.stat(realAbsolute).catch(() => null);
     if (!stat?.isFile()) throw new Error(`Visual input file is missing: ${relative}`);
-    images.push(absolute);
+    images.push(realAbsolute);
   }
   return images;
 }

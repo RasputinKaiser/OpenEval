@@ -87,6 +87,37 @@ test("file_contains matches regex and honors negate / missing / invalid", async 
   });
 });
 
+test("file graders reject traversal and symlink escapes from the workdir", async () => {
+  await withWorkdir(async (dir) => {
+    const outside = path.join(path.dirname(dir), `outside-${path.basename(dir)}.txt`);
+    await fs.writeFile(outside, "host secret marker");
+    await fs.symlink(outside, path.join(dir, "escaped.txt"));
+    try {
+      const traversal = await runGrader({ type: "file_contains", path: `../${path.basename(outside)}`, pattern: "host secret" }, ctxFor(dir));
+      assert.equal(traversal.passed, false);
+      assert.match(traversal.detail, /escapes the workdir/i);
+
+      const symlink = await runGrader({ type: "file_contains", path: "escaped.txt", pattern: "host secret" }, ctxFor(dir));
+      assert.equal(symlink.passed, false);
+      assert.match(symlink.detail, /escapes the workdir/i);
+    } finally {
+      await fs.rm(outside, { force: true });
+    }
+  });
+});
+
+test("absence-style graders cannot pass an invalid outside path", async () => {
+  await withWorkdir(async (dir) => {
+    const exists = await runGrader({ type: "file_exists", path: "../outside-missing.txt", negate: true }, ctxFor(dir));
+    assert.equal(exists.passed, false);
+    assert.match(exists.detail, /escapes the workdir/i);
+
+    const deleted = await runGrader({ type: "file_deleted", path: "../outside-missing.txt" }, ctxFor(dir));
+    assert.equal(deleted.passed, false);
+    assert.match(deleted.detail, /escapes the workdir/i);
+  });
+});
+
 // ---- file_eq ----
 
 test("file_eq compares content with and without trim", async () => {

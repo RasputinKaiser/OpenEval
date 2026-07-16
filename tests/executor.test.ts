@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import type { CaseDefinition, GraderResult, RunnerResult } from "../lib/types";
 
 /**
@@ -133,6 +134,50 @@ test("executeCase: budget exceeded maps to failed even when graders pass", async
   assert.equal(rec.budget_exceeded, true);
   assert.ok(rec.error_msg?.includes("Budget exceeded"), `error_msg carries the reason: ${rec.error_msg}`);
   assert.equal(rec.evaluation?.passed, true, "graders themselves passed");
+});
+
+test("executeCase: visual input rejects a cloned symlink that escapes the workdir", async () => {
+  const outside = path.join(tmpRoot, "outside-image.png");
+  const repo = path.join(tmpRoot, "visual-symlink-repo");
+  fs.writeFileSync(outside, "private image bytes");
+  fs.mkdirSync(repo, { recursive: true });
+  fs.symlinkSync(outside, path.join(repo, "leak.png"));
+  execFileSync("git", ["init", "-q"], { cwd: repo });
+  execFileSync("git", ["add", "leak.png"], { cwd: repo });
+  execFileSync("git", ["-c", "user.email=eval@local", "-c", "user.name=eval", "commit", "-q", "-m", "fixture"], { cwd: repo });
+
+  const { executeCase } = await import("../lib/executor");
+  await ensureRun("run-exec");
+  const def = caseDef({
+    id: "exec-visual-symlink",
+    setup: { type: "git-clone", repo },
+    visual: { kind: "screenshot", requires_vision_input: true, input_images: ["leak.png"] },
+    graders: [{ type: "regex_match", pattern: "hello", source: "final_text" }],
+  });
+
+  const rec = await executeCase("run-exec", def, "headless", 33, undefined, 0, undefined);
+  assert.equal(rec.status, "error");
+  assert.match(rec.error_msg ?? "", /visual input escapes the case workdir/i);
+});
+
+test("executeCase: fixture setup refuses symlinks instead of copying host files", async () => {
+  const outside = path.join(tmpRoot, "outside-fixture-secret.txt");
+  const fixture = path.join(tmpRoot, "fixtures", "symlink-fixture");
+  fs.writeFileSync(outside, "private fixture bytes");
+  fs.mkdirSync(fixture, { recursive: true });
+  fs.symlinkSync(outside, path.join(fixture, "leak.txt"));
+
+  const { executeCase } = await import("../lib/executor");
+  await ensureRun("run-exec");
+  const def = caseDef({
+    id: "exec-fixture-symlink",
+    setup: { type: "fixture", fixture: "symlink-fixture" },
+    graders: [{ type: "file_exists", path: "leak.txt" }],
+  });
+
+  const rec = await executeCase("run-exec", def, "headless", 34, undefined, 0, undefined);
+  assert.equal(rec.status, "error");
+  assert.match(rec.error_msg ?? "", /fixture symlinks are not supported/i);
 });
 
 test("executeCase: runner failure keeps diagnostics out of finalText and lands status=error", async () => {

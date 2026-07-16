@@ -6,6 +6,7 @@ import { evidenceLabel, graderEvidenceTier } from "../accuracy";
 import { appendCapped, killProcessGroup, registerProcessGroup } from "../runner/spawn";
 import { defaultJudgeModel, runJudgeBackend, extractJudgeJson, resolveJudge, validJudgeScore } from "./judge";
 import { JUDGE_PROMPT_MARKER } from "../insights/signals";
+import { resolveWithin } from "../config";
 import type { CaseEvaluation, GraderResult, GraderSpec, RunnerResult } from "../types";
 
 function runProcess(bin: string, args: string[], spec: { cwd?: string; env?: Record<string, string>; timeout_ms?: number }): Promise<{ code: number; stdout: string; stderr: string; durationMs: number; timedOut: boolean }> {
@@ -68,6 +69,39 @@ async function safeRead(p: string): Promise<string | null> {
   try { return await fs.readFile(p, "utf8"); } catch { return null; }
 }
 
+/**
+ * Resolve a grader-owned path without letting traversal or an agent-created
+ * symlink escape the evidence root. Missing files remain valid so existence
+ * and deletion graders can evaluate them honestly; their nearest existing
+ * ancestor must still resolve inside the root.
+ */
+async function resolveEvidencePath(base: string, relative: string): Promise<string | null> {
+  const candidate = resolveWithin(base, relative);
+  if (!candidate) return null;
+  const realBase = await fs.realpath(base).catch(() => null);
+  if (!realBase) return null;
+
+  let cursor = candidate;
+  let realCursor: string | null = null;
+  while (!realCursor) {
+    realCursor = await fs.realpath(cursor).catch(() => null);
+    if (realCursor) break;
+    const parent = path.dirname(cursor);
+    if (parent === cursor) return null;
+    cursor = parent;
+  }
+
+  const rel = path.relative(realBase, realCursor);
+  if (rel.startsWith("..") || path.isAbsolute(rel)) return null;
+  // Existing files use their canonical path. Missing files retain the lexical
+  // candidate after their nearest existing ancestor passed the realpath check.
+  return cursor === candidate ? realCursor : candidate;
+}
+
+function escapedEvidencePath(spec: GraderSpec, relative: string, durationMs: number): GraderResult {
+  return fail(spec, `path escapes the workdir: ${relative}`, durationMs);
+}
+
 export async function runGrader(
   spec: GraderSpec,
   ctx: { workdir: string; runner: RunnerResult; transcriptText: string; fixtureSrc?: string }
@@ -96,7 +130,8 @@ export async function runGrader(
   }
 
   if (spec.type === "file_contains") {
-    const filePath = path.resolve(ctx.workdir, spec.path);
+    const filePath = await resolveEvidencePath(ctx.workdir, spec.path);
+    if (!filePath) return escapedEvidencePath(spec, spec.path, dur());
     const content = await safeRead(filePath);
     if (content === null) return fail(spec, `file not found: ${spec.path}`, dur());
     try {
@@ -112,7 +147,8 @@ export async function runGrader(
   }
 
   if (spec.type === "file_exists") {
-    const filePath = path.resolve(ctx.workdir, spec.path);
+    const filePath = await resolveEvidencePath(ctx.workdir, spec.path);
+    if (!filePath) return escapedEvidencePath(spec, spec.path, dur());
     let exists = false;
     try { await fs.access(filePath); exists = true; } catch { exists = false; }
     const passed = spec.negate ? !exists : exists;
@@ -120,7 +156,8 @@ export async function runGrader(
   }
 
   if (spec.type === "file_eq") {
-    const filePath = path.resolve(ctx.workdir, spec.path);
+    const filePath = await resolveEvidencePath(ctx.workdir, spec.path);
+    if (!filePath) return escapedEvidencePath(spec, spec.path, dur());
     const content = await safeRead(filePath);
     if (content === null) return fail(spec, `file not found: ${spec.path}`, dur());
     const actual = spec.trim ? content.trim() : content;
@@ -156,7 +193,8 @@ export async function runGrader(
   }
 
   if (spec.type === "json_path") {
-    const filePath = path.resolve(ctx.workdir, spec.path);
+    const filePath = await resolveEvidencePath(ctx.workdir, spec.path);
+    if (!filePath) return escapedEvidencePath(spec, spec.path, dur());
     const content = await safeRead(filePath);
     if (content === null) return fail(spec, `file not found: ${spec.path}`, dur());
     let parsed: any;
@@ -189,8 +227,18 @@ export async function runGrader(
     }
     const changes: string[] = [];
     for (const rel of spec.paths) {
-      const actualPath = path.resolve(ctx.workdir, rel);
-      const baselinePath = path.resolve(ctx.fixtureSrc, rel);
+      const actualPath = await resolveEvidencePath(ctx.workdir, rel);
+      if (!actualPath) {
+        changes.push(`${rel}: path escapes the workdir`);
+        continue;
+      }
+      const baselinePath = await resolveEvidencePath(ctx.fixtureSrc, rel);
+      if (!baselinePath) {
+        return {
+          ...fail(spec, `fixture path escapes the baseline root: ${rel}`, dur()),
+          infraError: true,
+        };
+      }
       const actual = await safeRead(actualPath);
       const baseline = await safeRead(baselinePath);
       if (actual === null && baseline === null) { changes.push(`${rel}: absent in both`); continue; }
@@ -205,7 +253,9 @@ export async function runGrader(
   }
 
   if (spec.type === "file_deleted") {
-    const exists = await safeRead(path.resolve(ctx.workdir, spec.path));
+    const filePath = await resolveEvidencePath(ctx.workdir, spec.path);
+    if (!filePath) return escapedEvidencePath(spec, spec.path, dur());
+    const exists = await safeRead(filePath);
     return exists === null
       ? ok(spec, `${spec.path} deleted`, dur())
       : fail(spec, `${spec.path} still exists (should be deleted)`, dur(), exists.slice(0, 200));
@@ -236,7 +286,9 @@ export async function runGrader(
 
   if (spec.type === "checksum") {
     const algo = spec.algorithm ?? "sha256";
-    const content = await safeRead(path.resolve(ctx.workdir, spec.path));
+    const filePath = await resolveEvidencePath(ctx.workdir, spec.path);
+    if (!filePath) return escapedEvidencePath(spec, spec.path, dur());
+    const content = await safeRead(filePath);
     if (content === null) return fail(spec, `file not found: ${spec.path}`, dur());
     const hash = createHash(algo).update(content).digest("hex");
     return hash === spec.expected

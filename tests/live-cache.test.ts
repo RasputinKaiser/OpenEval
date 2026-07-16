@@ -108,6 +108,20 @@ test("live-cache: ftsUpsert deletes by remembered rowid and still replaces legac
   });
 });
 
+test("live-cache: FTS freshness ignores rows from an older extraction contract", () => {
+  withMemoryDb(() => {
+    const conn = new Database(":memory:");
+    _setCacheDbForTest(conn);
+    conn
+      .prepare("INSERT INTO session_fts (user_text, assistant_text, title, project, source_id, file, at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .run("stale text", "", "t", "/p", "src", "/stale.jsonl", 1);
+    conn.prepare("INSERT INTO fts_meta (file, mtime_ms, size, indexed_at) VALUES (?, ?, ?, ?)").run("/stale.jsonl", 10, 20, 1);
+
+    assert.equal(ftsIndexedFiles().has("/stale.jsonl"), false);
+    conn.close();
+  });
+});
+
 test("live-cache: FTS index round-trips, replaces on re-index, and survives odd queries", () => {
   withMemoryDb(() => {
     ftsUpsert(
