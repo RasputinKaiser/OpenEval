@@ -125,6 +125,46 @@ test("runner normalization preserves an explicitly measured zero cost", () => {
   assert.equal(result.usage.costSource, "measured");
 });
 
+test("runner normalization rejects synthetic model sentinels and unannotated costs", () => {
+  const acc: ParseAccumulator = { startedAt: Date.now(), transcript: [], toolCalls: [], finalText: "", result: null };
+  parseCodexLine(JSON.stringify({ type: "turn.completed", usage: {} }), acc);
+  const base = {
+    ...(acc.result as RunnerResult),
+    model: "<synthetic>",
+    usage: {
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheCreateTokens: 0,
+      costUsd: 12.34,
+    },
+  };
+  const result = normalizeParsedResult(base, null);
+  assert.equal(result.model, null);
+  assert.equal(result.usage.costUsd, 0);
+  assert.equal(result.usage.costSource, "missing");
+});
+
+test("runner normalization uses the requested model instead of a synthetic sentinel", () => {
+  const acc: ParseAccumulator = { startedAt: Date.now(), transcript: [], toolCalls: [], finalText: "", result: null };
+  parseCodexLine(JSON.stringify({ type: "turn.completed", usage: {} }), acc);
+  const base = {
+    ...(acc.result as RunnerResult),
+    model: "<synthetic>",
+    usage: {
+      inputTokens: 100,
+      outputTokens: 10,
+      cacheReadTokens: 0,
+      cacheCreateTokens: 0,
+      costUsd: 99,
+    },
+  };
+  const result = normalizeParsedResult(base, "gpt-5.5");
+  assert.equal(result.model, "gpt-5.5");
+  assert.equal(result.usage.costSource, "inferred");
+  assert.equal(result.usage.costUsd, estimateCostUsd("gpt-5.5", { input: 100, output: 10, cacheRead: 0, cacheCreate: 0 }));
+});
+
 test("paneCaptureDelta avoids reparsing an unchanged final tmux snapshot", () => {
   assert.equal(paneCaptureDelta("line one\nline two\n", "line one\nline two\n"), "");
   assert.equal(paneCaptureDelta("line one\n", "line one\nline two\n"), "line two\n");

@@ -296,6 +296,10 @@ export interface RunSummary {
   totalCostUsd: number;
   /** Number of case costs reconstructed from public token rates. */
   estimatedCostCases?: number;
+  /** Number of case costs explicitly recorded by the harness. */
+  measuredCostCases?: number;
+  /** Number of cases whose dollar cost is unavailable. */
+  missingCostCases?: number;
   totalTokensIn: number;
   totalTokensOut: number;
   totalDurationMs: number;

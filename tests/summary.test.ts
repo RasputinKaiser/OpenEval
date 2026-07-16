@@ -85,16 +85,21 @@ test("computeSummary counts non-terminal statuses as stranded, outside every out
 test("computeSummary of an all-terminal run has zero stranded", () => {
   const s = computeSummary([rc("a", "passed"), rc("b", "failed")]);
   assert.equal(s.stranded, 0);
+  assert.equal(s.missingCostCases, 2);
 });
 
 test("computeSummary exposes how many case costs are inferred", () => {
   const inferred = runnerResult({ usage: { inputTokens: 100, outputTokens: 50, cacheReadTokens: 0, cacheCreateTokens: 0, costUsd: 0.01, costSource: "inferred" } });
   const measured = runnerResult({ usage: { inputTokens: 100, outputTokens: 50, cacheReadTokens: 0, cacheCreateTokens: 0, costUsd: 0.02, costSource: "measured" } });
+  const missing = runnerResult({ usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreateTokens: 0, costUsd: 9, costSource: "missing" } });
   const summary = computeSummary([
     rc("inferred", "passed", { runner: inferred }),
     rc("measured", "passed", { runner: measured }),
+    rc("missing", "passed", { runner: missing }),
   ]);
   assert.equal(summary.estimatedCostCases, 1);
+  assert.equal(summary.measuredCostCases, 1);
+  assert.equal(summary.missingCostCases, 1);
   assert.equal(summary.totalCostUsd, 0.03);
 });
 

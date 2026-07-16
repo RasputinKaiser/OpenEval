@@ -10,6 +10,7 @@ async function main(): Promise<void> {
   };
   const liveById = new Map((payload.data ?? []).map((model) => [model.id, model]));
   const mismatches: string[] = [];
+  const unverifiedDimensions: string[] = [];
   const fields = [
     ["input", "prompt"],
     ["output", "completion"],
@@ -32,6 +33,17 @@ async function main(): Promise<void> {
         mismatches.push(`${entry.sourceModel}.${apiField}: live ${actual}/M != local ${expected}/M`);
       }
     }
+    const cacheWriteRaw = live.pricing?.input_cache_write;
+    if (cacheWriteRaw == null) {
+      unverifiedDimensions.push(`${entry.sourceModel}.input_cache_write`);
+    } else {
+      const actual = Number(cacheWriteRaw) * 1_000_000;
+      if (!Number.isFinite(actual)) {
+        mismatches.push(`${entry.sourceModel}.input_cache_write: live value is not numeric`);
+      } else if (Math.abs(actual - entry.rate.cacheWrite) > 1e-9) {
+        mismatches.push(`${entry.sourceModel}.input_cache_write: live ${actual}/M != local ${entry.rate.cacheWrite}/M`);
+      }
+    }
   }
 
   if (mismatches.length > 0) {
@@ -44,7 +56,9 @@ async function main(): Promise<void> {
       source: PRICING_SOURCE,
       localListDate: PRICING_LIST_DATE,
       endpoint,
-      note: "Cache-write rates are not checked because the catalog does not consistently publish them.",
+      verifiedDimensions: ["prompt", "completion", "input_cache_read"],
+      unverifiedDimensions,
+      note: "Cache-write rates are checked when published; absent fields are reported explicitly as unverified.",
     }));
   }
 }

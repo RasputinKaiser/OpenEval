@@ -16,7 +16,7 @@ import type { LiveSession } from "./live";
  * Bump PARSER_VERSION whenever parseLiveSession's output changes shape or
  * semantics; stale-version rows are ignored and overwritten.
  */
-export const PARSER_VERSION = 15; // v15: mixed-model attribution and reset-safe Codex token curves; v14: Codex turn-context/user-message turn counts; v13: accurate Hermes user-turn counts, old Codex prompt previews, and generic boolean parsing
+export const PARSER_VERSION = 17; // v17: distinct Codex/Claude child identities and cost-allocation provenance; v16: preserve forked Codex root identity across embedded parent metadata
 
 /** Bump whenever transcript-to-search text extraction semantics change. */
 export const FTS_INDEX_VERSION = 2; // v2: source-aware Codex echo suppression and IDE-context normalization

@@ -12,6 +12,7 @@ import type { RunCaseRecord, RunnerResult } from "@/lib/types";
 import { useVisibilityPoll } from "@/lib/use-visibility-poll";
 import ArtifactPreview from "./ArtifactPreview";
 import { isTerminalCaseStatus } from "@/lib/status";
+import { presentRunnerCost } from "@/lib/cost-display";
 
 const GRADER_TIER: Record<string, string> = {
   exit_code: "bg-ok/10 text-ok",
@@ -198,6 +199,7 @@ export default function CaseDetailClient({ caseId, runId, initial }: Props) {
 }
 
 function RunSummary({ runner }: { runner: RunnerResult }) {
+  const cost = presentRunnerCost(runner.usage);
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
       <Stat label="Turns" value={String(runner.numTurns)} icon={Hash} />
@@ -205,7 +207,7 @@ function RunSummary({ runner }: { runner: RunnerResult }) {
       <Stat label="tok/s" value={runner.durationMs > 0 ? (runner.usage.outputTokens / (runner.durationMs / 1000)).toFixed(1) : "0"} icon={Gauge} />
       <Stat label="Tokens in" value={runner.usage.inputTokens.toLocaleString()} icon={Cpu} />
       <Stat label="Tokens out" value={runner.usage.outputTokens.toLocaleString()} icon={Cpu} />
-      <Stat label={runner.usage.costSource === "inferred" ? "Est. cost" : "Cost"} value={`${runner.usage.costSource === "inferred" ? "~" : ""}$${runner.usage.costUsd.toFixed(4)}`} icon={DollarSign} />
+      <Stat label={cost.label} value={cost.value} icon={DollarSign} />
     </div>
   );
 }

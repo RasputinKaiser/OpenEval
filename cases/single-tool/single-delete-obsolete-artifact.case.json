@@ -48,7 +48,8 @@
     "solve": "oracle/single-delete-obsolete-artifact.sh",
     "noop_max_score": 0.25,
     "known_bad": [
-      "oracle/single-delete-obsolete-artifact-bad.sh"
+      "oracle/single-delete-obsolete-artifact-bad.sh",
+      "oracle/single-delete-obsolete-artifact-extra-file-bad.sh"
     ]
   }
 }

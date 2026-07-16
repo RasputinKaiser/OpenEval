@@ -1,6 +1,6 @@
 import { getAdapter } from "../adapters/registry";
 import { resolveDefaultModel } from "../models";
-import { estimateCostUsd } from "../pricing";
+import { estimateCostUsd, isPlaceholderModel } from "../pricing";
 import { emit, type Runner } from "./parse";
 import { spawnHarnessProcess } from "./spawn";
 import type { RunnerContext, RunnerResult, TranscriptEntry } from "../types";
@@ -35,23 +35,27 @@ export function normalizeParsedResult(
   result: RunnerResult,
   fallbackModel: string | null | undefined,
 ): RunnerResult {
-  const model = result.model ?? fallbackModel ?? null;
+  const normalizeModel = (value: string | null | undefined): string | null => {
+    const model = value?.trim();
+    if (!model || isPlaceholderModel(model)) return null;
+    return model;
+  };
+  const model = normalizeModel(result.model) ?? normalizeModel(fallbackModel);
   if (result.usage.costSource === "measured" || result.usage.costSource === "inferred") {
     return { ...result, model };
   }
-  if (result.usage.costUsd > 0) {
-    return { ...result, model, usage: { ...result.usage, costSource: "measured" } };
-  }
+  // A bare numeric value has no trustworthy provenance. Discard it before
+  // reconstructing an API-equivalent estimate from token classes; never
+  // silently relabel an unannotated number as measured spend.
+  const usage = { ...result.usage, costUsd: 0, costSource: "missing" as const };
   const estimate = estimateCostUsd(model, {
-    input: result.usage.inputTokens,
-    output: result.usage.outputTokens,
-    cacheRead: result.usage.cacheReadTokens,
-    cacheCreate: result.usage.cacheCreateTokens,
+    input: usage.inputTokens,
+    output: usage.outputTokens,
+    cacheRead: usage.cacheReadTokens,
+    cacheCreate: usage.cacheCreateTokens,
   });
-  if (estimate == null || estimate === result.usage.costUsd) {
-    return { ...result, model, usage: { ...result.usage, costSource: estimate == null ? "missing" : "inferred" } };
-  }
-  return { ...result, model, usage: { ...result.usage, costUsd: estimate, costSource: "inferred" } };
+  if (estimate == null) return { ...result, model, usage };
+  return { ...result, model, usage: { ...usage, costUsd: estimate, costSource: "inferred" } };
 }
 
 function failure(

@@ -113,6 +113,7 @@ function ShareBar({ frac }: { frac: number }) {
 function PricingEvidence({ model }: { model: AllSourcesResult["byModel"][number] }) {
   const kinds = [
     model.measuredCostSessions > 0 ? "recorded" : null,
+    model.allocatedCostSessions > 0 ? "allocated" : null,
     model.listedRateSessions > 0 ? "listed rate" : null,
     model.familyRateSessions > 0 ? "family map" : null,
     model.fallbackRateSessions > 0 ? "fallback" : null,
@@ -128,6 +129,7 @@ function PricingEvidence({ model }: { model: AllSourcesResult["byModel"][number]
   const title = [
     `${fmtNumFull(model.pricedSessions)}/${fmtNumFull(model.sessions)} sessions have a dollar estimate`,
     `${fmtNumFull(model.measuredCostSessions)} recorded costs`,
+    `${fmtNumFull(model.allocatedCostSessions)} mixed-model shares allocated from recorded session totals`,
     `${fmtNumFull(model.listedRateSessions)} listed-rate estimates`,
     `${fmtNumFull(model.familyRateSessions)} family-mapped estimates`,
     `${fmtNumFull(model.fallbackRateSessions)} fallback estimates`,

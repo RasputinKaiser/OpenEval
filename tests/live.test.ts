@@ -394,6 +394,75 @@ test("mixed-model Claude sessions preserve per-model tokens, tools, and inferred
   }
 });
 
+test("measured mixed-model session costs are labeled as allocated in model rollups", () => {
+  const file = writeSession([
+    {
+      type: "assistant",
+      timestamp: "2026-07-15T00:00:00.000Z",
+      message: { model: "claude-fable-5", content: [{ type: "text", text: "one" }], usage: { input_tokens: 100, output_tokens: 10 } },
+    },
+    {
+      type: "assistant",
+      timestamp: "2026-07-15T00:00:01.000Z",
+      message: { model: "claude-opus-4-8", content: [{ type: "text", text: "two" }], usage: { input_tokens: 50, output_tokens: 5 } },
+    },
+    { type: "result", timestamp: "2026-07-15T00:00:02.000Z", total_cost_usd: 0.12, duration_ms: 2000 },
+  ]);
+  try {
+    const aggregate = scanSourceSessions({
+      id: "tmp-measured-mixed-model",
+      label: "Temporary Measured Mixed Model Source",
+      roots: [path.dirname(file)],
+      format: "jsonl-dir",
+      maxDepth: 1,
+    }, 10);
+    const fable = aggregate.byModel.find((row) => row.model === "claude-fable-5");
+    const opus = aggregate.byModel.find((row) => row.model === "claude-opus-4-8");
+    assert.ok(fable);
+    assert.ok(opus);
+    assert.equal(fable.measuredCostSessions, 0);
+    assert.equal(opus.measuredCostSessions, 0);
+    assert.equal(fable.allocatedCostSessions, 1);
+    assert.equal(opus.allocatedCostSessions, 1);
+    assert.ok(Math.abs(fable.costUsd + opus.costUsd - 0.12) < 1e-12);
+  } finally {
+    fs.rmSync(path.dirname(file), { recursive: true, force: true });
+  }
+});
+
+test("Claude subagent worktree transcripts derive a unique child identity", () => {
+  const file = writeSession([
+    {
+      type: "user",
+      timestamp: "2026-07-15T00:00:00.000Z",
+      sessionId: "parent-session",
+      uuid: "child-user",
+      parentUuid: null,
+      isSidechain: true,
+      agentId: "a51a701450616629b",
+      cwd: "/tmp/repo/.claude/worktrees/child-worktree",
+      message: { content: "Inspect the fixture" },
+    },
+    {
+      type: "assistant",
+      timestamp: "2026-07-15T00:00:01.000Z",
+      sessionId: "parent-session",
+      uuid: "child-assistant",
+      parentUuid: "child-user",
+      isSidechain: true,
+      agentId: "a51a701450616629b",
+      cwd: "/tmp/repo/.claude/worktrees/child-worktree",
+      message: { model: "claude-sonnet-5", content: [{ type: "text", text: "done" }], usage: { input_tokens: 10, output_tokens: 2 } },
+    },
+  ]);
+  const session = summarizeLiveSessionFile(file, "/tmp/project", Date.parse("2026-07-15T00:00:00.000Z"));
+  assert.ok(session);
+  assert.equal(session.sessionId, "parent-session/agent-a51a701450616629b");
+  assert.equal(session.project, "/tmp/repo/.claude/worktrees/child-worktree");
+  assert.equal(session.traceGraph.agentCount, 1);
+  assert.ok(session.parseWarnings.includes("source: subagent"));
+});
+
 test("scanLiveSessions reads descriptor liveTrace usage without fabricating missing values", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "openeval-live-source-"));
   const descPath = path.join(HARNESS_DESC_DIR, `tmp-live-${Date.now()}.harness.json`);
@@ -534,6 +603,36 @@ test("summarizeCodexSessionFile does not drop a cumulative-only event after exac
   assert.equal(session.outputTokens, 30);
   assert.equal(session.usageSegments.at(-1)?.cumulativeInput, 200);
   assert.equal(session.usageSegments.at(-1)?.cumulativeOutput, 30);
+});
+
+test("summarizeCodexSessionFile keeps the root identity when fork context embeds parent metadata", () => {
+  const file = writeSession([
+    {
+      timestamp: "2026-07-15T01:53:29.638Z",
+      type: "session_meta",
+      payload: {
+        id: "child-thread",
+        session_id: "parent-thread",
+        cwd: "/tmp/child",
+        originator: "Codex Desktop",
+        cli_version: "0.144.2",
+        thread_source: "subagent",
+        source: { subagent: { thread_spawn: { parent_thread_id: "parent-thread" } } },
+      },
+    },
+    {
+      timestamp: "2026-07-15T01:53:29.640Z",
+      type: "session_meta",
+      payload: { id: "parent-thread", cwd: "/tmp/parent", originator: "Codex Desktop", source: "vscode" },
+    },
+    { timestamp: "2026-07-15T01:53:30.000Z", type: "event_msg", payload: { type: "agent_message", message: "done" } },
+  ]);
+
+  const session = summarizeCodexSessionFile(file, "2026/07/15", Date.parse("2026-07-15T01:53:29.000Z"));
+  assert.ok(session);
+  assert.equal(session.sessionId, "child-thread");
+  assert.equal(session.project, "/tmp/child");
+  assert.ok(session.parseWarnings.includes("source: Codex Desktop / subagent 0.144.2"));
 });
 
 test("mixed-model Codex sessions attribute per-turn usage and tools to the active model", () => {

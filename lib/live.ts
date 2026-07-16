@@ -209,6 +209,7 @@ export interface LiveAggregate {
     missingCost: number;
     pricedSessions: number;
     measuredCostSessions: number;
+    allocatedCostSessions: number;
     listedRateSessions: number;
     familyRateSessions: number;
     fallbackRateSessions: number;
@@ -1337,6 +1338,10 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
   }
 
   const parseWarnings = buildWarnings(metricSources, malformedLineCount, lineCount, hookErrors, sawResult, model, turnInferenceSource);
+  const subagentId = rootMessages === 0 && sidechainMessages > 0 && agentIds.size === 1
+    ? [...agentIds][0]
+    : null;
+  if (subagentId) parseWarnings.push("source: subagent");
   if (modelUsage.length > 1) parseWarnings.push(`mixed models: ${modelUsage.map((usage) => usage.model).join(", ")}`);
   const toolErrorRate = toolCalls > 0 ? toolErrors / toolCalls : 0;
   const toolCallsPerTurn = numTurns > 0 ? toolCalls / numTurns : 0;
@@ -1356,7 +1361,9 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
   const toolDurations = summarizeToolDurations(toolDurationMs, toolErrorsByName);
 
   return {
-    sessionId: sessionId ?? path.basename(file, ".jsonl"),
+    sessionId: subagentId
+      ? `${sessionId ?? path.basename(file, ".jsonl")}/agent-${subagentId}`
+      : sessionId ?? path.basename(file, ".jsonl"),
     displayTitle,
     lastPromptPreview,
     project,
@@ -1497,6 +1504,7 @@ function parseCodexSession(file: string, lines: Iterable<string>, bytes: number,
   let pathBytes = 0;
   let lineCount = 0;
   let malformedLineCount = 0;
+  let sawSessionMeta = false;
   let originator: string | null = null;
   let source: string | null = null;
   let cliVersion: string | null = null;
@@ -1559,15 +1567,28 @@ function parseCodexSession(file: string, lines: Iterable<string>, bytes: number,
 
       if (obj.type === "session_meta") {
         const payload = obj.payload ?? {};
-        sessionId = payload.id ?? payload.session_id ?? sessionId;
-        project = payload.cwd ?? project;
-        originator = payload.originator ?? originator;
-        source = payload.source ?? source;
-        if (payload.source?.subagent) isSubagent = true;
-        cliVersion = payload.cli_version ?? cliVersion;
-        model = payload.model ?? payload.model_slug ?? model;
-        displayTitle = displayTitle ?? payload.thread_name ?? null;
-        if (payload.model || payload.model_slug) metricSources.model = "measured";
+        // Forked/subagent rollouts can embed one or more parent session_meta
+        // records after their own root record. The first record identifies the
+        // file; later records describe inherited context and must not replace
+        // the child session id/source (which also caused duplicate React keys).
+        if (!sawSessionMeta) {
+          sawSessionMeta = true;
+          sessionId = payload.id ?? payload.session_id ?? sessionId;
+          project = payload.cwd ?? project;
+          originator = payload.originator ?? originator;
+          source = typeof payload.source === "string"
+            ? payload.source
+            : typeof payload.thread_source === "string"
+              ? payload.thread_source
+              : payload.source?.subagent
+                ? "subagent"
+                : source;
+          if (payload.source?.subagent || payload.thread_source === "subagent") isSubagent = true;
+          cliVersion = payload.cli_version ?? cliVersion;
+          model = payload.model ?? payload.model_slug ?? model;
+          displayTitle = displayTitle ?? payload.thread_name ?? null;
+          if (payload.model || payload.model_slug) metricSources.model = "measured";
+        }
       } else if (obj.type === "turn_context") {
         turnContextCount++;
         const payload = obj.payload ?? {};
@@ -2190,6 +2211,7 @@ function aggregate(sessions: LiveSession[], scanWarnings: string[] = [], source:
     missingCost: number;
     pricedSessions: number;
     measuredCostSessions: number;
+    allocatedCostSessions: number;
     listedRateSessions: number;
     familyRateSessions: number;
     fallbackRateSessions: number;
@@ -2248,7 +2270,7 @@ function aggregate(sessions: LiveSession[], scanWarnings: string[] = [], source:
       const cur = byModelMap.get(key) || {
         model: key, sessions: 0, costUsd: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0,
         toolCalls: 0, errors: 0, totalDur: 0, totalQuality: 0, missingTokens: 0, missingCost: 0,
-        pricedSessions: 0, measuredCostSessions: 0, listedRateSessions: 0, familyRateSessions: 0,
+        pricedSessions: 0, measuredCostSessions: 0, allocatedCostSessions: 0, listedRateSessions: 0, familyRateSessions: 0,
         fallbackRateSessions: 0, inferredModelSessions: 0,
       };
       const rowCost = rowCosts[index] ?? 0;
@@ -2264,7 +2286,10 @@ function aggregate(sessions: LiveSession[], scanWarnings: string[] = [], source:
       if (metricMissing(s.metricSources.tokens)) cur.missingTokens++;
       if (metricMissing(s.metricSources.cost) || (s.metricSources.cost === "inferred" && rowCost === 0 && modelUsageVolume(row) > 0)) cur.missingCost++;
       if (rowCost > 0) cur.pricedSessions++;
-      if (s.metricSources.cost === "measured" && rowCost > 0) cur.measuredCostSessions++;
+      if (s.metricSources.cost === "measured" && rowCost > 0) {
+        if (modelRows.length > 1) cur.allocatedCostSessions++;
+        else cur.measuredCostSessions++;
+      }
       if (s.metricSources.model === "inferred") cur.inferredModelSessions++;
       if (s.metricSources.cost === "inferred" && rowCost > 0) {
         const confidence = rateForModelInfo(row.model)?.confidence;
@@ -2291,6 +2316,7 @@ function aggregate(sessions: LiveSession[], scanWarnings: string[] = [], source:
     missingCost: m.missingCost,
     pricedSessions: m.pricedSessions,
     measuredCostSessions: m.measuredCostSessions,
+    allocatedCostSessions: m.allocatedCostSessions,
     listedRateSessions: m.listedRateSessions,
     familyRateSessions: m.familyRateSessions,
     fallbackRateSessions: m.fallbackRateSessions,
@@ -2311,7 +2337,7 @@ function aggregate(sessions: LiveSession[], scanWarnings: string[] = [], source:
   usageSummary.sessionsWithFamilyRate = sessions.filter((s) => s.metricSources.cost === "inferred" && s.costUsd > 0 && rateForModelInfo(s.model)?.confidence === "family").length;
   usageSummary.sessionsWithFallbackRate = sessions.filter((s) => s.metricSources.cost === "inferred" && s.costUsd > 0 && rateForModelInfo(s.model)?.confidence === "fallback").length;
   usageSummary.tokenCoverage = sessions.length ? usageSummary.sessionsWithMeasuredUsage / sessions.length : 0;
-  usageSummary.costCoverage = sessions.length ? usageSummary.sessionsWithMeasuredCost / sessions.length : 0;
+  usageSummary.costCoverage = sessions.length ? usageSummary.sessionsWithPricedUsage / sessions.length : 0;
   usageSummary.avgOutputTokPerSec = outputTokPerSecCount ? outputTokPerSecTotal / outputTokPerSecCount : 0;
 
   return {

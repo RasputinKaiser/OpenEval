@@ -56,7 +56,7 @@ const LISTED_RATES: ListedRate[] = [
   { sourceModel: "openai/gpt-5", aliases: ["gpt-5", "openai/gpt-5"], rate: { input: 1.25, output: 10, cacheRead: 0.125, cacheWrite: 1.25 } },
   { sourceModel: "openai/o4-mini", aliases: ["o4-mini", "openai/o4-mini"], rate: { input: 1.1, output: 4.4, cacheRead: 0.275, cacheWrite: 1.1 } },
 
-  { sourceModel: "z-ai/glm-5.2", aliases: ["z-ai/glm-5.2"], rate: { input: 0.9562, output: 3.0052, cacheRead: 0.17758, cacheWrite: 0.9562 } },
+  { sourceModel: "z-ai/glm-5.2", aliases: ["z-ai/glm-5.2"], rate: { input: 0.9548, output: 3.0008, cacheRead: 0.17732, cacheWrite: 0.9548 } },
   { sourceModel: "deepseek/deepseek-v4-pro", aliases: ["deepseek/deepseek-v4-pro"], rate: { input: 0.435, output: 0.87, cacheRead: 0.003625, cacheWrite: 0.435 } },
   { sourceModel: "deepseek/deepseek-v4-flash", aliases: ["deepseek/deepseek-v4-flash"], rate: { input: 0.098, output: 0.196, cacheRead: 0.02, cacheWrite: 0.098 } },
   { sourceModel: "moonshotai/kimi-k2.7-code", aliases: ["moonshotai/kimi-k2.7-code"], rate: { input: 0.719, output: 3.49, cacheRead: 0.149, cacheWrite: 0.719 } },
@@ -94,6 +94,11 @@ export interface ModelRate {
   sourceModel: string;
 }
 
+export function isPlaceholderModel(model: string | null | undefined): boolean {
+  const id = model?.trim().toLowerCase();
+  return !id || ["<synthetic>", "synthetic", "unknown", "null", "none"].includes(id);
+}
+
 function familyRate(id: string): ListedRate | null {
   const from = (sourceModel: string) => LISTED_RATES.find((entry) => entry.sourceModel === sourceModel) ?? null;
   if (id.startsWith("hf:zai-org/glm-5.2") || id === "glm 5.2 (1m)") return from("z-ai/glm-5.2");
@@ -109,8 +114,9 @@ function familyRate(id: string): ListedRate | null {
   return null;
 }
 
-/** Resolve a rate for a model. Null only for a null/empty id. */
+/** Resolve a rate for a real model id. Placeholder/sentinel ids stay unpriced. */
 export function rateForModelInfo(model: string | null | undefined): ModelRate | null {
+  if (isPlaceholderModel(model)) return null;
   const display = displayModelId(model);
   if (!display) return null;
   const id = display.toLowerCase();
