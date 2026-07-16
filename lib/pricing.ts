@@ -56,7 +56,7 @@ const LISTED_RATES: ListedRate[] = [
   { sourceModel: "openai/gpt-5", aliases: ["gpt-5", "openai/gpt-5"], rate: { input: 1.25, output: 10, cacheRead: 0.125, cacheWrite: 1.25 } },
   { sourceModel: "openai/o4-mini", aliases: ["o4-mini", "openai/o4-mini"], rate: { input: 1.1, output: 4.4, cacheRead: 0.275, cacheWrite: 1.1 } },
 
-  { sourceModel: "z-ai/glm-5.2", aliases: ["z-ai/glm-5.2"], rate: { input: 0.9548, output: 3.0008, cacheRead: 0.17732, cacheWrite: 0.9548 } },
+  { sourceModel: "z-ai/glm-5.2", aliases: ["z-ai/glm-5.2"], rate: { input: 0.952, output: 2.992, cacheRead: 0.1768, cacheWrite: 0.952 } },
   { sourceModel: "deepseek/deepseek-v4-pro", aliases: ["deepseek/deepseek-v4-pro"], rate: { input: 0.435, output: 0.87, cacheRead: 0.003625, cacheWrite: 0.435 } },
   { sourceModel: "deepseek/deepseek-v4-flash", aliases: ["deepseek/deepseek-v4-flash"], rate: { input: 0.098, output: 0.196, cacheRead: 0.02, cacheWrite: 0.098 } },
   { sourceModel: "moonshotai/kimi-k2.7-code", aliases: ["moonshotai/kimi-k2.7-code"], rate: { input: 0.719, output: 3.49, cacheRead: 0.149, cacheWrite: 0.719 } },
