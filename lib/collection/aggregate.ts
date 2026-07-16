@@ -1,6 +1,7 @@
 import { scanSourceSessions, type LiveAggregate, type LiveSession } from "../live";
 import { allCollectionSources, defToSpec } from "./sources";
 import { discoverKnownSources, discoverUnknownCandidates, type UnknownCandidate } from "./discover";
+import { displayModelId, PRICING_LIST_DATE, PRICING_SOURCE } from "../pricing";
 
 export interface CollectedSourceSummary {
   id: string;
@@ -18,6 +19,11 @@ export interface CollectedSourceSummary {
   totalCacheReadTokens: number;
   totalCacheCreateTokens: number;
   totalToolCalls: number;
+  pricedSessions: number;
+  measuredCostSessions: number;
+  listedRateSessions: number;
+  familyRateSessions: number;
+  fallbackRateSessions: number;
   avgDataQuality: number;
   lastActivityMs: number | null;
   scanWarnings: string[];
@@ -33,6 +39,12 @@ export interface ModelRollup {
   costUsd: number;
   toolCalls: number;
   toolErrors: number;
+  pricedSessions: number;
+  measuredCostSessions: number;
+  listedRateSessions: number;
+  familyRateSessions: number;
+  fallbackRateSessions: number;
+  inferredModelSessions: number;
 }
 
 export interface ToolRollup {
@@ -75,7 +87,7 @@ export function toCollectionSessionItem(s: LiveSession, sourceId: string, source
     displayTitle: s.displayTitle,
     lastPromptPreview: s.lastPromptPreview,
     project: s.project,
-    model: s.model,
+    model: displayModelId(s.model),
     path: s.path,
     archived: s.archived,
     startedAt: s.startedAt,
@@ -90,6 +102,8 @@ export function toCollectionSessionItem(s: LiveSession, sourceId: string, source
 }
 
 export interface AllSourcesResult {
+  /** Stable reference time used by server and client for deterministic relative labels. */
+  generatedAtMs: number;
   sources: CollectedSourceSummary[];
   unknown: UnknownCandidate[];
   sessions: CollectionSessionItem[];
@@ -104,6 +118,13 @@ export interface AllSourcesResult {
   totalCacheReadTokens: number;
   totalCacheCreateTokens: number;
   totalToolCalls: number;
+  totalPricedSessions: number;
+  totalMeasuredCostSessions: number;
+  totalListedRateSessions: number;
+  totalFamilyRateSessions: number;
+  totalFallbackRateSessions: number;
+  pricingListDate: string;
+  pricingSource: string;
   byModel: ModelRollup[];
   byTool: ToolRollup[];
 }
@@ -113,7 +134,11 @@ export function mergeModelRollups(lists: ModelRollup[][]): ModelRollup[] {
   const merged = new Map<string, ModelRollup>();
   for (const list of lists) {
     for (const m of list) {
-      const cur = merged.get(m.model) ?? { model: m.model, sessions: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, costUsd: 0, toolCalls: 0, toolErrors: 0 };
+      const cur = merged.get(m.model) ?? {
+        model: m.model, sessions: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, costUsd: 0,
+        toolCalls: 0, toolErrors: 0, pricedSessions: 0, measuredCostSessions: 0, listedRateSessions: 0,
+        familyRateSessions: 0, fallbackRateSessions: 0, inferredModelSessions: 0,
+      };
       cur.sessions += m.sessions;
       cur.inputTokens += m.inputTokens;
       cur.outputTokens += m.outputTokens;
@@ -121,6 +146,12 @@ export function mergeModelRollups(lists: ModelRollup[][]): ModelRollup[] {
       cur.costUsd += m.costUsd;
       cur.toolCalls += m.toolCalls;
       cur.toolErrors += m.toolErrors;
+      cur.pricedSessions += m.pricedSessions;
+      cur.measuredCostSessions += m.measuredCostSessions;
+      cur.listedRateSessions += m.listedRateSessions;
+      cur.familyRateSessions += m.familyRateSessions;
+      cur.fallbackRateSessions += m.fallbackRateSessions;
+      cur.inferredModelSessions += m.inferredModelSessions;
       merged.set(m.model, cur);
     }
   }
@@ -187,6 +218,11 @@ function computeAllSources(): AllSourcesResult {
       totalCacheReadTokens: 0,
       totalCacheCreateTokens: 0,
       totalToolCalls: 0,
+      pricedSessions: 0,
+      measuredCostSessions: 0,
+      listedRateSessions: 0,
+      familyRateSessions: 0,
+      fallbackRateSessions: 0,
       avgDataQuality: 0,
       lastActivityMs: disc?.lastActivityMs ?? null,
       scanWarnings: [],
@@ -203,9 +239,17 @@ function computeAllSources(): AllSourcesResult {
       base.totalCacheReadTokens = agg.usageSummary.totalCacheReadTokens;
       base.totalCacheCreateTokens = agg.usageSummary.totalCacheCreateTokens;
       base.totalToolCalls = agg.totalToolCalls;
+      base.pricedSessions = agg.usageSummary.sessionsWithPricedUsage;
+      base.measuredCostSessions = agg.usageSummary.sessionsWithMeasuredCost;
+      base.listedRateSessions = agg.usageSummary.sessionsWithListedRate;
+      base.familyRateSessions = agg.usageSummary.sessionsWithFamilyRate;
+      base.fallbackRateSessions = agg.usageSummary.sessionsWithFallbackRate;
       modelLists.push(agg.byModel.map((m) => ({
         model: m.model, sessions: m.sessions, inputTokens: m.inputTokens, outputTokens: m.outputTokens,
         cacheReadTokens: m.cacheReadTokens, costUsd: m.costUsd, toolCalls: m.toolCalls, toolErrors: m.errors,
+        pricedSessions: m.pricedSessions, measuredCostSessions: m.measuredCostSessions,
+        listedRateSessions: m.listedRateSessions, familyRateSessions: m.familyRateSessions,
+        fallbackRateSessions: m.fallbackRateSessions, inferredModelSessions: m.inferredModelSessions,
       })));
       toolLists.push(agg.byTool.map((t) => ({ name: t.name, calls: t.calls, errors: t.errors })));
       base.avgDataQuality = agg.avgDataQuality;
@@ -228,6 +272,7 @@ function computeAllSources(): AllSourcesResult {
   const unknown = discoverUnknownCandidates(knownRoots);
 
   return {
+    generatedAtMs: Date.now(),
     sources: summaries.sort((a, b) => b.filesFound - a.filesFound || a.label.localeCompare(b.label)),
     unknown,
     sessions,
@@ -242,6 +287,13 @@ function computeAllSources(): AllSourcesResult {
     totalCacheReadTokens: summaries.reduce((a, s) => a + s.totalCacheReadTokens, 0),
     totalCacheCreateTokens: summaries.reduce((a, s) => a + s.totalCacheCreateTokens, 0),
     totalToolCalls: summaries.reduce((a, s) => a + s.totalToolCalls, 0),
+    totalPricedSessions: summaries.reduce((a, s) => a + s.pricedSessions, 0),
+    totalMeasuredCostSessions: summaries.reduce((a, s) => a + s.measuredCostSessions, 0),
+    totalListedRateSessions: summaries.reduce((a, s) => a + s.listedRateSessions, 0),
+    totalFamilyRateSessions: summaries.reduce((a, s) => a + s.familyRateSessions, 0),
+    totalFallbackRateSessions: summaries.reduce((a, s) => a + s.fallbackRateSessions, 0),
+    pricingListDate: PRICING_LIST_DATE,
+    pricingSource: PRICING_SOURCE,
     byModel: mergeModelRollups(modelLists),
     byTool: mergeToolRollups(toolLists),
   };

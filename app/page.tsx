@@ -75,10 +75,10 @@ export default async function Page() {
         />
         <Stat
           icon={DollarSign}
-          label={collection?.anyEstimatedCost ? "Est. spend (all time)" : "Spend (all time)"}
+          label="API equivalent (all time)"
           value={collection ? (collection.anyEstimatedCost ? "~" : "") + fmtUsd(collection.totalCostUsd) : "—"}
-          title={collection ? fmtUsdFull(collection.totalCostUsd) : undefined}
-          sub={collection ? `${fmtNum(collection.totalInputTokens + collection.totalOutputTokens)} tokens` : undefined}
+          title={collection ? `${fmtUsdFull(collection.totalCostUsd)} at API list rates; not actual subscription or provider spend` : undefined}
+          sub={collection ? `${fmtNum(collection.totalInputTokens + collection.totalOutputTokens)} processed I/O tokens` : undefined}
           href="/collection"
         />
         <Stat

@@ -29,9 +29,9 @@ export function fmtUsdFull(n: number): string {
   return Number.isFinite(n) ? "$" + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—";
 }
 
-export function fmtRel(ms: number | null | undefined): string {
+export function fmtRel(ms: number | null | undefined, nowMs = Date.now()): string {
   if (!ms) return "—";
-  const diff = Date.now() - ms;
+  const diff = nowMs - ms;
   if (diff < 60_000) return "just now";
   if (diff < 3_600_000) return Math.floor(diff / 60_000) + "m ago";
   if (diff < 86_400_000) return Math.floor(diff / 3_600_000) + "h ago";
