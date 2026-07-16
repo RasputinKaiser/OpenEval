@@ -1,7 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
-import fsSync from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
@@ -145,7 +144,9 @@ test("run manifests capture harness, defaults, and repository identity", async (
 });
 
 test("tmux runner completes a descriptor-defined local harness command", async (t) => {
-  if (!fsSync.existsSync("/Users/ianzvirbulis/.homebrew/bin/tmux")) {
+  try {
+    execFileSync("tmux", ["-V"], { stdio: "ignore" });
+  } catch {
     t.skip("tmux is not installed");
     return;
   }
