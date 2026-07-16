@@ -35,12 +35,12 @@ test("case filters preserve deterministic selection and metadata", async () => {
 test("case loader invalidates its cache after a case mtime change", async () => {
   const file = path.join(CASES_DIR, "agentic-swe", "swe-fix-fizzbuzz.case.json");
   const before = await fs.stat(file);
-  await loadCases({ force: true });
+  const beforeCases = await loadCases({ force: true });
   await fs.utimes(file, before.atime, new Date(before.mtimeMs + 2000));
   try {
     await new Promise((resolve) => setTimeout(resolve, 1100));
     const after = await loadCases();
-    assert.equal(after.length, 18);
+    assert.equal(after.length, beforeCases.length);
     assert.equal(after.find((c) => c.id === "swe-fix-fizzbuzz")?.name, "Fix the FizzBuzz bug");
   } finally {
     await fs.utimes(file, before.atime, before.mtime);
