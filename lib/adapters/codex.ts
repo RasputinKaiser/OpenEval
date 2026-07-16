@@ -58,6 +58,8 @@ export function parseCodexLine(line: string, into: ParseAccumulator): RunnerEven
 
   if (obj.type === "turn.completed") {
     const usage = obj.usage || {};
+    const inclusiveInput = usage.input_tokens ?? usage.inputTokens ?? 0;
+    const cachedInput = usage.cached_input_tokens ?? usage.cache_read_input_tokens ?? 0;
     const toolCallCounts: Record<string, number> = {};
     for (const tc of into.toolCalls) toolCallCounts[tc.name] = (toolCallCounts[tc.name] || 0) + 1;
     const durationMs = obj.duration_ms ?? (at - into.startedAt);
@@ -67,13 +69,15 @@ export function parseCodexLine(line: string, into: ParseAccumulator): RunnerEven
       transcript: into.transcript, toolCalls: into.toolCalls, finalText: into.finalText,
       resultText: into.finalText,
       usage: {
-        inputTokens: usage.input_tokens ?? usage.inputTokens ?? 0,
+        // Codex input_tokens includes cached input. Runner telemetry stores
+        // mutually exclusive token classes, matching the live parser.
+        inputTokens: Math.max(0, inclusiveInput - cachedInput),
         outputTokens: usage.output_tokens ?? usage.outputTokens ?? 0,
         // Codex reports cached input tokens under cached_input_tokens (same field
         // the live-trace parser reads); 0 when absent. Without this, recorded
         // Codex runs always show a 0% cache-hit rate in the summary.
-        cacheReadTokens: usage.cached_input_tokens ?? usage.cache_read_input_tokens ?? 0,
-        cacheCreateTokens: 0, costUsd: 0,
+        cacheReadTokens: cachedInput,
+        cacheCreateTokens: 0, costUsd: 0, costSource: "missing",
       },
       numTurns: obj.num_turns ?? 1,
       stopReason: obj.stop_reason ?? "completed",

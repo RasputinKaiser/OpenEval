@@ -1,5 +1,22 @@
-import type { RunnerEvent } from "../types";
+import type { RunnerEvent, TokenSegment } from "../types";
 import type { ParseAccumulator } from "./types";
+
+interface StreamUsageState {
+  segments: TokenSegment[];
+  cumulativeInput: number;
+  cumulativeOutput: number;
+  lastAt: number;
+}
+
+function streamUsageState(into: ParseAccumulator): StreamUsageState {
+  const internal = into as ParseAccumulator & { _streamUsage?: StreamUsageState };
+  return internal._streamUsage ?? (internal._streamUsage = {
+    segments: [],
+    cumulativeInput: 0,
+    cumulativeOutput: 0,
+    lastAt: into.startedAt,
+  });
+}
 
 /**
  * Parser for Claude Code-style `--output-format stream-json` output.
@@ -20,6 +37,7 @@ export function parseStreamLine(
   const at = Date.now();
 
   if (obj.type === "system" && obj.subtype === "init") {
+    delete (into as ParseAccumulator & { _streamUsage?: StreamUsageState })._streamUsage;
     into.result = {
       ...(into.result || {}),
       exitCode: 0,
@@ -69,6 +87,25 @@ export function parseStreamLine(
       into.finalText = text;
       events.push({ kind: "message", message: entry, at });
     }
+    const usage = obj.message.usage ?? {};
+    const hasUsage = usage.input_tokens != null || usage.output_tokens != null;
+    if (hasUsage) {
+      const state = streamUsageState(into);
+      const deltaInput = Number(usage.input_tokens ?? 0) || 0;
+      const deltaOutput = Number(usage.output_tokens ?? 0) || 0;
+      const elapsedSec = Math.max((at - state.lastAt) / 1000, 0.001);
+      state.cumulativeInput += deltaInput;
+      state.cumulativeOutput += deltaOutput;
+      state.segments.push({
+        atMs: at,
+        cumulativeInput: state.cumulativeInput,
+        cumulativeOutput: state.cumulativeOutput,
+        deltaInput,
+        deltaOutput,
+        outTokPerSec: deltaOutput / elapsedSec,
+      });
+      state.lastAt = at;
+    }
     return events;
   }
 
@@ -101,31 +138,25 @@ export function parseStreamLine(
     const usage = obj.usage || {};
     const toolCallCounts: Record<string, number> = {};
     for (const tc of into.toolCalls) toolCallCounts[tc.name] = (toolCallCounts[tc.name] || 0) + 1;
-    const segs: any[] = [];
     const finalDur = (obj.duration_ms ?? 0) || 1;
     const totalOut = usage.output_tokens ?? 0;
     const totalIn = usage.input_tokens ?? 0;
-    const cumulativeBy = (into.transcript.filter((m) => m.role === "assistant")).length;
-    if (cumulativeBy > 1) {
-      const outStep = Math.floor(totalOut / Math.max(cumulativeBy, 1));
-      const inStep = Math.floor(totalIn / Math.max(cumulativeBy, 1));
-      let tIdx = 0;
-      for (const m of into.transcript) {
-        if (m.role !== "assistant") continue;
-        tIdx++;
-        const elapsedFromPrev = 1;
-        segs.push({
-          atMs: m.atMs ?? into.startedAt,
-          cumulativeInput: inStep * tIdx,
-          cumulativeOutput: outStep * tIdx,
-          deltaOutput: outStep,
-          deltaInput: inStep,
-          outTokPerSec: outStep / elapsedFromPrev,
-        });
-      }
-    } else if (totalOut > 0) {
-      segs.push({ atMs: into.startedAt, cumulativeInput: totalIn, cumulativeOutput: totalOut, deltaOutput: totalOut, deltaInput: totalIn, outTokPerSec: totalOut / (finalDur / 1000) });
-    }
+    const measured = streamUsageState(into);
+    const measuredMatchesFinal = measured.segments.length > 0
+      && measured.cumulativeInput === totalIn
+      && measured.cumulativeOutput === totalOut;
+    const segs: TokenSegment[] = measuredMatchesFinal
+      ? measured.segments
+      : totalIn > 0 || totalOut > 0
+        ? [{
+            atMs: into.startedAt + finalDur,
+            cumulativeInput: totalIn,
+            cumulativeOutput: totalOut,
+            deltaOutput: totalOut,
+            deltaInput: totalIn,
+            outTokPerSec: totalOut / (finalDur / 1000),
+          }]
+        : [];
     into.result = {
       ...(into.result || {}),
       exitCode: obj.is_error ? 1 : 0,
@@ -142,6 +173,7 @@ export function parseStreamLine(
         cacheReadTokens: usage.cache_read_input_tokens ?? 0,
         cacheCreateTokens: usage.cache_creation_input_tokens ?? 0,
         costUsd: obj.total_cost_usd ?? 0,
+        costSource: obj.total_cost_usd != null ? "measured" : "missing",
       },
       numTurns: obj.num_turns ?? 0,
       stopReason: obj.stop_reason ?? null,

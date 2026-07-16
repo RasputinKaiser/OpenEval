@@ -141,10 +141,42 @@ test("scanSourceSessions keeps archived sessions after their files are pruned", 
     assert.equal(agg.archivedSessions, 1);
     const archived = agg.sessions.find((s) => s.sessionId === "old-session");
     assert.equal(archived?.archived, true);
+    assert.equal(archived?.parseWarnings.some((warning) => warning.includes("archived parse")), false);
     assert.equal(agg.sessions.find((s) => s.sessionId === "new-session")?.archived, undefined);
 
     // Without the flag (Live page), archived sessions stay hidden.
     assert.equal(scanSourceSessions(spec, 50).totalSessions, 1);
+  } finally {
+    _setCacheDbForTest(null);
+    conn.close();
+  }
+});
+
+test("scanSourceSessions labels pruned sessions cached by an older parser", () => {
+  const Database = require("better-sqlite3");
+  const { PARSER_VERSION, _setCacheDbForTest } = require("../lib/live-cache");
+  const conn = new Database(":memory:");
+  _setCacheDbForTest(conn);
+  try {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "openeval-stale-archive-"));
+    const file = path.join(dir, "session.jsonl");
+    fs.writeFileSync(file, [
+      { type: "system", sessionId: "stale-archived", cwd: "/tmp/proj", timestamp: "2026-06-28T20:00:00.000Z" },
+      { type: "assistant", message: { content: [{ type: "text", text: "done" }] } },
+      { type: "result", duration_ms: 1000, num_turns: 1, usage: { input_tokens: 10, output_tokens: 5 } },
+    ].map((line) => JSON.stringify(line)).join("\n"), "utf8");
+    const spec = { id: "stale-arch", label: "Stale archive", roots: [dir], format: "jsonl-dir" as const };
+
+    scanSourceSessions(spec, 50, { includeArchived: true });
+    conn.prepare("UPDATE session_cache SET parser_version = ? WHERE file = ?").run(PARSER_VERSION - 1, file);
+    fs.rmSync(file);
+
+    const agg = scanSourceSessions(spec, 50, { includeArchived: true });
+    assert.equal(agg.totalSessions, 1);
+    assert.equal(agg.sessions[0].archived, true);
+    assert.ok(agg.sessions[0].parseWarnings.includes(
+      `archived parse v${PARSER_VERSION - 1}; source was pruned before current parser v${PARSER_VERSION} could re-read it`,
+    ));
   } finally {
     _setCacheDbForTest(null);
     conn.close();

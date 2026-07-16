@@ -282,7 +282,7 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
               const tokPerSec = runner && runner.durationMs > 0
                 ? (runner.usage.outputTokens / (runner.durationMs / 1000)).toFixed(1)
                 : "—";
-              const cost = runner ? `$${runner.usage.costUsd.toFixed(4)}` : "—";
+              const cost = runner ? `${runner.usage.costSource === "inferred" ? "~" : ""}$${runner.usage.costUsd.toFixed(4)}` : "—";
               const caseTrust = summarizeCaseTrust(c);
               return (
                 <div
@@ -430,7 +430,7 @@ function CaseSidePanel({ rc, runId }: { rc: RunCaseRecord; runId: string }) {
           <Mini label="Turns" value={String(runner.numTurns)} icon={Hash} />
           <Mini label="Duration" value={runner.durationMs < 1000 ? `${runner.durationMs}ms` : `${(runner.durationMs / 1000).toFixed(1)}s`} icon={Clock} />
           <Mini label="tok/s" value={runner.durationMs > 0 ? (runner.usage.outputTokens / (runner.durationMs / 1000)).toFixed(1) : "0"} icon={Gauge} />
-          <Mini label="Cost" value={`$${runner.usage.costUsd.toFixed(4)}`} icon={DollarSign} />
+          <Mini label={runner.usage.costSource === "inferred" ? "Est. cost" : "Cost"} value={`${runner.usage.costSource === "inferred" ? "~" : ""}$${runner.usage.costUsd.toFixed(4)}`} icon={DollarSign} />
           <Mini label="Tokens in" value={runner.usage.inputTokens.toLocaleString()} icon={Cpu} />
           <Mini label="Tokens out" value={runner.usage.outputTokens.toLocaleString()} icon={Cpu} />
         </div>

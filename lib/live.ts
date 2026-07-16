@@ -6,7 +6,7 @@ import { compactDisplayPath, redactSensitiveText } from "./redaction";
 import { getPath, type FieldMapping } from "./adapters/generic";
 import { hermesJsonToRecords } from "./adapters/hermes";
 import { displayModelId, estimateCostUsd, rateForModelInfo } from "./pricing";
-import { cacheGet, cachePut, listCachedSessionsUnder } from "./live-cache";
+import { cacheGet, cachePut, listCachedSessionsUnder, PARSER_VERSION } from "./live-cache";
 import { classifySentiment, isRephrase, looksLikeApologyOrFailure, looksLikeTestsPassed, mcpServerFromTool, JUDGE_PROMPT_MARKER } from "./insights/signals";
 import { hasAdapter, getAdapter, getDefaultHarness, invalidateRegistry } from "./adapters/registry";
 import { invalidateDescriptorCache } from "./adapters/loader";
@@ -92,6 +92,16 @@ export interface LiveSessionToolDuration {
   errors: number;
 }
 
+export interface LiveModelUsage {
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheCreateTokens: number;
+  toolCalls: number;
+  toolErrors: number;
+}
+
 export interface LiveSession {
   sessionId: string;
   displayTitle: string | null;
@@ -107,6 +117,8 @@ export interface LiveSession {
   cacheCreateTokens: number;
   totalTokens: number;
   costUsd: number;
+  /** Exact per-model attribution when a trace records model identity per turn. */
+  modelUsage?: LiveModelUsage[];
   usageSegments: LiveUsageSegment[];
   toolCalls: number;
   toolErrors: number;
@@ -481,6 +493,102 @@ function incrementRecord(record: Record<string, number>, key: string | null | un
   record[key] = (record[key] ?? 0) + amount;
 }
 
+function ensureModelUsage(map: Map<string, LiveModelUsage>, model: unknown): LiveModelUsage | null {
+  if (typeof model !== "string" || !model || model === "<synthetic>") return null;
+  let usage = map.get(model);
+  if (!usage) {
+    usage = {
+      model,
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheCreateTokens: 0,
+      toolCalls: 0,
+      toolErrors: 0,
+    };
+    map.set(model, usage);
+  }
+  return usage;
+}
+
+function modelUsageVolume(usage: LiveModelUsage): number {
+  return usage.inputTokens + usage.outputTokens + usage.cacheReadTokens + usage.cacheCreateTokens;
+}
+
+function estimateModelUsageCost(rows: LiveModelUsage[]): number | null {
+  let total = 0;
+  let priced = false;
+  for (const row of rows) {
+    if (modelUsageVolume(row) === 0) continue;
+    const estimate = estimateCostUsd(row.model, {
+      input: row.inputTokens,
+      output: row.outputTokens,
+      cacheRead: row.cacheReadTokens,
+      cacheCreate: row.cacheCreateTokens,
+    });
+    // A partial mixed-model estimate is more misleading than a missing cost.
+    if (estimate == null) return null;
+    total += estimate;
+    priced = true;
+  }
+  return priced ? total : null;
+}
+
+function attributedModelUsage(session: LiveSession): LiveModelUsage[] {
+  const fallback = (): LiveModelUsage[] => [{
+    model: session.model ?? "unknown",
+    inputTokens: session.inputTokens,
+    outputTokens: session.outputTokens,
+    cacheReadTokens: session.cacheReadTokens,
+    cacheCreateTokens: session.cacheCreateTokens,
+    toolCalls: session.toolCalls,
+    toolErrors: session.toolErrors,
+  }];
+  if (!session.modelUsage?.length) return fallback();
+
+  const rows = session.modelUsage.map((usage) => ({ ...usage }));
+  const sums = rows.reduce((total, usage) => ({
+    inputTokens: total.inputTokens + usage.inputTokens,
+    outputTokens: total.outputTokens + usage.outputTokens,
+    cacheReadTokens: total.cacheReadTokens + usage.cacheReadTokens,
+    cacheCreateTokens: total.cacheCreateTokens + usage.cacheCreateTokens,
+    toolCalls: total.toolCalls + usage.toolCalls,
+    toolErrors: total.toolErrors + usage.toolErrors,
+  }), { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreateTokens: 0, toolCalls: 0, toolErrors: 0 });
+  const expected = {
+    inputTokens: session.inputTokens,
+    outputTokens: session.outputTokens,
+    cacheReadTokens: session.cacheReadTokens,
+    cacheCreateTokens: session.cacheCreateTokens,
+    toolCalls: session.toolCalls,
+    toolErrors: session.toolErrors,
+  };
+  const fields = Object.keys(expected) as Array<keyof typeof expected>;
+  if (fields.some((field) => sums[field] > expected[field])) return fallback();
+
+  const primary = rows.find((usage) => usage.model === session.model) ?? rows[0];
+  for (const field of fields) primary[field] += expected[field] - sums[field];
+  return rows;
+}
+
+function modelUsageCosts(session: LiveSession, rows: LiveModelUsage[]): number[] {
+  if (session.costUsd <= 0) return rows.map(() => 0);
+  const estimates = rows.map((row) => estimateCostUsd(row.model, {
+    input: row.inputTokens,
+    output: row.outputTokens,
+    cacheRead: row.cacheReadTokens,
+    cacheCreate: row.cacheCreateTokens,
+  }) ?? 0);
+  let weights = estimates;
+  let weightTotal = weights.reduce((sum, value) => sum + value, 0);
+  if (weightTotal <= 0) {
+    weights = rows.map((row) => modelUsageVolume(row) || row.toolCalls || 0);
+    weightTotal = weights.reduce((sum, value) => sum + value, 0);
+  }
+  if (weightTotal <= 0) return rows.map((_, index) => index === 0 ? session.costUsd : 0);
+  return weights.map((weight) => session.costUsd * weight / weightTotal);
+}
+
 function topEntries(map: Map<string, number>, limit: number): Array<{ key: string; count: number }> {
   return [...map.entries()]
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
@@ -538,12 +646,15 @@ function parseSourceSessionList(source: LiveTraceSource, limit: number, scanWarn
 
 function refreshInferredSessionCost(session: LiveSession): LiveSession {
   if (session.metricSources.cost === "measured" || session.metricSources.cost === "malformed") return session;
-  const estimate = estimateCostUsd(session.model, {
-    input: session.inputTokens,
-    output: session.outputTokens,
-    cacheRead: session.cacheReadTokens,
-    cacheCreate: session.cacheCreateTokens,
-  });
+  const rows = attributedModelUsage(session);
+  const estimate = session.modelUsage?.length
+    ? estimateModelUsageCost(rows)
+    : estimateCostUsd(session.model, {
+        input: session.inputTokens,
+        output: session.outputTokens,
+        cacheRead: session.cacheReadTokens,
+        cacheCreate: session.cacheCreateTokens,
+      });
   if (estimate == null) {
     if (session.costUsd === 0 && session.metricSources.cost === "missing") return session;
     return { ...session, costUsd: 0, metricSources: { ...session.metricSources, cost: "missing" } };
@@ -570,12 +681,23 @@ function isUnderNamedRoot(file: string, roots: string[], name: string): boolean 
  */
 function appendArchivedSessions(source: LiveTraceSource, sessions: LiveSession[]): void {
   const seenIds = new Set(sessions.map((s) => s.sessionId));
-  for (const { file, session } of listCachedSessionsUnder(source.roots)) {
+  for (const { file, session, parserVersion } of listCachedSessionsUnder(source.roots)) {
     let onDisk = false;
     try { onDisk = fs.existsSync(file); } catch {}
     if (onDisk || seenIds.has(session.sessionId)) continue;
     seenIds.add(session.sessionId);
-    sessions.push({ ...session, archived: true, staleMs: Math.max(0, Date.now() - session.lastEventAt) });
+    const parseWarnings = Array.isArray(session.parseWarnings) ? session.parseWarnings : [];
+    const staleParserWarning = parserVersion < PARSER_VERSION
+      ? `archived parse v${parserVersion}; source was pruned before current parser v${PARSER_VERSION} could re-read it`
+      : null;
+    sessions.push({
+      ...session,
+      archived: true,
+      staleMs: Math.max(0, Date.now() - session.lastEventAt),
+      parseWarnings: staleParserWarning && !parseWarnings.includes(staleParserWarning)
+        ? [...parseWarnings, staleParserWarning]
+        : parseWarnings,
+    });
   }
   sessions.sort((a, b) => b.lastEventAt - a.lastEventAt);
 }
@@ -886,6 +1008,7 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
   const parentUuids = new Set<string>();
   const agentIds = new Set<string>();
   const toolNameById = new Map<string, string>();
+  const toolModelById = new Map<string, string>();
   const toolCallsByName = new Map<string, number>();
   const toolStartByIdMs = new Map<string, number>();
   const toolDurationMs = new Map<string, number[]>();
@@ -893,6 +1016,7 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
   const queueSummary: LiveQueueSummary = { enqueue: 0, dequeue: 0, remove: 0, popAll: 0, preview: [] };
   const touchedFiles = new Set<string>();
   const permissionModes: Record<string, number> = {};
+  const modelUsageByModel = new Map<string, LiveModelUsage>();
   let readLikeOperations = 0;
   let writeLikeOperations = 0;
   let usageSegments: LiveUsageSegment[] = [];
@@ -984,6 +1108,10 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
         }
       } else if (obj.type === "assistant" && Array.isArray(obj.message?.content)) {
         if (typeof obj.message?.model === "string" && obj.message.model && obj.message.model !== "<synthetic>") model = obj.message.model;
+        const messageModel = typeof obj.message?.model === "string" && obj.message.model !== "<synthetic>"
+          ? obj.message.model
+          : model;
+        const modelUsage = ensureModelUsage(modelUsageByModel, messageModel);
         const messageUsage = obj.message?.usage ?? {};
         const messageInput = numericOrNull(messageUsage.input_tokens);
         const messageOutput = numericOrNull(messageUsage.output_tokens);
@@ -996,6 +1124,12 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
           outputTokens += deltaOutput;
           cacheReadTokens += messageCacheRead ?? 0;
           cacheCreateTokens += messageCacheCreate ?? 0;
+          if (modelUsage) {
+            modelUsage.inputTokens += deltaInput;
+            modelUsage.outputTokens += deltaOutput;
+            modelUsage.cacheReadTokens += messageCacheRead ?? 0;
+            modelUsage.cacheCreateTokens += messageCacheCreate ?? 0;
+          }
           metricSources.tokens = "measured";
           if (at) {
             const elapsedSec = Math.max((at - startedAt) / 1000, 0.001);
@@ -1015,8 +1149,10 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
             toolCalls++;
             if (typeof b.id === "string" && typeof b.name === "string") {
               toolNameById.set(b.id, b.name);
+              if (modelUsage) toolModelById.set(b.id, modelUsage.model);
               if (at != null) toolStartByIdMs.set(b.id, at);
             }
+            if (modelUsage) modelUsage.toolCalls++;
             if (typeof b.name === "string") increment(toolCallsByName, b.name);
             for (const filePath of extractFilePaths(b.input)) touchedFiles.add(filePath);
             const rawName = String(b.name ?? "");
@@ -1058,6 +1194,9 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
           if (b.type === "tool_result" && b.is_error) {
             toolErrors++;
             increment(toolErrorsByName, toolNameById.get(b.tool_use_id) ?? "(unknown)");
+            const errorModel = typeof b.tool_use_id === "string" ? toolModelById.get(b.tool_use_id) : null;
+            const errorUsage = ensureModelUsage(modelUsageByModel, errorModel);
+            if (errorUsage) errorUsage.toolErrors++;
           }
         }
       } else if (obj.type === "attachment") {
@@ -1139,6 +1278,14 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
     return null;
   }
 
+  const modelUsage = [...modelUsageByModel.values()]
+    .filter((usage) => modelUsageVolume(usage) > 0 || usage.toolCalls > 0 || usage.toolErrors > 0)
+    .map((usage) => ({ ...usage }));
+  if (modelUsage.length > 0) {
+    model = [...modelUsage].sort((a, b) =>
+      modelUsageVolume(b) - modelUsageVolume(a) || b.toolCalls - a.toolCalls,
+    )[0].model;
+  }
   if (model) {
     metricSources.model = "measured";
   } else if (inferredModel) {
@@ -1180,7 +1327,9 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
   // Persisted session files carry token usage but no cost — estimate it from the
   // measured tokens + model list price. Tagged "inferred", never "measured".
   if (metricSources.cost === "missing") {
-    const est = estimateCostUsd(model, { input: inputTokens, output: outputTokens, cacheRead: cacheReadTokens, cacheCreate: cacheCreateTokens });
+    const est = modelUsage.length > 0
+      ? estimateModelUsageCost(modelUsage)
+      : estimateCostUsd(model, { input: inputTokens, output: outputTokens, cacheRead: cacheReadTokens, cacheCreate: cacheCreateTokens });
     if (est != null) {
       costUsd = est;
       metricSources.cost = "inferred";
@@ -1188,6 +1337,7 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
   }
 
   const parseWarnings = buildWarnings(metricSources, malformedLineCount, lineCount, hookErrors, sawResult, model, turnInferenceSource);
+  if (modelUsage.length > 1) parseWarnings.push(`mixed models: ${modelUsage.map((usage) => usage.model).join(", ")}`);
   const toolErrorRate = toolCalls > 0 ? toolErrors / toolCalls : 0;
   const toolCallsPerTurn = numTurns > 0 ? toolCalls / numTurns : 0;
   const textAvailability = lineCount > 0 ? textBlocks / lineCount : 0;
@@ -1220,6 +1370,7 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
     cacheCreateTokens,
     totalTokens,
     costUsd,
+    modelUsage: modelUsage.length > 0 ? modelUsage : undefined,
     usageSegments,
     toolCalls,
     toolErrors,
@@ -1309,7 +1460,7 @@ function isInjectedPreamble(text: string, subagentSession: boolean): boolean {
  * (shape verified against real rollouts). Return the ask, or the text
  * unchanged when unwrapped.
  */
-function stripIdeContextWrapper(text: string): string {
+export function stripIdeContextWrapper(text: string): string {
   if (!text.startsWith("# Context from my IDE setup")) return text;
   const marker = "## My request for Codex:";
   const idx = text.indexOf(marker);
@@ -1329,8 +1480,7 @@ function parseCodexSession(file: string, lines: Iterable<string>, bytes: number,
   let cacheCreateTokens = 0;
   // Codex token accounting: sum per-turn usage (billed), not max-of-cumulative
   // (which undercounts sessions whose context was compacted/reset).
-  let sumIn = 0, sumOut = 0, sumCached = 0, sawLast = false;
-  let maxTotIn = 0, maxTotOut = 0, maxTotCached = 0;
+  let sumIn = 0, sumOut = 0, sumCached = 0;
   let userPositive = 0, userNegative = 0, rephrases = 0;
   let lastUserText: string | null = null;
   let lastAgentText = "";
@@ -1354,7 +1504,9 @@ function parseCodexSession(file: string, lines: Iterable<string>, bytes: number,
   const toolErrorsByName = new Map<string, number>();
   const toolStartByCallIdMs = new Map<string, number>();
   const toolNameByCallIdMs = new Map<string, string>();
+  const toolModelByCallId = new Map<string, string>();
   const toolDurationMs = new Map<string, number[]>();
+  const modelUsageByModel = new Map<string, LiveModelUsage>();
   const touchedFiles = new Set<string>();
   const usageSegments: LiveUsageSegment[] = [];
   const metricSources: LiveMetricSources = {
@@ -1383,8 +1535,11 @@ function parseCodexSession(file: string, lines: Iterable<string>, bytes: number,
 
   try {
     pathBytes = bytes;
-    let previousInput = 0;
-    let previousOutput = 0;
+    let previousTotalInput = 0;
+    let previousTotalOutput = 0;
+    let previousTotalCached = 0;
+    let segmentInput = 0;
+    let segmentOutput = 0;
     for (const line of lines) {
       if (!line.trim()) continue;
       lineCount++;
@@ -1442,32 +1597,78 @@ function parseCodexSession(file: string, lines: Iterable<string>, bytes: number,
           const info = payload.info ?? {};
           const last = info.last_token_usage;
           const tot = info.total_token_usage;
+          let fallbackInputDelta = 0;
+          let fallbackOutputDelta = 0;
+          let fallbackCachedDelta = 0;
           if (last) {
-            sawLast = true;
-            sumIn += Number(last.input_tokens ?? 0) || 0;
-            sumOut += Number(last.output_tokens ?? 0) || 0;
-            sumCached += Number(last.cached_input_tokens ?? 0) || 0;
+            const lastInput = Number(last.input_tokens ?? 0) || 0;
+            const lastOutput = Number(last.output_tokens ?? 0) || 0;
+            const lastCached = Number(last.cached_input_tokens ?? 0) || 0;
+            const activeUsage = ensureModelUsage(modelUsageByModel, model);
+            if (activeUsage) {
+              activeUsage.inputTokens += Math.max(0, lastInput - lastCached);
+              activeUsage.outputTokens += lastOutput;
+              activeUsage.cacheReadTokens += lastCached;
+            }
           }
           if (tot) {
-            maxTotIn = Math.max(maxTotIn, Number(tot.input_tokens ?? 0) || 0);
-            maxTotOut = Math.max(maxTotOut, Number(tot.output_tokens ?? 0) || 0);
-            maxTotCached = Math.max(maxTotCached, Number(tot.cached_input_tokens ?? 0) || 0);
+            const totalInput = Number(tot.input_tokens ?? 0) || 0;
+            const totalOutput = Number(tot.output_tokens ?? 0) || 0;
+            const totalCached = Number(tot.cached_input_tokens ?? 0) || 0;
+            fallbackInputDelta = totalInput >= previousTotalInput
+              ? totalInput - previousTotalInput
+              : totalInput;
+            fallbackOutputDelta = totalOutput >= previousTotalOutput
+              ? totalOutput - previousTotalOutput
+              : totalOutput;
+            fallbackCachedDelta = totalCached >= previousTotalCached
+              ? totalCached - previousTotalCached
+              : totalCached;
+            if (!last) {
+              const activeUsage = ensureModelUsage(modelUsageByModel, model);
+              if (activeUsage) {
+                activeUsage.inputTokens += Math.max(0, fallbackInputDelta - fallbackCachedDelta);
+                activeUsage.outputTokens += fallbackOutputDelta;
+                activeUsage.cacheReadTokens += fallbackCachedDelta;
+              }
+            }
+            previousTotalInput = totalInput;
+            previousTotalOutput = totalOutput;
+            previousTotalCached = totalCached;
+          }
+          if (last || tot) {
+            sumIn += last ? Number(last.input_tokens ?? 0) || 0 : fallbackInputDelta;
+            sumOut += last ? Number(last.output_tokens ?? 0) || 0 : fallbackOutputDelta;
+            sumCached += last ? Number(last.cached_input_tokens ?? 0) || 0 : fallbackCachedDelta;
           }
           metricSources.tokens = "measured";
-          if (at && tot) {
-            const cin = Number(tot.input_tokens ?? 0) || 0;
-            const cout = Number(tot.output_tokens ?? 0) || 0;
+          if (at && (last || tot)) {
+            let deltaInput: number;
+            let deltaOutput: number;
+            if (last) {
+              const lastInput = Number(last.input_tokens ?? 0) || 0;
+              const lastCached = Number(last.cached_input_tokens ?? 0) || 0;
+              deltaInput = Math.max(0, lastInput - lastCached);
+              deltaOutput = Number(last.output_tokens ?? 0) || 0;
+            } else {
+              // Older rollouts only record cumulative totals. Each component
+              // may reset after context compaction, so derive deltas per field
+              // and keep the chart in the same mutually exclusive token units
+              // as the session summary (fresh input excludes cached input).
+              deltaInput = Math.max(0, fallbackInputDelta - fallbackCachedDelta);
+              deltaOutput = fallbackOutputDelta;
+            }
+            segmentInput += deltaInput;
+            segmentOutput += deltaOutput;
             const elapsedSec = Math.max((at - startedAt) / 1000, 0.001);
             usageSegments.push({
               atMs: at,
-              cumulativeInput: cin,
-              cumulativeOutput: cout,
-              deltaInput: Math.max(0, cin - previousInput),
-              deltaOutput: Math.max(0, cout - previousOutput),
-              outTokPerSec: cout / elapsedSec,
+              cumulativeInput: segmentInput,
+              cumulativeOutput: segmentOutput,
+              deltaInput,
+              deltaOutput,
+              outTokPerSec: segmentOutput / elapsedSec,
             });
-            previousInput = cin;
-            previousOutput = cout;
           }
         }
       } else if (obj.type === "response_item") {
@@ -1492,10 +1693,13 @@ function parseCodexSession(file: string, lines: Iterable<string>, bytes: number,
           toolCalls++;
           const name = String(payload.name ?? "(unknown)");
           increment(toolCallsByName, name);
+          const activeUsage = ensureModelUsage(modelUsageByModel, model);
+          if (activeUsage) activeUsage.toolCalls++;
           extractFilePaths(payload.arguments, touchedFiles);
-          if (typeof payload.call_id === "string" && at != null) {
-            toolStartByCallIdMs.set(payload.call_id, at);
+          if (typeof payload.call_id === "string") {
             toolNameByCallIdMs.set(payload.call_id, name);
+            if (activeUsage) toolModelByCallId.set(payload.call_id, activeUsage.model);
+            if (at != null) toolStartByCallIdMs.set(payload.call_id, at);
           }
         }
         if (payload.type === "function_call_output") {
@@ -1514,9 +1718,12 @@ function parseCodexSession(file: string, lines: Iterable<string>, bytes: number,
             if (errored) {
               toolErrors++;
               increment(toolErrorsByName, toolNameByCallIdMs.get(payload.call_id) ?? "(unknown)");
+              const errorUsage = ensureModelUsage(modelUsageByModel, toolModelByCallId.get(payload.call_id));
+              if (errorUsage) errorUsage.toolErrors++;
             }
             toolStartByCallIdMs.delete(payload.call_id);
             toolNameByCallIdMs.delete(payload.call_id);
+            toolModelByCallId.delete(payload.call_id);
           } else if (errored) {
             toolErrors++;
             increment(toolErrorsByName, "(unknown)");
@@ -1535,12 +1742,21 @@ function parseCodexSession(file: string, lines: Iterable<string>, bytes: number,
   // fresh = input − cached and report cacheRead = cached — otherwise input and
   // cacheRead double-count. Prefer summed per-turn usage; fall back to cumulative.
   {
-    const totIn = sawLast ? sumIn : maxTotIn;
-    const totOut = sawLast ? sumOut : maxTotOut;
-    const cached = sawLast ? sumCached : maxTotCached;
+    const totIn = sumIn;
+    const totOut = sumOut;
+    const cached = sumCached;
     cacheReadTokens = cached;
     inputTokens = Math.max(0, totIn - cached);
     outputTokens = totOut;
+  }
+
+  const modelUsage = [...modelUsageByModel.values()]
+    .filter((usage) => modelUsageVolume(usage) > 0 || usage.toolCalls > 0 || usage.toolErrors > 0)
+    .map((usage) => ({ ...usage }));
+  if (modelUsage.length > 0) {
+    model = [...modelUsage].sort((a, b) =>
+      modelUsageVolume(b) - modelUsageVolume(a) || b.toolCalls - a.toolCalls,
+    )[0].model;
   }
 
   const durationMs = Math.max(0, lastEventAt - startedAt);
@@ -1553,7 +1769,9 @@ function parseCodexSession(file: string, lines: Iterable<string>, bytes: number,
   const toolDurations = summarizeToolDurations(toolDurationMs, toolErrorsByName);
   // Codex session files carry no cost — estimate from measured tokens + model.
   let costUsd = 0;
-  const estCost = estimateCostUsd(model, { input: inputTokens, output: outputTokens, cacheRead: cacheReadTokens, cacheCreate: cacheCreateTokens });
+  const estCost = modelUsage.length > 0
+    ? estimateModelUsageCost(modelUsage)
+    : estimateCostUsd(model, { input: inputTokens, output: outputTokens, cacheRead: cacheReadTokens, cacheCreate: cacheCreateTokens });
   if (estCost != null) {
     costUsd = estCost;
     metricSources.cost = "inferred";
@@ -1565,6 +1783,7 @@ function parseCodexSession(file: string, lines: Iterable<string>, bytes: number,
       ? "userMessages"
       : "messageCount";
   const parseWarnings = buildWarnings(metricSources, malformedLineCount, lineCount, 0, true, model, turnInferenceSource);
+  if (modelUsage.length > 1) parseWarnings.push(`mixed models: ${modelUsage.map((usage) => usage.model).join(", ")}`);
   if (originator) parseWarnings.push(`source: ${originator}${source ? ` / ${source}` : ""}${cliVersion ? ` ${cliVersion}` : ""}`);
   const toolErrorRate = toolCalls > 0 ? toolErrors / toolCalls : 0;
 
@@ -1583,6 +1802,7 @@ function parseCodexSession(file: string, lines: Iterable<string>, bytes: number,
     cacheCreateTokens,
     totalTokens,
     costUsd,
+    modelUsage: modelUsage.length > 0 ? modelUsage : undefined,
     usageSegments: downsampleUsageSegments(usageSegments),
     toolCalls,
     toolErrors,
@@ -2021,34 +2241,39 @@ function aggregate(sessions: LiveSession[], scanWarnings: string[] = [], source:
       increment(toolErrorsByName, tool.name, tool.errors);
     }
     for (const file of s.fileActivity.touchedFiles) increment(fileSessions, file);
-    const key = displayModelId(s.model) || "unknown";
-    const cur = byModelMap.get(key) || {
-      model: key, sessions: 0, costUsd: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0,
-      toolCalls: 0, errors: 0, totalDur: 0, totalQuality: 0, missingTokens: 0, missingCost: 0,
-      pricedSessions: 0, measuredCostSessions: 0, listedRateSessions: 0, familyRateSessions: 0,
-      fallbackRateSessions: 0, inferredModelSessions: 0,
-    };
-    cur.sessions++;
-    cur.costUsd += s.costUsd;
-    cur.inputTokens += s.inputTokens;
-    cur.outputTokens += s.outputTokens;
-    cur.cacheReadTokens += s.cacheReadTokens;
-    cur.toolCalls += s.toolCalls;
-    cur.errors += s.toolErrors;
-    cur.totalDur += s.durationMs;
-    cur.totalQuality += s.dataQuality;
-    if (metricMissing(s.metricSources.tokens)) cur.missingTokens++;
-    if (metricMissing(s.metricSources.cost)) cur.missingCost++;
-    if (s.costUsd > 0) cur.pricedSessions++;
-    if (s.metricSources.cost === "measured" && s.costUsd > 0) cur.measuredCostSessions++;
-    if (s.metricSources.model === "inferred") cur.inferredModelSessions++;
-    if (s.metricSources.cost === "inferred" && s.costUsd > 0) {
-      const confidence = rateForModelInfo(s.model)?.confidence;
-      if (confidence === "listed") cur.listedRateSessions++;
-      else if (confidence === "family") cur.familyRateSessions++;
-      else if (confidence === "fallback") cur.fallbackRateSessions++;
+    const modelRows = attributedModelUsage(s);
+    const rowCosts = modelUsageCosts(s, modelRows);
+    for (const [index, row] of modelRows.entries()) {
+      const key = displayModelId(row.model) || "unknown";
+      const cur = byModelMap.get(key) || {
+        model: key, sessions: 0, costUsd: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0,
+        toolCalls: 0, errors: 0, totalDur: 0, totalQuality: 0, missingTokens: 0, missingCost: 0,
+        pricedSessions: 0, measuredCostSessions: 0, listedRateSessions: 0, familyRateSessions: 0,
+        fallbackRateSessions: 0, inferredModelSessions: 0,
+      };
+      const rowCost = rowCosts[index] ?? 0;
+      cur.sessions++;
+      cur.costUsd += rowCost;
+      cur.inputTokens += row.inputTokens;
+      cur.outputTokens += row.outputTokens;
+      cur.cacheReadTokens += row.cacheReadTokens;
+      cur.toolCalls += row.toolCalls;
+      cur.errors += row.toolErrors;
+      cur.totalDur += s.durationMs;
+      cur.totalQuality += s.dataQuality;
+      if (metricMissing(s.metricSources.tokens)) cur.missingTokens++;
+      if (metricMissing(s.metricSources.cost) || (s.metricSources.cost === "inferred" && rowCost === 0 && modelUsageVolume(row) > 0)) cur.missingCost++;
+      if (rowCost > 0) cur.pricedSessions++;
+      if (s.metricSources.cost === "measured" && rowCost > 0) cur.measuredCostSessions++;
+      if (s.metricSources.model === "inferred") cur.inferredModelSessions++;
+      if (s.metricSources.cost === "inferred" && rowCost > 0) {
+        const confidence = rateForModelInfo(row.model)?.confidence;
+        if (confidence === "listed") cur.listedRateSessions++;
+        else if (confidence === "family") cur.familyRateSessions++;
+        else if (confidence === "fallback") cur.fallbackRateSessions++;
+      }
+      byModelMap.set(key, cur);
     }
-    byModelMap.set(key, cur);
   }
 
   const byModel = Array.from(byModelMap.values()).map((m) => ({

@@ -10,6 +10,7 @@ export function computeSummary(cases: RunCaseRecord[]): RunSummary {
   let skipped = 0;
   let stranded = 0;
   let totalCostUsd = 0;
+  let estimatedCostCases = 0;
   let totalTokensIn = 0;
   let totalTokensOut = 0;
   let totalDurationMs = 0;
@@ -37,6 +38,7 @@ export function computeSummary(cases: RunCaseRecord[]): RunSummary {
     else stranded++;
     if (c.runner_result) {
       totalCostUsd += c.runner_result.usage.costUsd || 0;
+      if (c.runner_result.usage.costSource === "inferred") estimatedCostCases++;
       totalTokensIn += c.runner_result.usage.inputTokens || 0;
       totalTokensOut += c.runner_result.usage.outputTokens || 0;
       totalDurationMs += c.runner_result.durationMs || 0;
@@ -79,6 +81,7 @@ export function computeSummary(cases: RunCaseRecord[]): RunSummary {
     passAt1Ci95,
     samples: samples > 0 ? samples : 1,
     totalCostUsd,
+    estimatedCostCases,
     totalTokensIn,
     totalTokensOut,
     totalDurationMs,

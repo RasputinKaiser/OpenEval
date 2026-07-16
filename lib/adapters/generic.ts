@@ -235,6 +235,8 @@ export function parseGenericJsonlLine(
   const durationMs = getPath(obj, f.durationMs);
   const inputTokens = getPath(obj, f.inputTokens);
   const outputTokens = getPath(obj, f.outputTokens);
+  const rawCostUsd = getPath(obj, f.costUsd);
+  const hasMeasuredCost = rawCostUsd != null && rawCostUsd !== "" && Number.isFinite(Number(rawCostUsd));
   const isError = getPath(obj, f.isError);
   const errorFlag = maybeBool(isError);
   if (durationMs != null || inputTokens != null || outputTokens != null || isError != null || evtType === "result" || evtType === "turn.completed" || evtType === "done") {
@@ -255,7 +257,8 @@ export function parseGenericJsonlLine(
         outputTokens: maybeNum(outputTokens),
         cacheReadTokens: maybeNum(getPath(obj, f.cacheReadTokens)),
         cacheCreateTokens: maybeNum(getPath(obj, f.cacheCreateTokens)),
-        costUsd: maybeNum(getPath(obj, f.costUsd)),
+        costUsd: maybeNum(rawCostUsd),
+        costSource: hasMeasuredCost ? "measured" : "missing",
       },
       numTurns: maybeNum(getPath(obj, f.numTurns)) || into.toolCalls.length,
       stopReason: str(getPath(obj, f.stopReason)) || null,

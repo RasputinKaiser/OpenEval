@@ -1,4 +1,6 @@
 import { getAdapter } from "../adapters/registry";
+import { resolveDefaultModel } from "../models";
+import { estimateCostUsd } from "../pricing";
 import { emit, type Runner } from "./parse";
 import { spawnHarnessProcess } from "./spawn";
 import type { RunnerContext, RunnerResult, TranscriptEntry } from "../types";
@@ -9,18 +11,47 @@ export class HeadlessRunner implements Runner {
   async run(ctx: RunnerContext): Promise<RunnerResult> {
     const startedAt = Date.now();
     emit(ctx, { kind: "started", at: startedAt });
+    const adapter = getAdapter(ctx.harness);
+    const fallbackModel = ctx.model ?? resolveDefaultModel(adapter.id).id ?? null;
 
     const { acc, stderr, exitCode, durationMs, timedOut } = await spawnHarnessProcess(ctx, (line, accumulator) => {
-      const adapter = getAdapter(ctx.harness);
       for (const ev of adapter.parseLine(line, accumulator)) emit(ctx, ev);
     });
 
     if (acc.result) {
       emit(ctx, { kind: "finished", at: Date.now(), durationMs, exitCode });
-      return { ...acc.result, exitCode, durationMs, startedAt, endedAt: startedAt + durationMs } as RunnerResult;
+      const parsed = { ...acc.result, exitCode, durationMs, startedAt, endedAt: startedAt + durationMs } as RunnerResult;
+      return normalizeParsedResult(parsed, fallbackModel);
     }
-    return failure(ctx, acc, startedAt, durationMs, exitCode, stderr, timedOut);
+    return normalizeParsedResult(
+      failure(ctx, acc, startedAt, durationMs, exitCode, stderr, timedOut),
+      fallbackModel,
+    );
   }
+}
+
+/** Ground parser gaps in the exact model requested by the run. */
+export function normalizeParsedResult(
+  result: RunnerResult,
+  fallbackModel: string | null | undefined,
+): RunnerResult {
+  const model = result.model ?? fallbackModel ?? null;
+  if (result.usage.costSource === "measured" || result.usage.costSource === "inferred") {
+    return { ...result, model };
+  }
+  if (result.usage.costUsd > 0) {
+    return { ...result, model, usage: { ...result.usage, costSource: "measured" } };
+  }
+  const estimate = estimateCostUsd(model, {
+    input: result.usage.inputTokens,
+    output: result.usage.outputTokens,
+    cacheRead: result.usage.cacheReadTokens,
+    cacheCreate: result.usage.cacheCreateTokens,
+  });
+  if (estimate == null || estimate === result.usage.costUsd) {
+    return { ...result, model, usage: { ...result.usage, costSource: estimate == null ? "missing" : "inferred" } };
+  }
+  return { ...result, model, usage: { ...result.usage, costUsd: estimate, costSource: "inferred" } };
 }
 
 function failure(

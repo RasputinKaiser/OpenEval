@@ -205,7 +205,7 @@ function RunSummary({ runner }: { runner: RunnerResult }) {
       <Stat label="tok/s" value={runner.durationMs > 0 ? (runner.usage.outputTokens / (runner.durationMs / 1000)).toFixed(1) : "0"} icon={Gauge} />
       <Stat label="Tokens in" value={runner.usage.inputTokens.toLocaleString()} icon={Cpu} />
       <Stat label="Tokens out" value={runner.usage.outputTokens.toLocaleString()} icon={Cpu} />
-      <Stat label="Cost" value={`$${runner.usage.costUsd.toFixed(4)}`} icon={DollarSign} />
+      <Stat label={runner.usage.costSource === "inferred" ? "Est. cost" : "Cost"} value={`${runner.usage.costSource === "inferred" ? "~" : ""}$${runner.usage.costUsd.toFixed(4)}`} icon={DollarSign} />
     </div>
   );
 }

@@ -9,11 +9,13 @@ import {
   isPathInLiveSource,
   redactSensitiveText,
   scanLiveSessions,
+  scanSourceSessions,
   summarizeCodexSessionFile,
   summarizeLiveSessionFile,
 } from "../lib/live";
 import { HARNESS_DESC_DIR } from "../lib/config";
 import { JUDGE_PROMPT_MARKER } from "../lib/insights/signals";
+import { estimateCostUsd } from "../lib/pricing";
 import { GET as liveGet } from "../app/api/live/route";
 
 function writeSession(lines: unknown[], extras: string[] = []): string {
@@ -302,6 +304,96 @@ test("summarizeLiveSessionFile measures ncode assistant message usage", () => {
   assert.ok(!session.parseWarnings.some((warning) => warning.includes("token usage missing")));
 });
 
+test("mixed-model Claude sessions preserve per-model tokens, tools, and inferred cost", () => {
+  const file = writeSession([
+    {
+      type: "assistant",
+      sessionId: "mixed-model",
+      cwd: "/tmp/mixed-model",
+      timestamp: "2026-07-15T00:00:01.000Z",
+      message: {
+        model: "claude-fable-5",
+        content: [{ type: "tool_use", id: "tool-1", name: "Bash", input: { command: "false" } }],
+        usage: {
+          input_tokens: 100,
+          output_tokens: 10,
+          cache_read_input_tokens: 200,
+          cache_creation_input_tokens: 20,
+        },
+      },
+    },
+    {
+      type: "user",
+      timestamp: "2026-07-15T00:00:02.000Z",
+      message: { content: [{ type: "tool_result", tool_use_id: "tool-1", is_error: true, content: "failed" }] },
+    },
+    {
+      type: "assistant",
+      timestamp: "2026-07-15T00:00:03.000Z",
+      message: {
+        model: "claude-opus-4-8",
+        content: [{ type: "text", text: "Recovered." }],
+        usage: {
+          input_tokens: 5,
+          output_tokens: 2,
+          cache_read_input_tokens: 10,
+          cache_creation_input_tokens: 1,
+        },
+      },
+    },
+  ]);
+
+  const session = summarizeLiveSessionFile(file, "/tmp/mixed-model", Date.parse("2026-07-15T00:00:00.000Z"));
+  assert.ok(session);
+  assert.equal(session.model, "claude-fable-5");
+  assert.deepEqual(session.modelUsage, [
+    {
+      model: "claude-fable-5",
+      inputTokens: 100,
+      outputTokens: 10,
+      cacheReadTokens: 200,
+      cacheCreateTokens: 20,
+      toolCalls: 1,
+      toolErrors: 1,
+    },
+    {
+      model: "claude-opus-4-8",
+      inputTokens: 5,
+      outputTokens: 2,
+      cacheReadTokens: 10,
+      cacheCreateTokens: 1,
+      toolCalls: 0,
+      toolErrors: 0,
+    },
+  ]);
+  const expectedCost =
+    (estimateCostUsd("claude-fable-5", { input: 100, output: 10, cacheRead: 200, cacheCreate: 20 }) ?? 0) +
+    (estimateCostUsd("claude-opus-4-8", { input: 5, output: 2, cacheRead: 10, cacheCreate: 1 }) ?? 0);
+  assert.equal(session.costUsd, expectedCost);
+
+  try {
+    const aggregate = scanSourceSessions({
+      id: "tmp-mixed-model",
+      label: "Temporary Mixed Model Source",
+      roots: [path.dirname(file)],
+      format: "jsonl-dir",
+      maxDepth: 1,
+    }, 10);
+    const fable = aggregate.byModel.find((row) => row.model === "claude-fable-5");
+    const opus = aggregate.byModel.find((row) => row.model === "claude-opus-4-8");
+    assert.ok(fable, JSON.stringify(aggregate.byModel));
+    assert.ok(opus, JSON.stringify(aggregate.byModel));
+    assert.equal(fable?.inputTokens, 100);
+    assert.equal(fable?.toolCalls, 1);
+    assert.equal(fable?.errors, 1);
+    assert.equal(opus?.inputTokens, 5);
+    assert.equal(opus?.toolCalls, 0);
+    assert.ok(Math.abs((fable?.costUsd ?? 0) + (opus?.costUsd ?? 0) - expectedCost) < 1e-12);
+  } finally {
+    fs.rmSync(path.dirname(file), { recursive: true, force: true });
+  }
+});
+
 test("scanLiveSessions reads descriptor liveTrace usage without fabricating missing values", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "openeval-live-source-"));
   const descPath = path.join(HARNESS_DESC_DIR, `tmp-live-${Date.now()}.harness.json`);
@@ -393,6 +485,101 @@ test("summarizeCodexSessionFile sums per-turn usage across a context reset (comp
   assert.equal(session.inputTokens, 1400);
   assert.equal(session.outputTokens, 100);
   assert.equal(session.totalTokens, 2100); // 1400 + 100 + 600 = summed input(2000) + output(100)
+  assert.equal(session.usageSegments.reduce((sum, segment) => sum + segment.deltaInput, 0), 1400);
+  assert.equal(session.usageSegments.reduce((sum, segment) => sum + segment.deltaOutput, 0), 100);
+  assert.equal(session.usageSegments.at(-1)?.cumulativeInput, 1400);
+  assert.equal(session.usageSegments.at(-1)?.cumulativeOutput, 100);
+});
+
+test("summarizeCodexSessionFile preserves legacy cumulative totals across a reset", () => {
+  const total = (t: string, input: number, cached: number, output: number) => ({
+    timestamp: t,
+    type: "event_msg",
+    payload: { type: "token_count", info: {
+      total_token_usage: { input_tokens: input, cached_input_tokens: cached, output_tokens: output },
+    } },
+  });
+  const file = writeSession([
+    { timestamp: "2026-06-29T00:00:00.000Z", type: "session_meta", payload: { id: "legacy-reset", model: "gpt-5.5" } },
+    total("2026-06-29T00:00:01.000Z", 1000, 200, 50),
+    total("2026-06-29T00:00:02.000Z", 400, 100, 25),
+  ]);
+
+  const session = summarizeCodexSessionFile(file, "2026/06/29", Date.parse("2026-06-29T00:00:00.000Z"));
+  assert.ok(session);
+  assert.equal(session.inputTokens, 1100);
+  assert.equal(session.cacheReadTokens, 300);
+  assert.equal(session.outputTokens, 75);
+  assert.equal(session.totalTokens, 1475);
+  assert.equal(session.usageSegments.reduce((sum, segment) => sum + segment.deltaInput, 0), 1100);
+  assert.equal(session.usageSegments.at(-1)?.cumulativeOutput, 75);
+});
+
+test("summarizeCodexSessionFile does not drop a cumulative-only event after exact turn usage", () => {
+  const file = writeSession([
+    { timestamp: "2026-06-29T00:00:00.000Z", type: "session_meta", payload: { id: "mixed-usage-shape", model: "gpt-5.5" } },
+    { timestamp: "2026-06-29T00:00:01.000Z", type: "event_msg", payload: { type: "token_count", info: {
+      last_token_usage: { input_tokens: 1000, cached_input_tokens: 900, output_tokens: 20 },
+      total_token_usage: { input_tokens: 1000, cached_input_tokens: 900, output_tokens: 20 },
+    } } },
+    { timestamp: "2026-06-29T00:00:02.000Z", type: "event_msg", payload: { type: "token_count", info: {
+      total_token_usage: { input_tokens: 1100, cached_input_tokens: 900, output_tokens: 30 },
+    } } },
+  ]);
+
+  const session = summarizeCodexSessionFile(file, "2026/06/29", Date.parse("2026-06-29T00:00:00.000Z"));
+  assert.ok(session);
+  assert.equal(session.inputTokens, 200);
+  assert.equal(session.cacheReadTokens, 900);
+  assert.equal(session.outputTokens, 30);
+  assert.equal(session.usageSegments.at(-1)?.cumulativeInput, 200);
+  assert.equal(session.usageSegments.at(-1)?.cumulativeOutput, 30);
+});
+
+test("mixed-model Codex sessions attribute per-turn usage and tools to the active model", () => {
+  const file = writeSession([
+    { timestamp: "2026-07-15T00:00:00.000Z", type: "session_meta", payload: { id: "codex-mixed", model: "gpt-5.5" } },
+    { timestamp: "2026-07-15T00:00:00.500Z", type: "turn_context", payload: { model: "gpt-5.5" } },
+    { timestamp: "2026-07-15T00:00:01.000Z", type: "response_item", payload: { type: "function_call", call_id: "call-1", name: "exec_command", arguments: "{}" } },
+    { timestamp: "2026-07-15T00:00:01.500Z", type: "response_item", payload: { type: "function_call_output", call_id: "call-1", output: "Exit code: 1\nOutput:\nfailed" } },
+    { timestamp: "2026-07-15T00:00:02.000Z", type: "event_msg", payload: { type: "token_count", info: {
+      last_token_usage: { input_tokens: 1000, cached_input_tokens: 900, output_tokens: 20 },
+      total_token_usage: { input_tokens: 1000, cached_input_tokens: 900, output_tokens: 20 },
+    } } },
+    { timestamp: "2026-07-15T00:00:03.000Z", type: "turn_context", payload: { model: "gpt-5.4" } },
+    { timestamp: "2026-07-15T00:00:04.000Z", type: "event_msg", payload: { type: "token_count", info: {
+      last_token_usage: { input_tokens: 100, cached_input_tokens: 0, output_tokens: 10 },
+      total_token_usage: { input_tokens: 1100, cached_input_tokens: 900, output_tokens: 30 },
+    } } },
+  ]);
+
+  const session = summarizeCodexSessionFile(file, "2026/07/15", Date.parse("2026-07-15T00:00:00.000Z"));
+  assert.ok(session);
+  assert.equal(session.model, "gpt-5.5");
+  assert.deepEqual(session.modelUsage, [
+    {
+      model: "gpt-5.5",
+      inputTokens: 100,
+      outputTokens: 20,
+      cacheReadTokens: 900,
+      cacheCreateTokens: 0,
+      toolCalls: 1,
+      toolErrors: 1,
+    },
+    {
+      model: "gpt-5.4",
+      inputTokens: 100,
+      outputTokens: 10,
+      cacheReadTokens: 0,
+      cacheCreateTokens: 0,
+      toolCalls: 0,
+      toolErrors: 0,
+    },
+  ]);
+  const expectedCost =
+    (estimateCostUsd("gpt-5.5", { input: 100, output: 20, cacheRead: 900, cacheCreate: 0 }) ?? 0) +
+    (estimateCostUsd("gpt-5.4", { input: 100, output: 10, cacheRead: 0, cacheCreate: 0 }) ?? 0);
+  assert.equal(session.costUsd, expectedCost);
 });
 
 test("codex event_msg user_message feeds preview, title, and sentiment signals", () => {

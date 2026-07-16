@@ -161,7 +161,7 @@ test("golden: codex NEW rollout (session_meta/turn_context/event_msg/response_it
   assert.equal(shell!.p50Ms, 2000);
   assert.equal(shell!.errors, 1);
   const last = session.usageSegments[session.usageSegments.length - 1];
-  assert.equal(last.cumulativeInput, 8000);
+  assert.equal(last.cumulativeInput, 5500);
   assert.equal(last.cumulativeOutput, 650);
 });
 

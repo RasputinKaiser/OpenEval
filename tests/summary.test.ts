@@ -87,6 +87,17 @@ test("computeSummary of an all-terminal run has zero stranded", () => {
   assert.equal(s.stranded, 0);
 });
 
+test("computeSummary exposes how many case costs are inferred", () => {
+  const inferred = runnerResult({ usage: { inputTokens: 100, outputTokens: 50, cacheReadTokens: 0, cacheCreateTokens: 0, costUsd: 0.01, costSource: "inferred" } });
+  const measured = runnerResult({ usage: { inputTokens: 100, outputTokens: 50, cacheReadTokens: 0, cacheCreateTokens: 0, costUsd: 0.02, costSource: "measured" } });
+  const summary = computeSummary([
+    rc("inferred", "passed", { runner: inferred }),
+    rc("measured", "passed", { runner: measured }),
+  ]);
+  assert.equal(summary.estimatedCostCases, 1);
+  assert.equal(summary.totalCostUsd, 0.03);
+});
+
 // ---- computeTelemetry: failRate vs errorRate ----
 
 test("computeTelemetry splits grader failures from infrastructure errors", () => {

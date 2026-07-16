@@ -240,7 +240,7 @@ export default async function Page() {
           <h2 className="text-sm font-medium mb-4">Last run breakdown</h2>
           <div className="stagger-grid grid grid-cols-2 md:grid-cols-4 gap-3">
             <Mini label="Total duration" value={fmtDuration(summary.totalDurationMs)} icon={Timer} />
-            <Mini label="Total cost" value={fmtUsd(summary.totalCostUsd)} icon={DollarSign} />
+            <Mini label={summary.estimatedCostCases ? "Est. total cost" : "Total cost"} value={`${summary.estimatedCostCases ? "~" : ""}${fmtUsd(summary.totalCostUsd)}`} icon={DollarSign} />
             <Mini label="Tokens in" value={fmtNumFull(summary.totalTokensIn)} icon={Cpu} />
             <Mini label="Tokens out" value={fmtNumFull(summary.totalTokensOut)} icon={Cpu} />
           </div>

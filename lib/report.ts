@@ -106,7 +106,7 @@ function summaryLines(summary: RunSummary | null): string[] {
     lines.push(`- pass@k: ${fmtPct(summary.passAtK)}`);
     lines.push(`- pass^k (reliability): ${fmtPct(summary.passPowK)}`);
   }
-  lines.push(`- Total cost USD: ${fmtUsd(summary.totalCostUsd)}`);
+  lines.push(`- ${summary.estimatedCostCases ? "Estimated total cost USD" : "Total cost USD"}: ${fmtUsd(summary.totalCostUsd)}`);
   lines.push(`- Tokens in/out: ${summary.totalTokensIn}/${summary.totalTokensOut}`);
   lines.push(`- Duration: ${fmtMs(summary.totalDurationMs)}`);
   return lines;
@@ -182,7 +182,7 @@ export async function buildRunReport(runId: string, opts?: ReportOptions): Promi
     if ((c.sample ?? 0) > 0) lines.push(`- Sample: ${c.sample}`);
     lines.push(`- Verdict: ${c.status}`);
     lines.push(`- Duration: ${fmtMs(c.runner_result?.durationMs ?? (c.ended_at && c.started_at ? c.ended_at - c.started_at : null))}`);
-    lines.push(`- Cost USD: ${fmtUsd(c.runner_result?.usage.costUsd)}`);
+    lines.push(`- ${c.runner_result?.usage.costSource === "inferred" ? "Estimated cost USD" : "Cost USD"}: ${fmtUsd(c.runner_result?.usage.costUsd)}`);
     lines.push(`- Tokens in/out: ${c.runner_result?.usage.inputTokens ?? 0}/${c.runner_result?.usage.outputTokens ?? 0}`);
     lines.push("");
     lines.push("### Graders");
