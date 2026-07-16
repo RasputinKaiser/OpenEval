@@ -581,7 +581,7 @@ const SessionRow = React.memo(function SessionRow({ session, redact, users, onSe
               <span>·</span>
             </>
           ) : null}
-          <span>{session.model || "model missing"}</span>
+          <span>{displayText(session.model || "model missing", redact, users)}</span>
           {session.traceGraph.sidechainMessages > 0 ? <span className="rounded bg-accent/10 px-1.5 py-0.5 text-accent-soft">{session.traceGraph.sidechainMessages} side</span> : null}
           {session.traceGraph.agentCount > 0 ? <span className="rounded bg-bg-elev px-1.5 py-0.5 text-fg-muted">{session.traceGraph.agentCount} agent</span> : null}
           {session.modeSummary.gitBranch ? <span className="rounded bg-bg-elev px-1.5 py-0.5 text-fg-muted">{displayText(session.modeSummary.gitBranch, redact, users)}</span> : null}
@@ -737,7 +737,7 @@ function SessionDrawer({
         <div className="drawer-stagger flex-1 space-y-5 overflow-y-auto p-5">
           <section className="grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
             <MetricCard label="Project" value={compactDisplayPath(session.project || "(unknown)", redact)} />
-            <MetricCard label="Model" value={session.model || "missing"} source={session.metricSources.model} />
+            <MetricCard label="Model" value={displayText(session.model || "missing", redact, users)} source={session.metricSources.model} />
             <MetricCard label="Duration" value={session.metricSources.duration === "missing" ? "missing" : fmtMs(session.durationMs)} source={session.metricSources.duration} />
             <MetricCard label="Tokens" value={session.metricSources.tokens === "missing" ? "missing" : fmt(session.inputTokens + session.outputTokens)} source={session.metricSources.tokens} />
           </section>
@@ -821,10 +821,10 @@ function SessionDrawer({
             <DetailPanel title="Modes / repo">
               <div className="space-y-2 text-xs text-fg-muted">
                 <div className="flex justify-between gap-3"><span>Branch</span><span className="mono truncate">{displayText(session.modeSummary.gitBranch ?? "missing", redact, users)}</span></div>
-                <div className="flex justify-between gap-3"><span>Entrypoint</span><span className="mono">{session.modeSummary.entrypoint ?? "missing"}</span></div>
+                <div className="flex justify-between gap-3"><span>Entrypoint</span><span className="mono">{displayText(session.modeSummary.entrypoint ?? "missing", redact, users)}</span></div>
                 <div className="flex flex-wrap gap-1.5">
                   {Object.entries(session.modeSummary.permissionModes).map(([mode, count]) => (
-                    <span key={mode} className="rounded bg-bg-elev px-1.5 py-0.5 text-[10px]">{mode}: {count}</span>
+                    <span key={mode} className="rounded bg-bg-elev px-1.5 py-0.5 text-[10px]">{displayText(mode, redact, users)}: {displayText(count, redact, users)}</span>
                   ))}
                 </div>
               </div>
