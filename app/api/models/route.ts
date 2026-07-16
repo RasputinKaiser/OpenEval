@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { discoverModels, isValidModelId } from "@/lib/models";
+import { configuredDefaultModel, discoverModels, isValidModelId } from "@/lib/models";
 import { getAdapter, hasAdapter } from "@/lib/adapters/registry";
 
 export const dynamic = "force-dynamic";
@@ -9,8 +9,9 @@ export async function GET(request: Request) {
   const harness = searchParams.get("harness") ?? undefined;
   const models = discoverModels(harness);
   const descriptorDefault = harness && hasAdapter(harness) ? getAdapter(harness).descriptor.models?.default : undefined;
+  const localDefault = harness ? configuredDefaultModel(harness) : undefined;
   return NextResponse.json(
-    { models, defaultModel: descriptorDefault ?? models[0]?.id ?? null },
+    { models, defaultModel: descriptorDefault ?? localDefault ?? models[0]?.id ?? null },
     { headers: { "Cache-Control": "private, max-age=60, stale-while-revalidate=300" } }
   );
 }

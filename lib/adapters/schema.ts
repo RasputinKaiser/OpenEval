@@ -59,6 +59,14 @@ const ModelAliasSchema = z
     id: z.string().min(1),
     label: z.string().min(1),
     family: z.string().min(1),
+    capabilities: z
+      .object({
+        visionInput: z.boolean().nullable().optional(),
+        visualCodeOutput: z.boolean().nullable().optional(),
+        notes: z.string().optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -185,7 +193,8 @@ export interface NormalizedDescriptor {
     reportsCost: boolean;
     reportsTokens: boolean;
     reportsTurns: boolean;
-    supportsVisionInput: boolean;
+    /** null means the descriptor does not have enough evidence to claim yes/no. */
+    supportsVisionInput: boolean | null;
     permissionModes: string[];
   };
   liveTrace?: LiveTraceDescriptor;
@@ -255,7 +264,9 @@ export function normalizeDescriptor(d: z.output<typeof HarnessDescriptorSchema>)
       reportsCost: d.capabilities?.reportsCost ?? (structured || !!fields.costUsd),
       reportsTokens: d.capabilities?.reportsTokens ?? (structured || !!fields.inputTokens || !!fields.outputTokens),
       reportsTurns: d.capabilities?.reportsTurns ?? (structured || !!fields.numTurns),
-      supportsVisionInput: d.capabilities?.supportsVisionInput ?? false,
+      // An omitted vision flag is unknown, not "no". A descriptor author must
+      // provide evidence before OpenEval makes a negative capability claim.
+      supportsVisionInput: d.capabilities?.supportsVisionInput ?? null,
       permissionModes: d.capabilities?.permissionModes ?? [...PERMISSION_MODES],
     },
     liveTrace: d.liveTrace,

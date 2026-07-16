@@ -2,6 +2,7 @@ import type { PermissionMode, RunnerContext, RunnerEvent, RunnerResult, Transcri
 import type { NormalizedDescriptor } from "./schema";
 
 export type HarnessId = string;
+export type CapabilityValue = boolean | null;
 
 export interface AdapterCapabilities {
   outputFormat: "stream-json" | "jsonl" | "text" | "json";
@@ -9,7 +10,8 @@ export interface AdapterCapabilities {
   reportsTokens: boolean;
   reportsTurns: boolean;
   permissionModes: PermissionMode[];
-  supportsVisionInput: boolean;
+  /** null means the descriptor does not have enough evidence to claim yes/no. */
+  supportsVisionInput: CapabilityValue;
 }
 
 export interface BuiltCommand {

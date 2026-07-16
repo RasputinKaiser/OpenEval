@@ -11,8 +11,9 @@ export interface ModelInfo {
   source: "config" | "alias" | "default";
   contextWindow?: number;
   capabilities: {
-    visionInput: boolean;
-    visualCodeOutput: boolean;
+    /** null means this model's capability is not proven by local metadata. */
+    visionInput: boolean | null;
+    visualCodeOutput: boolean | null;
     notes?: string;
   };
   isAlias?: boolean;
@@ -39,23 +40,34 @@ function labelFromId(id: string): string {
   return noSuffix.replace(/[-_]/g, " ").replace(/\s+/g, " ").trim();
 }
 
-function capabilitiesForFamily(family: string, id: string): ModelInfo["capabilities"] {
+function capabilitiesForFamily(family: string, id: string, harnessSupportsVision: boolean | null): ModelInfo["capabilities"] {
   const l = id.toLowerCase();
-  if (family === "glm") {
-    return {
-      visionInput: false,
-      visualCodeOutput: true,
-      notes: "Text-only model; still suitable for SVG, Three.js, web UI, and app UI generation tasks.",
-    };
-  }
   if (family === "gemini" || l.includes("vision") || l.includes("multimodal")) {
     return { visionInput: true, visualCodeOutput: true };
   }
-  return { visionInput: false, visualCodeOutput: true };
+  // The harness can prove that it accepts image attachments, but that does
+  // not prove every arbitrary configured model accepts them. Model-specific
+  // metadata or an explicit alias declaration is required for "vision".
+  return {
+    visionInput: null,
+    visualCodeOutput: true,
+    notes: harnessSupportsVision === true
+      ? "This harness accepts image attachments; model-specific image support is not declared locally."
+      : "Model-specific image support is not declared locally.",
+  };
 }
 
-function modelInfo(input: Omit<ModelInfo, "capabilities">): ModelInfo {
-  return { ...input, capabilities: capabilitiesForFamily(input.family, input.id) };
+type ModelCapabilityOverrides = Partial<ModelInfo["capabilities"]>;
+
+function modelInfo(
+  input: Omit<ModelInfo, "capabilities"> & { capabilities?: ModelCapabilityOverrides },
+  harnessSupportsVision: boolean | null,
+): ModelInfo {
+  const { capabilities, ...rest } = input;
+  return {
+    ...rest,
+    capabilities: { ...capabilitiesForFamily(input.family, input.id, harnessSupportsVision), ...capabilities },
+  };
 }
 
 function expandHome(p: string): string {
@@ -81,13 +93,55 @@ function collectAtPath(obj: unknown, parts: string[]): unknown[] {
 
 const cache = new Map<string, ModelInfo[]>();
 
+function configuredModelIds(harnessId: string): string[] {
+  if (harnessId === "codex") {
+    const file = expandHome("~/.codex/config.toml");
+    try {
+      const text = fs.readFileSync(file, "utf8");
+      return [...text.matchAll(/^\s*model\s*=\s*["']([^"']+)["']\s*$/gm)].map((m) => m[1]);
+    } catch {}
+  }
+  if (harnessId === "hermes") {
+    const file = expandHome("~/.hermes/config.yaml");
+    try {
+      const text = fs.readFileSync(file, "utf8");
+      const match = text.match(/^\s+default:\s*([^#\s]+)\s*$/m);
+      return match ? [match[1]] : [];
+    } catch {}
+  }
+  return [];
+}
+
+export function configuredDefaultModel(harnessId: string): string | undefined {
+  if (harnessId === "codex") {
+    const file = expandHome("~/.codex/config.toml");
+    try {
+      const text = fs.readFileSync(file, "utf8");
+      // The first root-level model assignment is Codex's active default;
+      // profile assignments below it are alternatives, not the default.
+      return text.match(/^model\s*=\s*["']([^"']+)["']\s*$/m)?.[1];
+    } catch {}
+  }
+  if (harnessId === "hermes") {
+    const file = expandHome("~/.hermes/config.yaml");
+    try {
+      const text = fs.readFileSync(file, "utf8");
+      return text.match(/^\s+default:\s*([^#\s]+)\s*$/m)?.[1];
+    } catch {}
+  }
+  return undefined;
+}
+
 /**
  * Models offered for a harness come from its descriptor: a static alias list
  * plus optional discovery of previously-used model ids from a local config
  * file. Nothing here is harness-specific code — it's all descriptor data.
  */
 export function discoverModels(harnessId?: string): ModelInfo[] {
-  const key = harnessId && hasAdapter(harnessId) ? harnessId : "*";
+  // An explicit unknown harness must not silently receive another harness's
+  // model catalog. That made `/api/models?harness=typo` look valid.
+  if (harnessId && !hasAdapter(harnessId)) return [];
+  const key = harnessId || "*";
   const hit = cache.get(key);
   if (hit) return hit;
 
@@ -96,15 +150,22 @@ export function discoverModels(harnessId?: string): ModelInfo[] {
 
   for (const adapter of adapters) {
     const models = adapter.descriptor.models;
-    if (!models) continue;
+    const harnessSupportsVision = adapter.capabilities.supportsVisionInput;
 
-    for (const a of models.aliases ?? []) {
+    for (const a of models?.aliases ?? []) {
       if (!found.has(a.id)) {
-        found.set(a.id, modelInfo({ id: a.id, label: a.label, family: a.family, source: "alias", isAlias: true }));
+        found.set(a.id, modelInfo({
+          id: a.id,
+          label: a.label,
+          family: a.family,
+          source: "alias",
+          isAlias: true,
+          capabilities: a.capabilities,
+        }, harnessSupportsVision));
       }
     }
 
-    const discovery = models.discovery;
+    const discovery = models?.discovery;
     if (discovery) {
       const file = expandHome(discovery.file);
       if (fs.existsSync(file)) {
@@ -121,20 +182,31 @@ export function discoverModels(harnessId?: string): ModelInfo[] {
                 family: familyFromId(modelId),
                 source: "config",
                 contextWindow: typeof s.contextWindow === "number" ? s.contextWindow : undefined,
-              }));
+              }, harnessSupportsVision));
             }
           }
         } catch {}
       }
     }
 
-    if (models.default && !found.has(models.default)) {
+    for (const modelId of configuredModelIds(adapter.id)) {
+      if (!found.has(modelId)) {
+        found.set(modelId, modelInfo({
+          id: modelId,
+          label: labelFromId(modelId),
+          family: familyFromId(modelId),
+          source: "config",
+        }, harnessSupportsVision));
+      }
+    }
+
+    if (models?.default && !found.has(models.default)) {
       found.set(models.default, modelInfo({
         id: models.default,
         label: labelFromId(models.default),
         family: familyFromId(models.default),
         source: "default",
-      }));
+      }, harnessSupportsVision));
     }
   }
 

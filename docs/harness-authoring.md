@@ -109,7 +109,7 @@ For `generic-jsonl`, a line with `toolCallName` emits a `tool_use` event and a l
 - `supportsVisionInput`
 - `permissionModes`
 
-Without overrides, structured parsers (`claude-stream-json`, `codex-jsonl`) report cost/tokens/turns; generic descriptors report those capabilities when the corresponding mapped fields exist. `supportsVisionInput` defaults to `false`, and `permissionModes` defaults to all permission modes from the schema.
+Without overrides, structured parsers (`claude-stream-json`, `codex-jsonl`) report cost/tokens/turns; generic descriptors report those capabilities when the corresponding mapped fields exist. `supportsVisionInput` defaults to `unknown` (`null`) because an omitted flag is not evidence that a harness cannot accept images. `permissionModes` defaults to all permission modes from the schema; descriptors should override it with an explicit list when the CLI exposes a narrower surface.
 
 ## Live Trace
 
@@ -222,7 +222,11 @@ Bundled Claude Code, Codex, and ncode descriptors use the same schema. For examp
   },
   "modelFlag": "-m",
   "prompt": { "mode": "arg" },
-  "capabilities": { "reportsCost": false },
+  "capabilities": {
+    "reportsCost": false,
+    "supportsVisionInput": true,
+    "permissionModes": ["bypassPermissions", "default"]
+  },
   "liveTrace": {
     "format": "codex-sessions",
     "roots": ["~/.codex/sessions", "~/.codex/archived_sessions"],

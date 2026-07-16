@@ -22,10 +22,10 @@ export const BUILTIN_DESCRIPTORS: HarnessDescriptorInput[] = [
     capabilities: { supportsVisionInput: true },
     models: {
       aliases: [
-        { id: "opus", label: "Opus", family: "opus" },
-        { id: "sonnet", label: "Sonnet", family: "sonnet" },
-        { id: "sonnet[1m]", label: "Sonnet 1M", family: "sonnet" },
-        { id: "haiku", label: "Haiku", family: "haiku" },
+        { id: "opus", label: "Opus", family: "opus", capabilities: { visionInput: true, visualCodeOutput: true } },
+        { id: "sonnet", label: "Sonnet", family: "sonnet", capabilities: { visionInput: true, visualCodeOutput: true } },
+        { id: "sonnet[1m]", label: "Sonnet 1M", family: "sonnet", capabilities: { visionInput: true, visualCodeOutput: true } },
+        { id: "haiku", label: "Haiku", family: "haiku", capabilities: { visionInput: true, visualCodeOutput: true } },
       ],
     },
     liveTrace: {
@@ -49,7 +49,14 @@ export const BUILTIN_DESCRIPTORS: HarnessDescriptorInput[] = [
     },
     modelFlag: "-m",
     prompt: { mode: "arg" },
-    capabilities: { reportsCost: false },
+    // `codex --help` exposes `-i/--image` for both interactive and `exec`
+    // modes. Cost is intentionally false because JSONL output does not report
+    // a measured USD field.
+    capabilities: {
+      reportsCost: false,
+      supportsVisionInput: true,
+      permissionModes: ["bypassPermissions", "default"],
+    },
     liveTrace: {
       format: "codex-sessions",
       roots: ["~/.codex/sessions", "~/.codex/archived_sessions"],

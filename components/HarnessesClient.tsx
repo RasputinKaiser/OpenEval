@@ -162,7 +162,7 @@ export default function HarnessesClient() {
                 <Field label="Version">{active.version ?? "—"}</Field>
                 <Field label="Source">{active.source}</Field>
                 <Field label="Output format">{active.capabilities.outputFormat}</Field>
-                <Field label="Vision input">{active.capabilities.supportsVisionInput ? "yes" : "no"}</Field>
+                <Field label="Vision input">{capabilityLabel(active.capabilities.supportsVisionInput)}</Field>
               </dl>
 
               <div className="mt-4">
@@ -177,8 +177,8 @@ export default function HarnessesClient() {
                   <span className={clsx("inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] mono", active.capabilities.reportsTurns ? "bg-ok/10 text-ok" : "bg-bg-elev text-fg-dim")}>
                     {active.capabilities.reportsTurns ? <CheckCircle2 className="size-2.5" /> : <XCircle className="size-2.5" />} turns
                   </span>
-                  <span className={clsx("inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] mono", active.capabilities.supportsVisionInput ? "bg-ok/10 text-ok" : "bg-bg-elev text-fg-dim")}>
-                    {active.capabilities.supportsVisionInput ? <CheckCircle2 className="size-2.5" /> : <XCircle className="size-2.5" />} vision
+                  <span className={clsx("inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] mono", capabilityClass(active.capabilities.supportsVisionInput))}>
+                    {active.capabilities.supportsVisionInput === true ? <CheckCircle2 className="size-2.5" /> : active.capabilities.supportsVisionInput === false ? <XCircle className="size-2.5" /> : <span className="size-2.5 text-center">?</span>} vision {active.capabilities.supportsVisionInput === null ? "unknown" : ""}
                   </span>
                 </div>
               </div>
@@ -202,7 +202,7 @@ export default function HarnessesClient() {
               )}
 
               <div className="mt-4 pt-3 border-t border-bd-subtle text-[10px] text-fg-dim">
-                Permission modes: {active.capabilities.permissionModes.join(", ")}
+                Permission modes: {active.capabilities.permissionModes.length > 0 ? active.capabilities.permissionModes.join(", ") : "none declared"}
               </div>
             </section>
           )}
@@ -219,4 +219,12 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <dd className="mt-0.5 mono text-sm break-all">{children}</dd>
     </div>
   );
+}
+
+function capabilityLabel(value: boolean | null): string {
+  return value === true ? "yes" : value === false ? "no" : "unknown";
+}
+
+function capabilityClass(value: boolean | null): string {
+  return value === true ? "bg-ok/10 text-ok" : value === false ? "bg-bg-elev text-fg-dim" : "bg-warn/10 text-warn";
 }
