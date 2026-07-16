@@ -19,6 +19,13 @@ export interface ModelInfo {
   isAlias?: boolean;
 }
 
+export type ModelDefaultSource = "descriptor" | "config" | "none";
+
+export interface ResolvedModelDefault {
+  id?: string;
+  source: ModelDefaultSource;
+}
+
 function familyFromId(id: string): string {
   const l = id.toLowerCase();
   if (l.includes("glm")) return "glm";
@@ -50,11 +57,21 @@ function capabilitiesForFamily(family: string, id: string, harnessSupportsVision
   // metadata or an explicit alias declaration is required for "vision".
   return {
     visionInput: null,
-    visualCodeOutput: true,
+    visualCodeOutput: null,
     notes: harnessSupportsVision === true
       ? "This harness accepts image attachments; model-specific image support is not declared locally."
       : "Model-specific image support is not declared locally.",
   };
+}
+
+/** Resolve the model that a run should record when the caller leaves it blank. */
+export function resolveDefaultModel(harnessId: string): ResolvedModelDefault {
+  if (!hasAdapter(harnessId)) return { source: "none" };
+  const descriptorDefault = getAdapter(harnessId).descriptor.models?.default;
+  if (descriptorDefault) return { id: descriptorDefault, source: "descriptor" };
+  const configured = configuredDefaultModel(harnessId);
+  if (configured) return { id: configured, source: "config" };
+  return { source: "none" };
 }
 
 type ModelCapabilityOverrides = Partial<ModelInfo["capabilities"]>;

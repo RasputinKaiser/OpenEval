@@ -24,6 +24,7 @@ interface HermesMessage {
   content?: unknown;
   tool_calls?: HermesToolCall[];
   tool_call_id?: string;
+  is_error?: boolean;
 }
 
 function textOf(content: unknown): string {
@@ -82,7 +83,7 @@ export function hermesJsonToRecords(raw: string): string[] {
         type: "user",
         message: {
           role: "user",
-          content: [{ type: "tool_result", tool_use_id: m.tool_call_id, content: textOf(m.content) }],
+          content: [{ type: "tool_result", tool_use_id: m.tool_call_id, content: textOf(m.content), is_error: m.is_error === true }],
         },
       });
     }

@@ -342,8 +342,24 @@ export function isPathInLiveSource(filePath: string, harness?: string): boolean 
   return source.roots.some((root) => {
     const rootPath = path.resolve(root);
     const rel = path.relative(rootPath, resolved);
-    return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+    const lexicalInside = rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+    if (!lexicalInside) return false;
+    try {
+      const realRoot = fs.realpathSync(rootPath);
+      const realFile = fs.realpathSync(resolved);
+      const realRel = path.relative(realRoot, realFile);
+      return realRel === "" || (!realRel.startsWith("..") && !path.isAbsolute(realRel));
+    } catch {
+      // A pruned/missing transcript can still be opened as an archived-path
+      // diagnostic. The later stat/parse step reports its disappearance.
+      return true;
+    }
   });
+}
+
+/** Expose the selected source format to server actions that open transcripts. */
+export function liveTraceFormatForHarness(harness?: string): LiveTraceFormat {
+  return resolveLiveSource(harness).format;
 }
 
 function decodeProjectDir(name: string): string {
@@ -618,36 +634,54 @@ function collectJsonlRecursive(
 
 const TRANSCRIPT_TURN_CAP = 20_000;
 
-export function parseSessionTranscript(filePath: string): TranscriptResult {
-  try {
-    const turns: LiveTranscriptTurn[] = [];
-    let index = 0;
-    // Stream (don't readFileSync a giant string) and cap turns so a multi-hundred-MB
-    // session can be opened without exhausting memory.
-    for (const line of readFileLines(filePath)) {
-      if (!line.trim()) continue;
-      index++;
-      try {
-        turns.push(toTranscriptTurn(JSON.parse(line), index));
-      } catch {
-        turns.push({
-          type: "malformed",
-          severity: "warning",
-          label: `Malformed line ${index}`,
-          preview: line.slice(0, 420),
-        });
-      }
-      if (turns.length >= TRANSCRIPT_TURN_CAP) {
-        turns.push({
-          type: "truncated",
-          severity: "info",
-          label: `Transcript truncated at ${TRANSCRIPT_TURN_CAP} lines`,
-          preview: "This session is very large; earlier lines are shown.",
-        });
-        break;
-      }
+const HERMES_TRANSCRIPT_MAX_BYTES = 32 * 1024 * 1024;
+
+function parseTranscriptRecords(records: Iterable<string>): TranscriptResult {
+  const turns: LiveTranscriptTurn[] = [];
+  let index = 0;
+  for (const line of records) {
+    if (!line.trim()) continue;
+    index++;
+    try {
+      turns.push(toTranscriptTurn(JSON.parse(line), index));
+    } catch {
+      turns.push({
+        type: "malformed",
+        severity: "warning",
+        label: `Malformed line ${index}`,
+        preview: line.slice(0, 420),
+      });
     }
-    return { turns };
+    if (turns.length >= TRANSCRIPT_TURN_CAP) {
+      turns.push({
+        type: "truncated",
+        severity: "info",
+        label: `Transcript truncated at ${TRANSCRIPT_TURN_CAP} lines`,
+        preview: "This session is very large; earlier lines are shown.",
+      });
+      break;
+    }
+  }
+  return { turns };
+}
+
+export function parseSessionTranscript(filePath: string, format?: LiveTraceFormat): TranscriptResult {
+  try {
+    const isHermes = format === "hermes-json" || path.extname(filePath).toLowerCase() === ".json";
+    if (isHermes) {
+      const stat = fs.statSync(filePath);
+      if (stat.size > HERMES_TRANSCRIPT_MAX_BYTES) {
+        return { turns: [], error: `Hermes transcript exceeds the ${HERMES_TRANSCRIPT_MAX_BYTES / (1024 * 1024)} MiB viewer limit` };
+      }
+      let raw = "";
+      for (const line of readFileLines(filePath)) raw += line + "\n";
+      const records = hermesJsonToRecords(raw);
+      if (records.length === 0) return { turns: [], error: "Unsupported single-JSON transcript format" };
+      return parseTranscriptRecords(records);
+    }
+    // Stream (don't readFileSync a giant string) and cap turns so a multi-hundred-MB
+    // JSONL session can be opened without exhausting memory.
+    return parseTranscriptRecords(readFileLines(filePath));
   } catch (e) {
     return { turns: [], error: e instanceof Error ? e.message : String(e) };
   }
@@ -657,8 +691,8 @@ function isErroringTurn(turn: LiveTranscriptTurn): boolean {
   return turn.severity === "error" || turn.severity === "warning";
 }
 
-export function getErroringTurns(filePath: string): TranscriptResult {
-  const parsed = parseSessionTranscript(filePath);
+export function getErroringTurns(filePath: string, format?: LiveTraceFormat): TranscriptResult {
+  const parsed = parseSessionTranscript(filePath, format);
   if (parsed.error) return { turns: [], error: parsed.error };
   const keep = new Set<number>();
   parsed.turns.forEach((turn, index) => {

@@ -18,8 +18,9 @@ export const BUILTIN_DESCRIPTORS: HarnessDescriptorInput[] = [
     workdirFlag: "--add-dir",
     modelFlag: "--model",
     maxTurnsFlag: "--max-turns",
+    // Claude Code's CLI exposes model vision, but no local-image attachment
+    // flag that OpenEval can safely pass to a headless run.
     prompt: { mode: "arg" },
-    capabilities: { supportsVisionInput: true },
     models: {
       aliases: [
         { id: "opus", label: "Opus", family: "opus", capabilities: { visionInput: true, visualCodeOutput: true } },
@@ -41,6 +42,7 @@ export const BUILTIN_DESCRIPTORS: HarnessDescriptorInput[] = [
     binEnvVar: "CODEX_BIN",
     wellKnownPaths: ["~/.local/bin/codex", "~/.codex/bin/codex"],
     parser: "codex-jsonl",
+    helpArgs: ["exec", "--help"],
     argTemplate: ["exec", "--json", "--skip-git-repo-check"],
     permissionArgs: {
       bypassPermissions: ["--dangerously-bypass-approvals-and-sandbox"],
@@ -48,6 +50,7 @@ export const BUILTIN_DESCRIPTORS: HarnessDescriptorInput[] = [
       "*": ["-s", "workspace-write"],
     },
     modelFlag: "-m",
+    imageFlag: "-i",
     prompt: { mode: "arg" },
     // `codex --help` exposes `-i/--image` for both interactive and `exec`
     // modes. Cost is intentionally false because JSONL output does not report
@@ -76,8 +79,9 @@ export const BUILTIN_DESCRIPTORS: HarnessDescriptorInput[] = [
     workdirFlag: "--add-dir",
     modelFlag: "--model",
     maxTurnsFlag: "--max-turns",
+    // NCode mirrors Claude Code's provider capability, but does not expose a
+    // local image flag in its headless CLI surface.
     prompt: { mode: "arg" },
-    capabilities: { supportsVisionInput: true },
     models: {
       default: "glm-5.2",
       aliases: [

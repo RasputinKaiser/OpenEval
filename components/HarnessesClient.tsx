@@ -163,6 +163,9 @@ export default function HarnessesClient() {
                 <Field label="Source">{active.source}</Field>
                 <Field label="Output format">{active.capabilities.outputFormat}</Field>
                 <Field label="Vision input">{capabilityLabel(active.capabilities.supportsVisionInput)}</Field>
+                <Field label="Local image attachments">{active.imageFlag ? `yes (${active.imageFlag})` : "not wired"}</Field>
+                <Field label="Probe">{active.probe ? `version ${active.probe.version.ok ? "ok" : "failed"}${active.probe.help ? ` · help ${active.probe.help.ok ? "ok" : "failed"}` : ""}` : "not run"}</Field>
+                <Field label="Image flag probe">{active.probe?.imageFlagObserved == null ? "not observed" : active.probe.imageFlagObserved ? "observed" : "not observed"}</Field>
               </dl>
 
               <div className="mt-4">
@@ -192,6 +195,12 @@ export default function HarnessesClient() {
                 <pre className="text-[11px] mono bg-bg border border-bd-subtle rounded-md p-3 overflow-x-auto whitespace-pre-wrap break-all">
                   {active.sampleCommand ? `${active.sampleCommand.bin} ${active.sampleCommand.args.join(" ")}` : "—"}
                 </pre>
+                {active.sampleCommand && Object.keys(active.sampleCommand.env ?? {}).length > 0 && (
+                  <div className="mt-2 text-[10px] mono text-fg-dim">Environment: {Object.entries(active.sampleCommand.env ?? {}).map(([key, value]) => `${key}=${value}`).join(" ")}</div>
+                )}
+                {active.sampleCommand?.stdin != null && (
+                  <div className="mt-2 text-[10px] mono text-fg-dim">Stdin prompt: {active.sampleCommand.stdin}</div>
+                )}
               </div>
 
               {active.detail && (

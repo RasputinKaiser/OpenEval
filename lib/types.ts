@@ -67,6 +67,8 @@ export interface CaseDefinition {
   visual?: {
     kind: "svg" | "threejs" | "web_ui" | "app_ui" | "screenshot";
     requires_vision_input?: boolean;
+    /** Paths relative to the prepared workdir that should be attached to the initial prompt. */
+    input_images?: string[];
     expected_artifacts?: string[];
   };
   graders: GraderSpec[];
@@ -84,6 +86,8 @@ export interface RunnerContext {
   permissionMode: PermissionMode;
   model?: string;
   extraArgs: string[];
+  /** Absolute local image paths attached to the initial prompt when supported by the harness. */
+  images?: string[];
   harness?: string;
   onEvent?: (event: RunnerEvent) => void;
 }

@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   compactDisplayPath,
+  parseSessionTranscript,
   isPathInLiveSource,
   redactSensitiveText,
   scanLiveSessions,
@@ -28,6 +29,33 @@ function writeSession(lines: unknown[], extras: string[] = []): string {
   );
   return file;
 }
+
+test("parseSessionTranscript opens Hermes single-JSON sessions", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "openeval-hermes-transcript-"));
+  const file = path.join(dir, "session_20260715_000000_demo.json");
+  fs.writeFileSync(file, JSON.stringify({
+    session_id: "hermes-transcript",
+    model: "gpt-5.5",
+    session_start: "2026-07-15T00:00:00.000Z",
+    last_updated: "2026-07-15T00:00:03.000Z",
+    messages: [
+      { role: "user", content: "inspect the image" },
+      { role: "assistant", content: "I will inspect it.", tool_calls: [{ id: "tool-1", function: { name: "bash", arguments: "{\"cmd\":\"file image.png\"}" } }] },
+      { role: "tool", tool_call_id: "tool-1", content: "image.png: PNG image data", is_error: true },
+      { role: "assistant", content: "The tool reported an error." },
+    ],
+  }, null, 2));
+  try {
+    const parsed = parseSessionTranscript(file, "hermes-json");
+    assert.equal(parsed.error, undefined);
+    assert.ok(parsed.turns.some((turn) => turn.label === "You"));
+    assert.ok(parsed.turns.some((turn) => turn.label === "Tool: bash"));
+    assert.ok(parsed.turns.some((turn) => turn.label === "Tool result — error"));
+    assert.equal(parsed.turns.some((turn) => turn.type === "malformed"), false);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 test("summarizeLiveSessionFile parses observed ncode sessions without result events", () => {
   const file = writeSession([

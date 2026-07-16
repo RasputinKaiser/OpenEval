@@ -66,6 +66,26 @@ async function copyDir(src: string, dest: string): Promise<void> {
   }
 }
 
+async function resolveInputImages(def: CaseDefinition, workdir: string): Promise<string[]> {
+  const requested = def.visual?.input_images ?? [];
+  if (def.visual?.requires_vision_input && requested.length === 0) {
+    throw new Error("This case requires vision input but declares no visual.input_images");
+  }
+  const images: string[] = [];
+  for (const relative of requested) {
+    if (path.isAbsolute(relative)) throw new Error(`Visual input must be relative to the case workdir: ${relative}`);
+    const absolute = path.resolve(workdir, relative);
+    const rel = path.relative(workdir, absolute);
+    if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) {
+      throw new Error(`Visual input escapes the case workdir: ${relative}`);
+    }
+    const stat = await fs.stat(absolute).catch(() => null);
+    if (!stat?.isFile()) throw new Error(`Visual input file is missing: ${relative}`);
+    images.push(absolute);
+  }
+  return images;
+}
+
 function transcriptToText(r: RunnerResult): string {
   const lines: string[] = [];
   for (const m of r.transcript) {
@@ -144,6 +164,23 @@ export async function executeCase(
   const runner = getRunner(runnerKind);
   const runnerCfg = def.runner || {};
   const adapter = getAdapter(harness);
+  let images: string[];
+  try {
+    images = await resolveInputImages(def, workdir);
+    if (images.length && !adapter.descriptor.imageFlag) {
+      throw new Error(`Harness "${adapter.id}" does not declare a local image attachment flag`);
+    }
+    if (images.length && adapter.capabilities.supportsVisionInput === false) {
+      throw new Error(`Harness "${adapter.id}" does not support vision input`);
+    }
+  } catch (e: any) {
+    rec.status = "error";
+    rec.error_msg = `Vision input preparation failed: ${String(e?.message || e)}`;
+    rec.ended_at = Date.now();
+    updateRunCase(rcId, { status: rec.status, ended_at: rec.ended_at, error_msg: rec.error_msg });
+    appendEvent(runId, "case_finished", { case_id: def.id, seq, sample, status: rec.status }, def.id);
+    return rec;
+  }
   const harnessInfo = await loadHarnessInfo(harness, adapter.id);
   rec.harness_info = harnessInfo;
   const ctx = {
@@ -155,6 +192,7 @@ export async function executeCase(
     permissionMode: runnerCfg.permission_mode ?? "bypassPermissions",
     model: modelOverride || runnerCfg.model,
     extraArgs: runnerCfg.extra_args ?? [],
+    images,
     harness,
     onEvent: (ev: any) => {
       void fs.appendFile(transcriptPath, JSON.stringify(ev) + "\n").catch(() => {});

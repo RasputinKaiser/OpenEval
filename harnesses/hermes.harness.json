@@ -4,16 +4,23 @@
   "binNames": ["hermes"],
   "wellKnownPaths": ["~/.local/bin/hermes", "~/.hermes/bin/hermes"],
   "versionArgs": ["--version"],
+  "helpArgs": ["chat", "--help"],
   "parser": "text",
   "argTemplate": ["chat", "--query", "{prompt}", "--quiet", "--cli"],
   "prompt": { "mode": "template" },
   "modelFlag": "--model",
   "maxTurnsFlag": "--max-turns",
+  "imageFlag": "--image",
   "capabilities": {
     "reportsCost": false,
     "reportsTokens": false,
     "reportsTurns": false,
     "supportsVisionInput": true,
     "permissionModes": []
+  },
+  "liveTrace": {
+    "format": "hermes-json",
+    "roots": ["~/.hermes/sessions"],
+    "maxDepth": 1
   }
 }

@@ -118,6 +118,8 @@ export const HarnessDescriptorSchema = z
     binEnvVar: z.string().optional(),
     wellKnownPaths: z.array(z.string()).optional(),
     versionArgs: z.array(z.string()).optional(),
+    /** Safe, non-spending CLI probe arguments. An empty array disables help probing. */
+    helpArgs: z.array(z.string()).optional(),
 
     /** Which stdout parser to use. Falls back from legacy `output` when omitted. */
     parser: z.enum(PARSERS).optional(),
@@ -135,6 +137,8 @@ export const HarnessDescriptorSchema = z
     workdirFlag: z.string().optional(),
     modelFlag: z.string().optional(),
     maxTurnsFlag: z.string().optional(),
+    /** Repeated once per local image attachment, when a case supplies images. */
+    imageFlag: z.string().optional(),
     /** Simple form: `<permissionFlag> <mode>` is appended. */
     permissionFlag: z.string().optional(),
     /** Full form: per-mode argument lists; "*" is the fallback entry. */
@@ -177,6 +181,7 @@ export interface NormalizedDescriptor {
   binEnvVar?: string;
   wellKnownPaths?: string[];
   versionArgs: string[];
+  helpArgs: string[];
   parser: ParserKind;
   argTemplate: string[];
   extraEnv: Record<string, string>;
@@ -184,6 +189,7 @@ export interface NormalizedDescriptor {
   workdirFlag?: string;
   modelFlag?: string;
   maxTurnsFlag?: string;
+  imageFlag?: string;
   permissionFlag?: string;
   permissionArgs?: Record<string, string[]>;
   appendExtraArgs: boolean;
@@ -248,6 +254,7 @@ export function normalizeDescriptor(d: z.output<typeof HarnessDescriptorSchema>)
     binEnvVar: d.binEnvVar,
     wellKnownPaths: d.wellKnownPaths,
     versionArgs: d.versionArgs ?? ["--version"],
+    helpArgs: d.helpArgs ?? ["--help"],
     parser,
     argTemplate: d.argTemplate,
     extraEnv: d.extraEnv ?? {},
@@ -255,6 +262,7 @@ export function normalizeDescriptor(d: z.output<typeof HarnessDescriptorSchema>)
     workdirFlag: d.workdirFlag,
     modelFlag: d.modelFlag,
     maxTurnsFlag: d.maxTurnsFlag,
+    imageFlag: d.imageFlag,
     permissionFlag: d.permissionFlag,
     permissionArgs: d.permissionArgs,
     appendExtraArgs: d.appendExtraArgs ?? true,

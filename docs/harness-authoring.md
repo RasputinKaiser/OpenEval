@@ -32,6 +32,7 @@ npm run run:case -- swe-fix-fizzbuzz --harness <id>
 | `binEnvVar` | string, optional | Environment variable that overrides the binary path at command-build time. |
 | `wellKnownPaths` | string[], optional | Extra executable paths for discovery. `~` is expanded in discovery. |
 | `versionArgs` | string[], default `["--version"]` | Arguments used for the version probe. |
+| `helpArgs` | string[], default `["--help"]` | Safe, non-spending arguments used for the CLI help probe. Set `[]` to skip it. |
 | `parser` | `claude-stream-json`, `codex-jsonl`, `generic-jsonl`, or `text`; required unless `output` is set | Selects stdout line parser. |
 | `output` | legacy `stream-json`, `jsonl`, `json`, or `text`; optional | Back-compat mapping: `stream-json` to `claude-stream-json`; `jsonl` and `json` to `generic-jsonl`; `text` to `text`. |
 | `argTemplate` | string[], required | Initial command arguments. Tokens may contain substitutions. |
@@ -40,6 +41,7 @@ npm run run:case -- swe-fix-fizzbuzz --harness <id>
 | `workdirFlag` | string, optional | Appended with the workdir unless `{workdir}` already appears in `argTemplate`. |
 | `modelFlag` | string, optional | Appended with the selected model only when a model is set and `{model}` is not already in `argTemplate`. |
 | `maxTurnsFlag` | string, optional | Appended with max turns only when `maxTurns > 0` and `{maxTurns}` is not already in `argTemplate`. |
+| `imageFlag` | string, optional | Repeated with each local image path supplied by `visual.input_images`. |
 | `permissionFlag` | string, optional | Simple permission form: appends `<permissionFlag> <permissionMode>`. |
 | `permissionArgs` | object of string[] by permission mode, optional | Full permission form. Uses the selected mode key, then `"*"` as fallback. Values support substitutions. |
 | `appendExtraArgs` | boolean, default `true` | Whether `runner.extra_args` from a case is appended. |
@@ -109,7 +111,9 @@ For `generic-jsonl`, a line with `toolCallName` emits a `tool_use` event and a l
 - `supportsVisionInput`
 - `permissionModes`
 
-Without overrides, structured parsers (`claude-stream-json`, `codex-jsonl`) report cost/tokens/turns; generic descriptors report those capabilities when the corresponding mapped fields exist. `supportsVisionInput` defaults to `unknown` (`null`) because an omitted flag is not evidence that a harness cannot accept images. `permissionModes` defaults to all permission modes from the schema; descriptors should override it with an explicit list when the CLI exposes a narrower surface.
+The optional `imageFlag` enables real local-image attachments. It is repeated as `imageFlag <path>` for every `visual.input_images` entry. A harness can still have model/provider vision support without declaring a local attachment flag; OpenEval reports that distinction and rejects image cases it cannot wire safely.
+
+Without overrides, structured parsers (`claude-stream-json`, `codex-jsonl`) report cost/tokens/turns; generic descriptors report those capabilities when the corresponding mapped fields exist. `supportsVisionInput` defaults to `unknown` (`null`) because an omitted flag is not evidence that a harness cannot accept images. `permissionModes` defaults to all permission modes from the schema; descriptors should override it with an explicit list when the CLI exposes a narrower surface. `helpArgs` defaults to `["--help"]` and is used for a safe, non-spending probe; set it to an empty array only when a CLI has no help probe.
 
 ## Live Trace
 
@@ -117,7 +121,7 @@ Without overrides, structured parsers (`claude-stream-json`, `codex-jsonl`) repo
 
 | Field | Type / default | Purpose |
 | --- | --- | --- |
-| `format` | `claude-projects`, `codex-sessions`, or `jsonl-dir`; default `jsonl-dir` | Parser and directory layout for `/live`. |
+| `format` | `claude-projects`, `codex-sessions`, `jsonl-dir`, or `hermes-json`; default `jsonl-dir` | Parser and directory layout for `/live`. `hermes-json` handles one pretty-printed JSON document per session. |
 | `roots` | string[], required | Roots to scan. `~` expands to the home directory. |
 | `maxDepth` | positive integer, optional | Recursive depth for `jsonl-dir` and `codex-sessions`; default is `5` for Codex, `2` for Claude-projects, `4` for generic JSONL. |
 | `fields` | `FieldMapping`, optional | Generic field mappings for live metrics. For `jsonl-dir`, adapter fields are used when omitted. |
@@ -149,8 +153,9 @@ The model API returns descriptor aliases, discovered config models, and the desc
 1. Start with `argTemplate` after substitutions.
 2. Append `permissionArgs[permissionMode]`, or `permissionArgs["*"]`, or `<permissionFlag> <permissionMode>`.
 3. Append `workdirFlag`, `modelFlag`, and `maxTurnsFlag` when present and not already represented by placeholders in `argTemplate`; `modelFlag` requires a selected model, and `maxTurnsFlag` requires `maxTurns > 0`.
-4. Append case `extra_args` unless `appendExtraArgs` is `false`.
-5. Add the prompt by mode: trailing arg, flag pair, stdin, or no-op for template mode.
+4. Append the repeated `imageFlag <absolute-image-path>` pairs for any case input images.
+5. Append case `extra_args` unless `appendExtraArgs` is `false`.
+6. Add the prompt by mode: trailing arg, flag pair, stdin, or no-op for template mode.
 
 The spawned process runs in the prepared workdir with `process.env` plus `extraEnv`.
 
@@ -165,41 +170,38 @@ This example is based on `harnesses/hermes.harness.json`, with inline annotation
   "binNames": ["hermes"],
   "wellKnownPaths": ["~/.local/bin/hermes", "~/.hermes/bin/hermes"],
   "versionArgs": ["--version"],
-  "output": "jsonl",
-  "argTemplate": ["run", "--json", "--workdir", "{workdir}"],
-  "prompt": { "mode": "flag", "flag": "--prompt" },
-  "extraEnv": {},
-  "fields": {
-    "finalText": "message.text",
-    "sessionId": "session_id",
-    "model": "model",
-    "toolCallName": "tool.name",
-    "toolCallId": "tool.id",
-    "toolCallInput": "tool.input",
-    "toolCallOutput": "result.output",
-    "toolCallError": "result.is_error",
-    "durationMs": "duration_ms",
-    "numTurns": "num_turns",
-    "inputTokens": "usage.input_tokens",
-    "outputTokens": "usage.output_tokens",
-    "costUsd": "usage.cost_usd",
-    "stopReason": "stop_reason",
-    "isError": "is_error"
+  "helpArgs": ["chat", "--help"],
+  "parser": "text",
+  "argTemplate": ["chat", "--query", "{prompt}", "--quiet", "--cli"],
+  "prompt": { "mode": "template" },
+  "modelFlag": "--model",
+  "maxTurnsFlag": "--max-turns",
+  "imageFlag": "--image",
+  "capabilities": {
+    "reportsCost": false,
+    "reportsTokens": false,
+    "reportsTurns": false,
+    "supportsVisionInput": true,
+    "permissionModes": []
+  },
+  "liveTrace": {
+    "format": "hermes-json",
+    "roots": ["~/.hermes/sessions"],
+    "maxDepth": 1
   }
 }
 ```
 
 Notes:
 
-- `output: "jsonl"` is the legacy spelling for `parser: "generic-jsonl"`.
-- `{workdir}` is already in `argTemplate`, so no `workdirFlag` is needed.
-- The prompt is sent as `--prompt <case prompt>`.
-- Because the parser is generic JSONL, `fields` is required.
+- Hermes stores one pretty-printed JSON document per session, so live metrics and transcript viewing use the `hermes-json` trace format rather than a line parser.
+- The prompt is substituted into `--query`; `imageFlag` is repeated for each `visual.input_images` path.
+- Hermes records no token or cost usage, so those capabilities remain explicitly false.
 
 With a case workdir of `/tmp/workdir`, prompt `Fix the bug`, and permission mode `bypassPermissions`, the sample command shape is:
 
 ```bash
-hermes run --json --workdir /tmp/workdir --prompt "Fix the bug"
+hermes chat --query "Fix the bug" --quiet --cli
 ```
 
 ## Bundled Descriptors

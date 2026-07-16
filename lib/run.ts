@@ -6,10 +6,11 @@ import { appendEvent, getLastEventAt, getRun, getRunCaseBySeq, getRunStatus, ins
 import { executeCase } from "./executor";
 import { computeSummary } from "./summary";
 import { selectCases } from "./cases";
-import { getAdapter, getDefaultHarness } from "./adapters/registry";
+import { getDefaultHarness } from "./adapters/registry";
 import { collectRunManifest } from "./manifest";
 import type { CaseDefinition, RunnerKind } from "./types";
 import { isTerminalCaseStatus } from "./status";
+import { resolveDefaultModel } from "./models";
 
 // In-process cancellation fast path. The run row's status in SQLite is the
 // source of truth — dev HMR can reset this module (and this Map) mid-run, so
@@ -39,7 +40,8 @@ export async function createAndStartRun(params: CreateRunParams): Promise<{ id: 
   if (cases.length === 0) throw new Error("No cases match the filter");
   const samples = Math.max(1, Math.min(params.samples ?? 1, 8));
   const harness = params.harness || getDefaultHarness();
-  const model = params.model || getAdapter(harness).descriptor.models?.default;
+  const resolvedDefault = resolveDefaultModel(harness);
+  const model = params.model || resolvedDefault.id;
 
   const run = {
     id,
@@ -51,7 +53,7 @@ export async function createAndStartRun(params: CreateRunParams): Promise<{ id: 
     summary: null,
   };
   insertRun(run);
-  void collectRunManifest(harness, model, { harnessWasDefault: !params.harness, modelWasDefault: !params.model })
+  void collectRunManifest(harness, model, { harnessWasDefault: !params.harness, modelWasDefault: !params.model, modelDefaultSource: resolvedDefault.source })
     .then((m) => updateRunManifest(id, m))
     .catch(() => {});
   appendEvent(id, "run_started", { case_count: cases.length, samples, runner: params.runner, harness, model }, undefined);

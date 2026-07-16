@@ -77,6 +77,36 @@ export function resolveOnPath(bin: string): string | null {
   return null;
 }
 
+export type DescriptorBinSource = "env" | "path" | "well_known" | "default" | "none";
+
+export interface DescriptorBinResolution {
+  bin: string | null;
+  source: DescriptorBinSource;
+}
+
+/** Resolve the same binary identity that both discovery and execution use. */
+export function resolveDescriptorBinInfo(desc: NormalizedDescriptor): DescriptorBinResolution {
+  const override = desc.binEnvVar ? process.env[desc.binEnvVar]?.trim() : undefined;
+  if (override) return { bin: expandHomePath(override), source: "env" };
+
+  const names = [...new Set([desc.defaultBin, ...desc.binNames])];
+  for (const name of names) {
+    if (name.includes("/")) {
+      const expanded = expandHomePath(name);
+      if (isExecutable(expanded)) return { bin: expanded, source: name === desc.defaultBin ? "default" : "well_known" };
+      continue;
+    }
+    const onPath = resolveOnPath(name);
+    if (onPath) return { bin: onPath, source: "path" };
+  }
+
+  for (const candidate of desc.wellKnownPaths ?? []) {
+    const expanded = expandHomePath(candidate);
+    if (isExecutable(expanded)) return { bin: expanded, source: "well_known" };
+  }
+  return { bin: null, source: "none" };
+}
+
 /**
  * The binary buildCommand spawns. Resolution mirrors discovery (discover.ts):
  * env override → PATH → wellKnownPaths — previously only the env var and bare
@@ -86,17 +116,8 @@ export function resolveOnPath(bin: string): string | null {
  * fallback returns an absolute path.
  */
 export function resolveDescriptorBin(desc: NormalizedDescriptor): string {
-  if (desc.binEnvVar && process.env[desc.binEnvVar]) return process.env[desc.binEnvVar]!;
-  if (desc.defaultBin.includes("/")) return expandHomePath(desc.defaultBin);
-  if (resolveOnPath(desc.defaultBin)) return desc.defaultBin;
-  for (const name of desc.binNames) {
-    if (name !== desc.defaultBin && !name.includes("/") && resolveOnPath(name)) return name;
-  }
-  for (const candidate of desc.wellKnownPaths ?? []) {
-    const expanded = expandHomePath(candidate);
-    if (isExecutable(expanded)) return expanded;
-  }
-  return desc.defaultBin;
+  const resolved = resolveDescriptorBinInfo(desc);
+  return resolved.bin ?? desc.defaultBin;
 }
 
 /**
@@ -125,6 +146,12 @@ export function buildDescriptorCommand(desc: NormalizedDescriptor, ctx: RunnerCo
   }
   if (desc.maxTurnsFlag && ctx.maxTurns > 0 && !desc.argTemplate.some((t) => t.includes("{maxTurns}"))) {
     args.push(desc.maxTurnsFlag, String(ctx.maxTurns));
+  }
+  if (ctx.images?.length) {
+    if (!desc.imageFlag) {
+      throw new Error(`Harness "${desc.id}" does not declare a local image attachment flag`);
+    }
+    for (const image of ctx.images) args.push(desc.imageFlag, image);
   }
   if (desc.appendExtraArgs) args.push(...ctx.extraArgs);
 
