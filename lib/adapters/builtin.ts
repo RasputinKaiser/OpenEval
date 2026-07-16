@@ -18,14 +18,15 @@ export const BUILTIN_DESCRIPTORS: HarnessDescriptorInput[] = [
     workdirFlag: "--add-dir",
     modelFlag: "--model",
     maxTurnsFlag: "--max-turns",
+    // Claude Code's CLI exposes model vision, but no local-image attachment
+    // flag that OpenEval can safely pass to a headless run.
     prompt: { mode: "arg" },
-    capabilities: { supportsVisionInput: true },
     models: {
       aliases: [
-        { id: "opus", label: "Opus", family: "opus" },
-        { id: "sonnet", label: "Sonnet", family: "sonnet" },
-        { id: "sonnet[1m]", label: "Sonnet 1M", family: "sonnet" },
-        { id: "haiku", label: "Haiku", family: "haiku" },
+        { id: "opus", label: "Opus", family: "opus", capabilities: { visionInput: true, visualCodeOutput: true } },
+        { id: "sonnet", label: "Sonnet", family: "sonnet", capabilities: { visionInput: true, visualCodeOutput: true } },
+        { id: "sonnet[1m]", label: "Sonnet 1M", family: "sonnet", capabilities: { visionInput: true, visualCodeOutput: true } },
+        { id: "haiku", label: "Haiku", family: "haiku", capabilities: { visionInput: true, visualCodeOutput: true } },
       ],
     },
     liveTrace: {
@@ -36,11 +37,12 @@ export const BUILTIN_DESCRIPTORS: HarnessDescriptorInput[] = [
   },
   {
     id: "codex",
-    label: "Codex CLI",
+    label: "Codex CLI + ChatGPT app",
     binNames: ["codex"],
     binEnvVar: "CODEX_BIN",
     wellKnownPaths: ["~/.local/bin/codex", "~/.codex/bin/codex"],
     parser: "codex-jsonl",
+    helpArgs: ["exec", "--help"],
     argTemplate: ["exec", "--json", "--skip-git-repo-check"],
     permissionArgs: {
       bypassPermissions: ["--dangerously-bypass-approvals-and-sandbox"],
@@ -48,8 +50,16 @@ export const BUILTIN_DESCRIPTORS: HarnessDescriptorInput[] = [
       "*": ["-s", "workspace-write"],
     },
     modelFlag: "-m",
+    imageFlag: "-i",
     prompt: { mode: "arg" },
-    capabilities: { reportsCost: false },
+    // `codex --help` exposes `-i/--image` for both interactive and `exec`
+    // modes. Cost is intentionally false because JSONL output does not report
+    // a measured USD field.
+    capabilities: {
+      reportsCost: false,
+      supportsVisionInput: true,
+      permissionModes: ["bypassPermissions", "default"],
+    },
     liveTrace: {
       format: "codex-sessions",
       roots: ["~/.codex/sessions", "~/.codex/archived_sessions"],
@@ -69,8 +79,9 @@ export const BUILTIN_DESCRIPTORS: HarnessDescriptorInput[] = [
     workdirFlag: "--add-dir",
     modelFlag: "--model",
     maxTurnsFlag: "--max-turns",
+    // NCode mirrors Claude Code's provider capability, but does not expose a
+    // local image flag in its headless CLI surface.
     prompt: { mode: "arg" },
-    capabilities: { supportsVisionInput: true },
     models: {
       default: "glm-5.2",
       aliases: [

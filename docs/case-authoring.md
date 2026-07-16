@@ -75,6 +75,7 @@ Oracles matter because `npm run selftest` first grades a no-op baseline and fail
 | --- | --- | --- |
 | `kind` | `svg`, `threejs`, `web_ui`, `app_ui`, or `screenshot` | Visual artifact class. |
 | `requires_vision_input` | boolean | Marks cases that require visual input. |
+| `input_images` | string[] | Paths relative to the prepared workdir. The selected harness must declare an `imageFlag`; each path is attached to the initial prompt. Required when `requires_vision_input` is true. |
 | `expected_artifacts` | string[] | Artifact names/contracts. The accuracy audit counts these as visual evidence. |
 
 ## Graders

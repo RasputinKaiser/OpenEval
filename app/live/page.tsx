@@ -1,17 +1,19 @@
 import path from "node:path";
 import LiveClient from "@/components/LiveClient";
-import { defaultLiveLimitForHarness, scanLiveSessions, isPathInLiveSource, getErroringTurns, type LiveAggregate, type TranscriptResult } from "@/lib/live";
+import { defaultLiveLimitForHarness, scanLiveSessions, isPathInLiveSource, liveTraceFormatForHarness, getErroringTurns, type LiveAggregate, type TranscriptResult } from "@/lib/live";
 
 export const dynamic = "force-dynamic";
 
 async function getSessionTranscript(filePath: string, harness?: string): Promise<TranscriptResult> {
   "use server";
   const normalized = path.resolve(filePath);
-  if (!normalized.endsWith(".jsonl") || !isPathInLiveSource(normalized, harness)) {
+  const format = liveTraceFormatForHarness(harness);
+  const supportedExtension = normalized.endsWith(".jsonl") || (format === "hermes-json" && normalized.endsWith(".json"));
+  if (!supportedExtension || !isPathInLiveSource(normalized, harness)) {
     return { turns: [], error: "Invalid session path" };
   }
   try {
-    return getErroringTurns(normalized);
+    return getErroringTurns(normalized, format);
   } catch (e) {
     return { turns: [], error: `Failed to parse session transcript: ${e instanceof Error ? e.message : String(e)}` };
   }

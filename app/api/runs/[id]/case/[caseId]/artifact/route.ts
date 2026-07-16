@@ -33,7 +33,13 @@ export async function GET(
   }
 
   try {
-    const content = fs.readFileSync(fullPath, "utf8");
+    const realWorkdir = fs.realpathSync(rc.workdir_path);
+    const realArtifact = fs.realpathSync(fullPath);
+    const realRelative = path.relative(realWorkdir, realArtifact);
+    if (!realRelative || realRelative.startsWith("..") || path.isAbsolute(realRelative)) {
+      return NextResponse.json({ error: "Invalid path" }, { status: 400 });
+    }
+    const content = fs.readFileSync(realArtifact, "utf8");
     const isTerminal = isTerminalCaseStatus(rc.status);
     const headers = isTerminal
       ? { "Cache-Control": "private, max-age=300, stale-while-revalidate=600" }

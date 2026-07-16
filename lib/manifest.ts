@@ -43,7 +43,7 @@ function execGit(args: string[]): Promise<string | null> {
 export async function collectRunManifest(
   harnessId: string,
   model?: string,
-  opts?: { harnessWasDefault?: boolean; modelWasDefault?: boolean }
+  opts?: { harnessWasDefault?: boolean; modelWasDefault?: boolean; modelDefaultSource?: "descriptor" | "config" | "none" }
 ): Promise<RunManifest> {
   const [openevalVersion, harnessProbe, gitSha, gitBranch, gitStatus] = await Promise.all([
     readOpenEvalVersion(),
@@ -61,7 +61,7 @@ export async function collectRunManifest(
   })();
   const defaultsApplied: string[] = [];
   if (opts?.harnessWasDefault) defaultsApplied.push(`harness:${harnessId} (registry default)`);
-  if (opts?.modelWasDefault && model) defaultsApplied.push(`model:${model} (adapter default)`);
+  if (opts?.modelWasDefault && model) defaultsApplied.push(`model:${model} (${opts.modelDefaultSource === "config" ? "local config" : opts.modelDefaultSource === "descriptor" ? "descriptor" : "harness default"})`);
 
   return {
     openevalVersion,

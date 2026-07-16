@@ -137,6 +137,7 @@ const SetupSchema = z
 const VisualSchema = z.object({
   kind: z.enum(["svg", "threejs", "web_ui", "app_ui", "screenshot"]),
   requires_vision_input: z.boolean().optional(),
+  input_images: z.array(z.string().min(1)).optional(),
   expected_artifacts: z.array(z.string()).optional(),
 }).strict();
 

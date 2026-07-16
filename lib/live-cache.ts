@@ -16,7 +16,10 @@ import type { LiveSession } from "./live";
  * Bump PARSER_VERSION whenever parseLiveSession's output changes shape or
  * semantics; stale-version rows are ignored and overwritten.
  */
-export const PARSER_VERSION = 11; // v11: unify Codex user-message normalization/marker filtering across rollout shapes; v10: sentiment lexicon and verification-tail fixes
+export const PARSER_VERSION = 14; // v14: Codex turn-context/user-message turn counts; v13: accurate Hermes user-turn counts, old Codex prompt previews, and generic boolean parsing; v12: Hermes tool-error normalization and transcript format support; v11: unify Codex user-message normalization/marker filtering across rollout shapes
+
+/** Bump whenever transcript-to-search text extraction semantics change. */
+export const FTS_INDEX_VERSION = 1; // v1: shared Claude/Codex/Hermes conversation normalization
 
 const CACHE_DB_PATH = path.join(ROOT, "data", "live-cache.db");
 
@@ -41,6 +44,9 @@ function getCacheDb(): Database.Database | null {
     // Additive migration: remember each file's fts rowid so re-indexing can
     // delete by rowid instead of scanning the UNINDEXED `file` column.
     try { conn.exec("ALTER TABLE fts_meta ADD COLUMN fts_rowid INTEGER"); } catch {}
+    // Text extraction evolves independently from the live-session parser.
+    // Old rows must be offered to the explicit indexer again after a change.
+    try { conn.exec("ALTER TABLE fts_meta ADD COLUMN index_version INTEGER NOT NULL DEFAULT 0"); } catch {}
     db = conn;
     return conn;
   } catch {
@@ -84,7 +90,8 @@ CREATE TABLE IF NOT EXISTS fts_meta (
   mtime_ms REAL NOT NULL,
   size INTEGER NOT NULL,
   indexed_at INTEGER NOT NULL,
-  fts_rowid INTEGER
+  fts_rowid INTEGER,
+  index_version INTEGER NOT NULL DEFAULT 0
 );
 `;
 
@@ -295,7 +302,7 @@ export function ftsIndexedFiles(): Map<string, { mtimeMs: number; size: number }
   const conn = getCacheDb();
   if (!conn) return out;
   try {
-    for (const r of conn.prepare("SELECT file, mtime_ms, size FROM fts_meta").all() as Array<{ file: string; mtime_ms: number; size: number }>) {
+    for (const r of conn.prepare("SELECT file, mtime_ms, size FROM fts_meta WHERE index_version = ?").all(FTS_INDEX_VERSION) as Array<{ file: string; mtime_ms: number; size: number }>) {
       out.set(r.file, { mtimeMs: r.mtime_ms, size: r.size });
     }
   } catch {}
@@ -322,11 +329,12 @@ export function ftsUpsert(doc: FtsDoc, mtimeMs: number, size: number): void {
         .run(doc.userText, doc.assistantText, doc.title, doc.project, doc.sourceId, doc.file, doc.at);
       conn
         .prepare(
-          `INSERT INTO fts_meta (file, mtime_ms, size, indexed_at, fts_rowid) VALUES (?, ?, ?, ?, ?)
+          `INSERT INTO fts_meta (file, mtime_ms, size, indexed_at, fts_rowid, index_version) VALUES (?, ?, ?, ?, ?, ?)
            ON CONFLICT(file) DO UPDATE SET mtime_ms = excluded.mtime_ms, size = excluded.size,
-             indexed_at = excluded.indexed_at, fts_rowid = excluded.fts_rowid`,
+             indexed_at = excluded.indexed_at, fts_rowid = excluded.fts_rowid,
+             index_version = excluded.index_version`,
         )
-        .run(doc.file, mtimeMs, size, Date.now(), Number(inserted.lastInsertRowid));
+        .run(doc.file, mtimeMs, size, Date.now(), Number(inserted.lastInsertRowid), FTS_INDEX_VERSION);
     });
     tx();
   } catch {}

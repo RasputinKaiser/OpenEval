@@ -151,6 +151,32 @@ test("scanSourceSessions keeps archived sessions after their files are pruned", 
   }
 });
 
+test("scanSourceSessions marks Codex rollouts in archived_sessions as archived", () => {
+  const active = fs.mkdtempSync(path.join(os.tmpdir(), "openeval-codex-active-"));
+  const archiveParent = fs.mkdtempSync(path.join(os.tmpdir(), "openeval-codex-archive-"));
+  const archive = path.join(archiveParent, "archived_sessions");
+  fs.mkdirSync(archive);
+  const writeCodex = (dir: string, id: string) => fs.writeFileSync(path.join(dir, `rollout-${id}.jsonl`), [
+    { type: "session_meta", payload: { id, cwd: "/tmp/proj", source: "vscode" } },
+    { type: "event_msg", payload: { type: "user_message", message: `work on ${id}` } },
+    { type: "event_msg", payload: { type: "agent_message", message: "done" } },
+  ].map((line) => JSON.stringify(line)).join("\n"), "utf8");
+
+  writeCodex(active, "active");
+  writeCodex(archive, "archived");
+  const agg = scanSourceSessions({
+    id: "codex",
+    label: "Codex CLI + ChatGPT app",
+    roots: [active, archive],
+    format: "codex-sessions",
+  }, 50, { includeArchived: true });
+
+  assert.equal(agg.totalSessions, 2);
+  assert.equal(agg.archivedSessions, 1);
+  assert.equal(agg.sessions.find((s) => s.sessionId === "archived")?.archived, true);
+  assert.equal(agg.sessions.find((s) => s.sessionId === "active")?.archived, undefined);
+});
+
 // ---- judge self-sessions are instrumentation, not user work ----
 
 test("parsers drop OpenEval's own judge-stub sessions", () => {
@@ -236,7 +262,9 @@ test("hermes-json sessions parse into model, tools, and duration", () => {
   assert.equal(s.sessionId, "20260531_000552_3e2fd6");
   assert.equal(s.toolCalls, 1);
   assert.equal(s.durationMs, 60000);
+  assert.equal(s.numTurns, 1);
   assert.equal(s.metricSources.duration, "measured");
   assert.equal(s.metricSources.tokens, "missing"); // Hermes records no usage
+  assert.ok(s.parseWarnings.includes("turn count inferred from user messages"));
   assert.equal(s.startedAt, Date.parse("2026-05-31T00:05:53.370621"));
 });

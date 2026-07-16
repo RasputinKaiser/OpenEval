@@ -35,6 +35,17 @@ function maybeNum(v: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+function maybeBool(v: unknown): boolean | null {
+  if (typeof v === "boolean") return v;
+  if (typeof v === "number" && Number.isFinite(v)) return v !== 0;
+  if (typeof v === "string") {
+    const normalized = v.trim().toLowerCase();
+    if (["true", "1", "yes", "y", "on"].includes(normalized)) return true;
+    if (["false", "0", "no", "n", "off", ""].includes(normalized)) return false;
+  }
+  return null;
+}
+
 /**
  * Substitution uses a replacer FUNCTION and a single pass: with plain string
  * replacement, `$&`/`` $` ``/`$'` patterns inside prompt/case text are
@@ -77,6 +88,36 @@ export function resolveOnPath(bin: string): string | null {
   return null;
 }
 
+export type DescriptorBinSource = "env" | "path" | "well_known" | "default" | "none";
+
+export interface DescriptorBinResolution {
+  bin: string | null;
+  source: DescriptorBinSource;
+}
+
+/** Resolve the same binary identity that both discovery and execution use. */
+export function resolveDescriptorBinInfo(desc: NormalizedDescriptor): DescriptorBinResolution {
+  const override = desc.binEnvVar ? process.env[desc.binEnvVar]?.trim() : undefined;
+  if (override) return { bin: expandHomePath(override), source: "env" };
+
+  const names = [...new Set([desc.defaultBin, ...desc.binNames])];
+  for (const name of names) {
+    if (name.includes("/")) {
+      const expanded = expandHomePath(name);
+      if (isExecutable(expanded)) return { bin: expanded, source: name === desc.defaultBin ? "default" : "well_known" };
+      continue;
+    }
+    const onPath = resolveOnPath(name);
+    if (onPath) return { bin: onPath, source: "path" };
+  }
+
+  for (const candidate of desc.wellKnownPaths ?? []) {
+    const expanded = expandHomePath(candidate);
+    if (isExecutable(expanded)) return { bin: expanded, source: "well_known" };
+  }
+  return { bin: null, source: "none" };
+}
+
 /**
  * The binary buildCommand spawns. Resolution mirrors discovery (discover.ts):
  * env override → PATH → wellKnownPaths — previously only the env var and bare
@@ -86,17 +127,8 @@ export function resolveOnPath(bin: string): string | null {
  * fallback returns an absolute path.
  */
 export function resolveDescriptorBin(desc: NormalizedDescriptor): string {
-  if (desc.binEnvVar && process.env[desc.binEnvVar]) return process.env[desc.binEnvVar]!;
-  if (desc.defaultBin.includes("/")) return expandHomePath(desc.defaultBin);
-  if (resolveOnPath(desc.defaultBin)) return desc.defaultBin;
-  for (const name of desc.binNames) {
-    if (name !== desc.defaultBin && !name.includes("/") && resolveOnPath(name)) return name;
-  }
-  for (const candidate of desc.wellKnownPaths ?? []) {
-    const expanded = expandHomePath(candidate);
-    if (isExecutable(expanded)) return expanded;
-  }
-  return desc.defaultBin;
+  const resolved = resolveDescriptorBinInfo(desc);
+  return resolved.bin ?? desc.defaultBin;
 }
 
 /**
@@ -125,6 +157,12 @@ export function buildDescriptorCommand(desc: NormalizedDescriptor, ctx: RunnerCo
   }
   if (desc.maxTurnsFlag && ctx.maxTurns > 0 && !desc.argTemplate.some((t) => t.includes("{maxTurns}"))) {
     args.push(desc.maxTurnsFlag, String(ctx.maxTurns));
+  }
+  if (ctx.images?.length) {
+    if (!desc.imageFlag) {
+      throw new Error(`Harness "${desc.id}" does not declare a local image attachment flag`);
+    }
+    for (const image of ctx.images) args.push(desc.imageFlag, image);
   }
   if (desc.appendExtraArgs) args.push(...ctx.extraArgs);
 
@@ -180,8 +218,9 @@ export function parseGenericJsonlLine(
     const id = str(getPath(obj, f.toolCallId)) || into.toolCalls[into.toolCalls.length - 1]?.id || "";
     const output = str(toolOut);
     const tc = into.toolCalls.find((t) => t.id === id);
-    if (tc) { tc.output = output; tc.isError = !!getPath(obj, f.toolCallError); }
-    events.push({ kind: "tool_result", id, output, isError: !!getPath(obj, f.toolCallError), at });
+    const isError = maybeBool(getPath(obj, f.toolCallError)) === true;
+    if (tc) { tc.output = output; tc.isError = isError; }
+    events.push({ kind: "tool_result", id, output, isError, at });
     return events;
   }
 
@@ -197,12 +236,13 @@ export function parseGenericJsonlLine(
   const inputTokens = getPath(obj, f.inputTokens);
   const outputTokens = getPath(obj, f.outputTokens);
   const isError = getPath(obj, f.isError);
+  const errorFlag = maybeBool(isError);
   if (durationMs != null || inputTokens != null || outputTokens != null || isError != null || evtType === "result" || evtType === "turn.completed" || evtType === "done") {
     const toolCallCounts: Record<string, number> = {};
     for (const tc of into.toolCalls) toolCallCounts[tc.name] = (toolCallCounts[tc.name] || 0) + 1;
     into.result = {
       ...(into.result || {}),
-      exitCode: isError ? 1 : 0,
+      exitCode: errorFlag === true ? 1 : 0,
       durationMs: maybeNum(durationMs) || (at - into.startedAt),
       startedAt: into.startedAt,
       endedAt: at,
@@ -221,7 +261,7 @@ export function parseGenericJsonlLine(
       stopReason: str(getPath(obj, f.stopReason)) || null,
       sessionId: into.result?.sessionId ?? (into as any)._lastSessionId ?? null,
       model: into.result?.model ?? (str(getPath(obj, f.model)) || null),
-      isError: !!isError,
+      isError: errorFlag === true,
       rawJson: obj,
       tokenSegments: [],
       toolCallCounts,

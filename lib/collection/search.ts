@@ -1,8 +1,9 @@
 import fs from "node:fs";
-import { readFileLines, listSourceFiles } from "../live";
+import { listSourceFiles } from "../live";
 import { allCollectionSources, defToSpec } from "./sources";
 import { ftsIndexedFiles, ftsUpsert, ftsSearch, type FtsHit } from "../live-cache";
 import { JUDGE_PROMPT_MARKER } from "../insights/signals";
+import { readConversationMessages } from "./conversation";
 
 /**
  * Full-text search across every parseable harness's sessions.
@@ -15,15 +16,6 @@ import { JUDGE_PROMPT_MARKER } from "../insights/signals";
 
 const TEXT_CAP = 100_000; // chars per side per session — plenty for search, bounded for the DB
 
-const textFromContent = (content: unknown): string => {
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
-  return content
-    .filter((b): b is { type: string; text: string } => !!b && typeof b === "object" && (b as { type?: unknown }).type === "text" && typeof (b as { text?: unknown }).text === "string")
-    .map((b) => b.text)
-    .join(" ");
-};
-
 export interface SessionSearchText {
   userText: string;
   assistantText: string;
@@ -32,8 +24,8 @@ export interface SessionSearchText {
 
 /**
  * Pull all conversational text (user words + assistant prose, no tool noise)
- * out of a transcript, capped. Understands the Claude-projects and Codex
- * shapes; unknown shapes yield whatever text-y fields match.
+ * out of a transcript, capped. The shared conversation normalizer understands
+ * Claude, both Codex generations, and Hermes single-JSON sessions.
  */
 export function extractSearchText(file: string): SessionSearchText {
   let userText = "";
@@ -50,22 +42,9 @@ export function extractSearchText(file: string): SessionSearchText {
     }
   };
   try {
-    for (const line of readFileLines(file)) {
-      if (!line.trim()) continue;
+    for (const message of readConversationMessages(file)) {
       if (userText.length >= TEXT_CAP && assistantText.length >= TEXT_CAP) break;
-      let obj: Record<string, unknown>;
-      try { obj = JSON.parse(line); } catch { continue; }
-      const message = obj.message as { content?: unknown } | undefined;
-      if (obj.type === "user" && message && !(obj as { isMeta?: boolean }).isMeta) {
-        const t = textFromContent(message.content);
-        if (t && !t.startsWith("<")) add("u", t); // tool results arrive as "user" turns; skip tag-shaped payloads
-      } else if (obj.type === "assistant" && message) {
-        add("a", textFromContent(message.content));
-      } else if (obj.type === "event_msg") {
-        const payload = obj.payload as { type?: string; message?: unknown } | undefined;
-        if (payload?.type === "user_message" && typeof payload.message === "string") add("u", payload.message);
-        else if (payload?.type === "agent_message" && typeof payload.message === "string") add("a", payload.message);
-      }
+      add(message.role === "user" ? "u" : "a", message.text);
     }
   } catch {
     // Unreadable file → index whatever was collected (possibly nothing).

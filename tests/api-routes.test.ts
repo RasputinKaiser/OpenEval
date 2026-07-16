@@ -209,3 +209,23 @@ test("GET artifact serves files only from the case workdir", async () => {
   );
   assert.equal(escaped.status, 400);
 });
+
+test("GET artifact rejects symlinks that escape the case workdir", async () => {
+  const { artifactRoute, db } = await importRoutes();
+  const run = makeRun({ status: "completed", ended_at: Date.now() });
+  const workdir = path.join(tempRoot, "workdir-symlink");
+  const outside = path.join(tempRoot, "outside-secret.txt");
+  fs.mkdirSync(workdir, { recursive: true });
+  fs.writeFileSync(outside, "must not be served");
+  fs.symlinkSync(outside, path.join(workdir, "escaped.txt"));
+  db.insertRun(run);
+  db.insertRunCase(makeRunCase(run.id, 1, { workdir_path: workdir }));
+
+  const escaped = await artifactRoute.GET(
+    new NextRequest(`http://localhost:3000/api/runs/${run.id}/case/case-1/artifact?path=escaped.txt`),
+    { params: Promise.resolve({ id: run.id, caseId: "case-1" }) },
+  );
+
+  assert.equal(escaped.status, 400);
+  assert.match((await escaped.json()).error, /invalid path/i);
+});

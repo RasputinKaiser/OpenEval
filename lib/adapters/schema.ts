@@ -59,6 +59,14 @@ const ModelAliasSchema = z
     id: z.string().min(1),
     label: z.string().min(1),
     family: z.string().min(1),
+    capabilities: z
+      .object({
+        visionInput: z.boolean().nullable().optional(),
+        visualCodeOutput: z.boolean().nullable().optional(),
+        notes: z.string().optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -110,6 +118,8 @@ export const HarnessDescriptorSchema = z
     binEnvVar: z.string().optional(),
     wellKnownPaths: z.array(z.string()).optional(),
     versionArgs: z.array(z.string()).optional(),
+    /** Safe, non-spending CLI probe arguments. An empty array disables help probing. */
+    helpArgs: z.array(z.string()).optional(),
 
     /** Which stdout parser to use. Falls back from legacy `output` when omitted. */
     parser: z.enum(PARSERS).optional(),
@@ -127,6 +137,8 @@ export const HarnessDescriptorSchema = z
     workdirFlag: z.string().optional(),
     modelFlag: z.string().optional(),
     maxTurnsFlag: z.string().optional(),
+    /** Repeated once per local image attachment, when a case supplies images. */
+    imageFlag: z.string().optional(),
     /** Simple form: `<permissionFlag> <mode>` is appended. */
     permissionFlag: z.string().optional(),
     /** Full form: per-mode argument lists; "*" is the fallback entry. */
@@ -169,6 +181,7 @@ export interface NormalizedDescriptor {
   binEnvVar?: string;
   wellKnownPaths?: string[];
   versionArgs: string[];
+  helpArgs: string[];
   parser: ParserKind;
   argTemplate: string[];
   extraEnv: Record<string, string>;
@@ -176,6 +189,7 @@ export interface NormalizedDescriptor {
   workdirFlag?: string;
   modelFlag?: string;
   maxTurnsFlag?: string;
+  imageFlag?: string;
   permissionFlag?: string;
   permissionArgs?: Record<string, string[]>;
   appendExtraArgs: boolean;
@@ -185,7 +199,8 @@ export interface NormalizedDescriptor {
     reportsCost: boolean;
     reportsTokens: boolean;
     reportsTurns: boolean;
-    supportsVisionInput: boolean;
+    /** null means the descriptor does not have enough evidence to claim yes/no. */
+    supportsVisionInput: boolean | null;
     permissionModes: string[];
   };
   liveTrace?: LiveTraceDescriptor;
@@ -239,6 +254,7 @@ export function normalizeDescriptor(d: z.output<typeof HarnessDescriptorSchema>)
     binEnvVar: d.binEnvVar,
     wellKnownPaths: d.wellKnownPaths,
     versionArgs: d.versionArgs ?? ["--version"],
+    helpArgs: d.helpArgs ?? ["--help"],
     parser,
     argTemplate: d.argTemplate,
     extraEnv: d.extraEnv ?? {},
@@ -246,6 +262,7 @@ export function normalizeDescriptor(d: z.output<typeof HarnessDescriptorSchema>)
     workdirFlag: d.workdirFlag,
     modelFlag: d.modelFlag,
     maxTurnsFlag: d.maxTurnsFlag,
+    imageFlag: d.imageFlag,
     permissionFlag: d.permissionFlag,
     permissionArgs: d.permissionArgs,
     appendExtraArgs: d.appendExtraArgs ?? true,
@@ -255,7 +272,9 @@ export function normalizeDescriptor(d: z.output<typeof HarnessDescriptorSchema>)
       reportsCost: d.capabilities?.reportsCost ?? (structured || !!fields.costUsd),
       reportsTokens: d.capabilities?.reportsTokens ?? (structured || !!fields.inputTokens || !!fields.outputTokens),
       reportsTurns: d.capabilities?.reportsTurns ?? (structured || !!fields.numTurns),
-      supportsVisionInput: d.capabilities?.supportsVisionInput ?? false,
+      // An omitted vision flag is unknown, not "no". A descriptor author must
+      // provide evidence before OpenEval makes a negative capability claim.
+      supportsVisionInput: d.capabilities?.supportsVisionInput ?? null,
       permissionModes: d.capabilities?.permissionModes ?? [...PERMISSION_MODES],
     },
     liveTrace: d.liveTrace,

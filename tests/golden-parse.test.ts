@@ -102,7 +102,7 @@ test("golden: claude-projects interactive session (no result record)", () => {
   assert.equal(session.modeSummary.gitBranch, "main");
   assert.equal(session.cliVersion, "2.0.1");
   assert.ok(session.parseWarnings.includes("no final result event found"));
-  assert.ok(session.parseWarnings.includes("turn count inferred from messageCount"));
+  assert.ok(session.parseWarnings.includes("turn count inferred from user messages"));
 });
 
 test("golden: codex NEW rollout (session_meta/turn_context/event_msg/response_item)", () => {
@@ -125,7 +125,7 @@ test("golden: codex NEW rollout (session_meta/turn_context/event_msg/response_it
       turns: "inferred",
     },
     durationMs: 8000,
-    numTurns: 2, // response_item user echo + agent_message
+    numTurns: 1, // one turn_context record; response_item/event echoes are not extra turns
     // input_tokens includes the cached portion; fresh = 8000 - 2500.
     inputTokens: 5500,
     outputTokens: 650,
@@ -150,6 +150,7 @@ test("golden: codex NEW rollout (session_meta/turn_context/event_msg/response_it
   });
 
   assert.ok(session.costUsd > 0);
+  assert.ok(session.parseWarnings.includes("turn count inferred from turn context records"));
   assert.equal(session.isError, true);
   assert.equal(session.userType, "codex_cli");
   assert.equal(session.modeSummary.entrypoint, "cli");
@@ -173,7 +174,7 @@ test("golden: codex OLD rollout (response_item message records, no token_count)"
     sessionId: "golden-codex-old",
     project: "/Users/tester/projects/ledger",
     displayTitle: "Sum the totals column in data.csv",
-    lastPromptPreview: null, // only event_msg/user_msg records feed the preview
+    lastPromptPreview: "Sum the totals column in data.csv", // old Codex response_item user records are now captured too
     model: null,
     metricSources: {
       model: "missing",
@@ -183,7 +184,7 @@ test("golden: codex OLD rollout (response_item message records, no token_count)"
       turns: "inferred",
     },
     durationMs: 4000,
-    numTurns: 2,
+    numTurns: 1, // one legacy response_item user message
     inputTokens: 0,
     outputTokens: 0,
     cacheReadTokens: 0,
@@ -207,6 +208,7 @@ test("golden: codex OLD rollout (response_item message records, no token_count)"
   });
 
   assert.equal(session.costUsd, 0);
+  assert.ok(session.parseWarnings.includes("turn count inferred from user messages"));
   assert.ok(session.parseWarnings.includes("model missing from trace"));
   assert.ok(session.parseWarnings.includes("token usage missing from trace"));
   assert.ok(session.parseWarnings.includes("source: codex_cli 0.20.0"));

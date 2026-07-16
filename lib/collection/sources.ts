@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { listAdapters } from "../adapters/registry";
@@ -197,7 +198,18 @@ export function isPathInAnyCollectionSource(filePath: string): boolean {
     for (const root of def.roots) {
       const base = path.resolve(expand(root));
       const rel = path.relative(base, resolved);
-      if (rel && !rel.startsWith("..") && !path.isAbsolute(rel)) return true;
+      const lexicalInside = rel && !rel.startsWith("..") && !path.isAbsolute(rel);
+      if (!lexicalInside) continue;
+      try {
+        const realBase = fs.realpathSync(base);
+        const realFile = fs.realpathSync(resolved);
+        const realRel = path.relative(realBase, realFile);
+        if (realRel && !realRel.startsWith("..") && !path.isAbsolute(realRel)) return true;
+      } catch {
+        // Preserve the pruned-file route: the caller will render the archive
+        // message after statting the path.
+        return true;
+      }
     }
   }
   return false;

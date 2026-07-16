@@ -65,8 +65,8 @@ export default function ModelPicker({ value, onChange, harness }: Props) {
           {selected && (
             <span className="text-[10px] text-fg-dim mono px-1.5 py-0.5 rounded bg-bg-elev shrink-0">{selected.family}</span>
           )}
-          {selected?.capabilities.visualCodeOutput && <ImageIcon className="size-3 text-ok shrink-0" />}
-          {selected && !selected.capabilities.visionInput && <EyeOff className="size-3 text-fg-dim shrink-0" />}
+          {selected?.capabilities.visualCodeOutput === true && <ImageIcon className="size-3 text-ok shrink-0" />}
+          {selected?.capabilities.visionInput === false && <EyeOff className="size-3 text-fg-dim shrink-0" />}
         </span>
         <ChevronDown className="size-3.5 text-fg-dim shrink-0" />
       </button>
@@ -124,7 +124,7 @@ export default function ModelPicker({ value, onChange, harness }: Props) {
                     {m.family}
                   </span>
                   <span className="text-[9px] uppercase tracking-wider mono px-1.5 py-0.5 rounded shrink-0 bg-bg-elev text-fg-dim">
-                    {m.capabilities.visionInput ? "vision" : "blind"}
+                    {m.capabilities.visionInput === true ? "vision" : m.capabilities.visionInput === false ? "no vision" : "vision ?"}
                   </span>
                   {m.capabilities.visualCodeOutput && (
                     <span className="text-[9px] uppercase tracking-wider mono px-1.5 py-0.5 rounded shrink-0 bg-ok/10 text-ok">
