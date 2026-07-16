@@ -72,6 +72,7 @@ test("live-cache: listCachedSessionsUnder filters by root prefix", () => {
     cachePut("/roots/a-sibling/s3.jsonl", 1, 1, { ...fakeSession, sessionId: "c1" } as never);
     const under = listCachedSessionsUnder(["/roots/a"]);
     assert.deepEqual(under.map((u) => u.session.sessionId), ["a1"]);
+    assert.deepEqual(under.map((u) => u.parserVersion), [PARSER_VERSION]);
     // Both roots at once.
     assert.equal(listCachedSessionsUnder(["/roots/a", "/roots/b"]).length, 2);
     // Null parses are never returned.

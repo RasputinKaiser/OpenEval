@@ -1,4 +1,6 @@
 import { getAdapter } from "../adapters/registry";
+import { resolveDefaultModel } from "../models";
+import { estimateCostUsd, isPlaceholderModel } from "../pricing";
 import { emit, type Runner } from "./parse";
 import { spawnHarnessProcess } from "./spawn";
 import type { RunnerContext, RunnerResult, TranscriptEntry } from "../types";
@@ -9,18 +11,51 @@ export class HeadlessRunner implements Runner {
   async run(ctx: RunnerContext): Promise<RunnerResult> {
     const startedAt = Date.now();
     emit(ctx, { kind: "started", at: startedAt });
+    const adapter = getAdapter(ctx.harness);
+    const fallbackModel = ctx.model ?? resolveDefaultModel(adapter.id).id ?? null;
 
     const { acc, stderr, exitCode, durationMs, timedOut } = await spawnHarnessProcess(ctx, (line, accumulator) => {
-      const adapter = getAdapter(ctx.harness);
       for (const ev of adapter.parseLine(line, accumulator)) emit(ctx, ev);
     });
 
     if (acc.result) {
       emit(ctx, { kind: "finished", at: Date.now(), durationMs, exitCode });
-      return { ...acc.result, exitCode, durationMs, startedAt, endedAt: startedAt + durationMs } as RunnerResult;
+      const parsed = { ...acc.result, exitCode, durationMs, startedAt, endedAt: startedAt + durationMs } as RunnerResult;
+      return normalizeParsedResult(parsed, fallbackModel);
     }
-    return failure(ctx, acc, startedAt, durationMs, exitCode, stderr, timedOut);
+    return normalizeParsedResult(
+      failure(ctx, acc, startedAt, durationMs, exitCode, stderr, timedOut),
+      fallbackModel,
+    );
   }
+}
+
+/** Ground parser gaps in the exact model requested by the run. */
+export function normalizeParsedResult(
+  result: RunnerResult,
+  fallbackModel: string | null | undefined,
+): RunnerResult {
+  const normalizeModel = (value: string | null | undefined): string | null => {
+    const model = value?.trim();
+    if (!model || isPlaceholderModel(model)) return null;
+    return model;
+  };
+  const model = normalizeModel(result.model) ?? normalizeModel(fallbackModel);
+  if (result.usage.costSource === "measured" || result.usage.costSource === "inferred") {
+    return { ...result, model };
+  }
+  // A bare numeric value has no trustworthy provenance. Discard it before
+  // reconstructing an API-equivalent estimate from token classes; never
+  // silently relabel an unannotated number as measured spend.
+  const usage = { ...result.usage, costUsd: 0, costSource: "missing" as const };
+  const estimate = estimateCostUsd(model, {
+    input: usage.inputTokens,
+    output: usage.outputTokens,
+    cacheRead: usage.cacheReadTokens,
+    cacheCreate: usage.cacheCreateTokens,
+  });
+  if (estimate == null) return { ...result, model, usage };
+  return { ...result, model, usage: { ...usage, costUsd: estimate, costSource: "inferred" } };
 }
 
 function failure(

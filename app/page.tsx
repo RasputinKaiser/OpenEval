@@ -10,6 +10,7 @@ import RecentSessions from "@/components/RecentSessions";
 import { KIND_ICON } from "@/components/markerKinds";
 import { Sparkline } from "@/components/Sparkline";
 import { fmtNum, fmtNumFull, fmtUsd, fmtUsdFull, fmtDuration, fmtSigned, fmtPct } from "@/lib/format";
+import { presentSummaryCost } from "@/lib/cost-display";
 import {
   Activity, ArrowRight, BarChart3, Boxes, Cpu, DollarSign, FileText, Gavel, Radio, Search, Timer, TrendingDown, TrendingUp,
 } from "lucide-react";
@@ -30,6 +31,9 @@ export default async function Page() {
   const cases = await loadCases();
   const lastRun = runs[0];
   const summary = lastRun?.summary;
+  const lastRunCost = summary
+    ? presentSummaryCost(summary, summary.totalCostUsd < 1 ? 4 : 2)
+    : null;
 
   // The dashboard unifies both halves of the product: eval runs (Evaluate) and
   // real-session analytics (Observe). Either half failing must not blank the page.
@@ -240,7 +244,7 @@ export default async function Page() {
           <h2 className="text-sm font-medium mb-4">Last run breakdown</h2>
           <div className="stagger-grid grid grid-cols-2 md:grid-cols-4 gap-3">
             <Mini label="Total duration" value={fmtDuration(summary.totalDurationMs)} icon={Timer} />
-            <Mini label="Total cost" value={fmtUsd(summary.totalCostUsd)} icon={DollarSign} />
+            <Mini label={lastRunCost?.label ?? "Total cost"} value={lastRunCost?.value ?? "missing"} icon={DollarSign} />
             <Mini label="Tokens in" value={fmtNumFull(summary.totalTokensIn)} icon={Cpu} />
             <Mini label="Tokens out" value={fmtNumFull(summary.totalTokensOut)} icon={Cpu} />
           </div>

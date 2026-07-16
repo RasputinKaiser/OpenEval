@@ -3,6 +3,7 @@ import path from "node:path";
 import { getRun, listRunCases } from "./db";
 import { redactSensitiveText } from "./redaction";
 import type { CaseEvaluation, GraderResult, RunCaseRecord, RunRecord, RunSummary } from "./types";
+import { presentRunnerCost, presentSummaryCost } from "./cost-display";
 
 interface ReportOptions {
   redact?: boolean;
@@ -22,10 +23,6 @@ function fmtMs(value: number | null | undefined): string {
   if (!value) return "0ms";
   if (value < 1000) return `${Math.round(value)}ms`;
   return `${(value / 1000).toFixed(2)}s`;
-}
-
-function fmtUsd(value: number | undefined): string {
-  return `$${(value ?? 0).toFixed(6)}`;
 }
 
 function escapeTable(value: unknown): string {
@@ -106,7 +103,8 @@ function summaryLines(summary: RunSummary | null): string[] {
     lines.push(`- pass@k: ${fmtPct(summary.passAtK)}`);
     lines.push(`- pass^k (reliability): ${fmtPct(summary.passPowK)}`);
   }
-  lines.push(`- Total cost USD: ${fmtUsd(summary.totalCostUsd)}`);
+  const cost = presentSummaryCost(summary, 6);
+  lines.push(`- ${cost.label} USD: ${cost.value}`);
   lines.push(`- Tokens in/out: ${summary.totalTokensIn}/${summary.totalTokensOut}`);
   lines.push(`- Duration: ${fmtMs(summary.totalDurationMs)}`);
   return lines;
@@ -182,7 +180,8 @@ export async function buildRunReport(runId: string, opts?: ReportOptions): Promi
     if ((c.sample ?? 0) > 0) lines.push(`- Sample: ${c.sample}`);
     lines.push(`- Verdict: ${c.status}`);
     lines.push(`- Duration: ${fmtMs(c.runner_result?.durationMs ?? (c.ended_at && c.started_at ? c.ended_at - c.started_at : null))}`);
-    lines.push(`- Cost USD: ${fmtUsd(c.runner_result?.usage.costUsd)}`);
+    const caseCost = c.runner_result ? presentRunnerCost(c.runner_result.usage, 6) : { label: "Cost", value: "missing" };
+    lines.push(`- ${caseCost.label} USD: ${caseCost.value}`);
     lines.push(`- Tokens in/out: ${c.runner_result?.usage.inputTokens ?? 0}/${c.runner_result?.usage.outputTokens ?? 0}`);
     lines.push("");
     lines.push("### Graders");

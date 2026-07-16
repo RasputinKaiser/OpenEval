@@ -16,10 +16,10 @@ import type { LiveSession } from "./live";
  * Bump PARSER_VERSION whenever parseLiveSession's output changes shape or
  * semantics; stale-version rows are ignored and overwritten.
  */
-export const PARSER_VERSION = 14; // v14: Codex turn-context/user-message turn counts; v13: accurate Hermes user-turn counts, old Codex prompt previews, and generic boolean parsing; v12: Hermes tool-error normalization and transcript format support; v11: unify Codex user-message normalization/marker filtering across rollout shapes
+export const PARSER_VERSION = 18; // v18: reject placeholder model ids everywhere; v17: distinct Codex/Claude child identities and cost-allocation provenance
 
 /** Bump whenever transcript-to-search text extraction semantics change. */
-export const FTS_INDEX_VERSION = 1; // v1: shared Claude/Codex/Hermes conversation normalization
+export const FTS_INDEX_VERSION = 2; // v2: source-aware Codex echo suppression and IDE-context normalization
 
 const CACHE_DB_PATH = path.join(ROOT, "data", "live-cache.db");
 
@@ -138,18 +138,18 @@ const escapeLike = (s: string) => s.replace(/[\\%_]/g, (c) => "\\" + c);
  * their files. parser_version is deliberately ignored — an old-version summary
  * of a deleted file can never be re-parsed, and stale beats gone.
  */
-export function listCachedSessionsUnder(prefixes: string[]): Array<{ file: string; session: LiveSession }> {
+export function listCachedSessionsUnder(prefixes: string[]): Array<{ file: string; session: LiveSession; parserVersion: number }> {
   const conn = getCacheDb();
   if (!conn || prefixes.length === 0) return [];
-  const out: Array<{ file: string; session: LiveSession }> = [];
+  const out: Array<{ file: string; session: LiveSession; parserVersion: number }> = [];
   try {
     const where = prefixes.map(() => "file LIKE ? ESCAPE '\\'").join(" OR ");
     const args = prefixes.map((p) => escapeLike(p.replace(/\/+$/, "")) + "/%");
     const rows = conn
-      .prepare(`SELECT file, session_json FROM session_cache WHERE session_json IS NOT NULL AND (${where})`)
-      .all(...args) as Array<{ file: string; session_json: string }>;
+      .prepare(`SELECT file, session_json, parser_version FROM session_cache WHERE session_json IS NOT NULL AND (${where})`)
+      .all(...args) as Array<{ file: string; session_json: string; parser_version: number }>;
     for (const r of rows) {
-      try { out.push({ file: r.file, session: JSON.parse(r.session_json) as LiveSession }); } catch {}
+      try { out.push({ file: r.file, session: JSON.parse(r.session_json) as LiveSession, parserVersion: r.parser_version }); } catch {}
     }
   } catch {}
   return out;

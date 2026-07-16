@@ -1,0 +1,7 @@
+{
+  "name": "targeted-cleanup",
+  "version": "1.0.0",
+  "scripts": {
+    "test": "node --test verify.test.mjs"
+  }
+}

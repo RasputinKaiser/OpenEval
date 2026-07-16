@@ -30,6 +30,11 @@ interface ListedRate {
   rate: TokenRate;
 }
 
+export interface ListedPricingCatalogEntry {
+  sourceModel: string;
+  rate: TokenRate;
+}
+
 /** Exact ids/aliases whose public list-rate identity is known. */
 const LISTED_RATES: ListedRate[] = [
   { sourceModel: "anthropic/claude-fable-5", aliases: ["claude-fable-5", "anthropic/claude-fable-5"], rate: { input: 10, output: 50, cacheRead: 1, cacheWrite: 12.5 } },
@@ -51,7 +56,7 @@ const LISTED_RATES: ListedRate[] = [
   { sourceModel: "openai/gpt-5", aliases: ["gpt-5", "openai/gpt-5"], rate: { input: 1.25, output: 10, cacheRead: 0.125, cacheWrite: 1.25 } },
   { sourceModel: "openai/o4-mini", aliases: ["o4-mini", "openai/o4-mini"], rate: { input: 1.1, output: 4.4, cacheRead: 0.275, cacheWrite: 1.1 } },
 
-  { sourceModel: "z-ai/glm-5.2", aliases: ["z-ai/glm-5.2"], rate: { input: 0.9618, output: 3.0228, cacheRead: 0.17862, cacheWrite: 0.9618 } },
+  { sourceModel: "z-ai/glm-5.2", aliases: ["z-ai/glm-5.2"], rate: { input: 0.952, output: 2.992, cacheRead: 0.1768, cacheWrite: 0.952 } },
   { sourceModel: "deepseek/deepseek-v4-pro", aliases: ["deepseek/deepseek-v4-pro"], rate: { input: 0.435, output: 0.87, cacheRead: 0.003625, cacheWrite: 0.435 } },
   { sourceModel: "deepseek/deepseek-v4-flash", aliases: ["deepseek/deepseek-v4-flash"], rate: { input: 0.098, output: 0.196, cacheRead: 0.02, cacheWrite: 0.098 } },
   { sourceModel: "moonshotai/kimi-k2.7-code", aliases: ["moonshotai/kimi-k2.7-code"], rate: { input: 0.719, output: 3.49, cacheRead: 0.149, cacheWrite: 0.719 } },
@@ -60,6 +65,11 @@ const LISTED_RATES: ListedRate[] = [
 const LISTED_BY_ALIAS = new Map<string, ListedRate>();
 for (const entry of LISTED_RATES) {
   for (const alias of entry.aliases) LISTED_BY_ALIAS.set(alias, entry);
+}
+
+/** Public list-rate ids used by the reproducible catalog drift check. */
+export function listedPricingCatalog(): ListedPricingCatalogEntry[] {
+  return LISTED_RATES.map((entry) => ({ sourceModel: entry.sourceModel, rate: { ...entry.rate } }));
 }
 
 /** Remove machine-specific model-store prefixes while preserving identity. */
@@ -84,6 +94,11 @@ export interface ModelRate {
   sourceModel: string;
 }
 
+export function isPlaceholderModel(model: string | null | undefined): boolean {
+  const id = model?.trim().toLowerCase();
+  return !id || ["<synthetic>", "synthetic", "unknown", "null", "none"].includes(id);
+}
+
 function familyRate(id: string): ListedRate | null {
   const from = (sourceModel: string) => LISTED_RATES.find((entry) => entry.sourceModel === sourceModel) ?? null;
   if (id.startsWith("hf:zai-org/glm-5.2") || id === "glm 5.2 (1m)") return from("z-ai/glm-5.2");
@@ -99,8 +114,9 @@ function familyRate(id: string): ListedRate | null {
   return null;
 }
 
-/** Resolve a rate for a model. Null only for a null/empty id. */
+/** Resolve a rate for a real model id. Placeholder/sentinel ids stay unpriced. */
 export function rateForModelInfo(model: string | null | undefined): ModelRate | null {
+  if (isPlaceholderModel(model)) return null;
   const display = displayModelId(model);
   if (!display) return null;
   const id = display.toLowerCase();

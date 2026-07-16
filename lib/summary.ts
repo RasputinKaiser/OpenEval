@@ -10,6 +10,9 @@ export function computeSummary(cases: RunCaseRecord[]): RunSummary {
   let skipped = 0;
   let stranded = 0;
   let totalCostUsd = 0;
+  let estimatedCostCases = 0;
+  let measuredCostCases = 0;
+  let missingCostCases = 0;
   let totalTokensIn = 0;
   let totalTokensOut = 0;
   let totalDurationMs = 0;
@@ -36,10 +39,21 @@ export function computeSummary(cases: RunCaseRecord[]): RunSummary {
     // every rate; surface it instead.
     else stranded++;
     if (c.runner_result) {
-      totalCostUsd += c.runner_result.usage.costUsd || 0;
+      const costSource = c.runner_result.usage.costSource;
+      if (costSource === "inferred") {
+        totalCostUsd += c.runner_result.usage.costUsd || 0;
+        estimatedCostCases++;
+      } else if (costSource === "measured") {
+        totalCostUsd += c.runner_result.usage.costUsd || 0;
+        measuredCostCases++;
+      } else {
+        missingCostCases++;
+      }
       totalTokensIn += c.runner_result.usage.inputTokens || 0;
       totalTokensOut += c.runner_result.usage.outputTokens || 0;
       totalDurationMs += c.runner_result.durationMs || 0;
+    } else {
+      missingCostCases++;
     }
   }
   const total = cases.length;
@@ -79,6 +93,9 @@ export function computeSummary(cases: RunCaseRecord[]): RunSummary {
     passAt1Ci95,
     samples: samples > 0 ? samples : 1,
     totalCostUsd,
+    estimatedCostCases,
+    measuredCostCases,
+    missingCostCases,
     totalTokensIn,
     totalTokensOut,
     totalDurationMs,

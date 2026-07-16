@@ -41,3 +41,35 @@ test("extractSearchText indexes Hermes single-JSON conversations", () => {
     title: "trace the missing invoice",
   });
 });
+
+test("extractSearchText preserves a genuinely repeated prompt after an assistant turn", () => {
+  const file = tempFile("codex-repeat.jsonl", [
+    { type: "event_msg", payload: { type: "user_message", message: "retry the migration" } },
+    { type: "event_msg", payload: { type: "agent_message", message: "The migration still fails." } },
+    { type: "event_msg", payload: { type: "user_message", message: "retry the migration" } },
+  ].map((record) => JSON.stringify(record)).join("\n"));
+
+  assert.equal(extractSearchText(file).userText, "retry the migration\nretry the migration");
+});
+
+test("extractSearchText collapses Codex event/response echoes after normalizing IDE context", () => {
+  const wrapped =
+    "# Context from my IDE setup:\n\n## Active file: AGENTS.md\n\n## My request for Codex:\nrepair the ledger totals";
+  const file = tempFile("codex-echo.jsonl", [
+    { type: "event_msg", payload: { type: "user_message", message: wrapped } },
+    { type: "response_item", payload: { type: "message", role: "user", content: [
+      { type: "input_text", text: "<environment_context>ignored</environment_context>" },
+      { type: "input_text", text: "repair the ledger totals" },
+    ] } },
+    { type: "event_msg", payload: { type: "agent_message", message: "The ledger now balances." } },
+    { type: "response_item", payload: { type: "message", role: "assistant", content: [
+      { type: "output_text", text: "The ledger now balances." },
+    ] } },
+  ].map((record) => JSON.stringify(record)).join("\n"));
+
+  assert.deepEqual(extractSearchText(file), {
+    userText: "repair the ledger totals",
+    assistantText: "The ledger now balances.",
+    title: "repair the ledger totals",
+  });
+});

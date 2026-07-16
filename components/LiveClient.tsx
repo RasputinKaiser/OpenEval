@@ -308,7 +308,7 @@ export default function LiveClient({ initialData, error: initialError, getTransc
           <div className="scroll-contain max-h-[64vh] overflow-y-auto divide-y divide-bd-subtle">
             {visibleSessions.map((session) => (
               <SessionRow
-                key={session.sessionId + session.project}
+                key={session.path ?? `${session.sessionId}\u0000${session.project}`}
                 session={session}
                 redact={redact}
                 users={users}
@@ -466,7 +466,8 @@ function TraceIntelligencePanels({ data, redact, users }: { data: LiveAggregate;
 function UsageStrip({ data }: { data: LiveAggregate }) {
   const usage = data.usageSummary;
   const tokenMeasured = usage.sessionsWithMeasuredUsage;
-  const costMeasured = usage.sessionsWithMeasuredCost;
+  const costPriced = usage.sessionsWithPricedUsage;
+  const costEstimated = data.sessionsWithInferredCost > 0;
   const measuredTone = tokenMeasured === data.totalSessions && data.totalSessions > 0 ? "ok" : tokenMeasured > 0 ? "warn" : "warn";
   return (
     <section id="usage" className="scroll-mt-16 mb-6 card overflow-hidden">
@@ -498,7 +499,7 @@ function UsageStrip({ data }: { data: LiveAggregate }) {
           <TinyMetric label="Coverage" value={`${Math.round(usage.tokenCoverage * 100)}%`} />
         </MetricGroup>
         <MetricGroup label="Cost & rate">
-          <TinyMetric label="Cost" value={costMeasured ? `$${usage.totalCostUsd.toFixed(4)}` : "missing"} />
+          <TinyMetric label={costEstimated ? "Est. cost" : "Cost"} value={costPriced ? `${costEstimated ? "~" : ""}$${usage.totalCostUsd.toFixed(4)}` : "missing"} />
           <TinyMetric label="Out tok/s" value={usage.avgOutputTokPerSec ? usage.avgOutputTokPerSec.toFixed(1) : "missing"} />
         </MetricGroup>
       </div>
@@ -748,7 +749,14 @@ function SessionDrawer({
               <TinyMetric label="Output" value={session.metricSources.tokens === "measured" ? fmt(session.outputTokens) : "missing"} />
               <TinyMetric label="Cache read" value={session.metricSources.tokens === "measured" ? fmt(session.cacheReadTokens) : "missing"} />
               <TinyMetric label="Cache create" value={session.metricSources.tokens === "measured" ? fmt(session.cacheCreateTokens) : "missing"} />
-              <TinyMetric label="Cost" value={session.metricSources.cost === "measured" ? `$${session.costUsd.toFixed(4)}` : "missing"} />
+              <TinyMetric
+                label={session.metricSources.cost === "inferred" ? "Est. cost" : "Cost"}
+                value={session.metricSources.cost === "measured"
+                  ? `$${session.costUsd.toFixed(4)}`
+                  : session.metricSources.cost === "inferred"
+                    ? `~$${session.costUsd.toFixed(4)}`
+                    : "missing"}
+              />
             </div>
             {session.usageSegments.length > 0 ? (
               <UsageTimeline session={session} />

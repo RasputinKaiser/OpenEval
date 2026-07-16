@@ -48,6 +48,74 @@ test("parseStreamLine records tool duration and exact final token segment", asyn
   }
 });
 
+test("parseStreamLine preserves measured per-message token segments", () => {
+  const originalNow = Date.now;
+  let now = 1_000;
+  Date.now = () => now;
+  try {
+    const acc = {
+      startedAt: 1_000,
+      transcript: [] as TranscriptEntry[],
+      toolCalls: [] as RunnerResult["toolCalls"],
+      finalText: "",
+      result: null as Partial<RunnerResult> | null,
+    };
+    parseStreamLine(JSON.stringify({ type: "system", subtype: "init", session_id: "s-segments", model: "m1" }), acc);
+    now = 2_000;
+    parseStreamLine(JSON.stringify({
+      type: "assistant",
+      message: { content: [{ type: "text", text: "one" }], usage: { input_tokens: 10, output_tokens: 2 } },
+    }), acc);
+    now = 4_000;
+    parseStreamLine(JSON.stringify({
+      type: "assistant",
+      message: { content: [{ type: "text", text: "two" }], usage: { input_tokens: 20, output_tokens: 8 } },
+    }), acc);
+    now = 5_000;
+    parseStreamLine(JSON.stringify({
+      type: "result",
+      duration_ms: 4_000,
+      usage: { input_tokens: 30, output_tokens: 10 },
+      result: "done",
+    }), acc);
+
+    assert.deepEqual(acc.result?.tokenSegments?.map((segment) => ({
+      cumulativeInput: segment.cumulativeInput,
+      cumulativeOutput: segment.cumulativeOutput,
+      deltaInput: segment.deltaInput,
+      deltaOutput: segment.deltaOutput,
+    })), [
+      { cumulativeInput: 10, cumulativeOutput: 2, deltaInput: 10, deltaOutput: 2 },
+      { cumulativeInput: 30, cumulativeOutput: 10, deltaInput: 20, deltaOutput: 8 },
+    ]);
+  } finally {
+    Date.now = originalNow;
+  }
+});
+
+test("parseStreamLine uses one aggregate segment when only final usage is measured", () => {
+  const acc = {
+    startedAt: 1_000,
+    transcript: [] as TranscriptEntry[],
+    toolCalls: [] as RunnerResult["toolCalls"],
+    finalText: "",
+    result: null as Partial<RunnerResult> | null,
+  };
+  parseStreamLine(JSON.stringify({ type: "system", subtype: "init", session_id: "s-aggregate", model: "m1" }), acc);
+  parseStreamLine(JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "one" }] } }), acc);
+  parseStreamLine(JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "two" }] } }), acc);
+  parseStreamLine(JSON.stringify({
+    type: "result",
+    duration_ms: 1_000,
+    usage: { input_tokens: 80, output_tokens: 20 },
+    result: "done",
+  }), acc);
+
+  assert.equal(acc.result?.tokenSegments?.length, 1);
+  assert.equal(acc.result?.tokenSegments?.[0]?.deltaInput, 80);
+  assert.equal(acc.result?.tokenSegments?.[0]?.deltaOutput, 20);
+});
+
 test("caseTelemetry exposes source quality and tool timing coverage", () => {
   const runner = {
     exitCode: 0,

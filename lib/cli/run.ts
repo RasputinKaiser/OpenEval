@@ -3,6 +3,7 @@ import { createAndStartRun } from '../run';
 import { selectCases } from '../cases';
 import { getRun, listRunCases } from '../db';
 import { computeSummary } from '../summary';
+import { presentSummaryCost } from '../cost-display';
 import { isTerminalCaseStatus } from '../status';
 import { listAdapters, getDefaultHarness } from '../adapters/registry';
 import { discoverHarnesses } from '../adapters/discover';
@@ -185,11 +186,12 @@ async function main(): Promise<number> {
     const finalRun = getRun(s.id);
     const finalCases = listRunCases(s.id);
     const summary = computeSummary(finalCases);
+    const cost = presentSummaryCost(summary);
     const label = fanOut ? `[${s.harness}] ` : '';
     if (!outputJson) {
       console.log();
       console.log(label + 'Run ' + finalRun?.status + ': ' + summary.passed + '/' + summary.total + ' passed (' + (summary.passRate * 100).toFixed(0) + '%)');
-      console.log(label + 'Cost: $' + summary.totalCostUsd.toFixed(4) + '  Tokens: ↑' + summary.totalTokensIn + ' ↓' + summary.totalTokensOut + '  Duration: ' + (summary.totalDurationMs / 1000).toFixed(1) + 's');
+      console.log(label + cost.label + ': ' + cost.value + '  Tokens: ↑' + summary.totalTokensIn + ' ↓' + summary.totalTokensOut + '  Duration: ' + (summary.totalDurationMs / 1000).toFixed(1) + 's');
       for (const [cat, c] of Object.entries(summary.byCategory)) {
         console.log(label + '  ' + cat + ': ' + c.passed + '/' + c.total);
       }

@@ -1,5 +1,7 @@
 import { spawn } from "node:child_process";
 import { getAdapter } from "../adapters/registry";
+import { resolveDefaultModel } from "../models";
+import { normalizeParsedResult } from "./headless";
 import { emit, type Runner } from "./parse";
 import type { RunnerContext, RunnerResult, TranscriptEntry } from "../types";
 
@@ -19,6 +21,17 @@ function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+/** Return only terminal text not already present in the previous snapshot. */
+export function paneCaptureDelta(previous: string, current: string): string {
+  if (!previous) return current;
+  if (current.startsWith(previous)) return current.slice(previous.length);
+  const maxOverlap = Math.min(previous.length, current.length);
+  for (let overlap = maxOverlap; overlap > 0; overlap--) {
+    if (previous.endsWith(current.slice(0, overlap))) return current.slice(overlap);
+  }
+  return current;
+}
+
 export class TmuxRunner implements Runner {
   kind = "tmux" as const;
 
@@ -26,6 +39,7 @@ export class TmuxRunner implements Runner {
     const session = `eval-${ctx.caseId}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 
     const adapter = getAdapter(ctx.harness);
+    const fallbackModel = ctx.model ?? resolveDefaultModel(adapter.id).id ?? null;
     const { bin, args: cmdArgs, env: extraEnv } = adapter.buildCommand(ctx);
 
     const ncmd = [bin, ...cmdArgs].map((a) => (a.includes(" ") ? `'${a.replace(/'/g, "'\\''")}'` : a)).join(" ");
@@ -61,7 +75,7 @@ export class TmuxRunner implements Runner {
 
       const cap = await tmux(["capture-pane", "-p", "-S", "-", "-E", "-", "-t", session]);
       if (cap.stdout !== lastCapture) {
-        const diff = cap.stdout.slice(lastCapture.length);
+        const diff = paneCaptureDelta(lastCapture, cap.stdout);
         lastCapture = cap.stdout;
         emit(ctx, { kind: "log", stream: "stdout", chunk: diff, at: Date.now() });
         for (const line of diff.split("\n")) {
@@ -72,7 +86,8 @@ export class TmuxRunner implements Runner {
     }
 
     const finalCap = await tmux(["capture-pane", "-p", "-S", "-", "-E", "-", "-t", session]);
-    for (const line of finalCap.stdout.split("\n")) {
+    const finalDelta = paneCaptureDelta(lastCapture, finalCap.stdout);
+    for (const line of finalDelta.split("\n")) {
       for (const ev of adapter.parseLine(line, acc)) emit(ctx, ev);
     }
     await tmux(["kill-session", "-t", session]).catch(async () => ({ code: 0, stdout: "", stderr: "" }));
@@ -82,9 +97,10 @@ export class TmuxRunner implements Runner {
     emit(ctx, { kind: "finished", at: Date.now(), durationMs, exitCode });
 
     if (acc.result) {
-      return { ...acc.result, exitCode, durationMs, startedAt, endedAt: startedAt + durationMs } as RunnerResult;
+      const parsed = { ...acc.result, exitCode, durationMs, startedAt, endedAt: startedAt + durationMs } as RunnerResult;
+      return normalizeParsedResult(parsed, fallbackModel);
     }
-    return fail(ctx, acc, startedAt, "tmux session ended without a result event");
+    return normalizeParsedResult(fail(ctx, acc, startedAt, "tmux session ended without a result event"), fallbackModel);
   }
 }
 

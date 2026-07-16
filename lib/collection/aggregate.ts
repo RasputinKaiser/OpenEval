@@ -41,6 +41,7 @@ export interface ModelRollup {
   toolErrors: number;
   pricedSessions: number;
   measuredCostSessions: number;
+  allocatedCostSessions: number;
   listedRateSessions: number;
   familyRateSessions: number;
   fallbackRateSessions: number;
@@ -136,7 +137,7 @@ export function mergeModelRollups(lists: ModelRollup[][]): ModelRollup[] {
     for (const m of list) {
       const cur = merged.get(m.model) ?? {
         model: m.model, sessions: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, costUsd: 0,
-        toolCalls: 0, toolErrors: 0, pricedSessions: 0, measuredCostSessions: 0, listedRateSessions: 0,
+        toolCalls: 0, toolErrors: 0, pricedSessions: 0, measuredCostSessions: 0, allocatedCostSessions: 0, listedRateSessions: 0,
         familyRateSessions: 0, fallbackRateSessions: 0, inferredModelSessions: 0,
       };
       cur.sessions += m.sessions;
@@ -148,6 +149,7 @@ export function mergeModelRollups(lists: ModelRollup[][]): ModelRollup[] {
       cur.toolErrors += m.toolErrors;
       cur.pricedSessions += m.pricedSessions;
       cur.measuredCostSessions += m.measuredCostSessions;
+      cur.allocatedCostSessions += m.allocatedCostSessions;
       cur.listedRateSessions += m.listedRateSessions;
       cur.familyRateSessions += m.familyRateSessions;
       cur.fallbackRateSessions += m.fallbackRateSessions;
@@ -247,7 +249,7 @@ function computeAllSources(): AllSourcesResult {
       modelLists.push(agg.byModel.map((m) => ({
         model: m.model, sessions: m.sessions, inputTokens: m.inputTokens, outputTokens: m.outputTokens,
         cacheReadTokens: m.cacheReadTokens, costUsd: m.costUsd, toolCalls: m.toolCalls, toolErrors: m.errors,
-        pricedSessions: m.pricedSessions, measuredCostSessions: m.measuredCostSessions,
+        pricedSessions: m.pricedSessions, measuredCostSessions: m.measuredCostSessions, allocatedCostSessions: m.allocatedCostSessions,
         listedRateSessions: m.listedRateSessions, familyRateSessions: m.familyRateSessions,
         fallbackRateSessions: m.fallbackRateSessions, inferredModelSessions: m.inferredModelSessions,
       })));

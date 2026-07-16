@@ -24,6 +24,7 @@
     "test": "OPENEVAL_DATA_ROOT=.test-data node --import tsx --test tests/*.test.ts",
     "test:live": "OPENEVAL_DATA_ROOT=.test-data node --import tsx --test tests/live.test.ts",
     "test:telemetry": "OPENEVAL_DATA_ROOT=.test-data node --import tsx --test tests/telemetry.test.ts",
+    "pricing:check": "tsx scripts/check-pricing-catalog.ts",
     "run:eval": "tsx lib/cli/run.ts",
     "run:case": "tsx lib/cli/run.ts --case",
     "run:headless": "tsx lib/cli/run.ts --runner headless",

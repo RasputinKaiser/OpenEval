@@ -5,6 +5,7 @@ import Link from "next/link";
 import clsx from "clsx";
 import { ArrowRight, GitCompareArrows, Loader2 } from "lucide-react";
 import PageHeader from "./PageHeader";
+import { presentSummaryCost } from "@/lib/cost-display";
 
 interface RunLite { id: string; name: string; createdAt: number; status: string; passRate: number | null; model?: string; }
 interface Props { runs: RunLite[]; initialA?: string; initialB?: string; }
@@ -90,7 +91,7 @@ export default function CompareClient({ runs, initialA, initialB }: Props) {
           <Delta label="pass@1" a={fmtPct(summaryA.passAt1)} b={fmtPct(summaryB.passAt1)} aVal={summaryA.passAt1} bVal={summaryB.passAt1} higherIsBetter hint={`95% CI ${fmtCi(summaryA.passAt1Ci95)} → ${fmtCi(summaryB.passAt1Ci95)}`} />
           <Delta label="pass@k" a={fmtPct(summaryA.passAtK)} b={fmtPct(summaryB.passAtK)} aVal={summaryA.passAtK} bVal={summaryB.passAtK} />
           <Delta label="pass^k (reliability)" a={fmtPct(summaryA.passPowK)} b={fmtPct(summaryB.passPowK)} aVal={summaryA.passPowK} bVal={summaryB.passPowK} />
-          <Delta label="Total cost" a={`$${summaryA.totalCostUsd.toFixed(4)}`} b={`$${summaryB.totalCostUsd.toFixed(4)}`} aVal={summaryA.totalCostUsd} bVal={summaryB.totalCostUsd} lowerIsBetter />
+          <Delta label="Cost coverage" a={presentSummaryCost(summaryA).value} b={presentSummaryCost(summaryB).value} aVal={summaryA.totalCostUsd} bVal={summaryB.totalCostUsd} lowerIsBetter comparable={(summaryA.missingCostCases ?? 0) === 0 && (summaryB.missingCostCases ?? 0) === 0} />
           <Delta label="Avg tok/s" a={(summaryA.totalTokensOut / Math.max(summaryA.totalDurationMs / 1000, 0.001)).toFixed(1)} b={(summaryB.totalTokensOut / Math.max(summaryB.totalDurationMs / 1000, 0.001)).toFixed(1)} aVal={summaryA.totalTokensOut / Math.max(summaryA.totalDurationMs, 1)} bVal={summaryB.totalTokensOut / Math.max(summaryB.totalDurationMs, 1)} />
           <Delta label="Tokens in" a={summaryA.totalTokensIn.toLocaleString()} b={summaryB.totalTokensIn.toLocaleString()} aVal={summaryA.totalTokensIn} bVal={summaryB.totalTokensIn} lowerIsBetter />
           <Delta label="Errors" a={String(summaryA.errored)} b={String(summaryB.errored)} aVal={summaryA.errored} bVal={summaryB.errored} lowerIsBetter />
@@ -219,7 +220,7 @@ function DeltaText({ value, digits, prefix = "", higherIsBetter, lowerIsBetter }
   );
 }
 
-function Delta({ label, a, b, aVal, bVal, higherIsBetter, lowerIsBetter, hint }: { label: string; a: string; b: string; aVal: number; bVal: number; higherIsBetter?: boolean; lowerIsBetter?: boolean; hint?: string }) {
+function Delta({ label, a, b, aVal, bVal, higherIsBetter, lowerIsBetter, comparable = true, hint }: { label: string; a: string; b: string; aVal: number; bVal: number; higherIsBetter?: boolean; lowerIsBetter?: boolean; comparable?: boolean; hint?: string }) {
   const diff = bVal - aVal;
   let tone = "text-fg-muted";
   let bgTone = "";
@@ -242,7 +243,7 @@ function Delta({ label, a, b, aVal, bVal, higherIsBetter, lowerIsBetter, hint }:
         <span className="text-fg-dim">→</span>
         <span className="text-sm mono font-medium tabular-nums">{b}</span>
       </div>
-      <div className={clsx("text-[11px] mono mt-0.5 tabular-nums", tone)}>{arrow} {diff > 0 ? "+" : ""}{diff.toFixed(2)}</div>
+      <div className={clsx("text-[11px] mono mt-0.5 tabular-nums", tone)}>{comparable ? `${arrow} ${diff > 0 ? "+" : ""}${diff.toFixed(2)}` : "incomplete coverage — not comparable"}</div>
       {hint && <div className="text-[10px] mono text-fg-dim mt-0.5 tabular-nums">{hint}</div>}
     </div>
   );

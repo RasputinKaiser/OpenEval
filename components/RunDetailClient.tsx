@@ -20,6 +20,7 @@ import { useVisibilityPoll } from "@/lib/use-visibility-poll";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useRunEvents } from "@/lib/use-run-events";
 import ArtifactPreview, { artifactKind } from "./ArtifactPreview";
+import { presentRunnerCost } from "@/lib/cost-display";
 
 interface Props { runId: string; runName?: string; initialCases: RunCaseRecord[]; running: boolean; model?: string; harness?: string; harnessInfo?: { id: string; bin: string | null; version: string | null }; }
 
@@ -282,7 +283,7 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
               const tokPerSec = runner && runner.durationMs > 0
                 ? (runner.usage.outputTokens / (runner.durationMs / 1000)).toFixed(1)
                 : "—";
-              const cost = runner ? `$${runner.usage.costUsd.toFixed(4)}` : "—";
+              const cost = runner ? presentRunnerCost(runner.usage).value : "—";
               const caseTrust = summarizeCaseTrust(c);
               return (
                 <div
@@ -376,6 +377,7 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
 
 function CaseSidePanel({ rc, runId }: { rc: RunCaseRecord; runId: string }) {
   const runner = rc.runner_result;
+  const cost = runner ? presentRunnerCost(runner.usage) : null;
   const grader = rc.grader_result;
   const trust = summarizeCaseTrust(rc);
   const jumps = [
@@ -430,7 +432,7 @@ function CaseSidePanel({ rc, runId }: { rc: RunCaseRecord; runId: string }) {
           <Mini label="Turns" value={String(runner.numTurns)} icon={Hash} />
           <Mini label="Duration" value={runner.durationMs < 1000 ? `${runner.durationMs}ms` : `${(runner.durationMs / 1000).toFixed(1)}s`} icon={Clock} />
           <Mini label="tok/s" value={runner.durationMs > 0 ? (runner.usage.outputTokens / (runner.durationMs / 1000)).toFixed(1) : "0"} icon={Gauge} />
-          <Mini label="Cost" value={`$${runner.usage.costUsd.toFixed(4)}`} icon={DollarSign} />
+          <Mini label={cost!.label} value={cost!.value} icon={DollarSign} />
           <Mini label="Tokens in" value={runner.usage.inputTokens.toLocaleString()} icon={Cpu} />
           <Mini label="Tokens out" value={runner.usage.outputTokens.toLocaleString()} icon={Cpu} />
         </div>

@@ -1,0 +1,55 @@
+{
+  "id": "single-delete-obsolete-artifact",
+  "difficulty": "easy",
+  "category": "single-tool",
+  "name": "Delete only the stale build manifest",
+  "description": "Verifies Delete tool: remove stale-build-manifest.json while preserving the release manifest and every other fixture file.",
+  "tags": [
+    "delete",
+    "side-effects",
+    "json"
+  ],
+  "prompt": "Delete only stale-build-manifest.json from the current directory. Preserve release-manifest.json and every other existing fixture file exactly as-is. Do not modify, delete, or create any other files. Run npm test after the cleanup.",
+  "setup": {
+    "type": "fixture",
+    "fixture": "targeted-cleanup",
+    "init_git": true
+  },
+  "runner": {
+    "max_turns": 10,
+    "timeout_seconds": 150,
+    "permission_mode": "bypassPermissions"
+  },
+  "graders": [
+    {
+      "type": "tests_pass",
+      "command": "npm test",
+      "timeout_ms": 30000,
+      "weight": 40
+    },
+    {
+      "type": "file_deleted",
+      "path": "stale-build-manifest.json",
+      "weight": 40
+    },
+    {
+      "type": "files_unchanged",
+      "paths": [
+        "release-manifest.json",
+        "package.json",
+        "verify.test.mjs"
+      ],
+      "weight": 20,
+      "forbidden": true
+    }
+  ],
+  "pass_threshold": 1,
+  "oracle": {
+    "solve": "oracle/single-delete-obsolete-artifact.sh",
+    "noop_max_score": 0.25,
+    "known_bad": [
+      "oracle/single-delete-obsolete-artifact-bad.sh",
+      "oracle/single-delete-obsolete-artifact-extra-file-bad.sh"
+    ]
+  }
+}

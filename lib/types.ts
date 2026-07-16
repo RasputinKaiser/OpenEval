@@ -136,6 +136,8 @@ export interface RunnerResult {
     cacheReadTokens: number;
     cacheCreateTokens: number;
     costUsd: number;
+    /** Whether cost came from the harness or was reconstructed from token rates. */
+    costSource?: "measured" | "inferred" | "missing";
   };
   numTurns: number;
   stopReason: string | null;
@@ -292,6 +294,12 @@ export interface RunSummary {
   passAt1Ci95?: { lo: number; hi: number };
   samples?: number;
   totalCostUsd: number;
+  /** Number of case costs reconstructed from public token rates. */
+  estimatedCostCases?: number;
+  /** Number of case costs explicitly recorded by the harness. */
+  measuredCostCases?: number;
+  /** Number of cases whose dollar cost is unavailable. */
+  missingCostCases?: number;
   totalTokensIn: number;
   totalTokensOut: number;
   totalDurationMs: number;
