@@ -5,7 +5,7 @@ import { StringDecoder } from "node:string_decoder";
 import { compactDisplayPath, redactSensitiveText } from "./redaction";
 import { getPath, type FieldMapping } from "./adapters/generic";
 import { hermesJsonToRecords } from "./adapters/hermes";
-import { displayModelId, estimateCostUsd, rateForModelInfo } from "./pricing";
+import { displayModelId, estimateCostUsd, isPlaceholderModel, rateForModelInfo } from "./pricing";
 import { cacheGet, cachePut, listCachedSessionsUnder, PARSER_VERSION } from "./live-cache";
 import { classifySentiment, isRephrase, looksLikeApologyOrFailure, looksLikeTestsPassed, mcpServerFromTool, JUDGE_PROMPT_MARKER } from "./insights/signals";
 import { hasAdapter, getAdapter, getDefaultHarness, invalidateRegistry } from "./adapters/registry";
@@ -494,12 +494,27 @@ function incrementRecord(record: Record<string, number>, key: string | null | un
   record[key] = (record[key] ?? 0) + amount;
 }
 
+function normalizeModelValue(model: unknown): string | null {
+  if (typeof model !== "string") return null;
+  const normalized = model.trim();
+  return isPlaceholderModel(normalized) ? null : normalized;
+}
+
+function coalesceModel(...values: unknown[]): string | null {
+  for (const value of values) {
+    const normalized = normalizeModelValue(value);
+    if (normalized) return normalized;
+  }
+  return null;
+}
+
 function ensureModelUsage(map: Map<string, LiveModelUsage>, model: unknown): LiveModelUsage | null {
-  if (typeof model !== "string" || !model || model === "<synthetic>") return null;
-  let usage = map.get(model);
+  const normalized = normalizeModelValue(model);
+  if (!normalized) return null;
+  let usage = map.get(normalized);
   if (!usage) {
     usage = {
-      model,
+      model: normalized,
       inputTokens: 0,
       outputTokens: 0,
       cacheReadTokens: 0,
@@ -507,7 +522,7 @@ function ensureModelUsage(map: Map<string, LiveModelUsage>, model: unknown): Liv
       toolCalls: 0,
       toolErrors: 0,
     };
-    map.set(model, usage);
+    map.set(normalized, usage);
   }
   return usage;
 }
@@ -1091,7 +1106,7 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
         // "<synthetic>" is Claude Code's placeholder model on API-error turns,
         // not a real model — letting it win would misattribute (and mis-price)
         // the whole session's usage.
-        if (typeof obj.model === "string" && obj.model && obj.model !== "<synthetic>") model = obj.model;
+        model = coalesceModel(obj.model, model);
         sessionId = obj.sessionId ?? obj.session_id ?? sessionId;
         project = obj.cwd ?? obj.project ?? project;
         userType = obj.userType ?? userType;
@@ -1108,10 +1123,8 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
           metricSources.duration = "measured";
         }
       } else if (obj.type === "assistant" && Array.isArray(obj.message?.content)) {
-        if (typeof obj.message?.model === "string" && obj.message.model && obj.message.model !== "<synthetic>") model = obj.message.model;
-        const messageModel = typeof obj.message?.model === "string" && obj.message.model !== "<synthetic>"
-          ? obj.message.model
-          : model;
+        model = coalesceModel(obj.message?.model, model);
+        const messageModel = coalesceModel(obj.message?.model, model);
         const modelUsage = ensureModelUsage(modelUsageByModel, messageModel);
         const messageUsage = obj.message?.usage ?? {};
         const messageInput = numericOrNull(messageUsage.input_tokens);
@@ -1242,7 +1255,7 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
 
       if (fields) {
         const f = fields;
-        model = coalesceString(getPath(obj, f.model), model);
+        model = coalesceModel(getPath(obj, f.model), model);
         sessionId = coalesceString(getPath(obj, f.sessionId), sessionId);
         const genericDuration = numericOrNull(getPath(obj, f.durationMs));
         if (genericDuration != null) {
@@ -1279,6 +1292,7 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
     return null;
   }
 
+  model = coalesceModel(model);
   const modelUsage = [...modelUsageByModel.values()]
     .filter((usage) => modelUsageVolume(usage) > 0 || usage.toolCalls > 0 || usage.toolErrors > 0)
     .map((usage) => ({ ...usage }));
@@ -1289,8 +1303,8 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
   }
   if (model) {
     metricSources.model = "measured";
-  } else if (inferredModel) {
-    model = inferredModel;
+  } else if (coalesceModel(inferredModel)) {
+    model = coalesceModel(inferredModel);
     metricSources.model = "inferred";
   }
   if (numTurns === 0 && declaredTurnCount != null) {
@@ -1585,9 +1599,12 @@ function parseCodexSession(file: string, lines: Iterable<string>, bytes: number,
                 : source;
           if (payload.source?.subagent || payload.thread_source === "subagent") isSubagent = true;
           cliVersion = payload.cli_version ?? cliVersion;
-          model = payload.model ?? payload.model_slug ?? model;
+          const recordedModel = coalesceModel(payload.model, payload.model_slug);
+          if (recordedModel) {
+            model = recordedModel;
+            metricSources.model = "measured";
+          }
           displayTitle = displayTitle ?? payload.thread_name ?? null;
-          if (payload.model || payload.model_slug) metricSources.model = "measured";
         }
       } else if (obj.type === "turn_context") {
         turnContextCount++;
@@ -1596,8 +1613,9 @@ function parseCodexSession(file: string, lines: Iterable<string>, bytes: number,
         displayTitle = displayTitle ?? payload.thread_name ?? payload.title ?? null;
         // Codex records the model per turn here, not in session_meta — reading
         // only session_meta left every Codex session's model "unknown".
-        if (payload.model || payload.model_slug) {
-          model = payload.model ?? payload.model_slug ?? model;
+        const recordedModel = coalesceModel(payload.model, payload.model_slug);
+        if (recordedModel) {
+          model = recordedModel;
           metricSources.model = "measured";
         }
       } else if (obj.type === "event_msg") {
@@ -1771,6 +1789,7 @@ function parseCodexSession(file: string, lines: Iterable<string>, bytes: number,
     outputTokens = totOut;
   }
 
+  model = coalesceModel(model);
   const modelUsage = [...modelUsageByModel.values()]
     .filter((usage) => modelUsageVolume(usage) > 0 || usage.toolCalls > 0 || usage.toolErrors > 0)
     .map((usage) => ({ ...usage }));

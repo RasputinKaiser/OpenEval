@@ -635,6 +635,50 @@ test("summarizeCodexSessionFile keeps the root identity when fork context embeds
   assert.ok(session.parseWarnings.includes("source: Codex Desktop / subagent 0.144.2"));
 });
 
+test("summarizeCodexSessionFile rejects placeholder models from metadata and turn context", () => {
+  const file = writeSession([
+    { timestamp: "2026-07-15T00:00:00.000Z", type: "session_meta", payload: { id: "placeholder-codex", model: "<synthetic>" } },
+    { timestamp: "2026-07-15T00:00:00.500Z", type: "turn_context", payload: { model: "unknown" } },
+    { timestamp: "2026-07-15T00:00:01.000Z", type: "event_msg", payload: { type: "token_count", info: {
+      last_token_usage: { input_tokens: 100, cached_input_tokens: 50, output_tokens: 10 },
+      total_token_usage: { input_tokens: 100, cached_input_tokens: 50, output_tokens: 10 },
+    } } },
+  ]);
+
+  const session = summarizeCodexSessionFile(file, "2026/07/15", Date.parse("2026-07-15T00:00:00.000Z"));
+  assert.ok(session);
+  assert.equal(session.model, null);
+  assert.equal(session.metricSources.model, "missing");
+  assert.equal(session.metricSources.cost, "missing");
+  assert.equal(session.costUsd, 0);
+  assert.deepEqual(session.modelUsage ?? [], []);
+});
+
+test("summarizeLiveSessionFile rejects generic placeholder models and uses a real descriptor fallback", () => {
+  const file = writeSession([
+    {
+      meta: { model: "<synthetic>" },
+      usage: { input: 100, output: 10 },
+      timestamp: "2026-07-15T00:00:00.000Z",
+    },
+  ]);
+
+  const session = summarizeLiveSessionFile(file, "/tmp/generic-placeholder", Date.parse("2026-07-15T00:00:00.000Z"), {
+    fields: {
+      model: "meta.model",
+      inputTokens: "usage.input",
+      outputTokens: "usage.output",
+    },
+    inferredModel: "gpt-5.5",
+    decodeProject: false,
+  });
+  assert.ok(session);
+  assert.equal(session.model, "gpt-5.5");
+  assert.equal(session.metricSources.model, "inferred");
+  assert.equal(session.metricSources.cost, "inferred");
+  assert.equal(session.costUsd, estimateCostUsd("gpt-5.5", { input: 100, output: 10, cacheRead: 0, cacheCreate: 0 }));
+});
+
 test("mixed-model Codex sessions attribute per-turn usage and tools to the active model", () => {
   const file = writeSession([
     { timestamp: "2026-07-15T00:00:00.000Z", type: "session_meta", payload: { id: "codex-mixed", model: "gpt-5.5" } },
