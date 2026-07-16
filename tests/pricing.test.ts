@@ -1,17 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { estimateCostUsd, rateForModel, rateForModelInfo, DEFAULT_RATE } from "../lib/pricing";
+import { displayModelId, estimateCostUsd, rateForModel, rateForModelInfo, DEFAULT_RATE } from "../lib/pricing";
 
-test("rateForModel returns OpenRouter-sourced rates for known families", () => {
+test("rateForModel returns OpenRouter-sourced rates for known models", () => {
   assert.equal(rateForModel("claude-opus-4-8")?.output, 25);
   assert.equal(rateForModel("claude-sonnet-5")?.input, 2);
-  assert.equal(rateForModel("claude-sonnet-4-6")?.input, 2);
+  assert.equal(rateForModel("claude-sonnet-4-6")?.input, 3);
   assert.equal(rateForModel("claude-fable-5")?.output, 50);
-  assert.equal(rateForModel("claude-haiku-4-5")?.input, 0.8);
+  assert.equal(rateForModel("claude-haiku-4-5")?.input, 1);
   assert.equal(rateForModel("gpt-5.5")?.output, 30);
-  assert.equal(rateForModel("gpt-5-codex")?.input, 5);
-  assert.equal(rateForModel("z-ai/glm-5.2")?.input, 0.9);
-  assert.equal(rateForModel("/data/models/hf/zai-org__GLM-5.2-FP8")?.input, 0.9);
+  assert.equal(rateForModel("gpt-5-codex")?.input, 1.25);
+  assert.equal(rateForModel("z-ai/glm-5.2")?.input, 0.9618);
+  assert.equal(rateForModel("/data/models/hf/zai-org__GLM-5.2-FP8")?.input, 0.9618);
   assert.equal(rateForModel("deepseek-ai/deepseek-v4-pro")?.output, 0.87);
 });
 
@@ -45,4 +45,34 @@ test("estimateCostUsd guesstimates unknown models rather than returning $0", () 
 test("estimateCostUsd never returns a negative cost", () => {
   const c = estimateCostUsd("gpt-5.5", { input: -100, output: 50_000 });
   assert.ok(c !== null && c >= 0);
+});
+
+test("pricing resolves the listed model instead of a broad GPT or Claude family guess", () => {
+  assert.deepEqual(rateForModel("gpt-5.4"), { input: 2.5, output: 15, cacheRead: 0.25, cacheWrite: 2.5 });
+  assert.deepEqual(rateForModel("gpt-5.4-mini"), { input: 0.75, output: 4.5, cacheRead: 0.075, cacheWrite: 0.75 });
+  assert.deepEqual(rateForModel("gpt-5-codex"), { input: 1.25, output: 10, cacheRead: 0.125, cacheWrite: 1.25 });
+  assert.deepEqual(rateForModel("gpt-5.6-luna"), { input: 1, output: 6, cacheRead: 0.1, cacheWrite: 1.25 });
+  assert.deepEqual(rateForModel("gpt-5.6-terra"), { input: 2.5, output: 15, cacheRead: 0.25, cacheWrite: 3.125 });
+  assert.deepEqual(rateForModel("claude-sonnet-4-6"), { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 });
+  assert.deepEqual(rateForModel("z-ai/glm-5.2"), { input: 0.9618, output: 3.0228, cacheRead: 0.17862, cacheWrite: 0.9618 });
+  assert.equal(estimateCostUsd("gpt-5.4", { input: 1_000_000, output: 1_000_000 }), 17.5);
+});
+
+test("pricing reports listed, family-mapped, and fallback rate provenance", () => {
+  const listed = rateForModelInfo("gpt-5.4");
+  assert.equal(listed?.confidence, "listed");
+  assert.equal(listed?.sourceModel, "openai/gpt-5.4");
+
+  const family = rateForModelInfo("/data/models/hf/zai-org__GLM-5.2-FP8");
+  assert.equal(family?.confidence, "family");
+  assert.equal(family?.sourceModel, "z-ai/glm-5.2");
+
+  const fallback = rateForModelInfo("some-unknown-model");
+  assert.equal(fallback?.confidence, "fallback");
+  assert.equal(fallback?.exact, false);
+});
+
+test("displayModelId removes host-specific model paths without inventing a different model", () => {
+  assert.equal(displayModelId("/data/models/hf/zai-org__GLM-5.2-FP8"), "hf:zai-org/glm-5.2-fp8");
+  assert.equal(displayModelId("gpt-5.6-luna"), "gpt-5.6-luna");
 });

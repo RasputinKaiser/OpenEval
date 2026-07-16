@@ -20,7 +20,7 @@ const RING = "0 0 0 1.5px var(--color-accent-soft)";
 type WeeklyMetric = "cost" | "sessions" | "tokens" | "tools";
 
 const METRICS: Array<{ key: WeeklyMetric; label: string }> = [
-  { key: "cost", label: "Cost" },
+  { key: "cost", label: "API equiv." },
   { key: "sessions", label: "Sessions" },
   { key: "tokens", label: "Tokens" },
   { key: "tools", label: "Tool calls" },
@@ -64,7 +64,7 @@ export function WeeklyUsageChart({ rollup }: { rollup: RollupReport }) {
     <div className="card p-4 lg:col-span-2">
       <div className="flex items-baseline justify-between gap-2 mb-3 flex-wrap">
         <h2 className="text-[11px] uppercase tracking-wider text-fg-muted">
-          Usage by week{metric === "cost" && rollup.anyEstimatedCost ? " — est. cost" : ""}
+          Usage by week{metric === "cost" && rollup.anyEstimatedCost ? " — API-list equivalent" : ""}
         </h2>
         <div className="flex items-center gap-1" role="tablist" aria-label="Weekly metric">
           {METRICS.map(({ key, label }) => (

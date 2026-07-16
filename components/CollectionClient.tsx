@@ -110,6 +110,32 @@ function ShareBar({ frac }: { frac: number }) {
   );
 }
 
+function PricingEvidence({ model }: { model: AllSourcesResult["byModel"][number] }) {
+  const kinds = [
+    model.measuredCostSessions > 0 ? "recorded" : null,
+    model.listedRateSessions > 0 ? "listed rate" : null,
+    model.familyRateSessions > 0 ? "family map" : null,
+    model.fallbackRateSessions > 0 ? "fallback" : null,
+  ].filter(Boolean) as string[];
+  const label = kinds.length === 0 ? "unpriced" : kinds.length === 1 ? kinds[0] : "mixed rates";
+  const tone = model.fallbackRateSessions > 0
+    ? "text-err"
+    : model.familyRateSessions > 0
+      ? "text-warn"
+      : model.pricedSessions > 0
+        ? "text-ok"
+        : "text-fg-dim";
+  const title = [
+    `${fmtNumFull(model.pricedSessions)}/${fmtNumFull(model.sessions)} sessions have a dollar estimate`,
+    `${fmtNumFull(model.measuredCostSessions)} recorded costs`,
+    `${fmtNumFull(model.listedRateSessions)} listed-rate estimates`,
+    `${fmtNumFull(model.familyRateSessions)} family-mapped estimates`,
+    `${fmtNumFull(model.fallbackRateSessions)} fallback estimates`,
+    `${fmtNumFull(model.inferredModelSessions)} sessions have an inferred model id`,
+  ].join(" · ");
+  return <span className={clsx("text-[9px] uppercase tracking-wide", tone)} title={title}>{label}</span>;
+}
+
 export default function CollectionClient({ initialData, error, initialQuery, rollup }: { initialData: AllSourcesResult; error?: string; initialQuery?: string; rollup?: RollupReport }) {
   const [data, setData] = useState(initialData);
   const [loading, setLoading] = useState(false);
@@ -213,12 +239,12 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
     { id: "sessions", label: "Sessions" },
   ], [hasWeekly, hasHeatmap, hasModels, hasTools]);
 
-  const distinctTokens = data.totalInputTokens + data.totalOutputTokens;
+  const ioTokens = data.totalInputTokens + data.totalOutputTokens;
   const cacheRead = data.totalCacheReadTokens ?? 0;
-  const cacheMult = distinctTokens > 0 ? cacheRead / distinctTokens : 0;
+  const cacheMult = ioTokens > 0 ? cacheRead / ioTokens : 0;
   const toolErrTotal = models.reduce((a, m) => a + m.toolErrors, 0);
   const toolErrPct = data.totalToolCalls > 0 ? (toolErrTotal / data.totalToolCalls) * 100 : 0;
-  const avgCostPerSession = data.totalParsedSessions > 0 ? data.totalCostUsd / data.totalParsedSessions : 0;
+  const pricingCoverage = data.totalParsedSessions > 0 ? data.totalPricedSessions / data.totalParsedSessions : 0;
   const tilde = data.anyEstimatedCost ? "~" : "";
 
   let busiest: { d: number; h: number; v: number } | null = null;
@@ -261,7 +287,7 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
 
       <SectionNav
         sections={sections}
-        summary={`${fmtNum(data.totalParsedSessions)} sessions · ${tilde}${fmtUsd(data.totalCostUsd)}`}
+        summary={`${fmtNum(data.totalParsedSessions)} sessions · ${tilde}${fmtUsd(data.totalCostUsd)} API eq.`}
       />
 
       {err && <div className="card p-3 mb-4 text-sm text-err flex items-center gap-2"><AlertTriangle className="size-4" /> {err}</div>}
@@ -279,24 +305,24 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
             />
           </StatGroup>
 
-          <StatGroup icon={Coins} label="Spend">
+          <StatGroup icon={Coins} label="API equivalent">
             <StatCell
-              label={data.anyEstimatedCost ? "Est. cost" : "Cost"}
+              label="List estimate"
               value={tilde + fmtUsd(data.totalCostUsd)}
-              title={`${fmtUsdFull(data.totalCostUsd)}${data.anyEstimatedCost ? " — estimated from token usage and model list prices" : ""}`}
-              sub={avgCostPerSession > 0 ? `${tilde}${fmtUsd(avgCostPerSession)}/sess` : undefined}
+              title={`${fmtUsdFull(data.totalCostUsd)} API-equivalent estimate from recorded token classes and ${data.pricingSource} rates checked ${data.pricingListDate}. Not actual subscription/provider spend. Aggregate estimates exclude request-level long-context surcharges when the transcript does not preserve enough threshold evidence.`}
+              sub={`${(pricingCoverage * 100).toFixed(0)}% coverage · ${fmtNum(data.totalPricedSessions)} priced`}
             />
             <StatCell
-              label="Tokens"
-              value={fmtNum(distinctTokens)}
-              title={`${fmtNumFull(distinctTokens)} distinct tokens (cache re-reads excluded)`}
+              label="Input + output"
+              value={fmtNum(ioTokens)}
+              title={`${fmtNumFull(ioTokens)} input + output usage reported across model calls. This is processed usage, not unique text; separately reported cache reads are excluded.`}
               sub={`↑${fmtNum(data.totalInputTokens)} ↓${fmtNum(data.totalOutputTokens)}`}
             />
             <StatCell
               label="Cached ctx"
               value={fmtNum(cacheRead)}
               title={`${fmtNumFull(cacheRead)} cache-read tokens — context re-read across turns (billed at cache rates), plus ${fmtNumFull(data.totalCacheCreateTokens ?? 0)} written to cache`}
-              sub={cacheMult > 0 ? `${cacheMult.toFixed(1)}× distinct` : undefined}
+              sub={cacheMult > 0 ? `${cacheMult.toFixed(1)}× input+output` : undefined}
             />
           </StatGroup>
 
@@ -366,7 +392,7 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="rounded bg-accent/10 text-accent-soft px-1.5 py-0.5 text-[10px] shrink-0">{h.sourceId}</span>
                     <span className="truncate font-medium">{show(h.title || h.file.split("/").pop())}</span>
-                    <span className="text-[11px] text-fg-dim mono shrink-0 ml-auto tabular-nums">{fmtRel(h.at)}</span>
+                    <span className="text-[11px] text-fg-dim mono shrink-0 ml-auto tabular-nums">{fmtRel(h.at, data.generatedAtMs)}</span>
                   </div>
                   <div className="text-[12px] text-fg-muted mono mt-0.5 line-clamp-2">{show(h.snippet)}</div>
                   <div className="text-[10px] text-fg-dim truncate">{compactDisplayPath(h.project, redact)}</div>
@@ -382,16 +408,16 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
           <SectionHeader
             icon={TrendingUp}
             title="Usage"
-            desc="Weekly spend, volume, and where it goes — full history, every harness"
+            desc="Weekly API-list equivalent, volume, and where it goes — full history, every harness"
             right={`${rollup.weekly.length}w window`}
           />
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
             <WeeklyUsageChart rollup={rollup} />
             <div className="card p-4">
-              <h3 className="text-[11px] uppercase tracking-wider text-fg-muted mb-2.5">Top projects by {rollup.anyEstimatedCost ? "est. " : ""}cost</h3>
+              <h3 className="text-[11px] uppercase tracking-wider text-fg-muted mb-2.5">Top projects by API equivalent</h3>
               <div className="space-y-2">
                 {rollup.byProject.map((p) => (
-                  <div key={p.project} title={`${fmtNumFull(p.sessions)} sessions · ${fmtNum(p.tokens)} tokens · last active ${fmtRel(p.lastActiveMs)}`}>
+                  <div key={p.project} title={`${fmtNumFull(p.sessions)} sessions · ${fmtNum(p.tokens)} input + output tokens · last active ${fmtRel(p.lastActiveMs, data.generatedAtMs)}`}>
                     <div className="flex items-center gap-2 text-sm min-w-0">
                       <span className="truncate flex-1 text-fg-muted text-[12px]">{compactDisplayPath(p.project, redact).split("/").slice(-2).join("/")}</span>
                       <span className="mono tabular-nums text-[12px] shrink-0">{(rollup.anyEstimatedCost ? "~" : "") + fmtUsd(p.costUsd)}</span>
@@ -431,8 +457,8 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
           <SectionHeader
             icon={Cpu}
             title="Models"
-            desc="Every model that ran on this machine, merged across harnesses"
-            right={`${models.length} models · ${tilde}${fmtUsd(totalModelCost)}`}
+            desc="Normalized model identities, measured usage, and rate provenance across harnesses"
+            right={`${models.length} models · ${tilde}${fmtUsd(totalModelCost)} API eq.`}
           />
           <div className="card overflow-hidden">
             <div className="overflow-x-auto">
@@ -441,11 +467,11 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
                   <tr>
                     <th>Model</th>
                     <th className="num">Sessions</th>
-                    <th className="num">Tokens</th>
+                    <th className="num">I/O tokens</th>
                     <th className="num">Cache reads</th>
                     <th className="num">Tool calls</th>
                     <th className="num">Tool err</th>
-                    <th className="num">Cost</th>
+                    <th className="num">API equiv.</th>
                     <th className="num">Share</th>
                   </tr>
                 </thead>
@@ -453,16 +479,20 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
                   {models.map((m) => {
                     const errPct = m.toolCalls ? (m.toolErrors / m.toolCalls) * 100 : 0;
                     const share = totalModelCost > 0 ? m.costUsd / totalModelCost : m.sessions / totalModelSessions;
+                    const modelCostEstimated = m.listedRateSessions + m.familyRateSessions + m.fallbackRateSessions > 0;
                     return (
                       <tr key={m.model}>
-                        <td className="mono text-[11px]">{m.model === "unknown" ? <span className="text-fg-dim">unknown</span> : m.model}</td>
-                        <td className="num">{fmtNum(m.sessions)}</td>
-                        <td className="num text-fg-muted" title={`${fmtNumFull(m.inputTokens + m.outputTokens)} — ↑${fmtNum(m.inputTokens)} ↓${fmtNum(m.outputTokens)}`}>{fmtNum(m.inputTokens + m.outputTokens)}</td>
+                        <td className="mono text-[11px]">
+                          <div>{m.model === "unknown" ? <span className="text-fg-dim">unknown</span> : m.model}</div>
+                          <PricingEvidence model={m} />
+                        </td>
+                        <td className="num" title={`${fmtNumFull(m.pricedSessions)} priced · ${fmtNumFull(m.inferredModelSessions)} inferred model ids`}>{fmtNum(m.sessions)}</td>
+                        <td className="num text-fg-muted" title={`${fmtNumFull(m.inputTokens + m.outputTokens)} input + output — ↑${fmtNum(m.inputTokens)} ↓${fmtNum(m.outputTokens)}; processed usage, not unique text`}>{fmtNum(m.inputTokens + m.outputTokens)}</td>
                         <td className="num text-fg-dim" title={fmtNumFull(m.cacheReadTokens)}>{fmtNum(m.cacheReadTokens)}</td>
                         <td className="num text-fg-muted">{fmtNum(m.toolCalls)}</td>
                         <td className={clsx("num", errPct >= 5 ? "text-err" : "text-fg-dim")}>{m.toolCalls ? `${errPct.toFixed(1)}%` : "—"}</td>
-                        <td className="num" title={`${fmtUsdFull(m.costUsd)}${m.sessions > 0 ? ` · ${tilde}${fmtUsd(m.costUsd / m.sessions)} / session` : ""}`}>
-                          {m.costUsd > 0 ? tilde + fmtUsd(m.costUsd) : "—"}
+                        <td className="num" title={`${fmtUsdFull(m.costUsd)} API-equivalent estimate · ${fmtNumFull(m.pricedSessions)}/${fmtNumFull(m.sessions)} sessions priced · ${fmtNumFull(m.listedRateSessions)} listed, ${fmtNumFull(m.familyRateSessions)} family-mapped, ${fmtNumFull(m.fallbackRateSessions)} fallback · not actual spend`}>
+                          {m.costUsd > 0 ? (modelCostEstimated ? "~" : "") + fmtUsd(m.costUsd) : "—"}
                         </td>
                         <td className="num"><ShareBar frac={share} /></td>
                       </tr>
@@ -472,7 +502,7 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
               </table>
             </div>
             <div className="px-3 py-1.5 border-t border-bd-subtle text-[10px] text-fg-dim">
-              Share is of total {totalModelCost > 0 ? `${data.anyEstimatedCost ? "estimated " : ""}cost` : "sessions"}. Tokens are distinct (↑ input ↓ output in the tooltip); cache reads are billed context re-reads.
+              Share is of {totalModelCost > 0 ? "estimated API-equivalent value" : "sessions"}. Input + output is processed usage, not unique text; cache reads are reported separately. Pricing evidence: {fmtNum(data.totalListedRateSessions)} listed-rate, {fmtNum(data.totalFamilyRateSessions)} family-mapped, {fmtNum(data.totalFallbackRateSessions)} fallback session estimates.
             </div>
           </div>
         </section>
@@ -507,8 +537,8 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
                   <th>Format</th>
                   <th className="num">Files</th>
                   <th className="num">Parsed</th>
-                  <th className="num">Tokens</th>
-                  <th className="num">Cost</th>
+                  <th className="num">I/O tokens</th>
+                  <th className="num">API equiv.</th>
                   <th className="num">DQ</th>
                   <th className="num">Activity</th>
                 </tr>
@@ -529,17 +559,17 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
                     <td className="mono text-[11px] text-fg-muted">{s.format}</td>
                     <td className="num">{s.filesFound ? fmtNum(s.filesFound) : "—"}</td>
                     <td className="num" title={s.archivedSessions > 0 ? `${s.archivedSessions} archived (files pruned from disk; kept from the parse archive)` : undefined}>
-                      {s.parseable ? <>{fmtNum(s.parsedSessions)}{s.archivedSessions > 0 && <span className="text-fg-dim text-[10px]"> +{fmtNum(s.archivedSessions)}a</span>}</> : <span className="text-fg-dim">n/a</span>}
+                      {s.parseable ? <>{fmtNum(s.parsedSessions)}{s.archivedSessions > 0 && <span className="text-fg-dim text-[10px]"> incl. {fmtNum(s.archivedSessions)}a</span>}</> : <span className="text-fg-dim">n/a</span>}
                     </td>
-                    <td className="num text-fg-muted" title={s.parseable && s.parsedSessions ? `${fmtNumFull(s.totalInputTokens + s.totalOutputTokens)} distinct · ${fmtNum(s.totalCacheReadTokens)} cache reads` : undefined}>{s.parseable && s.parsedSessions ? fmtNum(s.totalInputTokens + s.totalOutputTokens) : "—"}</td>
-                    <td className="num text-fg-muted" title={s.parseable && s.totalCostUsd ? `${fmtUsdFull(s.totalCostUsd)}${s.costEstimated ? " — estimated from token usage" : ""}` : undefined}>{s.parseable && s.totalCostUsd ? (s.costEstimated ? "~" : "") + fmtUsd(s.totalCostUsd) : "—"}</td>
+                    <td className="num text-fg-muted" title={s.parseable && s.parsedSessions ? `${fmtNumFull(s.totalInputTokens + s.totalOutputTokens)} input + output · ${fmtNum(s.totalCacheReadTokens)} cache reads · processed usage, not unique text` : undefined}>{s.parseable && s.parsedSessions ? fmtNum(s.totalInputTokens + s.totalOutputTokens) : "—"}</td>
+                    <td className="num text-fg-muted" title={s.parseable && s.totalCostUsd ? `${fmtUsdFull(s.totalCostUsd)} API-equivalent estimate · ${fmtNumFull(s.pricedSessions)}/${fmtNumFull(s.parsedSessions)} sessions priced · not actual spend` : undefined}>{s.parseable && s.totalCostUsd ? (s.costEstimated ? "~" : "") + fmtUsd(s.totalCostUsd) : "—"}</td>
                     <td
                       className={clsx("num", s.parseable && s.parsedSessions > 0 && s.avgDataQuality < 50 ? "text-warn" : "text-fg-dim")}
-                      title={s.parseable && s.parsedSessions > 0 ? `Average data quality 0–100 — how much of tokens/cost/timing this harness actually records${s.scanWarnings.length ? `\n${s.scanWarnings.join("\n")}` : ""}` : undefined}
+                      title={s.parseable && s.parsedSessions > 0 ? `Average data quality 0–100 — model/token/timing provenance and parse health${s.scanWarnings.length ? `\n${s.scanWarnings.join("\n")}` : ""}` : undefined}
                     >
                       {s.parseable && s.parsedSessions > 0 ? Math.round(s.avgDataQuality) : "—"}
                     </td>
-                    <td className="num text-fg-dim">{fmtRel(s.lastActivityMs)}</td>
+                    <td className="num text-fg-dim">{fmtRel(s.lastActivityMs, data.generatedAtMs)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -618,7 +648,7 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
                       <td className="num text-fg-muted" title={fmtNumFull(s.inputTokens + s.outputTokens)}>{fmtNum(s.inputTokens + s.outputTokens)}</td>
                       <td className="num">{s.toolCalls}{s.toolErrors > 0 && <span className="text-err"> ({s.toolErrors}✗)</span>}</td>
                       <td className="num text-fg-dim">{Math.round(s.dataQuality)}</td>
-                      <td className="num text-fg-dim whitespace-nowrap">{fmtRel(s.lastEventAt)}</td>
+                      <td className="num text-fg-dim whitespace-nowrap">{fmtRel(s.lastEventAt, data.generatedAtMs)}</td>
                     </tr>
                   );
                 })}
@@ -630,7 +660,7 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
 
       {data.anyEstimatedCost && (
         <p className="text-[11px] text-fg-dim mt-3">
-          ~ Costs marked with a tilde are <span className="text-fg-muted">estimated</span> from measured token usage and model list prices (session files don&apos;t record cost). Models without a known rate show no cost rather than a guess. Edit rates in <span className="mono">lib/pricing.ts</span>.
+          ~ Dollar values are <span className="text-fg-muted">API-equivalent list estimates</span>, not subscription/provider spend. They use token evidence plus {data.pricingSource} rates checked {data.pricingListDate}; family and fallback mappings remain visibly labeled. Request-level long-context surcharges may be absent when the transcript lacks threshold evidence.
         </p>
       )}
     </div>

@@ -1,15 +1,13 @@
 /**
- * Token pricing so cost can be ESTIMATED for sessions whose harness never
- * recorded one (persisted Claude/Codex/ncode session files carry token usage but
- * no cost). Estimated costs are always provenance "inferred", never "measured".
+ * API-equivalent token pricing for transcript sessions that do not record a
+ * dollar cost. These estimates are NOT the user's actual subscription or
+ * provider spend. They answer the narrower question: what would the recorded
+ * token classes cost at the referenced public list rate?
  *
- * Rates are USD per MILLION tokens, sourced from OpenRouter's published model
- * prices (https://openrouter.ai/api/v1/models) as of 2026-07 — the goal is a
- * correct ballpark, not a billing statement. A named model with no specific
- * entry falls back to DEFAULT_RATE (a conservative open-model guess) so cost is
- * never a misleading $0; only a null/empty model id yields no cost. Cache-write
- * (cache-creation) rates aren't published per-model, so Anthropic models use the
- * usual 1.25x-input convention and others fall back to the input rate.
+ * Rates are USD per MILLION tokens and were checked against OpenRouter's
+ * `/api/v1/models` response on PRICING_LIST_DATE. Exact model ids are resolved
+ * before aliases/family mappings; unknown named models keep a visibly flagged
+ * fallback estimate instead of becoming a misleading $0.
  */
 export interface TokenRate {
   input: number;
@@ -18,41 +16,99 @@ export interface TokenRate {
   cacheWrite: number;
 }
 
-export const PRICING_LIST_DATE = "2026-07";
-export const PRICING_SOURCE = "OpenRouter list prices";
+export type RateConfidence = "listed" | "family" | "fallback";
+
+export const PRICING_LIST_DATE = "2026-07-15";
+export const PRICING_SOURCE = "OpenRouter /api/v1/models";
 
 /** Conservative open-model fallback for any named-but-unlisted model. */
 export const DEFAULT_RATE: TokenRate = { input: 1, output: 3, cacheRead: 0.1, cacheWrite: 1.25 };
 
-/** First matcher (on the lowercased id) wins — specific patterns before families. */
-const RATE_TABLE: Array<{ match: (id: string) => boolean; rate: TokenRate }> = [
-  // --- Anthropic Claude (OpenRouter: opus-4.8 5/25, sonnet-5 2/10, fable-5 10/50) ---
-  { match: (id) => id.includes("fable"), rate: { input: 10, output: 50, cacheRead: 1, cacheWrite: 12.5 } },
-  { match: (id) => id.includes("opus"), rate: { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 } },
-  { match: (id) => id.includes("sonnet"), rate: { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5 } },
-  { match: (id) => id.includes("haiku"), rate: { input: 0.8, output: 4, cacheRead: 0.08, cacheWrite: 1 } },
-  // --- OpenAI GPT / Codex (OpenRouter: gpt-5.5 5/30) ---
-  { match: (id) => /gpt-5|codex|o4|o3/.test(id), rate: { input: 5, output: 30, cacheRead: 0.5, cacheWrite: 5 } },
-  // --- Open models (OpenRouter: glm-5.2 0.9/3.08, deepseek-v4-pro 0.435/0.87) ---
-  { match: (id) => id.includes("glm"), rate: { input: 0.9, output: 3.08, cacheRead: 0.18, cacheWrite: 1.13 } },
-  { match: (id) => id.includes("deepseek"), rate: { input: 0.435, output: 0.87, cacheRead: 0.003625, cacheWrite: 0.544 } },
-  { match: (id) => id.includes("qwen"), rate: { input: 0.4, output: 1.2, cacheRead: 0.04, cacheWrite: 0.5 } },
+interface ListedRate {
+  sourceModel: string;
+  aliases: string[];
+  rate: TokenRate;
+}
+
+/** Exact ids/aliases whose public list-rate identity is known. */
+const LISTED_RATES: ListedRate[] = [
+  { sourceModel: "anthropic/claude-fable-5", aliases: ["claude-fable-5", "anthropic/claude-fable-5"], rate: { input: 10, output: 50, cacheRead: 1, cacheWrite: 12.5 } },
+  { sourceModel: "anthropic/claude-opus-4.8", aliases: ["claude-opus-4-8", "anthropic/claude-opus-4.8"], rate: { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 } },
+  { sourceModel: "anthropic/claude-sonnet-5", aliases: ["claude-sonnet-5", "anthropic/claude-sonnet-5"], rate: { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5 } },
+  { sourceModel: "anthropic/claude-sonnet-4.6", aliases: ["claude-sonnet-4-6", "anthropic/claude-sonnet-4.6"], rate: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 } },
+  { sourceModel: "anthropic/claude-haiku-4.5", aliases: ["claude-haiku-4-5", "anthropic/claude-haiku-4.5"], rate: { input: 1, output: 5, cacheRead: 0.1, cacheWrite: 1.25 } },
+
+  { sourceModel: "openai/gpt-5.6-sol", aliases: ["gpt-5.6-sol", "openai/gpt-5.6-sol"], rate: { input: 5, output: 30, cacheRead: 0.5, cacheWrite: 6.25 } },
+  { sourceModel: "openai/gpt-5.6-luna", aliases: ["gpt-5.6-luna", "openai/gpt-5.6-luna"], rate: { input: 1, output: 6, cacheRead: 0.1, cacheWrite: 1.25 } },
+  { sourceModel: "openai/gpt-5.6-terra", aliases: ["gpt-5.6-terra", "openai/gpt-5.6-terra"], rate: { input: 2.5, output: 15, cacheRead: 0.25, cacheWrite: 3.125 } },
+  { sourceModel: "openai/gpt-5.5", aliases: ["gpt-5.5", "openai/gpt-5.5"], rate: { input: 5, output: 30, cacheRead: 0.5, cacheWrite: 5 } },
+  { sourceModel: "openai/gpt-5.4", aliases: ["gpt-5.4", "openai/gpt-5.4"], rate: { input: 2.5, output: 15, cacheRead: 0.25, cacheWrite: 2.5 } },
+  { sourceModel: "openai/gpt-5.4-mini", aliases: ["gpt-5.4-mini", "openai/gpt-5.4-mini"], rate: { input: 0.75, output: 4.5, cacheRead: 0.075, cacheWrite: 0.75 } },
+  { sourceModel: "openai/gpt-5.3-codex", aliases: ["gpt-5.3-codex", "openai/gpt-5.3-codex"], rate: { input: 1.75, output: 14, cacheRead: 0.175, cacheWrite: 1.75 } },
+  { sourceModel: "openai/gpt-5.1-codex-max", aliases: ["gpt-5.1-codex-max", "openai/gpt-5.1-codex-max"], rate: { input: 1.25, output: 10, cacheRead: 0.125, cacheWrite: 1.25 } },
+  { sourceModel: "openai/gpt-5.1-codex", aliases: ["gpt-5.1-codex", "openai/gpt-5.1-codex"], rate: { input: 1.25, output: 10, cacheRead: 0.125, cacheWrite: 1.25 } },
+  { sourceModel: "openai/gpt-5-codex", aliases: ["gpt-5-codex", "openai/gpt-5-codex"], rate: { input: 1.25, output: 10, cacheRead: 0.125, cacheWrite: 1.25 } },
+  { sourceModel: "openai/gpt-5", aliases: ["gpt-5", "openai/gpt-5"], rate: { input: 1.25, output: 10, cacheRead: 0.125, cacheWrite: 1.25 } },
+  { sourceModel: "openai/o4-mini", aliases: ["o4-mini", "openai/o4-mini"], rate: { input: 1.1, output: 4.4, cacheRead: 0.275, cacheWrite: 1.1 } },
+
+  { sourceModel: "z-ai/glm-5.2", aliases: ["z-ai/glm-5.2"], rate: { input: 0.9618, output: 3.0228, cacheRead: 0.17862, cacheWrite: 0.9618 } },
+  { sourceModel: "deepseek/deepseek-v4-pro", aliases: ["deepseek/deepseek-v4-pro"], rate: { input: 0.435, output: 0.87, cacheRead: 0.003625, cacheWrite: 0.435 } },
+  { sourceModel: "deepseek/deepseek-v4-flash", aliases: ["deepseek/deepseek-v4-flash"], rate: { input: 0.098, output: 0.196, cacheRead: 0.02, cacheWrite: 0.098 } },
+  { sourceModel: "moonshotai/kimi-k2.7-code", aliases: ["moonshotai/kimi-k2.7-code"], rate: { input: 0.719, output: 3.49, cacheRead: 0.149, cacheWrite: 0.719 } },
 ];
+
+const LISTED_BY_ALIAS = new Map<string, ListedRate>();
+for (const entry of LISTED_RATES) {
+  for (const alias of entry.aliases) LISTED_BY_ALIAS.set(alias, entry);
+}
+
+/** Remove machine-specific model-store prefixes while preserving identity. */
+export function displayModelId(model: string | null | undefined): string | null {
+  if (!model || !model.trim()) return null;
+  const id = model.trim();
+  const marker = "/data/models/hf/";
+  const markerAt = id.toLowerCase().lastIndexOf(marker);
+  if (markerAt >= 0) {
+    const stored = id.slice(markerAt + marker.length).replace(/__/g, "/");
+    return `hf:${stored.toLowerCase()}`;
+  }
+  return id;
+}
 
 export interface ModelRate {
   rate: TokenRate;
-  /** false when this came from DEFAULT_RATE (a rough guess), true for a listed model. */
+  /** Backward-compatible shorthand: true only for a directly listed model id. */
   exact: boolean;
+  confidence: RateConfidence;
+  /** Public list-price model used for the estimate, or "fallback". */
+  sourceModel: string;
 }
 
-/** Resolve a rate for a model. Null only for a null/empty id (can't guess nothing). */
+function familyRate(id: string): ListedRate | null {
+  const from = (sourceModel: string) => LISTED_RATES.find((entry) => entry.sourceModel === sourceModel) ?? null;
+  if (id.startsWith("hf:zai-org/glm-5.2") || id === "glm 5.2 (1m)") return from("z-ai/glm-5.2");
+  if (id.startsWith("hf:moonshotai/kimi-k2.7-code")) return from("moonshotai/kimi-k2.7-code");
+  if (id === "deepseek-ai/deepseek-v4-pro" || id === "deepseek-v4-pro") return from("deepseek/deepseek-v4-pro");
+  if (id === "deepseek-ai/deepseek-v4-flash" || id === "deepseek-v4-flash") return from("deepseek/deepseek-v4-flash");
+  if (id.startsWith("gpt-5.3-codex-")) return from("openai/gpt-5.3-codex");
+  if (id.startsWith("gpt-5.5-")) return from("openai/gpt-5.5");
+  if (id.includes("fable")) return from("anthropic/claude-fable-5");
+  if (id.includes("opus")) return from("anthropic/claude-opus-4.8");
+  if (id.includes("sonnet")) return from("anthropic/claude-sonnet-5");
+  if (id.includes("haiku")) return from("anthropic/claude-haiku-4.5");
+  return null;
+}
+
+/** Resolve a rate for a model. Null only for a null/empty id. */
 export function rateForModelInfo(model: string | null | undefined): ModelRate | null {
-  if (!model || !model.trim()) return null;
-  const id = model.toLowerCase();
-  for (const entry of RATE_TABLE) {
-    if (entry.match(id)) return { rate: entry.rate, exact: true };
-  }
-  return { rate: DEFAULT_RATE, exact: false };
+  const display = displayModelId(model);
+  if (!display) return null;
+  const id = display.toLowerCase();
+  const listed = LISTED_BY_ALIAS.get(id);
+  if (listed) return { rate: listed.rate, exact: true, confidence: "listed", sourceModel: listed.sourceModel };
+  const family = familyRate(id);
+  if (family) return { rate: family.rate, exact: false, confidence: "family", sourceModel: family.sourceModel };
+  return { rate: DEFAULT_RATE, exact: false, confidence: "fallback", sourceModel: "fallback" };
 }
 
 export function rateForModel(model: string | null | undefined): TokenRate | null {
@@ -67,8 +123,9 @@ export interface TokenBreakdown {
 }
 
 /**
- * Estimate a session's cost from its token breakdown and model. Returns null if
- * the model id is empty (can't guess) or there are no tokens to price.
+ * Estimate API-equivalent cost from token classes. Long-context request
+ * surcharges cannot be reconstructed from an aggregate alone and are excluded;
+ * the UI states this boundary explicitly.
  */
 export function estimateCostUsd(model: string | null | undefined, tokens: TokenBreakdown): number | null {
   const rate = rateForModel(model);

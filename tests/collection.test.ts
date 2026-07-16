@@ -268,3 +268,57 @@ test("hermes-json sessions parse into model, tools, and duration", () => {
   assert.ok(s.parseWarnings.includes("turn count inferred from user messages"));
   assert.equal(s.startedAt, Date.parse("2026-05-31T00:05:53.370621"));
 });
+
+test("collection model rollups sanitize local model paths and expose pricing evidence", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "openeval-model-evidence-"));
+  fs.writeFileSync(path.join(dir, "session.jsonl"), [
+    { type: "system", sessionId: "local-model", timestamp: "2026-07-15T12:00:00.000Z" },
+    { type: "assistant", message: {
+      model: "/data/models/hf/zai-org__GLM-5.2-FP8",
+      usage: { input_tokens: 1_000_000, output_tokens: 1_000 },
+      content: [{ type: "text", text: "done" }],
+    } },
+  ].map((line) => JSON.stringify(line)).join("\n"), "utf8");
+
+  const agg = scanSourceSessions({ id: "local", label: "Local", roots: [dir], format: "jsonl-dir" }, 50);
+  assert.equal(agg.byModel[0].model, "hf:zai-org/glm-5.2-fp8");
+  assert.equal((agg.byModel[0] as any).familyRateSessions, 1);
+  assert.equal((agg.byModel[0] as any).listedRateSessions, 0);
+  assert.equal((agg.usageSummary as any).sessionsWithPricedUsage, 1);
+});
+
+test("archived sessions are repriced from tokens instead of preserving stale cached estimates", () => {
+  const Database = require("better-sqlite3");
+  const { _setCacheDbForTest } = require("../lib/live-cache");
+  const conn = new Database(":memory:");
+  _setCacheDbForTest(conn);
+  try {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "openeval-reprice-"));
+    const file = path.join(dir, "session.jsonl");
+    fs.writeFileSync(file, [
+      { type: "system", model: "gpt-5.4", sessionId: "repriced", timestamp: "2026-07-15T12:00:00.000Z" },
+      { type: "assistant", message: {
+        model: "gpt-5.4",
+        usage: { input_tokens: 1_000_000, output_tokens: 1_000_000 },
+        content: [{ type: "text", text: "done" }],
+      } },
+    ].map((line) => JSON.stringify(line)).join("\n"), "utf8");
+    const spec = { id: "repricing", label: "Repricing", roots: [dir], format: "jsonl-dir" as const };
+
+    scanSourceSessions(spec, 50, { includeArchived: true });
+    const row = conn.prepare("SELECT session_json FROM session_cache WHERE file = ?").get(file) as { session_json: string };
+    const stale = JSON.parse(row.session_json);
+    stale.costUsd = 999;
+    stale.metricSources.cost = "inferred";
+    conn.prepare("UPDATE session_cache SET session_json = ? WHERE file = ?").run(JSON.stringify(stale), file);
+    fs.rmSync(file);
+
+    const archived = scanSourceSessions(spec, 50, { includeArchived: true });
+    assert.equal(archived.totalSessions, 1);
+    assert.equal(archived.totalCostUsd, 17.5);
+    assert.equal(archived.sessions[0].costUsd, 17.5);
+  } finally {
+    _setCacheDbForTest(null);
+    conn.close();
+  }
+});

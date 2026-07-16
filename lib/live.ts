@@ -5,7 +5,7 @@ import { StringDecoder } from "node:string_decoder";
 import { compactDisplayPath, redactSensitiveText } from "./redaction";
 import { getPath, type FieldMapping } from "./adapters/generic";
 import { hermesJsonToRecords } from "./adapters/hermes";
-import { estimateCostUsd } from "./pricing";
+import { displayModelId, estimateCostUsd, rateForModelInfo } from "./pricing";
 import { cacheGet, cachePut, listCachedSessionsUnder } from "./live-cache";
 import { classifySentiment, isRephrase, looksLikeApologyOrFailure, looksLikeTestsPassed, mcpServerFromTool, JUDGE_PROMPT_MARKER } from "./insights/signals";
 import { hasAdapter, getAdapter, getDefaultHarness, invalidateRegistry } from "./adapters/registry";
@@ -41,6 +41,10 @@ export interface LiveUsageSummary {
   totalCostUsd: number;
   sessionsWithMeasuredUsage: number;
   sessionsWithMeasuredCost: number;
+  sessionsWithPricedUsage: number;
+  sessionsWithListedRate: number;
+  sessionsWithFamilyRate: number;
+  sessionsWithFallbackRate: number;
   tokenCoverage: number;
   costCoverage: number;
   avgOutputTokPerSec: number;
@@ -191,6 +195,12 @@ export interface LiveAggregate {
     avgDataQuality: number;
     missingTokens: number;
     missingCost: number;
+    pricedSessions: number;
+    measuredCostSessions: number;
+    listedRateSessions: number;
+    familyRateSessions: number;
+    fallbackRateSessions: number;
+    inferredModelSessions: number;
   }>;
   byTool: LiveToolSummary[];
   queueTotals: LiveQueueSummary;
@@ -520,7 +530,26 @@ function parseSourceSessionList(source: LiveTraceSource, limit: number, scanWarn
     }
   }
   if (includeArchived) appendArchivedSessions(source, sessions);
-  return sessions;
+  // Inferred costs are derived data, not transcript evidence. Recompute them
+  // from current list rates on every scan so persistent/archive cache rows do
+  // not freeze stale pricing forever.
+  return sessions.map(refreshInferredSessionCost);
+}
+
+function refreshInferredSessionCost(session: LiveSession): LiveSession {
+  if (session.metricSources.cost === "measured" || session.metricSources.cost === "malformed") return session;
+  const estimate = estimateCostUsd(session.model, {
+    input: session.inputTokens,
+    output: session.outputTokens,
+    cacheRead: session.cacheReadTokens,
+    cacheCreate: session.cacheCreateTokens,
+  });
+  if (estimate == null) {
+    if (session.costUsd === 0 && session.metricSources.cost === "missing") return session;
+    return { ...session, costUsd: 0, metricSources: { ...session.metricSources, cost: "missing" } };
+  }
+  if (session.costUsd === estimate && session.metricSources.cost === "inferred") return session;
+  return { ...session, costUsd: estimate, metricSources: { ...session.metricSources, cost: "inferred" } };
 }
 
 function isUnderNamedRoot(file: string, roots: string[], name: string): boolean {
@@ -1915,6 +1944,10 @@ function emptyUsageSummary(): LiveUsageSummary {
     totalCostUsd: 0,
     sessionsWithMeasuredUsage: 0,
     sessionsWithMeasuredCost: 0,
+    sessionsWithPricedUsage: 0,
+    sessionsWithListedRate: 0,
+    sessionsWithFamilyRate: 0,
+    sessionsWithFallbackRate: 0,
     tokenCoverage: 0,
     costCoverage: 0,
     avgOutputTokPerSec: 0,
@@ -1935,6 +1968,12 @@ function aggregate(sessions: LiveSession[], scanWarnings: string[] = [], source:
     totalQuality: number;
     missingTokens: number;
     missingCost: number;
+    pricedSessions: number;
+    measuredCostSessions: number;
+    listedRateSessions: number;
+    familyRateSessions: number;
+    fallbackRateSessions: number;
+    inferredModelSessions: number;
   }>();
   let totalCostUsd = 0;
   let totalInputTokens = 0;
@@ -1982,8 +2021,13 @@ function aggregate(sessions: LiveSession[], scanWarnings: string[] = [], source:
       increment(toolErrorsByName, tool.name, tool.errors);
     }
     for (const file of s.fileActivity.touchedFiles) increment(fileSessions, file);
-    const key = s.model || "unknown";
-    const cur = byModelMap.get(key) || { model: key, sessions: 0, costUsd: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, toolCalls: 0, errors: 0, totalDur: 0, totalQuality: 0, missingTokens: 0, missingCost: 0 };
+    const key = displayModelId(s.model) || "unknown";
+    const cur = byModelMap.get(key) || {
+      model: key, sessions: 0, costUsd: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0,
+      toolCalls: 0, errors: 0, totalDur: 0, totalQuality: 0, missingTokens: 0, missingCost: 0,
+      pricedSessions: 0, measuredCostSessions: 0, listedRateSessions: 0, familyRateSessions: 0,
+      fallbackRateSessions: 0, inferredModelSessions: 0,
+    };
     cur.sessions++;
     cur.costUsd += s.costUsd;
     cur.inputTokens += s.inputTokens;
@@ -1993,8 +2037,17 @@ function aggregate(sessions: LiveSession[], scanWarnings: string[] = [], source:
     cur.errors += s.toolErrors;
     cur.totalDur += s.durationMs;
     cur.totalQuality += s.dataQuality;
-    if (s.metricSources.tokens === "missing") cur.missingTokens++;
-    if (s.metricSources.cost === "missing") cur.missingCost++;
+    if (metricMissing(s.metricSources.tokens)) cur.missingTokens++;
+    if (metricMissing(s.metricSources.cost)) cur.missingCost++;
+    if (s.costUsd > 0) cur.pricedSessions++;
+    if (s.metricSources.cost === "measured" && s.costUsd > 0) cur.measuredCostSessions++;
+    if (s.metricSources.model === "inferred") cur.inferredModelSessions++;
+    if (s.metricSources.cost === "inferred" && s.costUsd > 0) {
+      const confidence = rateForModelInfo(s.model)?.confidence;
+      if (confidence === "listed") cur.listedRateSessions++;
+      else if (confidence === "family") cur.familyRateSessions++;
+      else if (confidence === "fallback") cur.fallbackRateSessions++;
+    }
     byModelMap.set(key, cur);
   }
 
@@ -2011,6 +2064,12 @@ function aggregate(sessions: LiveSession[], scanWarnings: string[] = [], source:
     avgDataQuality: m.sessions ? m.totalQuality / m.sessions : 0,
     missingTokens: m.missingTokens,
     missingCost: m.missingCost,
+    pricedSessions: m.pricedSessions,
+    measuredCostSessions: m.measuredCostSessions,
+    listedRateSessions: m.listedRateSessions,
+    familyRateSessions: m.familyRateSessions,
+    fallbackRateSessions: m.fallbackRateSessions,
+    inferredModelSessions: m.inferredModelSessions,
   })).sort((a, b) => b.errors - a.errors || a.avgDataQuality - b.avgDataQuality);
 
   const usageSummary = emptyUsageSummary();
@@ -2022,6 +2081,10 @@ function aggregate(sessions: LiveSession[], scanWarnings: string[] = [], source:
   usageSummary.totalCostUsd = totalCostUsd;
   usageSummary.sessionsWithMeasuredUsage = sessions.filter((s) => s.metricSources.tokens === "measured").length;
   usageSummary.sessionsWithMeasuredCost = sessions.filter((s) => s.metricSources.cost === "measured").length;
+  usageSummary.sessionsWithPricedUsage = sessions.filter((s) => s.costUsd > 0).length;
+  usageSummary.sessionsWithListedRate = sessions.filter((s) => s.metricSources.cost === "inferred" && s.costUsd > 0 && rateForModelInfo(s.model)?.confidence === "listed").length;
+  usageSummary.sessionsWithFamilyRate = sessions.filter((s) => s.metricSources.cost === "inferred" && s.costUsd > 0 && rateForModelInfo(s.model)?.confidence === "family").length;
+  usageSummary.sessionsWithFallbackRate = sessions.filter((s) => s.metricSources.cost === "inferred" && s.costUsd > 0 && rateForModelInfo(s.model)?.confidence === "fallback").length;
   usageSummary.tokenCoverage = sessions.length ? usageSummary.sessionsWithMeasuredUsage / sessions.length : 0;
   usageSummary.costCoverage = sessions.length ? usageSummary.sessionsWithMeasuredCost / sessions.length : 0;
   usageSummary.avgOutputTokPerSec = outputTokPerSecCount ? outputTokPerSecTotal / outputTokPerSecCount : 0;
