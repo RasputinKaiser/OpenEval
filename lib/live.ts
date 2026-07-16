@@ -494,10 +494,27 @@ function parseSourceSessionList(source: LiveTraceSource, limit: number, scanWarn
       : source.format === "hermes-json"
         ? summarizeHermesSessionFile(f.file, f.project, f.mtime)
         : summarizeLiveSessionFile(f.file, f.project, f.mtime, { fields: source.fields, inferredModel: source.inferredModel, decodeProject: source.format !== "jsonl-dir" });
-    if (s) sessions.push(s);
+    if (s) {
+      // Codex/ChatGPT rotates older rollouts into a dedicated on-disk archive.
+      // Those files are still live-readable, but must retain archive provenance
+      // so Collection totals and the UI do not confuse them with active-root
+      // transcripts. Pruned files are marked below by appendArchivedSessions.
+      const archivedOnDisk = source.format === "codex-sessions" && isUnderNamedRoot(f.file, source.roots, "archived_sessions");
+      sessions.push(archivedOnDisk ? { ...s, archived: true } : s);
+    }
   }
   if (includeArchived) appendArchivedSessions(source, sessions);
   return sessions;
+}
+
+function isUnderNamedRoot(file: string, roots: string[], name: string): boolean {
+  const resolvedFile = path.resolve(file);
+  return roots.some((root) => {
+    if (path.basename(path.resolve(root)) !== name) return false;
+    const resolvedRoot = path.resolve(root);
+    const rel = path.relative(resolvedRoot, resolvedFile);
+    return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel);
+  });
 }
 
 /**

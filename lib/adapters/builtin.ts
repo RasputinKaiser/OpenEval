@@ -36,7 +36,7 @@ export const BUILTIN_DESCRIPTORS: HarnessDescriptorInput[] = [
   },
   {
     id: "codex",
-    label: "Codex CLI",
+    label: "Codex CLI + ChatGPT app",
     binNames: ["codex"],
     binEnvVar: "CODEX_BIN",
     wellKnownPaths: ["~/.local/bin/codex", "~/.codex/bin/codex"],
