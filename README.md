@@ -13,9 +13,9 @@ The project is designed for people who want to compare agent behavior on practic
 
 https://github.com/user-attachments/assets/97375fda-e019-451b-b15b-8d914792f0c7
 
-The 29.5-second v0.1 launch film shows the real OpenEval dashboard: live sessions, collection history, repeatable runs, comparisons, coverage, telemetry, and accuracy audits.
+The 29.5-second v0.1.1 launch film shows the real OpenEval dashboard: live sessions, collection history, repeatable runs, comparisons, coverage, telemetry, and accuracy audits.
 
-[Download the full-resolution MP4](https://github.com/RasputinKaiser/OpenEval/releases/download/v0.1.0/openeval-launch-v0.1.0.mp4) · [Open the v0.1.0 release](https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.0)
+[Download the full-resolution MP4](https://github.com/RasputinKaiser/OpenEval/releases/download/v0.1.1/openeval-launch-v0.1.1.mp4) · [Open the v0.1.1 release](https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.1)
 
 ### Build Credits
 
