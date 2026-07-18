@@ -1,0 +1,29 @@
+{
+  "runs": [
+    {
+      "ts": "2026-07-18T21:47:40+00:00",
+      "git": {
+        "rev": "ca1383b",
+        "dirty": true
+      },
+      "medians": {
+        "types": 19.707,
+        "test": 9.675,
+        "lint": 7.744,
+        "build": 43.935
+      },
+      "output_tokens": {
+        "types": 0,
+        "test": 13996,
+        "lint": 67,
+        "build": 801
+      },
+      "ok": {
+        "types": true,
+        "test": true,
+        "lint": true,
+        "build": true
+      }
+    }
+  ]
+}
