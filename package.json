@@ -21,7 +21,7 @@
     "start": "next start",
     "lint": "next lint --max-warnings=0",
     "typecheck": "tsc --noEmit",
-    "test": "OPENEVAL_DATA_ROOT=.test-data node --import tsx --test tests/*.test.ts",
+    "test": "OPENEVAL_DATA_ROOT=.test-data node --import tsx --test --test-reporter=dot tests/*.test.ts",
     "test:live": "OPENEVAL_DATA_ROOT=.test-data node --import tsx --test tests/live.test.ts",
     "test:telemetry": "OPENEVAL_DATA_ROOT=.test-data node --import tsx --test tests/telemetry.test.ts",
     "pricing:check": "tsx scripts/check-pricing-catalog.ts",
