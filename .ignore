@@ -1,0 +1,4 @@
+# ripgrep/search-tool exclusions (not .gitignore — these files stay committed).
+# Lockfile matches drown out source hits in repo-wide searches; read it
+# directly (Read / jq / python) when you actually need dependency metadata.
+package-lock.json
