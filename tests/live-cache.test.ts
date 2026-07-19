@@ -15,7 +15,13 @@ function withMemoryDb(fn: () => void) {
   }
 }
 
-const fakeSession = { sessionId: "s1", inputTokens: 42, outputTokens: 7 } as unknown as LiveSession;
+// Minimal but structurally plausible: cacheGet's torn-row gate requires the
+// containers every real parse emits (metricSources, usageSegments, lastEventAt).
+const fakeSession = {
+  sessionId: "s1", inputTokens: 42, outputTokens: 7,
+  metricSources: { model: "missing", tokens: "measured", cost: "missing", duration: "missing", turns: "missing" },
+  usageSegments: [], lastEventAt: 1_700_000_000_000,
+} as unknown as LiveSession;
 
 test("live-cache: put/get round-trips a session keyed by mtime+size", () => {
   withMemoryDb(() => {

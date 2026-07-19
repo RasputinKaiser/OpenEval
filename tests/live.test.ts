@@ -1,8 +1,10 @@
-import test from "node:test";
+import test, { after } from "node:test";
 import assert from "node:assert/strict";
+import Database from "better-sqlite3";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { _setCacheDbForTest } from "../lib/live-cache";
 import {
   compactDisplayPath,
   parseSessionTranscript,
@@ -17,6 +19,15 @@ import { HARNESS_DESC_DIR } from "../lib/config";
 import { JUDGE_PROMPT_MARKER } from "../lib/insights/signals";
 import { estimateCostUsd } from "../lib/pricing";
 import { GET as liveGet } from "../app/api/live/route";
+
+// Parsing goes through the live-cache; point it at a throwaway in-memory DB so
+// parallel test processes never race on the shared .test-data SQLite cache.
+const cacheConn = new Database(":memory:");
+_setCacheDbForTest(cacheConn);
+after(() => {
+  _setCacheDbForTest(null);
+  cacheConn.close();
+});
 
 function writeSession(lines: unknown[], extras: string[] = []): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "openeval-live-"));

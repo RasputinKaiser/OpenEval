@@ -1,11 +1,24 @@
-import test from "node:test";
+import test, { after } from "node:test";
 import assert from "node:assert/strict";
+import Database from "better-sqlite3";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { allCollectionSources, defToSpec, KNOWN_COLLECTION_SOURCES } from "../lib/collection/sources";
 import { looksLikeTranscriptFile } from "../lib/collection/discover";
+import { _setCacheDbForTest } from "../lib/live-cache";
 import { scanSourceSessions } from "../lib/live";
+
+// Every scan goes through the live-cache; use a file-level in-memory DB so
+// parallel test processes never race on the shared .test-data SQLite cache.
+// Tests that need their own connection restore THIS one (not null) when done,
+// otherwise later tests would silently fall back to the persistent cache.
+const fileCacheDb = new Database(":memory:");
+_setCacheDbForTest(fileCacheDb);
+after(() => {
+  _setCacheDbForTest(null);
+  fileCacheDb.close();
+});
 
 function tmpFile(name: string, content: string): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "openeval-collect-"));
@@ -147,7 +160,7 @@ test("scanSourceSessions keeps archived sessions after their files are pruned", 
     // Without the flag (Live page), archived sessions stay hidden.
     assert.equal(scanSourceSessions(spec, 50).totalSessions, 1);
   } finally {
-    _setCacheDbForTest(null);
+    _setCacheDbForTest(fileCacheDb);
     conn.close();
   }
 });
@@ -178,7 +191,7 @@ test("scanSourceSessions labels pruned sessions cached by an older parser", () =
       `archived parse v${PARSER_VERSION - 1}; source was pruned before current parser v${PARSER_VERSION} could re-read it`,
     ));
   } finally {
-    _setCacheDbForTest(null);
+    _setCacheDbForTest(fileCacheDb);
     conn.close();
   }
 });
@@ -350,7 +363,7 @@ test("archived sessions are repriced from tokens instead of preserving stale cac
     assert.equal(archived.totalCostUsd, 17.5);
     assert.equal(archived.sessions[0].costUsd, 17.5);
   } finally {
-    _setCacheDbForTest(null);
+    _setCacheDbForTest(fileCacheDb);
     conn.close();
   }
 });

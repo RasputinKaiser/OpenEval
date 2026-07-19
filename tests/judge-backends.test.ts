@@ -35,6 +35,14 @@ test("validJudgeScore rejects out-of-range, non-numeric, and malformed scores", 
 
 // ---- resolveJudge env chain ----
 
+// A previously KILLED run can leave the settings file behind (the precedence
+// test below only cleans it up in a finally), which would poison every
+// resolveJudge default here. Remove it unconditionally before the tests run.
+{
+  const root = process.env.OPENEVAL_DATA_ROOT ?? ".test-data";
+  fs.rmSync(path.join(process.cwd(), root, "data", "settings.json"), { force: true });
+}
+
 const JUDGE_ENV_KEYS = ["JUDGE_HARNESS", "JUDGE_MODEL", "OPENROUTER_API_KEY"] as const;
 
 function withEnv(vars: Partial<Record<(typeof JUDGE_ENV_KEYS)[number], string | undefined>>, fn: () => void) {
