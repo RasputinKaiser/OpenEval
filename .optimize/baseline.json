@@ -1,0 +1,118 @@
+{
+  "runs": [
+    {
+      "ts": "2026-07-18T21:47:40+00:00",
+      "git": {
+        "rev": "ca1383b",
+        "dirty": true
+      },
+      "medians": {
+        "types": 19.707,
+        "test": 9.675,
+        "lint": 7.744,
+        "build": 43.935
+      },
+      "output_tokens": {
+        "types": 0,
+        "test": 13996,
+        "lint": 67,
+        "build": 801
+      },
+      "ok": {
+        "types": true,
+        "test": true,
+        "lint": true,
+        "build": true
+      }
+    },
+    {
+      "ts": "2026-07-18T21:50:44+00:00",
+      "git": {
+        "rev": "66a5557",
+        "dirty": true
+      },
+      "medians": {
+        "types": 9.262
+      },
+      "output_tokens": {
+        "types": 0
+      },
+      "ok": {
+        "types": true
+      }
+    },
+    {
+      "ts": "2026-07-18T21:52:28+00:00",
+      "git": {
+        "rev": "66a5557",
+        "dirty": true
+      },
+      "medians": {
+        "test": 10.795
+      },
+      "output_tokens": {
+        "test": 75
+      },
+      "ok": {
+        "test": true
+      }
+    },
+    {
+      "ts": "2026-07-19T01:29:14+00:00",
+      "git": {
+        "rev": "b29139e",
+        "dirty": false
+      },
+      "medians": {
+        "types": 5.321,
+        "test": 12.749,
+        "lint": 15.048,
+        "build": 52.502
+      },
+      "output_tokens": {
+        "types": 0,
+        "test": 75,
+        "lint": 67,
+        "build": 801
+      },
+      "ok": {
+        "types": true,
+        "test": true,
+        "lint": true,
+        "build": true
+      }
+    },
+    {
+      "ts": "2026-07-19T01:31:52+00:00",
+      "git": {
+        "rev": "b29139e",
+        "dirty": true
+      },
+      "medians": {
+        "lint": 2.275
+      },
+      "output_tokens": {
+        "lint": 67
+      },
+      "ok": {
+        "lint": true
+      }
+    },
+    {
+      "ts": "2026-07-19T01:32:36+00:00",
+      "git": {
+        "rev": "b29139e",
+        "dirty": true
+      },
+      "medians": {
+        "bench": 2.91
+      },
+      "output_tokens": {
+        "bench": 28
+      },
+      "ok": {
+        "bench": true
+      }
+    }
+  ]
+}
