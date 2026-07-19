@@ -2417,6 +2417,33 @@ function aggregate(sessions: LiveSession[], scanWarnings: string[] = [], source:
   let agentSessions = 0;
   let outputTokPerSecTotal = 0;
   let outputTokPerSecCount = 0;
+  let sessionsWithMeasuredUsage = 0;
+  let sessionsWithMeasuredCost = 0;
+  let sessionsWithPricedUsage = 0;
+  let sessionsWithListedRate = 0;
+  let sessionsWithFamilyRate = 0;
+  let sessionsWithFallbackRate = 0;
+  let sessionsWithMeasuredDuration = 0;
+  let sessionsWithMissingModel = 0;
+  let sessionsWithInferredModel = 0;
+  let sessionsWithMissingTokens = 0;
+  let sessionsWithInferredCost = 0;
+  let archivedSessions = 0;
+  let sessionsWithMalformedLines = 0;
+  let staleSessions = 0;
+  // rateForModelInfo is a pure lookup over a static catalog; memoize per
+  // aggregate() call so large session lists don't redo alias/family resolution
+  // thousands of times. Deliberately per-call, not module-global: if the
+  // pricing catalog ever becomes dynamic, this cache can never serve stale rates.
+  const rateInfoByModel = new Map<string | null, ReturnType<typeof rateForModelInfo>>();
+  const cachedRateInfo = (model: string | null) => {
+    let info = rateInfoByModel.get(model);
+    if (info === undefined) {
+      info = rateForModelInfo(model);
+      rateInfoByModel.set(model, info);
+    }
+    return info;
+  };
 
   for (const s of sessions) {
     projects.add(s.project);
@@ -2434,6 +2461,23 @@ function aggregate(sessions: LiveSession[], scanWarnings: string[] = [], source:
       outputTokPerSecTotal += s.outputTokens / Math.max(s.durationMs / 1000, 0.001);
       outputTokPerSecCount++;
     }
+    if (s.metricSources.tokens === "measured") sessionsWithMeasuredUsage++;
+    if (s.metricSources.tokens === "missing") sessionsWithMissingTokens++;
+    if (s.metricSources.cost === "measured") sessionsWithMeasuredCost++;
+    if (s.metricSources.cost === "inferred") sessionsWithInferredCost++;
+    if (s.metricSources.duration === "measured") sessionsWithMeasuredDuration++;
+    if (s.metricSources.model === "missing") sessionsWithMissingModel++;
+    if (s.metricSources.model === "inferred") sessionsWithInferredModel++;
+    if (s.costUsd > 0) sessionsWithPricedUsage++;
+    if (s.metricSources.cost === "inferred" && s.costUsd > 0) {
+      const confidence = cachedRateInfo(s.model)?.confidence;
+      if (confidence === "listed") sessionsWithListedRate++;
+      else if (confidence === "family") sessionsWithFamilyRate++;
+      else if (confidence === "fallback") sessionsWithFallbackRate++;
+    }
+    if (s.archived) archivedSessions++;
+    if (s.malformedLineCount > 0) sessionsWithMalformedLines++;
+    if (s.staleMs > 1000 * 60 * 60 * 12) staleSessions++;
     if (s.modeSummary.gitBranch) increment(branchSessions, s.modeSummary.gitBranch);
     queueTotals.enqueue += s.queueSummary.enqueue;
     queueTotals.dequeue += s.queueSummary.dequeue;
@@ -2474,7 +2518,7 @@ function aggregate(sessions: LiveSession[], scanWarnings: string[] = [], source:
       }
       if (s.metricSources.model === "inferred") cur.inferredModelSessions++;
       if (s.metricSources.cost === "inferred" && rowCost > 0) {
-        const confidence = rateForModelInfo(row.model)?.confidence;
+        const confidence = cachedRateInfo(row.model)?.confidence;
         if (confidence === "listed") cur.listedRateSessions++;
         else if (confidence === "family") cur.familyRateSessions++;
         else if (confidence === "fallback") cur.fallbackRateSessions++;
@@ -2512,12 +2556,12 @@ function aggregate(sessions: LiveSession[], scanWarnings: string[] = [], source:
   usageSummary.totalCacheCreateTokens = totalCacheCreateTokens;
   usageSummary.totalTokens = totalInputTokens + totalOutputTokens + totalCacheReadTokens + totalCacheCreateTokens;
   usageSummary.totalCostUsd = totalCostUsd;
-  usageSummary.sessionsWithMeasuredUsage = sessions.filter((s) => s.metricSources.tokens === "measured").length;
-  usageSummary.sessionsWithMeasuredCost = sessions.filter((s) => s.metricSources.cost === "measured").length;
-  usageSummary.sessionsWithPricedUsage = sessions.filter((s) => s.costUsd > 0).length;
-  usageSummary.sessionsWithListedRate = sessions.filter((s) => s.metricSources.cost === "inferred" && s.costUsd > 0 && rateForModelInfo(s.model)?.confidence === "listed").length;
-  usageSummary.sessionsWithFamilyRate = sessions.filter((s) => s.metricSources.cost === "inferred" && s.costUsd > 0 && rateForModelInfo(s.model)?.confidence === "family").length;
-  usageSummary.sessionsWithFallbackRate = sessions.filter((s) => s.metricSources.cost === "inferred" && s.costUsd > 0 && rateForModelInfo(s.model)?.confidence === "fallback").length;
+  usageSummary.sessionsWithMeasuredUsage = sessionsWithMeasuredUsage;
+  usageSummary.sessionsWithMeasuredCost = sessionsWithMeasuredCost;
+  usageSummary.sessionsWithPricedUsage = sessionsWithPricedUsage;
+  usageSummary.sessionsWithListedRate = sessionsWithListedRate;
+  usageSummary.sessionsWithFamilyRate = sessionsWithFamilyRate;
+  usageSummary.sessionsWithFallbackRate = sessionsWithFallbackRate;
   usageSummary.tokenCoverage = sessions.length ? usageSummary.sessionsWithMeasuredUsage / sessions.length : 0;
   usageSummary.costCoverage = sessions.length ? usageSummary.sessionsWithPricedUsage / sessions.length : 0;
   usageSummary.avgOutputTokPerSec = outputTokPerSecCount ? outputTokPerSecTotal / outputTokPerSecCount : 0;
@@ -2536,14 +2580,14 @@ function aggregate(sessions: LiveSession[], scanWarnings: string[] = [], source:
     totalOutputTokens,
     totalToolCalls,
     totalToolErrors,
-    sessionsWithMeasuredDuration: sessions.filter((s) => s.metricSources.duration === "measured").length,
-    sessionsWithMissingModel: sessions.filter((s) => s.metricSources.model === "missing").length,
-    sessionsWithInferredModel: sessions.filter((s) => s.metricSources.model === "inferred").length,
-    sessionsWithMissingTokens: sessions.filter((s) => s.metricSources.tokens === "missing").length,
-    sessionsWithInferredCost: sessions.filter((s) => s.metricSources.cost === "inferred").length,
-    archivedSessions: sessions.filter((s) => s.archived).length,
-    sessionsWithMalformedLines: sessions.filter((s) => s.malformedLineCount > 0).length,
-    staleSessions: sessions.filter((s) => s.staleMs > 1000 * 60 * 60 * 12).length,
+    sessionsWithMeasuredDuration,
+    sessionsWithMissingModel,
+    sessionsWithInferredModel,
+    sessionsWithMissingTokens,
+    sessionsWithInferredCost,
+    archivedSessions,
+    sessionsWithMalformedLines,
+    staleSessions,
     avgDataQuality: sessions.length ? totalQuality / sessions.length : 0,
     scanWarnings,
     byModel,
