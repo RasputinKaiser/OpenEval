@@ -316,9 +316,12 @@ export function collectSourceFiles(spec: CollectionSourceSpec): CollectedSourceF
  * Scan one arbitrary collection source (any harness), reusing the harness path.
  * `sessionRetention` widens the aggregate's display-capped `sessions` field
  * (default 100) for callers that browse full history; totals are unaffected.
+ * `reparseFiles` lists files whose CONTENT changed under an unchanged
+ * (mtime, size) stat tuple — both parse-cache tiers key on that tuple, so a
+ * listed file must skip them, re-parse, and overwrite the stale cached row.
  */
-export function scanSourceSessions(spec: CollectionSourceSpec, limit = 200, opts: { includeArchived?: boolean; preCollected?: CollectedSourceFiles; sessionRetention?: number } = {}): LiveAggregate {
-  return scanResolvedSource(specToSource(spec), limit, opts.includeArchived ?? false, opts.preCollected, opts.sessionRetention);
+export function scanSourceSessions(spec: CollectionSourceSpec, limit = 200, opts: { includeArchived?: boolean; preCollected?: CollectedSourceFiles; sessionRetention?: number; reparseFiles?: ReadonlySet<string> } = {}): LiveAggregate {
+  return scanResolvedSource(specToSource(spec), limit, opts.includeArchived ?? false, opts.preCollected, opts.sessionRetention, opts.reparseFiles);
 }
 
 export function defaultLiveLimitForHarness(harness?: string): number {
@@ -719,7 +722,7 @@ export function scanLiveSessions(limit = 200, harness?: string): LiveAggregate {
   return scanResolvedSource(resolveLiveSource(harness), limit);
 }
 
-function parseSourceSessionList(source: LiveTraceSource, limit: number, scanWarnings: string[], includeArchived = false, preCollected?: CollectedSourceFiles): LiveSession[] {
+function parseSourceSessionList(source: LiveTraceSource, limit: number, scanWarnings: string[], includeArchived = false, preCollected?: CollectedSourceFiles, reparseFiles?: ReadonlySet<string>): LiveSession[] {
   const sessions: LiveSession[] = [];
   if (source.status !== "available") return sessions;
   let files: Array<{ file: string; project: string; mtime: number; size: number }>;
@@ -735,11 +738,12 @@ function parseSourceSessionList(source: LiveTraceSource, limit: number, scanWarn
     // The walk already stat'd every file; reuse it for the cache key instead
     // of a second statSync per file inside summarizeWithCache.
     const stat = { mtimeMs: f.mtime, size: f.size };
+    const forceReparse = reparseFiles?.has(f.file) ?? false;
     const s = source.format === "codex-sessions"
-      ? summarizeCodexSessionFile(f.file, f.project, f.mtime, stat)
+      ? summarizeCodexSessionFile(f.file, f.project, f.mtime, stat, forceReparse)
       : source.format === "hermes-json"
-        ? summarizeHermesSessionFile(f.file, f.project, f.mtime, stat)
-        : summarizeLiveSessionFile(f.file, f.project, f.mtime, { fields: source.fields, inferredModel: source.inferredModel, decodeProject: source.format !== "jsonl-dir", stat });
+        ? summarizeHermesSessionFile(f.file, f.project, f.mtime, stat, forceReparse)
+        : summarizeLiveSessionFile(f.file, f.project, f.mtime, { fields: source.fields, inferredModel: source.inferredModel, decodeProject: source.format !== "jsonl-dir", stat, forceReparse });
     if (s) {
       // Codex/ChatGPT rotates older rollouts into a dedicated on-disk archive.
       // Those files are still live-readable, but must retain archive provenance
@@ -827,14 +831,14 @@ function appendArchivedSessions(source: LiveTraceSource, sessions: LiveSession[]
  * array is retention-capped for display; longitudinal analytics need them all).
  * Pass `preCollected` (e.g. discovery's walk) to skip re-walking the tree.
  */
-export function collectSourceSessions(spec: CollectionSourceSpec, limit = 100_000, opts: { includeArchived?: boolean; preCollected?: CollectedSourceFiles } = {}): LiveSession[] {
-  return parseSourceSessionList(specToSource(spec), limit, [], opts.includeArchived ?? false, opts.preCollected);
+export function collectSourceSessions(spec: CollectionSourceSpec, limit = 100_000, opts: { includeArchived?: boolean; preCollected?: CollectedSourceFiles; reparseFiles?: ReadonlySet<string> } = {}): LiveSession[] {
+  return parseSourceSessionList(specToSource(spec), limit, [], opts.includeArchived ?? false, opts.preCollected, opts.reparseFiles);
 }
 
-function scanResolvedSource(source: LiveTraceSource, limit: number, includeArchived = false, preCollected?: CollectedSourceFiles, sessionRetention?: number): LiveAggregate {
+function scanResolvedSource(source: LiveTraceSource, limit: number, includeArchived = false, preCollected?: CollectedSourceFiles, sessionRetention?: number, reparseFiles?: ReadonlySet<string>): LiveAggregate {
   const scanWarnings: string[] = [];
   if (source.status !== "available" && source.message) scanWarnings.push(source.message);
-  const sessions = parseSourceSessionList(source, limit, scanWarnings, includeArchived, preCollected);
+  const sessions = parseSourceSessionList(source, limit, scanWarnings, includeArchived, preCollected, reparseFiles);
   return aggregate(sessions, scanWarnings, source, sessionRetention);
 }
 
@@ -979,14 +983,14 @@ export function getErroringTurns(filePath: string, format?: LiveTraceFormat): Tr
 /** Walk-time stat, reusable as the cache key so summarize needn't re-stat. */
 export interface KnownFileStat { mtimeMs: number; size: number }
 
-export function summarizeLiveSessionFile(file: string, projectDir: string, mtime: number, opts: { fields?: FieldMapping; inferredModel?: string; decodeProject?: boolean; stat?: KnownFileStat } = {}): LiveSession | null {
-  return summarizeWithCache(file, projectDir, mtime, (f, lines, bytes, pd, mt) => parseLiveSession(f, lines, bytes, pd, mt, opts.fields, opts.inferredModel, opts.decodeProject), opts.stat);
+export function summarizeLiveSessionFile(file: string, projectDir: string, mtime: number, opts: { fields?: FieldMapping; inferredModel?: string; decodeProject?: boolean; stat?: KnownFileStat; forceReparse?: boolean } = {}): LiveSession | null {
+  return summarizeWithCache(file, projectDir, mtime, (f, lines, bytes, pd, mt) => parseLiveSession(f, lines, bytes, pd, mt, opts.fields, opts.inferredModel, opts.decodeProject), opts.stat, opts.forceReparse);
 }
 
 const HERMES_MAX_BYTES = 32 * 1024 * 1024; // whole-file JSON parse; real sessions are ≤ a few MB
 
 /** Hermes single-JSON sessions, re-emitted as Claude-style records (see adapters/hermes). */
-export function summarizeHermesSessionFile(file: string, projectDir: string, mtime: number, stat?: KnownFileStat): LiveSession | null {
+export function summarizeHermesSessionFile(file: string, projectDir: string, mtime: number, stat?: KnownFileStat, forceReparse?: boolean): LiveSession | null {
   return summarizeWithCache(file, projectDir, mtime, (f, lines, bytes, pd, mt) => {
     if (bytes > HERMES_MAX_BYTES) return null;
     let raw = "";
@@ -994,7 +998,7 @@ export function summarizeHermesSessionFile(file: string, projectDir: string, mti
     const records = hermesJsonToRecords(raw);
     if (records.length === 0) return null;
     return parseLiveSession(f, records, bytes, pd, mt, undefined, undefined, false);
-  }, stat);
+  }, stat, forceReparse);
 }
 
 const sessionCache = new Map<string, { mtimeMs: number; size: number; session: LiveSession | null }>();
@@ -1046,6 +1050,7 @@ function summarizeWithCache(
   mtime: number,
   parser: (file: string, lines: Iterable<string>, bytes: number, projectDir: string, mtime: number) => LiveSession | null,
   knownStat?: KnownFileStat,
+  forceReparse = false,
 ): LiveSession | null {
   // Callers coming from the directory walk already stat'd the file; their
   // values are the same ones the mtime sort trusted, so reuse them as the
@@ -1065,19 +1070,24 @@ function summarizeWithCache(
   const refresh = (s: LiveSession | null): LiveSession | null =>
     s ? { ...s, staleMs: Math.max(0, Date.now() - s.lastEventAt) } : s;
 
-  const cached = sessionCache.get(file);
-  if (cached && cached.mtimeMs === st.mtimeMs && cached.size === st.size) {
-    // Re-insert on hit: Map iteration is insertion-ordered, so this turns the
-    // FIFO eviction below into LRU (hits survive a scan that overflows the cap).
-    sessionCache.delete(file);
-    sessionCache.set(file, cached);
-    return refresh(cached.session);
+  // forceReparse: the caller detected a content rewrite under an unchanged
+  // (mtime, size) tuple — both cache tiers key on that tuple, so their rows
+  // are stale. Skip them, parse the file, and overwrite both entries below.
+  if (!forceReparse) {
+    const cached = sessionCache.get(file);
+    if (cached && cached.mtimeMs === st.mtimeMs && cached.size === st.size) {
+      // Re-insert on hit: Map iteration is insertion-ordered, so this turns the
+      // FIFO eviction below into LRU (hits survive a scan that overflows the cap).
+      sessionCache.delete(file);
+      sessionCache.set(file, cached);
+      return refresh(cached.session);
+    }
   }
   // Second tier: the persistent SQLite cache survives restarts, so cold
   // full-history scans don't re-parse hundreds of MB of unchanged files.
-  const persisted = cacheGet(file, st.mtimeMs, st.size);
+  const persisted = forceReparse ? null : cacheGet(file, st.mtimeMs, st.size);
   let session: LiveSession | null;
-  if (persisted.hit) {
+  if (persisted?.hit) {
     session = persisted.session;
   } else {
     try {
@@ -1602,8 +1612,8 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
   };
 }
 
-export function summarizeCodexSessionFile(file: string, projectDir: string, mtime: number, stat?: KnownFileStat): LiveSession | null {
-  return summarizeWithCache(file, projectDir, mtime, parseCodexSession, stat);
+export function summarizeCodexSessionFile(file: string, projectDir: string, mtime: number, stat?: KnownFileStat, forceReparse?: boolean): LiveSession | null {
+  return summarizeWithCache(file, projectDir, mtime, parseCodexSession, stat, forceReparse);
 }
 
 const ORCHESTRATION_MARKERS = /\b(team of agents|coordinator|orchestrat\w*|primary agent|worker \d|subagent|multi-agent)\b/i;

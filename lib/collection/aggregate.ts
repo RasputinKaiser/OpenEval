@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import fs from "node:fs";
 import { collectSourceSessions, scanSourceSessions, type LiveAggregate, type LiveSession } from "../live";
 import { allCollectionSources, defToSpec, type CollectionSourceDef } from "./sources";
 import { discoverKnownSources, discoverUnknownCandidates, type DiscoveredSource, type UnknownCandidate } from "./discover";
@@ -194,7 +195,7 @@ const FULL_HISTORY = 100_000;
 /** Sessions retained in the memoized result; per-call `limit` slices down from this. */
 const SESSION_ITEM_CAP = 10_000;
 
-function computeAllSources(discovered: DiscoveredSource[], byId: Map<string, DiscoveredSource>): AllSourcesResult {
+function computeAllSources(discovered: DiscoveredSource[], byId: Map<string, DiscoveredSource>, reparseFiles?: ReadonlySet<string>): AllSourcesResult {
   const summaries: CollectedSourceSummary[] = [];
   const allSessions: CollectionSessionItem[] = [];
   const modelLists: ModelRollup[][] = [];
@@ -234,7 +235,7 @@ function computeAllSources(discovered: DiscoveredSource[], byId: Map<string, Dis
       // whole source tree for the scan.
       // Retain up to SESSION_ITEM_CAP per source (not the default 100) so the
       // memoized cross-source list can satisfy large ?limit= requests.
-      const agg: LiveAggregate = scanSourceSessions(defToSpec(def), FULL_HISTORY, { includeArchived: true, preCollected: disc?.collected, sessionRetention: SESSION_ITEM_CAP });
+      const agg: LiveAggregate = scanSourceSessions(defToSpec(def), FULL_HISTORY, { includeArchived: true, preCollected: disc?.collected, sessionRetention: SESSION_ITEM_CAP, reparseFiles });
       base.archivedSessions = agg.archivedSessions;
       base.parsedSessions = agg.totalSessions;
       base.totalCostUsd = agg.totalCostUsd;
@@ -346,6 +347,7 @@ export function _setCollectionHooksForTest(overrides: Partial<CollectionHooks> |
   hooks = overrides ? { ...DEFAULT_HOOKS, ...overrides } : DEFAULT_HOOKS;
   snapshot = null;
   lastValidatedAt = 0;
+  sentinelCache.clear();
 }
 
 /**
@@ -367,6 +369,85 @@ export function fingerprintDiscovery(discovered: DiscoveredSource[]): string {
 }
 
 /**
+ * Content sentinel: sha256 of the first + last 4KB of a file (the whole file
+ * when it fits in one 8KB span), read via positioned `readSync` so a
+ * multi-hundred-MB transcript costs two small reads. The stat fingerprint
+ * above is blind to a rewrite that lands on the same (mtime, size) tuple —
+ * `utimesSync`-restoring writers, editors that preserve timestamps, coarse
+ * mtime clocks — and BOTH parse-cache tiers key on that same tuple, so such a
+ * rewrite would otherwise serve a stale parse forever.
+ *
+ * Known limits (accepted): the baseline is in-process, so a same-tuple rewrite
+ * that happens while the server is down baselines as a first sighting on
+ * restart (the persistent cache row stays stale); and an edit confined to the
+ * interior of a >8KB file with head+tail bytes unchanged is invisible.
+ */
+const SENTINEL_SPAN = 4096;
+
+interface SentinelEntry { mtime: number; size: number; sentinel: string }
+
+const sentinelCache = new Map<string, SentinelEntry>();
+
+function readSentinel(file: string, size: number): string | null {
+  let fd: number;
+  try {
+    fd = fs.openSync(file, "r");
+  } catch {
+    return null;
+  }
+  try {
+    const h = crypto.createHash("sha256");
+    if (size <= SENTINEL_SPAN * 2) {
+      const buf = Buffer.allocUnsafe(size);
+      const n = fs.readSync(fd, buf, 0, size, 0);
+      h.update(buf.subarray(0, n));
+    } else {
+      const buf = Buffer.allocUnsafe(SENTINEL_SPAN);
+      const head = fs.readSync(fd, buf, 0, SENTINEL_SPAN, 0);
+      h.update(buf.subarray(0, head));
+      const tail = fs.readSync(fd, buf, 0, SENTINEL_SPAN, size - SENTINEL_SPAN);
+      h.update(buf.subarray(0, tail));
+    }
+    return h.digest("hex");
+  } catch {
+    return null;
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+/**
+ * Re-read every discovered file's sentinel and refresh the cache. Returns the
+ * files whose content changed under an UNCHANGED (mtime, size) tuple — the
+ * rewrites the stat fingerprint cannot see. First sightings (and files whose
+ * stat changed, which the fingerprint already catches) just record a baseline.
+ * A vanished/unreadable file drops its entry; the next stat pass owns that.
+ */
+function sentinelDirtyFiles(discovered: DiscoveredSource[]): Set<string> {
+  const dirty = new Set<string>();
+  const seen = new Set<string>();
+  for (const d of discovered) {
+    if (!d.collected) continue;
+    for (const f of d.collected.files) {
+      seen.add(f.file);
+      const sentinel = readSentinel(f.file, f.size);
+      if (sentinel == null) {
+        sentinelCache.delete(f.file);
+        continue;
+      }
+      const prev = sentinelCache.get(f.file);
+      if (prev && prev.mtime === f.mtime && prev.size === f.size && prev.sentinel !== sentinel) dirty.add(f.file);
+      sentinelCache.set(f.file, { mtime: f.mtime, size: f.size, sentinel });
+    }
+  }
+  // Prune entries for files no longer on disk so the map tracks the corpus.
+  for (const file of sentinelCache.keys()) {
+    if (!seen.has(file)) sentinelCache.delete(file);
+  }
+  return dirty;
+}
+
+/**
  * Full discovery + parse is 0.4–2s+ and runs synchronously inside server-
  * component renders — and one render used to run it up to three times
  * (sources scan, rollup, timeline). Instead of a blind 5s TTL, the memo is
@@ -383,20 +464,30 @@ function getSnapshot(opts: { fresh?: boolean } = {}): CollectionSnapshot {
   if (!opts.fresh && snapshot && now - lastValidatedAt < ttlMs) return snapshot;
   const discovered = hooks.discover();
   const fingerprint = fingerprintDiscovery(discovered);
-  if (!snapshot || snapshot.fingerprint !== fingerprint) {
-    snapshot = computeSnapshot(discovered, fingerprint);
+  const prev = snapshot;
+  const statChanged = !prev || prev.fingerprint !== fingerprint;
+  // Sentinel pass: on `fresh` revalidation (and alongside any recompute, whose
+  // parse cost dwarfs it) re-read each file's head/tail hash to catch rewrites
+  // the stat tuple missed, and to keep the baseline aligned with what the
+  // parse below reads. The TTL path with an unchanged fingerprint — the warm
+  // page-render case — stays stat-only.
+  const dirty = statChanged || opts.fresh ? sentinelDirtyFiles(discovered) : new Set<string>();
+  if (!prev || statChanged || dirty.size > 0) {
+    snapshot = computeSnapshot(discovered, fingerprint, dirty);
   } else if (opts.fresh) {
     // Explicit rescan with an unchanged corpus: the parse memo stands, but the
     // unknown-candidate walk covers dirs OUTSIDE the fingerprint — re-run it so
     // a newly installed agent CLI still surfaces without a known-source change.
     const unknown = hooks.unknown(discovered.flatMap((d) => d.roots));
-    snapshot = { ...snapshot, result: { ...snapshot.result, unknown } };
+    snapshot = { ...prev, result: { ...prev.result, unknown } };
+  } else {
+    snapshot = prev;
   }
   lastValidatedAt = now;
   return snapshot;
 }
 
-function computeSnapshot(discovered: DiscoveredSource[], fingerprint: string): CollectionSnapshot {
+function computeSnapshot(discovered: DiscoveredSource[], fingerprint: string, reparseFiles?: ReadonlySet<string>): CollectionSnapshot {
   // Aggregate first: scanSourceSessions primes the per-file session cache, so
   // the full-history collection below re-reads no transcript bytes. The
   // collection deliberately covers every parseable def — not just "present"
@@ -404,13 +495,16 @@ function computeSnapshot(discovered: DiscoveredSource[], fingerprint: string): C
   // the parse cache and must keep feeding rollup/timeline (as they did when
   // those callers collected for themselves).
   const byId = new Map(discovered.map((d) => [d.id, d]));
-  const result = computeAllSources(discovered, byId);
+  const result = computeAllSources(discovered, byId, reparseFiles);
   const sessions: CollectedSession[] = [];
   for (const def of hooks.sources()) {
     if (!def.parseable) continue;
     // Reuse discovery's walk here too — without it, every snapshot recompute
     // walked each source tree a second time just to re-list the same files.
-    for (const s of collectSourceSessions(defToSpec(def), FULL_HISTORY, { includeArchived: true, preCollected: byId.get(def.id)?.collected })) {
+    // reparseFiles is threaded here as well: the scan above normally overwrites
+    // the stale cache rows first, but this collection must not depend on that
+    // ordering to avoid re-serving a stale parse.
+    for (const s of collectSourceSessions(defToSpec(def), FULL_HISTORY, { includeArchived: true, preCollected: byId.get(def.id)?.collected, reparseFiles })) {
       sessions.push({ ...s, sourceId: def.id, sourceLabel: def.label });
     }
   }
