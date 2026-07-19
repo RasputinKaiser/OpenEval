@@ -25,6 +25,11 @@ data/
 # Throwaway data root used by `npm test` (OPENEVAL_DATA_ROOT=.test-data).
 .test-data/
 
+# Raw /optimize measurement artifacts embed absolute machine paths and
+# transcript-derived data (public-upload-audit rejects them). The numbers that
+# matter are copied into .optimize/ledger.md + baseline.json, which stay tracked.
+.optimize/runs/
+
 # HyperFrames preview/render/cache output.
 media/**/.hyperframes/
 media/**/.thumbnails/

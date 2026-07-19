@@ -3,6 +3,10 @@
 Conventions: exchange rate 10k wasted tokens ≈ 60s. Estimator recorded per run.
 Probes: see probes.sh. Never run the `build` probe while a dev server serves the
 same checkout (openeval-dev-loop skill).
+runs/ is LOCAL-ONLY (gitignored): raw measure/tokens JSONs embed absolute
+machine paths and transcript excerpts, which scripts/public-upload-audit.sh
+rejects for this public repo. Copy any number worth keeping into this ledger;
+cross-machine comparisons were already invalid (hard rule: same machine only).
 
 ## Run 1 — 2026-07-18 (full, ca1383b, clean tree, estimator heuristic-chars/4, 10k tok ≈ 60s)
 Baseline (fresh worktree, cold caches): types 19.7s (warm re-run: 9.3s), test 9.7s,
