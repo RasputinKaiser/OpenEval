@@ -1,6 +1,6 @@
 {
   "name": "openeval",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "private": true,
   "description": "Local-first evaluation dashboard for agent CLIs with deterministic graders, live trace telemetry, and accuracy audits.",
   "license": "MIT",

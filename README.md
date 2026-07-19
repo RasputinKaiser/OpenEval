@@ -15,7 +15,7 @@ https://github.com/user-attachments/assets/97375fda-e019-451b-b15b-8d914792f0c7
 
 The 29.5-second v0.1.1 launch film shows the real OpenEval dashboard: live sessions, collection history, repeatable runs, comparisons, coverage, telemetry, and accuracy audits.
 
-[Download the full-resolution MP4](https://github.com/RasputinKaiser/OpenEval/releases/download/v0.1.1/openeval-launch-v0.1.1.mp4) · [Open the v0.1.1 release](https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.1)
+[Download the full-resolution MP4](https://github.com/RasputinKaiser/OpenEval/releases/download/v0.1.1/openeval-launch-v0.1.1.mp4) · [Open the v0.1.1 release](https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.1) · [What's new in v0.1.2](https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.2)
 
 ### Build Credits
 
@@ -27,6 +27,7 @@ The 29.5-second v0.1.1 launch film shows the real OpenEval dashboard: live sessi
 ## Highlights
 
 - **Descriptor-first harnesses:** bundled `ncode`, Claude Code, and Codex harnesses plus user harnesses under `harnesses/` are all validated JSON descriptors.
+- **Fast at scale:** a fingerprint-validated scan cache and a single shared full-history parse keep warm Collection/home loads near-instant at 1,000+ sessions, and Live polls send bytes, not megabytes, when nothing changed.
 - **Weighted graders:** combine shell checks, file assertions, transcript regexes, JSON path checks, trace-shape checks, git diff checks, and optional LLM rubric judges.
 - **Run dashboard:** browse recent runs, pass rates, token and cost summaries, case outcomes, and per-case trace detail.
 - **Live trace view:** inspect recent local CLI sessions with measured/inferred/missing/malformed provenance for usage, cost, model, duration, tool calls, and trace structure.
@@ -87,10 +88,13 @@ The dashboard currently exposes these primary routes:
 | `start` | `next start` | Serve the production build. |
 | `lint` | `next lint` | Run the Next.js ESLint pass. |
 | `typecheck` | `tsc --noEmit` | Run TypeScript without emitting files. |
-| `test` | `node --import tsx --test tests/*.test.ts` | Run the full test suite (what CI runs). |
+| `test` | `node --import tsx --test --test-reporter=dot tests/*.test.ts` | Run the full test suite (what CI runs); judge by exit code — the dot reporter keeps output terse. |
 | `test:live` | `node --import tsx --test tests/live.test.ts` | Run only the live-trace tests. |
 | `test:telemetry` | `node --import tsx --test tests/telemetry.test.ts` | Run only the telemetry tests. |
 | `test:redaction` | `node --import tsx --test tests/redaction.test.ts` | Run only the redaction-pipeline tests. |
+| `pricing:check` | `tsx scripts/check-pricing-catalog.ts` | Compare the bundled pricing catalog against live OpenRouter rates. |
+| `bench:live` | `tsx scripts/bench-live.ts` | Benchmark live-session parser throughput on deterministic corpora. |
+| `bench:scan` | `tsx scripts/perf/scan-bench.ts` | Benchmark the end-to-end scan pipeline (cold/warm/hot) on an isolated corpus. |
 | `run:eval` | `tsx lib/cli/run.ts` | Start evaluation runs from the CLI. |
 | `run:case` | `tsx lib/cli/run.ts --case` | Run one case id through the evaluation CLI. |
 | `run:headless` | `tsx lib/cli/run.ts --runner headless` | Run evaluations with the headless runner preselected. |
