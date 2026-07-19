@@ -466,6 +466,53 @@ test("fingerprintDiscovery tracks file path, mtime, and size", () => {
   assert.notEqual(fingerprintDiscovery([clone((d) => { d.collected!.files.pop(); d.sessionCount = 1; })]), fp);
 });
 
+// ---- limit-aware session retention ----
+
+test("aggregate retains 100 sessions by default and honors sessionRetention above it", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "openeval-retention-"));
+  const COUNT = 160;
+  for (let i = 0; i < COUNT; i++) writeSessionFile(dir, `s${String(i).padStart(3, "0")}.jsonl`, `ret-${i}`);
+  const spec = { id: "retention", label: "Retention", roots: [dir], format: "jsonl-dir" as const };
+
+  const capped = scanSourceSessions(spec, 100_000);
+  assert.equal(capped.sessions.length, 100, "default display cap must stay 100 (the /live payload depends on it)");
+  assert.equal(capped.totalSessions, COUNT, "totals must cover every session regardless of the display cap");
+
+  const wide = scanSourceSessions(spec, 100_000, { sessionRetention: 10_000 });
+  assert.equal(wide.sessions.length, COUNT, "sessionRetention above the corpus size must retain every session");
+
+  // total* scalars must be identical in both — the cap is display-only.
+  assert.equal(wide.totalSessions, capped.totalSessions);
+  assert.equal(wide.totalCostUsd, capped.totalCostUsd);
+  assert.equal(wide.totalInputTokens, capped.totalInputTokens);
+  assert.equal(wide.totalOutputTokens, capped.totalOutputTokens);
+  assert.equal(wide.totalToolCalls, capped.totalToolCalls);
+  assert.equal(wide.sessionsWithInferredCost, capped.sessionsWithInferredCost);
+  assert.deepEqual(wide.usageSummary, capped.usageSummary);
+  // staleMs is wall-clock-derived and differs between the two scans — pin it.
+  const normalize = (sessions: typeof capped.sessions) => sessions.map((s) => ({ ...s, staleMs: 0 }));
+  assert.deepEqual(normalize(wide.sessions.slice(0, 100)), normalize(capped.sessions), "retained head must match the default-capped list");
+});
+
+test("scanAllSources serves more than 100 sessions per source when the limit asks for them", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "openeval-retention-all-"));
+  const COUNT = 130;
+  for (let i = 0; i < COUNT; i++) writeSessionFile(dir, `s${String(i).padStart(3, "0")}.jsonl`, `retall-${i}`);
+  const def: CollectionSourceDef = { id: "ret-all", label: "Ret All", roots: [dir], format: "jsonl-dir", parseable: true };
+  _setCollectionHooksForTest(memoTestHooks(def, 60_000));
+  try {
+    const big = scanAllSources(2000);
+    assert.equal(big.totalParsedSessions, COUNT);
+    assert.equal(big.sessions.length, COUNT, "a large limit must not plateau at the old per-source cap of 100");
+
+    const small = scanAllSources(50);
+    assert.equal(small.sessions.length, 50, "the per-call limit still slices the memoized list down");
+    assert.equal(small.totalParsedSessions, COUNT);
+  } finally {
+    _setCollectionHooksForTest(null);
+  }
+});
+
 test("archived sessions are repriced from tokens instead of preserving stale cached estimates", () => {
   const Database = require("better-sqlite3");
   const { _setCacheDbForTest } = require("../lib/live-cache");
