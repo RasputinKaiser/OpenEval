@@ -194,9 +194,7 @@ const FULL_HISTORY = 100_000;
 /** Sessions retained in the memoized result; per-call `limit` slices down from this. */
 const SESSION_ITEM_CAP = 10_000;
 
-function computeAllSources(discovered: DiscoveredSource[]): AllSourcesResult {
-  const byId = new Map(discovered.map((d) => [d.id, d]));
-
+function computeAllSources(discovered: DiscoveredSource[], byId: Map<string, DiscoveredSource>): AllSourcesResult {
   const summaries: CollectedSourceSummary[] = [];
   const allSessions: CollectionSessionItem[] = [];
   const modelLists: ModelRollup[][] = [];
@@ -234,7 +232,9 @@ function computeAllSources(discovered: DiscoveredSource[]): AllSourcesResult {
     if (def.parseable && base.status === "present") {
       // Reuse discovery's walk (files + warnings) instead of re-walking the
       // whole source tree for the scan.
-      const agg: LiveAggregate = scanSourceSessions(defToSpec(def), FULL_HISTORY, { includeArchived: true, preCollected: disc?.collected });
+      // Retain up to SESSION_ITEM_CAP per source (not the default 100) so the
+      // memoized cross-source list can satisfy large ?limit= requests.
+      const agg: LiveAggregate = scanSourceSessions(defToSpec(def), FULL_HISTORY, { includeArchived: true, preCollected: disc?.collected, sessionRetention: SESSION_ITEM_CAP });
       base.archivedSessions = agg.archivedSessions;
       base.parsedSessions = agg.totalSessions;
       base.totalCostUsd = agg.totalCostUsd;
@@ -258,8 +258,9 @@ function computeAllSources(discovered: DiscoveredSource[]): AllSourcesResult {
       toolLists.push(agg.byTool.map((t) => ({ name: t.name, calls: t.calls, errors: t.errors })));
       base.avgDataQuality = agg.avgDataQuality;
       base.scanWarnings = agg.scanWarnings;
-      // Whole-history flag — agg.sessions is display-sliced to 100, so a
-      // `.some()` over it would miss estimated sessions past the slice.
+      // Whole-history flag — agg.sessions is retention-capped (SESSION_ITEM_CAP
+      // here), so a `.some()` over it could miss estimated sessions past the
+      // slice; totals likewise come from agg.total* scalars, never agg.sessions.
       base.costEstimated = agg.sessionsWithInferredCost > 0;
       for (const s of agg.sessions) {
         allSessions.push(toCollectionSessionItem(s, def.id, def.label));
@@ -402,11 +403,14 @@ function computeSnapshot(discovered: DiscoveredSource[], fingerprint: string): C
   // ones — because archived sessions of a since-deleted root still live in
   // the parse cache and must keep feeding rollup/timeline (as they did when
   // those callers collected for themselves).
-  const result = computeAllSources(discovered);
+  const byId = new Map(discovered.map((d) => [d.id, d]));
+  const result = computeAllSources(discovered, byId);
   const sessions: CollectedSession[] = [];
   for (const def of hooks.sources()) {
     if (!def.parseable) continue;
-    for (const s of collectSourceSessions(defToSpec(def), FULL_HISTORY, { includeArchived: true })) {
+    // Reuse discovery's walk here too — without it, every snapshot recompute
+    // walked each source tree a second time just to re-list the same files.
+    for (const s of collectSourceSessions(defToSpec(def), FULL_HISTORY, { includeArchived: true, preCollected: byId.get(def.id)?.collected })) {
       sessions.push({ ...s, sourceId: def.id, sourceLabel: def.label });
     }
   }

@@ -312,9 +312,13 @@ export function collectSourceFiles(spec: CollectionSourceSpec): CollectedSourceF
   return { files, scanWarnings };
 }
 
-/** Scan one arbitrary collection source (any harness), reusing the harness path. */
-export function scanSourceSessions(spec: CollectionSourceSpec, limit = 200, opts: { includeArchived?: boolean; preCollected?: CollectedSourceFiles } = {}): LiveAggregate {
-  return scanResolvedSource(specToSource(spec), limit, opts.includeArchived ?? false, opts.preCollected);
+/**
+ * Scan one arbitrary collection source (any harness), reusing the harness path.
+ * `sessionRetention` widens the aggregate's display-capped `sessions` field
+ * (default 100) for callers that browse full history; totals are unaffected.
+ */
+export function scanSourceSessions(spec: CollectionSourceSpec, limit = 200, opts: { includeArchived?: boolean; preCollected?: CollectedSourceFiles; sessionRetention?: number } = {}): LiveAggregate {
+  return scanResolvedSource(specToSource(spec), limit, opts.includeArchived ?? false, opts.preCollected, opts.sessionRetention);
 }
 
 export function defaultLiveLimitForHarness(harness?: string): number {
@@ -820,17 +824,18 @@ function appendArchivedSessions(source: LiveTraceSource, sessions: LiveSession[]
 
 /**
  * Full parsed session list for a source, UNCAPPED (the aggregate's `sessions`
- * array is sliced to 100 for the live view; longitudinal analytics need them all).
+ * array is retention-capped for display; longitudinal analytics need them all).
+ * Pass `preCollected` (e.g. discovery's walk) to skip re-walking the tree.
  */
-export function collectSourceSessions(spec: CollectionSourceSpec, limit = 100_000, opts: { includeArchived?: boolean } = {}): LiveSession[] {
-  return parseSourceSessionList(specToSource(spec), limit, [], opts.includeArchived ?? false);
+export function collectSourceSessions(spec: CollectionSourceSpec, limit = 100_000, opts: { includeArchived?: boolean; preCollected?: CollectedSourceFiles } = {}): LiveSession[] {
+  return parseSourceSessionList(specToSource(spec), limit, [], opts.includeArchived ?? false, opts.preCollected);
 }
 
-function scanResolvedSource(source: LiveTraceSource, limit: number, includeArchived = false, preCollected?: CollectedSourceFiles): LiveAggregate {
+function scanResolvedSource(source: LiveTraceSource, limit: number, includeArchived = false, preCollected?: CollectedSourceFiles, sessionRetention?: number): LiveAggregate {
   const scanWarnings: string[] = [];
   if (source.status !== "available" && source.message) scanWarnings.push(source.message);
   const sessions = parseSourceSessionList(source, limit, scanWarnings, includeArchived, preCollected);
-  return aggregate(sessions, scanWarnings, source);
+  return aggregate(sessions, scanWarnings, source, sessionRetention);
 }
 
 function collectLiveTraceFiles(source: LiveTraceSource, scanWarnings: string[]): Array<{ file: string; project: string; mtime: number; size: number }> {
@@ -2377,7 +2382,15 @@ function emptyUsageSummary(): LiveUsageSummary {
   };
 }
 
-function aggregate(sessions: LiveSession[], scanWarnings: string[] = [], source: LiveTraceSource = resolveLiveSource()): LiveAggregate {
+/**
+ * Sessions retained on the aggregate's `sessions` field by default. The /live
+ * payload size depends on this cap; callers that need more (Collection's
+ * full-history browse) pass an explicit `sessionRetention`. All `total*`
+ * scalars are computed over EVERY session regardless of retention.
+ */
+const DEFAULT_SESSION_RETENTION = 100;
+
+function aggregate(sessions: LiveSession[], scanWarnings: string[] = [], source: LiveTraceSource = resolveLiveSource(), sessionRetention: number = DEFAULT_SESSION_RETENTION): LiveAggregate {
   const byModelMap = new Map<string, {
     model: string;
     sessions: number;
@@ -2601,6 +2614,6 @@ function aggregate(sessions: LiveSession[], scanWarnings: string[] = [], source:
     agentSessions,
     topBranches: topEntries(branchSessions, 8).map(({ key, count }) => ({ branch: key, sessions: count })),
     topFiles: topEntries(fileSessions, 10).map(({ key, count }) => ({ file: key, sessions: count })),
-    sessions: sessions.slice(0, 100),
+    sessions: sessions.slice(0, sessionRetention),
   };
 }
