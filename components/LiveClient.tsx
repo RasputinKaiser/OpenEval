@@ -46,18 +46,58 @@ type LiveClientProps = {
   initialData?: LiveAggregate | null;
   error?: string;
   getTranscript?: (filePath: string, harness?: string) => Promise<TranscriptResult>;
+  /** Server timestamp of the RSC scan; lets the client skip the redundant mount poll. */
+  scannedAt?: number;
 };
 
 type FilterMode = "all" | "attention" | "stale" | "missing";
 type SortMode = "recent" | "quality" | "errors";
 
+type LivePollResponse =
+  | (LiveAggregate & { sig?: string; generatedAt?: number })
+  | { unchanged: true; sig: string; generatedAt: number };
+
 const HARNESS_STORAGE_KEY = "openeval.live.harness";
+const POLL_VISIBLE_MS = 10000;
+const POLL_HIDDEN_MS = 30000;
 
+function sessionKey(session: LiveSession): string {
+  return session.path ?? `${session.sessionId}\u0000${session.project}`;
+}
 
-export default function LiveClient({ initialData, error: initialError, getTranscript }: LiveClientProps) {
+// Reuse the previous session object (same reference) when its identity marker
+// is unchanged so React.memo'd rows skip re-rendering; only genuinely-changed
+// sessions get new references. The aggregate wrapper always comes from `next`:
+// a full payload means the server's signature already judged the content
+// changed, and second-guessing it here with a narrower field list would risk
+// silently discarding real updates.
+function mergeAggregate(prev: LiveAggregate | null, next: LiveAggregate): LiveAggregate {
+  if (!prev || prev.sessions.length === 0) return next;
+  const prevByKey = new Map(prev.sessions.map((session) => [sessionKey(session), session]));
+  const sessions = next.sessions.map((session) => {
+    const old = prevByKey.get(sessionKey(session));
+    if (
+      old &&
+      old.lastEventAt === session.lastEventAt &&
+      old.lineCount === session.lineCount &&
+      old.pathBytes === session.pathBytes &&
+      old.toolCalls === session.toolCalls &&
+      old.toolErrors === session.toolErrors &&
+      old.dataQuality === session.dataQuality &&
+      old.archived === session.archived
+    ) {
+      return old;
+    }
+    return session;
+  });
+  return { ...next, sessions };
+}
+
+export default function LiveClient({ initialData, error: initialError, getTranscript, scannedAt }: LiveClientProps) {
   const [data, setData] = useState<LiveAggregate | null>(initialData ?? null);
   const [error, setError] = useState<string | undefined>(initialError);
   const [loading, setLoading] = useState(!initialData && !initialError);
+  const [updatedAt, setUpdatedAt] = useState<number | null>(initialData && !initialError ? scannedAt ?? null : null);
   const [selected, setSelected] = useState<LiveSession | null>(null);
   const handleSelectSession = useCallback((s: LiveSession) => setSelected(s), []);
   const [selectedHarness, setSelectedHarness] = useState(initialData?.sourceHarness ?? "");
@@ -78,6 +118,11 @@ export default function LiveClient({ initialData, error: initialError, getTransc
   useFocusOnSlash(searchRef);
 
   const lastSigRef = useRef("");
+  // The RSC just scanned; skip the immediate mount poll when initialData is
+  // younger than the visible poll interval (avoids two full scans on load).
+  const skipMountPollRef = useRef(
+    Boolean(initialData) && !initialError && typeof scannedAt === "number" && Date.now() - scannedAt < POLL_VISIBLE_MS
+  );
 
   useEffect(() => {
     try {
@@ -109,16 +154,23 @@ export default function LiveClient({ initialData, error: initialError, getTransc
       try {
         const params = new URLSearchParams();
         if (selectedHarness) params.set("harness", selectedHarness);
+        // The server compares this against the fresh scan's signature and
+        // answers {unchanged:true} instead of the full aggregate on a match.
+        if (lastSigRef.current) params.set("sig", lastSigRef.current);
         const response = await fetch(`/api/live${params.size ? `?${params}` : ""}`, { signal: controller.signal });
         if (!response.ok) throw new Error(`Live poll failed: HTTP ${response.status}`);
-        const d = (await response.json()) as LiveAggregate;
+        const d = (await response.json()) as LivePollResponse;
         if (!cancelled) {
-          const sig = `${d.sourceHarness}:${d.sourceStatus}:${d.totalSessions}:${d.totalToolCalls}:${d.totalToolErrors}:${d.usageSummary.totalTokens}:${d.sessions[0]?.sessionId ?? ""}:${d.avgDataQuality}`;
-          if (sig !== lastSigRef.current) {
-            lastSigRef.current = sig;
-            setData(d);
+          if ("unchanged" in d && d.unchanged) {
+            lastSigRef.current = d.sig;
+            setError(undefined);
+          } else {
+            const next = d as LiveAggregate & { sig?: string };
+            lastSigRef.current = next.sig ?? "";
+            setData((prev) => mergeAggregate(prev, next));
+            if (next.totalSessions > 0) setError(undefined);
           }
-          if (d.totalSessions > 0) setError(undefined);
+          setUpdatedAt(Date.now());
         }
       } catch (e) {
         if (!cancelled && !(e instanceof DOMException && e.name === "AbortError")) {
@@ -128,28 +180,34 @@ export default function LiveClient({ initialData, error: initialError, getTransc
         if (activeController === controller) activeController = null;
         if (!cancelled) {
           setLoading(false);
-          const delay = (typeof document !== "undefined" && document.visibilityState !== "visible") ? 30000 : 10000;
+          const delay = (typeof document !== "undefined" && document.visibilityState !== "visible") ? POLL_HIDDEN_MS : POLL_VISIBLE_MS;
           t = setTimeout(poll, delay);
         }
       }
     };
     function onVis() { if (document.visibilityState === "visible" && !cancelled) { if (t) clearTimeout(t); poll(); } }
     document.addEventListener("visibilitychange", onVis);
-    poll();
+    if (skipMountPollRef.current) {
+      skipMountPollRef.current = false;
+      const age = typeof scannedAt === "number" ? Date.now() - scannedAt : POLL_VISIBLE_MS;
+      t = setTimeout(poll, Math.max(1000, POLL_VISIBLE_MS - age));
+    } else {
+      poll();
+    }
     return () => {
       cancelled = true;
       document.removeEventListener("visibilitychange", onVis);
       activeController?.abort();
       clearTimeout(t);
     };
-  }, [selectedHarness]);
+  }, [selectedHarness, scannedAt]);
 
   const visibleSessions = useMemo(() => {
     const sessions = data?.sessions ?? [];
     const q = debouncedSearch.trim().toLowerCase();
     const filtered = sessions.filter((session) => {
       if (filter === "attention" && !needsAttention(session)) return false;
-      if (filter === "stale" && !(session.staleMs > staleThresholdMs())) return false;
+      if (filter === "stale" && !isSessionStale(session)) return false;
       if (filter === "missing" && !Object.values(session.metricSources).some((source) => source === "missing" || source === "malformed")) return false;
       if (q) {
         const hay = `${session.sessionId} ${session.project} ${session.displayTitle ?? ""} ${session.model ?? ""}`.toLowerCase();
@@ -168,6 +226,9 @@ export default function LiveClient({ initialData, error: initialError, getTransc
   if (!data) return error ? <ErrorCard message={error} /> : <EmptyCard warnings={[]} />;
 
   const toolErrorRate = data.totalToolCalls > 0 ? data.totalToolErrors / data.totalToolCalls : 0;
+  // Server staleSessions is stamped at scan time and freezes under the
+  // unchanged-sig poll shortcut; derive it from lastEventAt instead.
+  const staleCount = data.sessions.filter(isSessionStale).length;
   const modelEvidenceLabel = data.sessionsWithMissingModel ? "Unknown model" : "Inferred model";
   const modelEvidenceValue = data.sessionsWithMissingModel ? data.sessionsWithMissingModel : data.sessionsWithInferredModel;
   const modelEvidenceTone = data.sessionsWithMissingModel ? "warn" : undefined;
@@ -190,6 +251,7 @@ export default function LiveClient({ initialData, error: initialError, getTransc
               setSelectedHarness(harness || "");
             }} />
             <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+              <UpdatedIndicator updatedAt={updatedAt} />
               <RedactToggle redact={redact} onToggle={() => setRedact((value) => !value)} />
               <button
                 type="button"
@@ -246,7 +308,7 @@ export default function LiveClient({ initialData, error: initialError, getTransc
         </MetricGroup>
         <MetricGroup label="Health">
           <Stat label="Tool err rate" value={`${Math.round(toolErrorRate * 100)}%`} icon={AlertTriangle} tone={toolErrorRate ? "err" : undefined} />
-          <Stat label="Stale" value={String(data.staleSessions)} icon={Clock3} tone={data.staleSessions ? "warn" : undefined} />
+          <Stat label="Stale" value={String(staleCount)} icon={Clock3} tone={staleCount ? "warn" : undefined} />
           <Stat label="Malformed" value={String(data.sessionsWithMalformedLines)} icon={ShieldAlert} tone={data.sessionsWithMalformedLines ? "err" : undefined} />
         </MetricGroup>
         </div>
@@ -308,8 +370,12 @@ export default function LiveClient({ initialData, error: initialError, getTransc
           <div className="scroll-contain max-h-[64vh] overflow-y-auto divide-y divide-bd-subtle">
             {visibleSessions.map((session) => (
               <SessionRow
-                key={session.path ?? `${session.sessionId}\u0000${session.project}`}
+                key={sessionKey(session)}
                 session={session}
+                // Computed in the parent (which re-renders on each poll tick)
+                // so a memo'd row still repaints when it crosses the 12h
+                // stale boundary despite its reused session reference.
+                stale={isSessionStale(session)}
                 redact={redact}
                 users={users}
                 onSelect={handleSelectSession}
@@ -339,7 +405,9 @@ export default function LiveClient({ initialData, error: initialError, getTransc
   );
 }
 
-function ModelPanel({ data }: { data: LiveAggregate }) {
+// The parent re-renders on every poll tick (updatedAt); these panels only
+// depend on `data`, so memo lets the unchanged-reference case skip them.
+const ModelPanel = React.memo(function ModelPanel({ data }: { data: LiveAggregate }) {
   return (
     <section className="card overflow-hidden">
       <div className="border-b border-bd-subtle px-4 py-3">
@@ -382,9 +450,9 @@ function ModelPanel({ data }: { data: LiveAggregate }) {
       </div>
     </section>
   );
-}
+});
 
-function TraceIntelligencePanels({ data, redact, users }: { data: LiveAggregate; redact: boolean; users: ReadonlySet<string> }) {
+const TraceIntelligencePanels = React.memo(function TraceIntelligencePanels({ data, redact, users }: { data: LiveAggregate; redact: boolean; users: ReadonlySet<string> }) {
   const queueTotal = data.queueTotals.enqueue + data.queueTotals.dequeue + data.queueTotals.remove + data.queueTotals.popAll;
   return (
     <section id="intelligence" className="scroll-mt-16 mb-4">
@@ -461,9 +529,9 @@ function TraceIntelligencePanels({ data, redact, users }: { data: LiveAggregate;
     </div>
     </section>
   );
-}
+});
 
-function UsageStrip({ data }: { data: LiveAggregate }) {
+const UsageStrip = React.memo(function UsageStrip({ data }: { data: LiveAggregate }) {
   const usage = data.usageSummary;
   const tokenMeasured = usage.sessionsWithMeasuredUsage;
   const costPriced = usage.sessionsWithPricedUsage;
@@ -510,6 +578,29 @@ function UsageStrip({ data }: { data: LiveAggregate }) {
       )}
     </section>
   );
+});
+
+// Isolated ticker so the once-a-second re-render stays inside this tiny
+// component instead of touching the session table.
+function UpdatedIndicator({ updatedAt }: { updatedAt: number | null }) {
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => {
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  if (updatedAt == null) return null;
+  const seconds = now == null ? 0 : Math.max(0, Math.floor((now - updatedAt) / 1000));
+  const label = seconds < 1 ? "updated just now" : seconds < 120 ? `updated ${seconds}s ago` : `updated ${Math.floor(seconds / 60)}m ago`;
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 px-1 text-[10px] tabular-nums text-fg-dim"
+      title="Time since the last successful live poll"
+    >
+      <span className="size-1.5 rounded-full bg-ok/60" aria-hidden />
+      {label}
+    </span>
+  );
 }
 
 function PanelHeader({ icon: Icon, title, subtitle }: { icon: any; title: string; subtitle: string }) {
@@ -555,9 +646,9 @@ function ListStack({ items, redact, users, empty }: { items: Array<{ key: string
   );
 }
 
-const SessionRow = React.memo(function SessionRow({ session, redact, users, onSelect }: { session: LiveSession; redact: boolean; users: ReadonlySet<string>; onSelect: (s: LiveSession) => void }) {
+const SessionRow = React.memo(function SessionRow({ session, stale, redact, users, onSelect }: { session: LiveSession; stale: boolean; redact: boolean; users: ReadonlySet<string>; onSelect: (s: LiveSession) => void }) {
   const attention = needsAttention(session);
-  const edgeColor = session.isError || session.toolErrors > 0 ? "bg-err" : session.hookErrors > 0 ? "bg-warn" : attention ? "bg-warn/50" : session.staleMs > staleThresholdMs() ? "bg-fg-dim" : "bg-ok/40";
+  const edgeColor = session.isError || session.toolErrors > 0 ? "bg-err" : session.hookErrors > 0 ? "bg-warn" : attention ? "bg-warn/50" : stale ? "bg-fg-dim" : "bg-ok/40";
   return (
     <button
       type="button"
@@ -616,7 +707,7 @@ const SessionRow = React.memo(function SessionRow({ session, redact, users, onSe
           <AlertTriangle className="size-3" />{session.toolErrors}
         </span>
       </div>
-      <StatusPill session={session} />
+      <StatusPill session={session} stale={stale} />
     </button>
   );
 });
@@ -1037,8 +1128,8 @@ function QualityBadge({ value }: { value: number }) {
   );
 }
 
-function StatusPill({ session }: { session: LiveSession }) {
-  const stale = session.staleMs > staleThresholdMs();
+function StatusPill({ session, stale: staleProp }: { session: LiveSession; stale?: boolean }) {
+  const stale = staleProp ?? isSessionStale(session);
   if (session.isError || session.toolErrors > 0 || session.hookErrors > 0) {
     return <span className="w-fit rounded bg-err/10 px-2 py-1 text-[10px] mono text-err">error</span>;
   }
@@ -1170,6 +1261,13 @@ function needsAttention(session: LiveSession): boolean {
 
 function staleThresholdMs(): number {
   return 1000 * 60 * 60 * 12;
+}
+
+// Derived from lastEventAt at render time. The server-stamped staleMs freezes
+// under the unchanged-sig poll shortcut and reused session references, so the
+// client must not read it for staleness decisions.
+function isSessionStale(session: LiveSession): boolean {
+  return Date.now() - session.lastEventAt > staleThresholdMs();
 }
 
 function qualityTone(value: number): "ok" | "warn" | "err" {

@@ -1037,6 +1037,84 @@ test("live API accepts harness query and unknown harnesses", async () => {
   assert.ok(codexData.totalSessions <= 1);
 });
 
+test("live API sig shortcut returns a tiny unchanged payload on match and the full payload otherwise", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "openeval-live-sig-"));
+  const descPath = path.join(HARNESS_DESC_DIR, `tmp-live-sig-${Date.now()}.harness.json`);
+  fs.mkdirSync(HARNESS_DESC_DIR, { recursive: true });
+  const sessionLine = (id: string) => JSON.stringify({
+    type: "done",
+    session_id: id,
+    model: "sig-model",
+    duration_ms: 1000,
+    num_turns: 2,
+    usage: { input_tokens: 10, output_tokens: 5 },
+    stop_reason: "completed",
+    is_error: false,
+  });
+  fs.writeFileSync(path.join(root, "session-a.jsonl"), sessionLine("sig-session-a"), "utf8");
+  fs.writeFileSync(descPath, JSON.stringify({
+    id: "tmp-live-sig-source",
+    label: "Temporary Sig Source",
+    binNames: ["tmp-live-sig-source"],
+    output: "jsonl",
+    argTemplate: ["run"],
+    fields: {
+      sessionId: "session_id",
+      model: "model",
+      durationMs: "duration_ms",
+      numTurns: "num_turns",
+      inputTokens: "usage.input_tokens",
+      outputTokens: "usage.output_tokens",
+      stopReason: "stop_reason",
+      isError: "is_error",
+    },
+    liveTrace: { roots: [root], maxDepth: 1 },
+  }), "utf8");
+
+  try {
+    const base = "http://localhost/api/live?harness=tmp-live-sig-source&limit=10";
+    const fullResponse = await liveGet(new Request(base));
+    assert.equal(fullResponse.status, 200);
+    const fullData = await fullResponse.json();
+    assert.equal(fullData.sourceStatus, "available");
+    assert.equal(fullData.totalSessions, 1);
+    assert.equal(typeof fullData.sig, "string");
+    assert.ok(fullData.sig.length >= 8);
+    assert.equal(typeof fullData.generatedAt, "number");
+    assert.notEqual(fullData.unchanged, true);
+
+    // Matching sig → tiny unchanged response, no sessions payload.
+    const unchangedResponse = await liveGet(new Request(`${base}&sig=${fullData.sig}`));
+    assert.equal(unchangedResponse.status, 200);
+    const unchangedData = await unchangedResponse.json();
+    assert.equal(unchangedData.unchanged, true);
+    assert.equal(unchangedData.sig, fullData.sig);
+    assert.equal(unchangedData.sessions, undefined);
+    assert.equal(unchangedData.totalSessions, undefined);
+
+    // Mismatched sig → full backward-compatible payload with a sig attached.
+    const mismatchResponse = await liveGet(new Request(`${base}&sig=bogus`));
+    assert.equal(mismatchResponse.status, 200);
+    const mismatchData = await mismatchResponse.json();
+    assert.notEqual(mismatchData.unchanged, true);
+    assert.equal(mismatchData.totalSessions, 1);
+    assert.ok(Array.isArray(mismatchData.sessions));
+    assert.equal(mismatchData.sig, fullData.sig);
+
+    // Content change → old sig no longer matches; full payload with new sig.
+    fs.writeFileSync(path.join(root, "session-b.jsonl"), sessionLine("sig-session-b"), "utf8");
+    const changedResponse = await liveGet(new Request(`${base}&sig=${fullData.sig}`));
+    assert.equal(changedResponse.status, 200);
+    const changedData = await changedResponse.json();
+    assert.notEqual(changedData.unchanged, true);
+    assert.equal(changedData.totalSessions, 2);
+    assert.notEqual(changedData.sig, fullData.sig);
+  } finally {
+    fs.rmSync(descPath, { force: true });
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("summarizeLiveSessionFile infers Noumena Code ncode model without pretending it is measured", () => {
   const file = writeSession([
     {
