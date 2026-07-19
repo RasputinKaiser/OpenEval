@@ -73,6 +73,34 @@ test("pricing reports listed, family-mapped, and fallback rate provenance", () =
   assert.equal(fallback?.exact, false);
 });
 
+test("memoized repeat lookups return identical results", () => {
+  const first = rateForModelInfo("claude-opus-4-8");
+  const second = rateForModelInfo("claude-opus-4-8");
+  assert.deepEqual(second, first);
+  assert.deepEqual(second, {
+    rate: { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
+    exact: true,
+    confidence: "listed",
+    sourceModel: "anthropic/claude-opus-4.8",
+  });
+
+  const familyFirst = rateForModelInfo("/data/models/hf/zai-org__GLM-5.2-FP8");
+  assert.deepEqual(rateForModelInfo("/data/models/hf/zai-org__GLM-5.2-FP8"), familyFirst);
+  assert.equal(familyFirst?.confidence, "family");
+
+  // Unknown-model fallback is unchanged and stable across repeat lookups.
+  const unknownFirst = rateForModelInfo("some-unknown-model");
+  const unknownSecond = rateForModelInfo("some-unknown-model");
+  assert.deepEqual(unknownSecond, unknownFirst);
+  assert.deepEqual(unknownSecond?.rate, DEFAULT_RATE);
+  assert.equal(unknownSecond?.confidence, "fallback");
+
+  // Placeholder/null inputs stay unpriced on repeat calls too.
+  assert.equal(rateForModelInfo("<synthetic>"), null);
+  assert.equal(rateForModelInfo("<synthetic>"), null);
+  assert.equal(rateForModelInfo(null), null);
+});
+
 test("displayModelId removes host-specific model paths without inventing a different model", () => {
   assert.equal(displayModelId("/data/models/hf/zai-org__GLM-5.2-FP8"), "hf:zai-org/glm-5.2-fp8");
   assert.equal(displayModelId("gpt-5.6-luna"), "gpt-5.6-luna");

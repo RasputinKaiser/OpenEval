@@ -116,8 +116,7 @@ function familyRate(id: string): ListedRate | null {
   return null;
 }
 
-/** Resolve a rate for a real model id. Placeholder/sentinel ids stay unpriced. */
-export function rateForModelInfo(model: string | null | undefined): ModelRate | null {
+function resolveRateForModelInfo(model: string): ModelRate | null {
   if (isPlaceholderModel(model)) return null;
   const display = displayModelId(model);
   if (!display) return null;
@@ -127,6 +126,26 @@ export function rateForModelInfo(model: string | null | undefined): ModelRate | 
   const family = familyRate(id);
   if (family) return { rate: family.rate, exact: false, confidence: "family", sourceModel: family.sourceModel };
   return { rate: DEFAULT_RATE, exact: false, confidence: "fallback", sourceModel: "fallback" };
+}
+
+// Real transcript corpora contain only ~dozens of distinct model ids, so this
+// memo stays tiny; the cap only guards against a pathological corpus full of
+// fabricated model strings. Safe because the catalog above is a module-level
+// constant with no runtime mutation path. Cached ModelRate objects are shared
+// across calls (as their inner TokenRate already was) — callers must not
+// mutate them.
+const RATE_MEMO_MAX = 4096;
+const rateMemo = new Map<string, ModelRate | null>();
+
+/** Resolve a rate for a real model id. Placeholder/sentinel ids stay unpriced. */
+export function rateForModelInfo(model: string | null | undefined): ModelRate | null {
+  if (model == null) return null;
+  const cached = rateMemo.get(model);
+  if (cached !== undefined) return cached;
+  const resolved = resolveRateForModelInfo(model);
+  if (rateMemo.size >= RATE_MEMO_MAX) rateMemo.clear();
+  rateMemo.set(model, resolved);
+  return resolved;
 }
 
 export function rateForModel(model: string | null | undefined): TokenRate | null {
