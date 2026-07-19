@@ -1,4 +1,5 @@
 import TimelineClient from "@/components/TimelineClient";
+import { collectAllSessions } from "@/lib/collection/aggregate";
 import { buildTimeline, type TimelineReport } from "@/lib/insights/collect";
 
 export const dynamic = "force-dynamic";
@@ -7,7 +8,7 @@ export default async function TimelinePage() {
   let data: TimelineReport;
   let error: string | undefined;
   try {
-    data = buildTimeline();
+    data = buildTimeline(collectAllSessions());
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
     data = {

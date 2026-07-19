@@ -6,6 +6,7 @@ import clsx from "clsx";
 import {
   Boxes, RefreshCw, HelpCircle, AlertTriangle, Activity, Search, DatabaseZap,
   Layers, Coins, Hammer, TrendingUp, CalendarClock, Cpu, Wrench, HardDrive, History,
+  ArrowDownWideNarrow, Filter, ChevronDown,
   type LucideIcon,
 } from "lucide-react";
 import PageHeader from "./PageHeader";
@@ -138,12 +139,63 @@ function PricingEvidence({ model }: { model: AllSourcesResult["byModel"][number]
   return <span className={clsx("text-[9px] uppercase tracking-wide", tone)} title={title}>{label}</span>;
 }
 
+/** Compact labeled <select> pill — mirrors the LiveClient sort/filter pills. */
+function SelectPill({ icon: Icon, value, onChange, options }: { icon: LucideIcon; value: string; onChange: (value: string) => void; options: Array<[string, string]> }) {
+  return (
+    <label className="inline-flex items-center gap-2 rounded-md border border-bd bg-bg-elev px-2 py-1.5 text-xs text-fg-muted">
+      <Icon className="size-3.5" />
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="bg-transparent text-xs text-fg outline-none max-w-[160px]"
+      >
+        {options.map(([optionValue, label]) => <option key={optionValue} value={optionValue}>{label}</option>)}
+      </select>
+    </label>
+  );
+}
+
+type SessionSort = "recent" | "tokens" | "duration" | "tools";
+const LOAD_STEP = 160;
+const MAX_LIMIT = 10_000;
+
+/**
+ * Self-ticking relative label, isolated so the 30s tick re-renders only this
+ * span — not the whole (potentially 10k-row) page. Starts at the payload's own
+ * reference time so server and client render identically, then a client effect
+ * switches to wall-clock.
+ */
+function ScannedAgo({ generatedAtMs }: { generatedAtMs: number }) {
+  const [nowMs, setNowMs] = useState(generatedAtMs);
+  useEffect(() => {
+    setNowMs(Date.now());
+    const t = setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, [generatedAtMs]);
+  return (
+    <span
+      className="text-[11px] text-fg-dim tabular-nums whitespace-nowrap"
+      title={`Scan generated ${new Date(generatedAtMs).toISOString()}`}
+    >
+      scanned {fmtRel(generatedAtMs, nowMs)}
+    </span>
+  );
+}
+
 export default function CollectionClient({ initialData, error, initialQuery, rollup }: { initialData: AllSourcesResult; error?: string; initialQuery?: string; rollup?: RollupReport }) {
   const [data, setData] = useState(initialData);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [err, setErr] = useState(error);
   const [q, setQ] = useState(initialQuery ?? "");
   const [hits, setHits] = useState<FtsHit[] | null>(null);
+  const [sessionSort, setSessionSort] = useState<SessionSort>("recent");
+  const [harnessFilter, setHarnessFilter] = useState("all");
+  const [modelFilter, setModelFilter] = useState("all");
+  // The scanner keeps only the newest ~100 sessions per source, so a higher
+  // limit may return nothing new even while totalParsedSessions is larger.
+  // Once a load-more round adds no rows, stop offering it.
+  const [listExhausted, setListExhausted] = useState(false);
   const ranInitial = useRef(false);
 
   // A ?q= handoff (e.g. from the dashboard search box) runs immediately.
@@ -209,22 +261,74 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
     }
   }
 
-  async function refresh() {
-    setLoading(true);
+  async function fetchCollection(limit: number, busy: (v: boolean) => void): Promise<AllSourcesResult | null> {
+    busy(true);
     try {
-      const res = await fetch("/api/collection?limit=80");
+      const res = await fetch(`/api/collection?limit=${Math.min(MAX_LIMIT, Math.max(1, limit))}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setData(await res.json());
+      const next = (await res.json()) as AllSourcesResult;
+      setData(next);
       setErr(undefined);
+      return next;
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
+      return null;
     } finally {
-      setLoading(false);
+      busy(false);
     }
+  }
+
+  // Rescan keeps however many rows are already loaded instead of snapping back to 80.
+  async function refresh() {
+    const next = await fetchCollection(Math.max(80, data.sessions.length), setLoading);
+    if (next && next.sessions.length > data.sessions.length) setListExhausted(false);
+  }
+
+  async function loadMore() {
+    const prevLen = data.sessions.length;
+    const next = await fetchCollection(prevLen + LOAD_STEP, setLoadingMore);
+    if (next) setListExhausted(next.sessions.length <= prevLen);
   }
 
   const models = data.byModel ?? [];
   const tools = data.byTool ?? [];
+
+  const harnessOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const s of data.sessions) if (!seen.has(s.sourceId)) seen.set(s.sourceId, s.sourceLabel);
+    return [...seen.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  }, [data.sessions]);
+
+  const modelOptions = useMemo(() => {
+    const seen = new Set<string>();
+    for (const s of data.sessions) seen.add(s.model ?? "unknown");
+    return [...seen].sort();
+  }, [data.sessions]);
+
+  const visibleSessions = useMemo(() => {
+    let list = data.sessions;
+    if (harnessFilter !== "all") list = list.filter((s) => s.sourceId === harnessFilter);
+    if (modelFilter !== "all") list = list.filter((s) => (s.model ?? "unknown") === modelFilter);
+    // The payload already arrives sorted by lastEventAt desc, so "recent"
+    // needs no re-sort (and no copy — the branches below never mutate `list`).
+    if (sessionSort === "recent") return list;
+    const sorted = [...list];
+    switch (sessionSort) {
+      case "tokens":
+        sorted.sort((a, b) => (b.inputTokens + b.outputTokens) - (a.inputTokens + a.outputTokens));
+        break;
+      case "duration":
+        sorted.sort((a, b) => b.durationMs - a.durationMs);
+        break;
+      default:
+        sorted.sort((a, b) => b.toolCalls - a.toolCalls || b.toolErrors - a.toolErrors);
+    }
+    return sorted;
+  }, [data.sessions, harnessFilter, modelFilter, sessionSort]);
+
+  const sessionsFiltered = harnessFilter !== "all" || modelFilter !== "all";
+  const moreAvailable = !listExhausted && data.sessions.length < data.totalParsedSessions;
+  const loadedLabel = `${fmtNumFull(data.sessions.length)} of ${fmtNumFull(data.totalParsedSessions)} loaded`;
   const hm = rollup?.heatmap ?? [];
   const hasHeatmap = hm.some((row) => row.some((v) => v > 0));
   const hasWeekly = !!rollup && rollup.weekly.some((w) => w.sessions > 0);
@@ -269,6 +373,7 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
         subtitle="Live & archived transcripts discovered across every agent harness on this machine. Archived sessions outlive their pruned files."
         actions={
           <>
+            <ScannedAgo generatedAtMs={data.generatedAtMs} />
             <RedactToggle redact={redact} onToggle={() => setRedact((v) => !v)} />
             <Link
               href="/collection/timeline"
@@ -278,7 +383,7 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
             </Link>
             <button
               onClick={refresh}
-              disabled={loading}
+              disabled={loading || loadingMore}
               className="flex items-center gap-1.5 rounded-md border border-bd px-2.5 py-1.5 text-sm text-fg-muted hover:bg-bg-elev hover:text-fg transition-colors disabled:opacity-50"
             >
               <RefreshCw className={clsx("size-3.5", loading && "animate-spin")} /> Rescan
@@ -292,7 +397,17 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
         summary={`${fmtNum(data.totalParsedSessions)} sessions · ${tilde}${fmtUsd(data.totalCostUsd)} API eq.`}
       />
 
-      {err && <div className="card p-3 mb-4 text-sm text-err flex items-center gap-2"><AlertTriangle className="size-4" /> {err}</div>}
+      {err && (
+        <div className="mb-4 rounded-lg border border-err/40 bg-err/10 p-3 flex items-start gap-2.5" role="alert">
+          <AlertTriangle className="size-4 text-err shrink-0 mt-0.5" />
+          <div className="min-w-0">
+            <div className="text-sm font-medium text-err">Collection scan failed</div>
+            <div className="text-[12px] text-fg-muted mt-0.5 break-words">
+              {err} — the stats below may be stale or empty. Use Rescan to retry.
+            </div>
+          </div>
+        </div>
+      )}
 
       <section id="overview" className="scroll-mt-16 mb-6">
         <div className="stagger-grid grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -602,9 +717,32 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
           icon={History}
           title="Sessions"
           desc="Most recent sessions across all harnesses — click one to read its transcript"
-          right={`last ${data.sessions.length} of ${fmtNum(data.totalParsedSessions)}`}
+          right={loadedLabel}
         />
         <div className="card overflow-hidden">
+          <div className="flex flex-wrap items-center gap-2 border-b border-bd-subtle px-3 py-2">
+            <SelectPill
+              icon={Filter}
+              value={harnessFilter}
+              onChange={setHarnessFilter}
+              options={[["all", "All harnesses"], ...harnessOptions]}
+            />
+            <SelectPill
+              icon={Cpu}
+              value={modelFilter}
+              onChange={setModelFilter}
+              options={[["all", "All models"], ...modelOptions.map((m): [string, string] => [m, m])]}
+            />
+            <SelectPill
+              icon={ArrowDownWideNarrow}
+              value={sessionSort}
+              onChange={(v) => setSessionSort(v as SessionSort)}
+              options={[["recent", "Recent"], ["tokens", "Tokens"], ["duration", "Duration"], ["tools", "Tool calls"]]}
+            />
+            <span className="ml-auto text-[11px] text-fg-dim tabular-nums">
+              {sessionsFiltered ? `${fmtNumFull(visibleSessions.length)} match · ` : ""}{loadedLabel}
+            </span>
+          </div>
           <div className="overflow-x-auto max-h-[480px] overflow-y-auto">
             <table className="data-table">
               <thead>
@@ -623,11 +761,14 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
                 {data.sessions.length === 0 && (
                   <tr><td colSpan={8} className="px-3 py-6 text-center text-fg-dim text-sm">No parsed sessions found.</td></tr>
                 )}
-                {data.sessions.map((s, i) => {
+                {data.sessions.length > 0 && visibleSessions.length === 0 && (
+                  <tr><td colSpan={8} className="px-3 py-6 text-center text-fg-dim text-sm">No loaded sessions match the current filters.</td></tr>
+                )}
+                {visibleSessions.map((s, i) => {
                   const title = show(s.displayTitle || s.lastPromptPreview) || compactDisplayPath(s.project, redact);
                   const project = compactDisplayPath(s.project, redact);
                   return (
-                    <tr key={`${s.sourceId}-${s.sessionId}-${i}`}>
+                    <tr key={s.path ?? `${s.sourceId}-${s.sessionId}-${i}`} className="cv-auto">
                       <td>
                         <span className="rounded bg-accent/10 text-accent-soft px-1.5 py-0.5 text-[10px] whitespace-nowrap">{s.sourceLabel}</span>
                         {s.archived && <span className="ml-1 rounded bg-bg-elev text-fg-dim px-1.5 py-0.5 text-[10px]" title="File pruned from disk; kept from the parse archive">archived</span>}
@@ -657,6 +798,29 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
               </tbody>
             </table>
           </div>
+          {data.sessions.length < data.totalParsedSessions && (
+            <div className="flex items-center justify-between gap-2 border-t border-bd-subtle px-3 py-2">
+              <span className="text-[11px] text-fg-dim tabular-nums">{loadedLabel}</span>
+              {moreAvailable ? (
+                <button
+                  onClick={loadMore}
+                  disabled={loadingMore || loading}
+                  className="flex items-center gap-1.5 rounded-md border border-bd px-2.5 py-1 text-sm text-fg-muted hover:bg-bg-elev hover:text-fg transition-colors disabled:opacity-50"
+                >
+                  {loadingMore
+                    ? <RefreshCw className="size-3.5 animate-spin" />
+                    : <ChevronDown className="size-3.5" />}
+                  {loadingMore
+                    ? "Loading…"
+                    : `Load ${fmtNumFull(Math.min(LOAD_STEP, data.totalParsedSessions - data.sessions.length))} more`}
+                </button>
+              ) : (
+                <span className="text-[11px] text-fg-dim">
+                  older sessions aren&apos;t listable — the scanner keeps only the newest sessions per harness
+                </span>
+              )}
+            </div>
+          )}
         </div>
       </section>
 

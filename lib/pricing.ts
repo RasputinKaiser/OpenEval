@@ -94,9 +94,11 @@ export interface ModelRate {
   sourceModel: string;
 }
 
+const PLACEHOLDER_MODEL_IDS = new Set(["<synthetic>", "synthetic", "unknown", "null", "none"]);
+
 export function isPlaceholderModel(model: string | null | undefined): boolean {
   const id = model?.trim().toLowerCase();
-  return !id || ["<synthetic>", "synthetic", "unknown", "null", "none"].includes(id);
+  return !id || PLACEHOLDER_MODEL_IDS.has(id);
 }
 
 function familyRate(id: string): ListedRate | null {

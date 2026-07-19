@@ -32,9 +32,41 @@ export interface Marker {
 
 const median = (xs: number[]): number => {
   if (xs.length === 0) return 0;
+  if (xs.length === 1) return xs[0];
+  if (xs.length === 2) return (xs[0] + xs[1]) / 2; // sum is order-independent — no sort needed
   const s = [...xs].sort((a, b) => a - b);
   const m = Math.floor(s.length / 2);
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+};
+
+/** First index in `points` (sorted ascending by `at`) whose `at` is >= t. */
+const lowerBoundAt = (points: SessionPoint[], t: number): number => {
+  let lo = 0, hi = points.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (points[mid].at < t) lo = mid + 1; else hi = mid;
+  }
+  return lo;
+};
+
+/** Insert v into an ascending-sorted array, keeping it sorted. */
+const insertSorted = (arr: number[], v: number): void => {
+  let lo = 0, hi = arr.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (arr[mid] <= v) lo = mid + 1; else hi = mid;
+  }
+  arr.splice(lo, 0, v);
+};
+
+/** Remove one occurrence of v (known to be present) from an ascending-sorted array. */
+const removeSorted = (arr: number[], v: number): void => {
+  let lo = 0, hi = arr.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (arr[mid] < v) lo = mid + 1; else hi = mid;
+  }
+  arr.splice(lo, 1);
 };
 
 const mode = <T>(xs: T[]): T | null => {
@@ -119,11 +151,41 @@ export interface SeriesPoint { at: number; value: number; n: number }
 
 /** Trailing-window median of a metric — smooths the noise of per-session values. */
 export function metricSeries(points: SessionPoint[], pick: (p: SessionPoint) => number, window = 15): SeriesPoint[] {
+  if (!Number.isInteger(window) || window < 1) {
+    // Degenerate windows: keep the original per-index semantics verbatim.
+    const out: SeriesPoint[] = [];
+    for (let i = 0; i < points.length; i++) {
+      const from = Math.max(0, i - window + 1);
+      const slice = points.slice(from, i + 1).map(pick);
+      out.push({ at: points[i].at, value: median(slice), n: slice.length });
+    }
+    return out;
+  }
+  // Sliding sorted window instead of a per-index slice+sort — O(N×window)
+  // element moves with no per-index array allocations.
   const out: SeriesPoint[] = [];
+  const vals: number[] = new Array(points.length);
+  const win: number[] = []; // sorted values of the current window (NaNs excluded)
+  let nanInWindow = 0;
   for (let i = 0; i < points.length; i++) {
-    const from = Math.max(0, i - window + 1);
-    const slice = points.slice(from, i + 1).map(pick);
-    out.push({ at: points[i].at, value: median(slice), n: slice.length });
+    const v = (vals[i] = pick(points[i]));
+    if (Number.isNaN(v)) nanInWindow++; else insertSorted(win, v);
+    const outIdx = i - window;
+    if (outIdx >= 0) {
+      const o = vals[outIdx];
+      if (Number.isNaN(o)) nanInWindow--; else removeSorted(win, o);
+    }
+    const n = i < window ? i + 1 : window;
+    let value: number;
+    if (nanInWindow === 0) {
+      const m = win.length >> 1;
+      value = win.length % 2 ? win[m] : (win[m - 1] + win[m]) / 2;
+    } else {
+      // NaN comparisons make sorted-window maintenance unreliable — recompute
+      // this index the original way so behavior is bit-identical.
+      value = median(vals.slice(i - n + 1, i + 1));
+    }
+    out.push({ at: points[i].at, value, n });
   }
   return out;
 }
@@ -176,10 +238,23 @@ export interface MarkerImpact {
  * Compare the `window` sessions just before a marker's adoption to the `window`
  * just after. Correlational only — so co-occurring changes (a model switch, thin
  * samples) are surfaced as confounds rather than hidden.
+ *
+ * `points` must be sorted ascending by `at` (as `toPoints` returns them): the
+ * before/after windows are taken as contiguous ranges around the marker's
+ * boundary index (binary search) instead of two full-array filters per marker.
  */
 export function markerImpact(points: SessionPoint[], marker: Marker, window = 20, minSamples = 5): MarkerImpact {
-  const before = points.filter((p) => p.at < marker.firstSeenAt).slice(-window);
-  const after = points.filter((p) => p.at >= marker.firstSeenAt).slice(0, window);
+  let before: SessionPoint[], after: SessionPoint[];
+  if (Number.isInteger(window) && window >= 1) {
+    const split = lowerBoundAt(points, marker.firstSeenAt); // first index with at >= firstSeenAt
+    before = points.slice(Math.max(0, split - window), split);
+    after = points.slice(split, split + window);
+  } else {
+    // Degenerate windows: keep the original filter+slice semantics verbatim
+    // (slice(-0) takes the whole prefix, fractional windows truncate).
+    before = points.filter((p) => p.at < marker.firstSeenAt).slice(-window);
+    after = points.filter((p) => p.at >= marker.firstSeenAt).slice(0, window);
+  }
   const { agg: a, outcomePool: poolBefore } = aggregate(before);
   const { agg: b, outcomePool: poolAfter } = aggregate(after);
   const deltas: MetricAgg = {

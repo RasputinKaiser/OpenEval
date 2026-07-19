@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { CASES_DIR, FIXTURES_DIR } from "../lib/config";
+import { CASES_DIR, FIXTURES_DIR, WORKDIRS_DIR } from "../lib/config";
 import { loadCases, selectCases } from "../lib/cases";
 import { prepareWorkdir } from "../lib/executor";
 import { buildDescriptorCommand, makeGenericAdapter, parseGenericJsonlLine } from "../lib/adapters/generic";
@@ -49,6 +49,8 @@ test("case loader invalidates its cache after a case mtime change", async () => 
 
 test("workdir preparation isolates none, fixture, and local git-clone setup", async () => {
   const runId = `pending-${process.pid}`;
+  // pid reuse can collide with leftovers from an earlier killed run; start clean.
+  await fs.rm(path.join(WORKDIRS_DIR, runId), { recursive: true, force: true });
   const none = await prepareWorkdir(runId, "none", { id: "none", name: "none", category: "single-tool", prompt: "", setup: { type: "none" }, graders: [] } as never, 0);
   assert.deepEqual(await fs.readdir(none.dir), []);
 

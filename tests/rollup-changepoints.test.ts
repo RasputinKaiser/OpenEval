@@ -42,8 +42,11 @@ test("weekStart returns Monday 00:00 of the containing week", () => {
   assert.equal(weekStart(mon), start.getTime());
 });
 
-test("buildRollup buckets sessions by week and ranks projects by cost", () => {
-  const now = Date.now();
+test("buildRollup buckets sessions by week and ranks projects by cost", (t) => {
+  // Pin the vantage mid-week (Wed 2026-07-15) so "now - 8 days" always lands
+  // in the previous weekly bucket regardless of wall clock or DST.
+  const now = new Date(2026, 6, 15, 12, 0).getTime();
+  t.mock.method(Date, "now", () => now);
   const sessions = [
     session({ startedAt: now, costUsd: 5, project: "/a" }),
     session({ startedAt: now - 1000, costUsd: 3, project: "/b" }),

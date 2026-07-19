@@ -6,8 +6,8 @@ import { compactDisplayPath, redactSensitiveText } from "./redaction";
 import { getPath, type FieldMapping } from "./adapters/generic";
 import { hermesJsonToRecords } from "./adapters/hermes";
 import { displayModelId, estimateCostUsd, isPlaceholderModel, rateForModelInfo } from "./pricing";
-import { cacheGet, cachePut, listCachedSessionsUnder, PARSER_VERSION } from "./live-cache";
-import { classifySentiment, isRephrase, looksLikeApologyOrFailure, looksLikeTestsPassed, mcpServerFromTool, JUDGE_PROMPT_MARKER } from "./insights/signals";
+import { cacheGet, cachePut, getCachedSessionRows, listCachedFilesUnder, PARSER_VERSION } from "./live-cache";
+import { classifySentiment, isRephraseTracked, looksLikeApologyOrFailure, looksLikeTestsPassed, mcpServerFromTool, JUDGE_PROMPT_MARKER } from "./insights/signals";
 import { hasAdapter, getAdapter, getDefaultHarness, invalidateRegistry } from "./adapters/registry";
 import { invalidateDescriptorCache } from "./adapters/loader";
 
@@ -290,13 +290,31 @@ function specToSource(spec: CollectionSourceSpec): LiveTraceSource {
 }
 
 /** Session files for a source, without parsing them — cheap discovery counts. */
-export function listSourceFiles(spec: CollectionSourceSpec): Array<{ file: string; project: string; mtime: number }> {
+export function listSourceFiles(spec: CollectionSourceSpec): Array<{ file: string; project: string; mtime: number; size: number }> {
   return collectLiveTraceFiles(specToSource(spec), []);
 }
 
+export interface CollectedSourceFiles {
+  files: Array<{ file: string; project: string; mtime: number; size: number }>;
+  scanWarnings: string[];
+}
+
+/**
+ * One walk, reusable: discovery (counts, last activity) and the scan itself
+ * both need the file list, and a Collection pass used to walk every source
+ * tree twice to get it. Pass the result to scanSourceSessions as
+ * `preCollected` to reuse the walk (warnings included, so output matches a
+ * scan that walked for itself).
+ */
+export function collectSourceFiles(spec: CollectionSourceSpec): CollectedSourceFiles {
+  const scanWarnings: string[] = [];
+  const files = collectLiveTraceFiles(specToSource(spec), scanWarnings);
+  return { files, scanWarnings };
+}
+
 /** Scan one arbitrary collection source (any harness), reusing the harness path. */
-export function scanSourceSessions(spec: CollectionSourceSpec, limit = 200, opts: { includeArchived?: boolean } = {}): LiveAggregate {
-  return scanResolvedSource(specToSource(spec), limit, opts.includeArchived ?? false);
+export function scanSourceSessions(spec: CollectionSourceSpec, limit = 200, opts: { includeArchived?: boolean; preCollected?: CollectedSourceFiles } = {}): LiveAggregate {
+  return scanResolvedSource(specToSource(spec), limit, opts.includeArchived ?? false, opts.preCollected);
 }
 
 export function defaultLiveLimitForHarness(harness?: string): number {
@@ -433,6 +451,54 @@ export function codexToolOutputError(output: string): boolean {
 
 const MIN_PLAUSIBLE_MS = 1_577_836_800_000; // 2020-01-01
 
+const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+// `!line.trim()` ⇔ `!/\S/.test(line)`: regex \s and String.trim strip the
+// same WhiteSpace ∪ LineTerminator set (incl. NBSP), and the test allocates
+// no per-line string. Shared, non-global — no lastIndex state.
+const NON_WS_RE = /\S/;
+
+// Hoisted from the per-tool_use hot path; contents must not change without
+// auditing readLikeOperations/writeLikeOperations semantics.
+const READ_LIKE_TOOL_HINTS = ["read", "grep", "glob", "webfetch", "websearch"];
+const WRITE_TOOL_NAMES = ["write", "edit", "multiedit"];
+
+/**
+ * Exact-shape fast path for `YYYY-MM-DDTHH:MM:SS.mmmZ` (toISOString output —
+ * what these JSONL files carry on every record; Date.parse's general grammar
+ * costs ~1µs/call, which dominated 6% of a cold scan). Returns NaN unless the
+ * string matches the shape with in-range components (so out-of-range dates
+ * fall back to Date.parse's own NaN, and years < 100 fall back because
+ * Date.UTC would remap them to 1900+y). For matched strings, ECMA-262 defines
+ * Date.parse of an ISO-UTC string as exactly the UTC MakeDate of its
+ * components, which is what Date.UTC computes — identical results.
+ */
+function fastIsoUtcMs(value: string): number {
+  if (value.length !== 24) return NaN;
+  if (
+    value.charCodeAt(4) !== 45 || value.charCodeAt(7) !== 45 || value.charCodeAt(10) !== 84 ||
+    value.charCodeAt(13) !== 58 || value.charCodeAt(16) !== 58 || value.charCodeAt(19) !== 46 ||
+    value.charCodeAt(23) !== 90
+  ) return NaN;
+  let y = 0, mo = 0, d = 0, h = 0, mi = 0, s = 0, ms = 0;
+  for (let i = 0; i < 23; i++) {
+    if (i === 4 || i === 7 || i === 10 || i === 13 || i === 16 || i === 19) continue;
+    const c = value.charCodeAt(i) - 48;
+    if (c < 0 || c > 9) return NaN;
+    if (i < 4) y = y * 10 + c;
+    else if (i < 7) mo = mo * 10 + c;
+    else if (i < 10) d = d * 10 + c;
+    else if (i < 13) h = h * 10 + c;
+    else if (i < 16) mi = mi * 10 + c;
+    else if (i < 19) s = s * 10 + c;
+    else ms = ms * 10 + c;
+  }
+  if (y < 100 || mo < 1 || mo > 12 || d < 1 || h > 23 || mi > 59 || s > 59) return NaN;
+  const leap = y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0);
+  if (d > (mo === 2 && leap ? 29 : DAYS_IN_MONTH[mo - 1])) return NaN;
+  return Date.UTC(y, mo - 1, d, h, mi, s, ms);
+}
+
 function parseTimestamp(value: unknown): number | null {
   let ms: number | null = null;
   if (typeof value === "number" && Number.isFinite(value)) {
@@ -440,7 +506,8 @@ function parseTimestamp(value: unknown): number | null {
     // near 1970 and corrupts startedAt. Anything below ~1e12 is seconds.
     ms = value < 1e12 ? value * 1000 : value;
   } else if (typeof value === "string") {
-    const parsed = Date.parse(value);
+    const fast = fastIsoUtcMs(value);
+    const parsed = Number.isNaN(fast) ? Date.parse(value) : fast;
     if (Number.isFinite(parsed)) ms = parsed;
   }
   // Reject implausible/placeholder timestamps rather than let them pull startedAt down.
@@ -509,6 +576,14 @@ function coalesceModel(...values: unknown[]): string | null {
 }
 
 function ensureModelUsage(map: Map<string, LiveModelUsage>, model: unknown): LiveModelUsage | null {
+  // Keys are inserted as normalizeModelValue output and normalize is
+  // idempotent on them, so a raw string that exactly matches an existing key
+  // resolves to the same entry the normalized path would — skip the per-call
+  // trim/placeholder work for the overwhelmingly common repeat model.
+  if (typeof model === "string") {
+    const hit = map.get(model);
+    if (hit) return hit;
+  }
   const normalized = normalizeModelValue(model);
   if (!normalized) return null;
   let usage = map.get(normalized);
@@ -614,6 +689,13 @@ function topEntries(map: Map<string, number>, limit: number): Array<{ key: strin
 
 function extractFilePaths(value: unknown, out = new Set<string>()): Set<string> {
   if (typeof value === "string") {
+    // Every alternation below requires one of these four substrings
+    // ("/private/tmp/" contains "/tmp/", "../" contains "./"), so bailing on
+    // their absence skips the regex for the common no-path string leaf.
+    if (
+      value.indexOf("/Users/") < 0 && value.indexOf("/home/") < 0 &&
+      value.indexOf("/tmp/") < 0 && value.indexOf("./") < 0
+    ) return out;
     const pathLike = value.match(/(?:\/Users\/[^\s"'<>`]+|\/home\/[^\s"'<>`]+|\/private\/tmp\/[^\s"'<>`]+|\/tmp\/[^\s"'<>`]+|\.{1,2}\/[A-Za-z0-9._/-]+)/g) ?? [];
     for (const candidate of pathLike) {
       const cleaned = candidate.replace(/[),.;:]+$/, "");
@@ -633,17 +715,27 @@ export function scanLiveSessions(limit = 200, harness?: string): LiveAggregate {
   return scanResolvedSource(resolveLiveSource(harness), limit);
 }
 
-function parseSourceSessionList(source: LiveTraceSource, limit: number, scanWarnings: string[], includeArchived = false): LiveSession[] {
+function parseSourceSessionList(source: LiveTraceSource, limit: number, scanWarnings: string[], includeArchived = false, preCollected?: CollectedSourceFiles): LiveSession[] {
   const sessions: LiveSession[] = [];
   if (source.status !== "available") return sessions;
-  const files = collectLiveTraceFiles(source, scanWarnings);
+  let files: Array<{ file: string; project: string; mtime: number; size: number }>;
+  if (preCollected) {
+    // Copy before sorting — the caller may share the collected list.
+    files = [...preCollected.files];
+    scanWarnings.push(...preCollected.scanWarnings);
+  } else {
+    files = collectLiveTraceFiles(source, scanWarnings);
+  }
   files.sort((a, b) => b.mtime - a.mtime);
   for (const f of files.slice(0, limit)) {
+    // The walk already stat'd every file; reuse it for the cache key instead
+    // of a second statSync per file inside summarizeWithCache.
+    const stat = { mtimeMs: f.mtime, size: f.size };
     const s = source.format === "codex-sessions"
-      ? summarizeCodexSessionFile(f.file, f.project, f.mtime)
+      ? summarizeCodexSessionFile(f.file, f.project, f.mtime, stat)
       : source.format === "hermes-json"
-        ? summarizeHermesSessionFile(f.file, f.project, f.mtime)
-        : summarizeLiveSessionFile(f.file, f.project, f.mtime, { fields: source.fields, inferredModel: source.inferredModel, decodeProject: source.format !== "jsonl-dir" });
+        ? summarizeHermesSessionFile(f.file, f.project, f.mtime, stat)
+        : summarizeLiveSessionFile(f.file, f.project, f.mtime, { fields: source.fields, inferredModel: source.inferredModel, decodeProject: source.format !== "jsonl-dir", stat });
     if (s) {
       // Codex/ChatGPT rotates older rollouts into a dedicated on-disk archive.
       // Those files are still live-readable, but must retain archive provenance
@@ -653,7 +745,7 @@ function parseSourceSessionList(source: LiveTraceSource, limit: number, scanWarn
       sessions.push(archivedOnDisk ? { ...s, archived: true } : s);
     }
   }
-  if (includeArchived) appendArchivedSessions(source, sessions);
+  if (includeArchived) appendArchivedSessions(source, sessions, new Set(files.map((f) => f.file)));
   // Inferred costs are derived data, not transcript evidence. Recompute them
   // from current list rates on every scan so persistent/archive cache rows do
   // not freeze stale pricing forever.
@@ -695,12 +787,20 @@ function isUnderNamedRoot(file: string, roots: string[], name: string): boolean 
  * them into the void). Dedupes on sessionId so a rotated/moved file doesn't
  * count twice; the on-disk copy always wins.
  */
-function appendArchivedSessions(source: LiveTraceSource, sessions: LiveSession[]): void {
+function appendArchivedSessions(source: LiveTraceSource, sessions: LiveSession[], scannedFiles?: Set<string>): void {
   const seenIds = new Set(sessions.map((s) => s.sessionId));
-  for (const { file, session, parserVersion } of listCachedSessionsUnder(source.roots)) {
+  // Two-step read: list file paths only (skips the session_json overflow
+  // pages), drop the ~97% that still exist on disk, then hydrate + JSON.parse
+  // just the pruned survivors. Files the walk just stat'd trivially exist.
+  const pruned: string[] = [];
+  for (const file of listCachedFilesUnder(source.roots)) {
+    if (scannedFiles?.has(file)) continue;
     let onDisk = false;
     try { onDisk = fs.existsSync(file); } catch {}
-    if (onDisk || seenIds.has(session.sessionId)) continue;
+    if (!onDisk) pruned.push(file);
+  }
+  for (const { session, parserVersion } of getCachedSessionRows(pruned)) {
+    if (seenIds.has(session.sessionId)) continue;
     seenIds.add(session.sessionId);
     const parseWarnings = Array.isArray(session.parseWarnings) ? session.parseWarnings : [];
     const staleParserWarning = parserVersion < PARSER_VERSION
@@ -726,15 +826,15 @@ export function collectSourceSessions(spec: CollectionSourceSpec, limit = 100_00
   return parseSourceSessionList(specToSource(spec), limit, [], opts.includeArchived ?? false);
 }
 
-function scanResolvedSource(source: LiveTraceSource, limit: number, includeArchived = false): LiveAggregate {
+function scanResolvedSource(source: LiveTraceSource, limit: number, includeArchived = false, preCollected?: CollectedSourceFiles): LiveAggregate {
   const scanWarnings: string[] = [];
   if (source.status !== "available" && source.message) scanWarnings.push(source.message);
-  const sessions = parseSourceSessionList(source, limit, scanWarnings, includeArchived);
+  const sessions = parseSourceSessionList(source, limit, scanWarnings, includeArchived, preCollected);
   return aggregate(sessions, scanWarnings, source);
 }
 
-function collectLiveTraceFiles(source: LiveTraceSource, scanWarnings: string[]): Array<{ file: string; project: string; mtime: number }> {
-  const files: Array<{ file: string; project: string; mtime: number }> = [];
+function collectLiveTraceFiles(source: LiveTraceSource, scanWarnings: string[]): Array<{ file: string; project: string; mtime: number; size: number }> {
+  const files: Array<{ file: string; project: string; mtime: number; size: number }> = [];
   for (const root of source.roots) {
     if (source.format === "claude-projects") {
       let projectDirs: string[] = [];
@@ -757,7 +857,7 @@ function collectLiveTraceFiles(source: LiveTraceSource, scanWarnings: string[]):
           const full = path.join(pdir, ent.name);
           try {
             const st = fs.statSync(full);
-            files.push({ file: full, project: pd, mtime: st.mtimeMs });
+            files.push({ file: full, project: pd, mtime: st.mtimeMs, size: st.size });
           } catch {}
         }
       }
@@ -774,7 +874,7 @@ function collectLiveTraceFiles(source: LiveTraceSource, scanWarnings: string[]):
 function collectJsonlRecursive(
   dir: string,
   depth: number,
-  files: Array<{ file: string; project: string; mtime: number }>,
+  files: Array<{ file: string; project: string; mtime: number; size: number }>,
   root: string,
   matches: (name: string) => boolean = (name) => name.endsWith(".jsonl"),
 ): void {
@@ -794,7 +894,7 @@ function collectJsonlRecursive(
     if (!ent.isFile() || !matches(ent.name)) continue;
     try {
       const st = fs.statSync(full);
-      files.push({ file: full, project: path.dirname(path.relative(root, full)) || path.basename(root), mtime: st.mtimeMs });
+      files.push({ file: full, project: path.dirname(path.relative(root, full)) || path.basename(root), mtime: st.mtimeMs, size: st.size });
     } catch {}
   }
 }
@@ -807,7 +907,7 @@ function parseTranscriptRecords(records: Iterable<string>): TranscriptResult {
   const turns: LiveTranscriptTurn[] = [];
   let index = 0;
   for (const line of records) {
-    if (!line.trim()) continue;
+    if (!NON_WS_RE.test(line)) continue;
     index++;
     try {
       turns.push(toTranscriptTurn(JSON.parse(line), index));
@@ -871,14 +971,17 @@ export function getErroringTurns(filePath: string, format?: LiveTraceFormat): Tr
   return { turns: [...keep].sort((a, b) => a - b).map((index) => parsed.turns[index]) };
 }
 
-export function summarizeLiveSessionFile(file: string, projectDir: string, mtime: number, opts: { fields?: FieldMapping; inferredModel?: string; decodeProject?: boolean } = {}): LiveSession | null {
-  return summarizeWithCache(file, projectDir, mtime, (f, lines, bytes, pd, mt) => parseLiveSession(f, lines, bytes, pd, mt, opts.fields, opts.inferredModel, opts.decodeProject));
+/** Walk-time stat, reusable as the cache key so summarize needn't re-stat. */
+export interface KnownFileStat { mtimeMs: number; size: number }
+
+export function summarizeLiveSessionFile(file: string, projectDir: string, mtime: number, opts: { fields?: FieldMapping; inferredModel?: string; decodeProject?: boolean; stat?: KnownFileStat } = {}): LiveSession | null {
+  return summarizeWithCache(file, projectDir, mtime, (f, lines, bytes, pd, mt) => parseLiveSession(f, lines, bytes, pd, mt, opts.fields, opts.inferredModel, opts.decodeProject), opts.stat);
 }
 
 const HERMES_MAX_BYTES = 32 * 1024 * 1024; // whole-file JSON parse; real sessions are ≤ a few MB
 
 /** Hermes single-JSON sessions, re-emitted as Claude-style records (see adapters/hermes). */
-export function summarizeHermesSessionFile(file: string, projectDir: string, mtime: number): LiveSession | null {
+export function summarizeHermesSessionFile(file: string, projectDir: string, mtime: number, stat?: KnownFileStat): LiveSession | null {
   return summarizeWithCache(file, projectDir, mtime, (f, lines, bytes, pd, mt) => {
     if (bytes > HERMES_MAX_BYTES) return null;
     let raw = "";
@@ -886,11 +989,16 @@ export function summarizeHermesSessionFile(file: string, projectDir: string, mti
     const records = hermesJsonToRecords(raw);
     if (records.length === 0) return null;
     return parseLiveSession(f, records, bytes, pd, mt, undefined, undefined, false);
-  });
+  }, stat);
 }
 
 const sessionCache = new Map<string, { mtimeMs: number; size: number; session: LiveSession | null }>();
-const SESSION_CACHE_LIMIT = 500;
+// Must exceed the full-history corpus (~1,500 files today) or sequential
+// scans flood the FIFO and every pass falls through to SQLite + JSON.parse:
+// at cap 500 a 1,500-file scan ended holding only the oldest 500 entries and
+// the next pass got ~0% memory hits. Parsed sessions average ~10KB serialized
+// (~30-60MB heap at 4,000) — acceptable for a local dashboard server.
+const SESSION_CACHE_LIMIT = 4000;
 
 /**
  * Stream a file's lines without ever materializing the whole file as one string.
@@ -910,11 +1018,15 @@ export function* readFileLines(file: string): Generator<string> {
     let n: number;
     while ((n = fs.readSync(fd, buf, 0, CHUNK, null)) > 0) {
       leftover += decoder.write(buf.subarray(0, n));
+      // Cursor scan: re-slicing leftover per line is O(lines × chunk) in
+      // allocations; one tail slice per chunk yields the same line sequence.
+      let start = 0;
       let idx: number;
-      while ((idx = leftover.indexOf("\n")) >= 0) {
-        yield leftover.slice(0, idx);
-        leftover = leftover.slice(idx + 1);
+      while ((idx = leftover.indexOf("\n", start)) >= 0) {
+        yield leftover.slice(start, idx);
+        start = idx + 1;
       }
+      if (start > 0) leftover = leftover.slice(start);
     }
     leftover += decoder.end();
     if (leftover.length) yield leftover;
@@ -928,12 +1040,20 @@ function summarizeWithCache(
   projectDir: string,
   mtime: number,
   parser: (file: string, lines: Iterable<string>, bytes: number, projectDir: string, mtime: number) => LiveSession | null,
+  knownStat?: KnownFileStat,
 ): LiveSession | null {
-  let st: fs.Stats;
-  try {
-    st = fs.statSync(file);
-  } catch {
-    return null;
+  // Callers coming from the directory walk already stat'd the file; their
+  // values are the same ones the mtime sort trusted, so reuse them as the
+  // cache key instead of a second syscall per file.
+  let st: KnownFileStat;
+  if (knownStat) {
+    st = knownStat;
+  } else {
+    try {
+      st = fs.statSync(file);
+    } catch {
+      return null;
+    }
   }
   // staleMs is stamped at parse time; cached copies (memory or disk) must not
   // freeze it, so refresh it on every cache hit.
@@ -942,6 +1062,10 @@ function summarizeWithCache(
 
   const cached = sessionCache.get(file);
   if (cached && cached.mtimeMs === st.mtimeMs && cached.size === st.size) {
+    // Re-insert on hit: Map iteration is insertion-ordered, so this turns the
+    // FIFO eviction below into LRU (hits survive a scan that overflows the cap).
+    sessionCache.delete(file);
+    sessionCache.set(file, cached);
     return refresh(cached.session);
   }
   // Second tier: the persistent SQLite cache survives restarts, so cold
@@ -984,6 +1108,9 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
   const writeCountByFile = new Map<string, number>();
   let userPositive = 0, userNegative = 0, rephrases = 0;
   let lastUserText: string | null = null;
+  // Carries lastUserText's token set between isRephraseTracked calls; must
+  // only be touched by that call, in lockstep with lastUserText assignments.
+  const rephraseCache: { tokens: Set<string> | null } = { tokens: null };
   let lastAssistantText = "";
   let userTextTurns = 0;
   let firstTsMs = Infinity;
@@ -1048,7 +1175,7 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
   try {
     pathBytes = bytes;
     for (const line of lines) {
-      if (!line.trim()) continue;
+      if (!NON_WS_RE.test(line)) continue;
       lineCount++;
       let obj: any;
       try {
@@ -1084,9 +1211,20 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
       // tool-results, injected <system-reminder>/command wrappers, pasted blobs).
       if (obj.type === "user" && obj.message && obj.isSidechain !== true) {
         const c = obj.message.content;
-        const userText = typeof c === "string"
-          ? c
-          : Array.isArray(c) ? c.filter((b: any) => b?.type === "text").map((b: any) => b.text ?? "").join(" ") : "";
+        // Manual join(" ") over text blocks: the common tool_result-only user
+        // record exits with zero allocations instead of filter+map+join.
+        let userText = "";
+        if (typeof c === "string") {
+          userText = c;
+        } else if (Array.isArray(c)) {
+          let first = true;
+          for (const b of c) {
+            if (b?.type !== "text") continue;
+            if (!first) userText += " ";
+            userText += b.text ?? "";
+            first = false;
+          }
+        }
         const trimmed = userText.trim();
         // A claude-CLI-backed judge leaves its own session files; drop them.
         if (trimmed.startsWith(JUDGE_PROMPT_MARKER)) return null;
@@ -1096,7 +1234,7 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
             const sent = classifySentiment(trimmed);
             if (sent === "positive") userPositive++;
             else if (sent === "negative") userNegative++;
-            if (isRephrase(trimmed, lastUserText)) rephrases++;
+            if (isRephraseTracked(trimmed, lastUserText, rephraseCache)) rephrases++;
             lastUserText = trimmed;
           }
         }
@@ -1124,7 +1262,9 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
         }
       } else if (obj.type === "assistant" && Array.isArray(obj.message?.content)) {
         model = coalesceModel(obj.message?.model, model);
-        const messageModel = coalesceModel(obj.message?.model, model);
+        // coalesceModel(m, model) here is provably `model` again: model is
+        // always null-or-normalized and normalize is idempotent.
+        const messageModel = model;
         const modelUsage = ensureModelUsage(modelUsageByModel, messageModel);
         const messageUsage = obj.message?.usage ?? {};
         const messageInput = numericOrNull(messageUsage.input_tokens);
@@ -1168,11 +1308,11 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
             }
             if (modelUsage) modelUsage.toolCalls++;
             if (typeof b.name === "string") increment(toolCallsByName, b.name);
-            for (const filePath of extractFilePaths(b.input)) touchedFiles.add(filePath);
+            extractFilePaths(b.input, touchedFiles);
             const rawName = String(b.name ?? "");
             const name = rawName.toLowerCase();
-            if (["read", "grep", "glob", "webfetch", "websearch"].some((tool) => name.includes(tool))) readLikeOperations++;
-            const isWrite = ["write", "edit", "multiedit"].some((tool) => name === tool || name.startsWith(tool));
+            if (READ_LIKE_TOOL_HINTS.some((tool) => name.includes(tool))) readLikeOperations++;
+            const isWrite = WRITE_TOOL_NAMES.some((tool) => name === tool || name.startsWith(tool));
             if (name.includes("write") || name.includes("edit")) writeLikeOperations++;
             // --- markers --- (subagent spawns are "Task" or "Agent" across versions)
             if (rawName === "Task" || rawName === "Agent") subagentSpawns++;
@@ -1215,7 +1355,7 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
         }
       } else if (obj.type === "attachment") {
         attachmentCount++;
-        for (const filePath of extractFilePaths(obj.attachment)) touchedFiles.add(filePath);
+        extractFilePaths(obj.attachment, touchedFiles);
         const attachmentType = obj.attachment?.type;
         if (attachmentType === "edited_text_file") writeLikeOperations++;
       } else if (obj.type === "queue-operation") {
@@ -1227,7 +1367,7 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
         if (typeof obj.content === "string" && queueSummary.preview.length < 3) queueSummary.preview.push(jsonPreview(obj.content, 220));
       } else if (obj.type === "file-history-snapshot") {
         snapshotCount++;
-        for (const filePath of extractFilePaths(obj.snapshot)) touchedFiles.add(filePath);
+        extractFilePaths(obj.snapshot, touchedFiles);
       } else if (obj.type === "result") {
         sawResult = true;
         const usage = obj.usage || {};
@@ -1288,7 +1428,13 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
         if (genericError != null) isError = genericError;
       }
     }
-  } catch {
+  } catch (e) {
+    // Filesystem errors (ENOENT mid-scan, EMFILE, EIO) are transient: rethrow
+    // so summarizeWithCache skips the file WITHOUT caching, else the failure
+    // is stored as a permanent null tombstone that outlives the outage.
+    // Content-deterministic failures (JSON/Type/RangeError) carry no errno and
+    // still cache as null — correct for genuinely unparseable files.
+    if (typeof (e as { errno?: unknown })?.errno === "number") throw e;
     return null;
   }
 
@@ -1451,8 +1597,8 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
   };
 }
 
-export function summarizeCodexSessionFile(file: string, projectDir: string, mtime: number): LiveSession | null {
-  return summarizeWithCache(file, projectDir, mtime, parseCodexSession);
+export function summarizeCodexSessionFile(file: string, projectDir: string, mtime: number, stat?: KnownFileStat): LiveSession | null {
+  return summarizeWithCache(file, projectDir, mtime, parseCodexSession, stat);
 }
 
 const ORCHESTRATION_MARKERS = /\b(team of agents|coordinator|orchestrat\w*|primary agent|worker \d|subagent|multi-agent)\b/i;
@@ -1504,6 +1650,9 @@ function parseCodexSession(file: string, lines: Iterable<string>, bytes: number,
   let sumIn = 0, sumOut = 0, sumCached = 0;
   let userPositive = 0, userNegative = 0, rephrases = 0;
   let lastUserText: string | null = null;
+  // Carries lastUserText's token set between isRephraseTracked calls; must
+  // only be touched by that call, in lockstep with lastUserText assignments.
+  const rephraseCache: { tokens: Set<string> | null } = { tokens: null };
   let lastAgentText = "";
   let toolCalls = 0;
   let toolErrors = 0;
@@ -1549,7 +1698,7 @@ function parseCodexSession(file: string, lines: Iterable<string>, bytes: number,
       const sent = classifySentiment(trimmed);
       if (sent === "positive") userPositive++;
       else if (sent === "negative") userNegative++;
-      if (isRephrase(trimmed, lastUserText)) rephrases++;
+      if (isRephraseTracked(trimmed, lastUserText, rephraseCache)) rephrases++;
       lastUserText = trimmed;
     }
     return "recorded";
@@ -1563,7 +1712,7 @@ function parseCodexSession(file: string, lines: Iterable<string>, bytes: number,
     let segmentInput = 0;
     let segmentOutput = 0;
     for (const line of lines) {
-      if (!line.trim()) continue;
+      if (!NON_WS_RE.test(line)) continue;
       lineCount++;
       let obj: any;
       try {
@@ -1716,9 +1865,20 @@ function parseCodexSession(file: string, lines: Iterable<string>, bytes: number,
         if (payload.type === "message") {
           textBlocks++;
           messageCount++;
-          const text = Array.isArray(payload.content)
-            ? payload.content.map((item: any) => item.text).filter(Boolean).join(" ")
-            : "";
+          // Manual filter(Boolean)+join(" "): most message payloads produce no
+          // kept text, and this path runs per response_item. `item.text` (not
+          // item?.text) on purpose — a null item threw before and must still.
+          let text = "";
+          if (Array.isArray(payload.content)) {
+            let first = true;
+            for (const item of payload.content as any[]) {
+              const t = item.text;
+              if (!t) continue;
+              if (!first) text += " ";
+              text += t;
+              first = false;
+            }
+          }
           if (payload.role === "user") responseUserMessageCount++;
           // OpenEval's own CLI-backed judge invocations leave codex_exec stub
           // sessions behind; they are instrumentation, not user work.
@@ -1726,7 +1886,7 @@ function parseCodexSession(file: string, lines: Iterable<string>, bytes: number,
           // Injected wrappers ("<permissions instructions>", "<environment_context>")
           // and orchestrator persona preambles make useless titles — wait for
           // the first real message.
-          if (text && !text.trim().startsWith("<") && !isInjectedPreamble(text, isSubagent)) displayTitle = displayTitle ?? jsonPreview(text, 80);
+          if (displayTitle == null && text && !text.trim().startsWith("<") && !isInjectedPreamble(text, isSubagent)) displayTitle = jsonPreview(text, 80);
         }
         if (payload.type === "function_call") {
           toolCalls++;
@@ -1773,7 +1933,10 @@ function parseCodexSession(file: string, lines: Iterable<string>, bytes: number,
         if (recordCodexUserText(text) === "judge") return null;
       }
     }
-  } catch {
+  } catch (e) {
+    // See parseLiveSession's outer catch: fs errors must not become permanent
+    // null tombstones in the session cache.
+    if (typeof (e as { errno?: unknown })?.errno === "number") throw e;
     return null;
   }
 
@@ -2254,6 +2417,33 @@ function aggregate(sessions: LiveSession[], scanWarnings: string[] = [], source:
   let agentSessions = 0;
   let outputTokPerSecTotal = 0;
   let outputTokPerSecCount = 0;
+  let sessionsWithMeasuredUsage = 0;
+  let sessionsWithMeasuredCost = 0;
+  let sessionsWithPricedUsage = 0;
+  let sessionsWithListedRate = 0;
+  let sessionsWithFamilyRate = 0;
+  let sessionsWithFallbackRate = 0;
+  let sessionsWithMeasuredDuration = 0;
+  let sessionsWithMissingModel = 0;
+  let sessionsWithInferredModel = 0;
+  let sessionsWithMissingTokens = 0;
+  let sessionsWithInferredCost = 0;
+  let archivedSessions = 0;
+  let sessionsWithMalformedLines = 0;
+  let staleSessions = 0;
+  // rateForModelInfo is a pure lookup over a static catalog; memoize per
+  // aggregate() call so large session lists don't redo alias/family resolution
+  // thousands of times. Deliberately per-call, not module-global: if the
+  // pricing catalog ever becomes dynamic, this cache can never serve stale rates.
+  const rateInfoByModel = new Map<string | null, ReturnType<typeof rateForModelInfo>>();
+  const cachedRateInfo = (model: string | null) => {
+    let info = rateInfoByModel.get(model);
+    if (info === undefined) {
+      info = rateForModelInfo(model);
+      rateInfoByModel.set(model, info);
+    }
+    return info;
+  };
 
   for (const s of sessions) {
     projects.add(s.project);
@@ -2271,6 +2461,23 @@ function aggregate(sessions: LiveSession[], scanWarnings: string[] = [], source:
       outputTokPerSecTotal += s.outputTokens / Math.max(s.durationMs / 1000, 0.001);
       outputTokPerSecCount++;
     }
+    if (s.metricSources.tokens === "measured") sessionsWithMeasuredUsage++;
+    if (s.metricSources.tokens === "missing") sessionsWithMissingTokens++;
+    if (s.metricSources.cost === "measured") sessionsWithMeasuredCost++;
+    if (s.metricSources.cost === "inferred") sessionsWithInferredCost++;
+    if (s.metricSources.duration === "measured") sessionsWithMeasuredDuration++;
+    if (s.metricSources.model === "missing") sessionsWithMissingModel++;
+    if (s.metricSources.model === "inferred") sessionsWithInferredModel++;
+    if (s.costUsd > 0) sessionsWithPricedUsage++;
+    if (s.metricSources.cost === "inferred" && s.costUsd > 0) {
+      const confidence = cachedRateInfo(s.model)?.confidence;
+      if (confidence === "listed") sessionsWithListedRate++;
+      else if (confidence === "family") sessionsWithFamilyRate++;
+      else if (confidence === "fallback") sessionsWithFallbackRate++;
+    }
+    if (s.archived) archivedSessions++;
+    if (s.malformedLineCount > 0) sessionsWithMalformedLines++;
+    if (s.staleMs > 1000 * 60 * 60 * 12) staleSessions++;
     if (s.modeSummary.gitBranch) increment(branchSessions, s.modeSummary.gitBranch);
     queueTotals.enqueue += s.queueSummary.enqueue;
     queueTotals.dequeue += s.queueSummary.dequeue;
@@ -2311,7 +2518,7 @@ function aggregate(sessions: LiveSession[], scanWarnings: string[] = [], source:
       }
       if (s.metricSources.model === "inferred") cur.inferredModelSessions++;
       if (s.metricSources.cost === "inferred" && rowCost > 0) {
-        const confidence = rateForModelInfo(row.model)?.confidence;
+        const confidence = cachedRateInfo(row.model)?.confidence;
         if (confidence === "listed") cur.listedRateSessions++;
         else if (confidence === "family") cur.familyRateSessions++;
         else if (confidence === "fallback") cur.fallbackRateSessions++;
@@ -2349,12 +2556,12 @@ function aggregate(sessions: LiveSession[], scanWarnings: string[] = [], source:
   usageSummary.totalCacheCreateTokens = totalCacheCreateTokens;
   usageSummary.totalTokens = totalInputTokens + totalOutputTokens + totalCacheReadTokens + totalCacheCreateTokens;
   usageSummary.totalCostUsd = totalCostUsd;
-  usageSummary.sessionsWithMeasuredUsage = sessions.filter((s) => s.metricSources.tokens === "measured").length;
-  usageSummary.sessionsWithMeasuredCost = sessions.filter((s) => s.metricSources.cost === "measured").length;
-  usageSummary.sessionsWithPricedUsage = sessions.filter((s) => s.costUsd > 0).length;
-  usageSummary.sessionsWithListedRate = sessions.filter((s) => s.metricSources.cost === "inferred" && s.costUsd > 0 && rateForModelInfo(s.model)?.confidence === "listed").length;
-  usageSummary.sessionsWithFamilyRate = sessions.filter((s) => s.metricSources.cost === "inferred" && s.costUsd > 0 && rateForModelInfo(s.model)?.confidence === "family").length;
-  usageSummary.sessionsWithFallbackRate = sessions.filter((s) => s.metricSources.cost === "inferred" && s.costUsd > 0 && rateForModelInfo(s.model)?.confidence === "fallback").length;
+  usageSummary.sessionsWithMeasuredUsage = sessionsWithMeasuredUsage;
+  usageSummary.sessionsWithMeasuredCost = sessionsWithMeasuredCost;
+  usageSummary.sessionsWithPricedUsage = sessionsWithPricedUsage;
+  usageSummary.sessionsWithListedRate = sessionsWithListedRate;
+  usageSummary.sessionsWithFamilyRate = sessionsWithFamilyRate;
+  usageSummary.sessionsWithFallbackRate = sessionsWithFallbackRate;
   usageSummary.tokenCoverage = sessions.length ? usageSummary.sessionsWithMeasuredUsage / sessions.length : 0;
   usageSummary.costCoverage = sessions.length ? usageSummary.sessionsWithPricedUsage / sessions.length : 0;
   usageSummary.avgOutputTokPerSec = outputTokPerSecCount ? outputTokPerSecTotal / outputTokPerSecCount : 0;
@@ -2373,14 +2580,14 @@ function aggregate(sessions: LiveSession[], scanWarnings: string[] = [], source:
     totalOutputTokens,
     totalToolCalls,
     totalToolErrors,
-    sessionsWithMeasuredDuration: sessions.filter((s) => s.metricSources.duration === "measured").length,
-    sessionsWithMissingModel: sessions.filter((s) => s.metricSources.model === "missing").length,
-    sessionsWithInferredModel: sessions.filter((s) => s.metricSources.model === "inferred").length,
-    sessionsWithMissingTokens: sessions.filter((s) => s.metricSources.tokens === "missing").length,
-    sessionsWithInferredCost: sessions.filter((s) => s.metricSources.cost === "inferred").length,
-    archivedSessions: sessions.filter((s) => s.archived).length,
-    sessionsWithMalformedLines: sessions.filter((s) => s.malformedLineCount > 0).length,
-    staleSessions: sessions.filter((s) => s.staleMs > 1000 * 60 * 60 * 12).length,
+    sessionsWithMeasuredDuration,
+    sessionsWithMissingModel,
+    sessionsWithInferredModel,
+    sessionsWithMissingTokens,
+    sessionsWithInferredCost,
+    archivedSessions,
+    sessionsWithMalformedLines,
+    staleSessions,
     avgDataQuality: sessions.length ? totalQuality / sessions.length : 0,
     scanWarnings,
     byModel,

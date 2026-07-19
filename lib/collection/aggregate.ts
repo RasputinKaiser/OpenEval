@@ -1,6 +1,7 @@
-import { scanSourceSessions, type LiveAggregate, type LiveSession } from "../live";
-import { allCollectionSources, defToSpec } from "./sources";
-import { discoverKnownSources, discoverUnknownCandidates, type UnknownCandidate } from "./discover";
+import crypto from "node:crypto";
+import { collectSourceSessions, scanSourceSessions, type LiveAggregate, type LiveSession } from "../live";
+import { allCollectionSources, defToSpec, type CollectionSourceDef } from "./sources";
+import { discoverKnownSources, discoverUnknownCandidates, type DiscoveredSource, type UnknownCandidate } from "./discover";
 import { displayModelId, PRICING_LIST_DATE, PRICING_SOURCE } from "../pricing";
 
 export interface CollectedSourceSummary {
@@ -193,8 +194,7 @@ const FULL_HISTORY = 100_000;
 /** Sessions retained in the memoized result; per-call `limit` slices down from this. */
 const SESSION_ITEM_CAP = 10_000;
 
-function computeAllSources(): AllSourcesResult {
-  const discovered = discoverKnownSources();
+function computeAllSources(discovered: DiscoveredSource[]): AllSourcesResult {
   const byId = new Map(discovered.map((d) => [d.id, d]));
 
   const summaries: CollectedSourceSummary[] = [];
@@ -202,7 +202,7 @@ function computeAllSources(): AllSourcesResult {
   const modelLists: ModelRollup[][] = [];
   const toolLists: ToolRollup[][] = [];
 
-  for (const def of allCollectionSources()) {
+  for (const def of hooks.sources()) {
     const disc = byId.get(def.id);
     const base: CollectedSourceSummary = {
       id: def.id,
@@ -232,7 +232,9 @@ function computeAllSources(): AllSourcesResult {
     };
 
     if (def.parseable && base.status === "present") {
-      const agg: LiveAggregate = scanSourceSessions(defToSpec(def), FULL_HISTORY, { includeArchived: true });
+      // Reuse discovery's walk (files + warnings) instead of re-walking the
+      // whole source tree for the scan.
+      const agg: LiveAggregate = scanSourceSessions(defToSpec(def), FULL_HISTORY, { includeArchived: true, preCollected: disc?.collected });
       base.archivedSessions = agg.archivedSessions;
       base.parsedSessions = agg.totalSessions;
       base.totalCostUsd = agg.totalCostUsd;
@@ -271,7 +273,7 @@ function computeAllSources(): AllSourcesResult {
 
   // Unknown candidates: exclude every known root from the heuristic scan.
   const knownRoots = discovered.flatMap((d) => d.roots);
-  const unknown = discoverUnknownCandidates(knownRoots);
+  const unknown = hooks.unknown(knownRoots);
 
   return {
     generatedAtMs: Date.now(),
@@ -301,25 +303,134 @@ function computeAllSources(): AllSourcesResult {
   };
 }
 
-/**
- * Full discovery + scan is 0.4–2s and runs synchronously inside server-
- * component renders, so consecutive page loads share one result for a few
- * seconds. Callers that must observe the latest files (the scan API) pass
- * `fresh: true` to bypass and re-prime the memo.
- */
-const SCAN_MEMO_TTL_MS = 5_000;
+/** A parsed session tagged with the source it came from. */
+export type CollectedSession = LiveSession & { sourceId: string; sourceLabel: string };
 
-let scanMemo: { at: number; result: AllSourcesResult } | null = null;
+interface CollectionSnapshot {
+  fingerprint: string;
+  result: AllSourcesResult;
+  /** Full history of every parseable source (archived included), source-tagged. */
+  sessions: CollectedSession[];
+}
+
+/**
+ * Concurrent requests within this window share the last fingerprint check
+ * instead of re-statting every session file per request. `fresh: true`
+ * bypasses it (revalidate NOW) — it does not force a recompute.
+ */
+const FINGERPRINT_TTL_MS = 3_000;
+
+/**
+ * Test seams (the `_setCacheDbForTest` pattern): the real source registry and
+ * discovery walk both point at fixed home-dir roots, so memo behavior is only
+ * testable by injecting temp-dir equivalents.
+ */
+interface CollectionHooks {
+  discover: () => DiscoveredSource[];
+  sources: () => CollectionSourceDef[];
+  unknown: (knownRoots: string[]) => UnknownCandidate[];
+  /** Test-only override; production always uses FINGERPRINT_TTL_MS. */
+  fingerprintTtlMs?: number;
+}
+
+const DEFAULT_HOOKS: CollectionHooks = {
+  discover: discoverKnownSources,
+  sources: allCollectionSources,
+  unknown: discoverUnknownCandidates,
+};
+
+let hooks: CollectionHooks = DEFAULT_HOOKS;
+
+export function _setCollectionHooksForTest(overrides: Partial<CollectionHooks> | null): void {
+  hooks = overrides ? { ...DEFAULT_HOOKS, ...overrides } : DEFAULT_HOOKS;
+  snapshot = null;
+  lastValidatedAt = 0;
+}
+
+/**
+ * Corpus identity from the discovery walk (which already stats every session
+ * file): per-source status plus every file's (path, mtime, size). Any file
+ * added, removed, renamed, touched, or resized changes the fingerprint; an
+ * unchanged fingerprint proves the memoized parse still matches the disk.
+ */
+export function fingerprintDiscovery(discovered: DiscoveredSource[]): string {
+  const h = crypto.createHash("sha256");
+  for (const d of discovered) {
+    h.update(`${d.id} ${d.status} ${d.sessionCount} ${d.lastActivityMs ?? -1}`);
+    if (d.collected) {
+      const files = [...d.collected.files].sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
+      for (const f of files) h.update(`${f.file} ${f.mtime} ${f.size}`);
+    }
+  }
+  return h.digest("hex");
+}
+
+/**
+ * Full discovery + parse is 0.4–2s+ and runs synchronously inside server-
+ * component renders — and one render used to run it up to three times
+ * (sources scan, rollup, timeline). Instead of a blind 5s TTL, the memo is
+ * keyed by the corpus fingerprint: each request re-runs only the cheap
+ * discovery stat pass and serves the memoized parse while the fingerprint
+ * matches. Memoized data is never served across a fingerprint change.
+ */
+let snapshot: CollectionSnapshot | null = null;
+let lastValidatedAt = 0;
+
+function getSnapshot(opts: { fresh?: boolean } = {}): CollectionSnapshot {
+  const now = Date.now();
+  const ttlMs = hooks.fingerprintTtlMs ?? FINGERPRINT_TTL_MS;
+  if (!opts.fresh && snapshot && now - lastValidatedAt < ttlMs) return snapshot;
+  const discovered = hooks.discover();
+  const fingerprint = fingerprintDiscovery(discovered);
+  if (!snapshot || snapshot.fingerprint !== fingerprint) {
+    snapshot = computeSnapshot(discovered, fingerprint);
+  } else if (opts.fresh) {
+    // Explicit rescan with an unchanged corpus: the parse memo stands, but the
+    // unknown-candidate walk covers dirs OUTSIDE the fingerprint — re-run it so
+    // a newly installed agent CLI still surfaces without a known-source change.
+    const unknown = hooks.unknown(discovered.flatMap((d) => d.roots));
+    snapshot = { ...snapshot, result: { ...snapshot.result, unknown } };
+  }
+  lastValidatedAt = now;
+  return snapshot;
+}
+
+function computeSnapshot(discovered: DiscoveredSource[], fingerprint: string): CollectionSnapshot {
+  // Aggregate first: scanSourceSessions primes the per-file session cache, so
+  // the full-history collection below re-reads no transcript bytes. The
+  // collection deliberately covers every parseable def — not just "present"
+  // ones — because archived sessions of a since-deleted root still live in
+  // the parse cache and must keep feeding rollup/timeline (as they did when
+  // those callers collected for themselves).
+  const result = computeAllSources(discovered);
+  const sessions: CollectedSession[] = [];
+  for (const def of hooks.sources()) {
+    if (!def.parseable) continue;
+    for (const s of collectSourceSessions(defToSpec(def), FULL_HISTORY, { includeArchived: true })) {
+      sessions.push({ ...s, sourceId: def.id, sourceLabel: def.label });
+    }
+  }
+  return { fingerprint, result, sessions };
+}
 
 function withLimit(result: AllSourcesResult, limit: number): AllSourcesResult {
-  return { ...result, sessions: result.sessions.slice(0, limit) };
+  // Restamp the reference time on every serve: the memo can outlive the old
+  // 5s TTL by minutes, and relative "x ago" labels must not freeze with it.
+  return { ...result, generatedAtMs: Date.now(), sessions: result.sessions.slice(0, limit) };
 }
 
 export function scanAllSources(limit = 200, opts: { fresh?: boolean } = {}): AllSourcesResult {
-  if (!opts.fresh && scanMemo && Date.now() - scanMemo.at < SCAN_MEMO_TTL_MS) {
-    return withLimit(scanMemo.result, limit);
-  }
-  const result = computeAllSources();
-  scanMemo = { at: Date.now(), result };
-  return withLimit(result, limit);
+  return withLimit(getSnapshot(opts).result, limit);
+}
+
+/**
+ * The shared full-history session collection (archived included), parsed at
+ * most once per corpus fingerprint. Collection/home/timeline callers pass
+ * this to `buildRollup` / `buildTimeline` so one request never parses the
+ * session history more than once.
+ */
+export function collectAllSessions(opts: { fresh?: boolean } = {}): CollectedSession[] {
+  // Copy the array (not the sessions): an in-place sort/splice by a caller
+  // must never reorder the memoized snapshot served to other requests.
+  return [...getSnapshot(opts).sessions];
 }

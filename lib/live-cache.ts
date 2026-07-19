@@ -25,35 +25,93 @@ const CACHE_DB_PATH = path.join(ROOT, "data", "live-cache.db");
 
 let db: Database.Database | null = null;
 let dbFailed = false;
+let triedCorruptionRecovery = false;
+
+// better-sqlite3 has no implicit statement cache, so per-call conn.prepare()
+// recompiles the SQL — measured at 2.5× the cost of the actual point lookup
+// across a full scan. Statements are owned by their connection: the cache
+// resets whenever the handle changes (corruption recovery, test-hook swap).
+let stmtOwner: Database.Database | null = null;
+let stmtCache = new Map<string, Database.Statement>();
+
+function stmt(conn: Database.Database, sql: string): Database.Statement {
+  if (stmtOwner !== conn) {
+    stmtOwner = conn;
+    stmtCache = new Map();
+  }
+  let s = stmtCache.get(sql);
+  if (!s) {
+    s = conn.prepare(sql);
+    stmtCache.set(sql, s);
+  }
+  return s;
+}
+
+function openCacheDb(): Database.Database {
+  fs.mkdirSync(path.dirname(CACHE_DB_PATH), { recursive: true });
+  const conn = new Database(CACHE_DB_PATH, { timeout: 5_000 });
+  conn.pragma("busy_timeout = 5000");
+  try { conn.pragma("journal_mode = WAL"); } catch {}
+  conn.pragma("synchronous = NORMAL");
+  conn.exec(SCHEMA);
+  // Additive migration for DBs created before prompt versioning existed.
+  try { conn.exec("ALTER TABLE outcome_judgments ADD COLUMN prompt_version INTEGER"); } catch {}
+  // Permanent means the SESSION itself is unjudgeable (missing file or no
+  // conversational text). Backend outages remain retryable after recovery.
+  try { conn.exec("ALTER TABLE judge_failures ADD COLUMN permanent INTEGER NOT NULL DEFAULT 0"); } catch {}
+  // Additive migration: remember each file's fts rowid so re-indexing can
+  // delete by rowid instead of scanning the UNINDEXED `file` column.
+  try { conn.exec("ALTER TABLE fts_meta ADD COLUMN fts_rowid INTEGER"); } catch {}
+  // Text extraction evolves independently from the live-session parser.
+  // Old rows must be offered to the explicit indexer again after a change.
+  try { conn.exec("ALTER TABLE fts_meta ADD COLUMN index_version INTEGER NOT NULL DEFAULT 0"); } catch {}
+  return conn;
+}
 
 function getCacheDb(): Database.Database | null {
   if (db) return db;
   if (dbFailed) return null;
   try {
-    fs.mkdirSync(path.dirname(CACHE_DB_PATH), { recursive: true });
-    const conn = new Database(CACHE_DB_PATH, { timeout: 5_000 });
-    conn.pragma("busy_timeout = 5000");
-    try { conn.pragma("journal_mode = WAL"); } catch {}
-    conn.pragma("synchronous = NORMAL");
-    conn.exec(SCHEMA);
-    // Additive migration for DBs created before prompt versioning existed.
-    try { conn.exec("ALTER TABLE outcome_judgments ADD COLUMN prompt_version INTEGER"); } catch {}
-    // Permanent means the SESSION itself is unjudgeable (missing file or no
-    // conversational text). Backend outages remain retryable after recovery.
-    try { conn.exec("ALTER TABLE judge_failures ADD COLUMN permanent INTEGER NOT NULL DEFAULT 0"); } catch {}
-    // Additive migration: remember each file's fts rowid so re-indexing can
-    // delete by rowid instead of scanning the UNINDEXED `file` column.
-    try { conn.exec("ALTER TABLE fts_meta ADD COLUMN fts_rowid INTEGER"); } catch {}
-    // Text extraction evolves independently from the live-session parser.
-    // Old rows must be offered to the explicit indexer again after a change.
-    try { conn.exec("ALTER TABLE fts_meta ADD COLUMN index_version INTEGER NOT NULL DEFAULT 0"); } catch {}
-    db = conn;
-    return conn;
-  } catch {
+    db = openCacheDb();
+    return db;
+  } catch (e) {
+    // A corrupt cache file used to leave the process cache-less until someone
+    // deleted it by hand (dbFailed is sticky). The whole file is disposable —
+    // move it aside for forensics and start fresh, once.
+    const code = (e as { code?: unknown })?.code;
+    if ((code === "SQLITE_CORRUPT" || code === "SQLITE_NOTADB") && !triedCorruptionRecovery) {
+      triedCorruptionRecovery = true;
+      try {
+        const suffix = `.corrupt-${Date.now()}`;
+        fs.renameSync(CACHE_DB_PATH, CACHE_DB_PATH + suffix);
+        // WAL/SHM siblings belong to the corrupt file; a fresh DB must not inherit them.
+        for (const ext of ["-wal", "-shm"]) {
+          try { fs.renameSync(CACHE_DB_PATH + ext, CACHE_DB_PATH + ext + suffix); } catch {}
+        }
+        db = openCacheDb();
+        return db;
+      } catch {}
+    }
     // No cache is a slowdown, never an error — scans still work uncached.
     dbFailed = true;
     return null;
   }
+}
+
+/**
+ * Gate for session rows deserialized from disk: a torn or garbage row must
+ * read as a cache miss, never as a crash in whoever dereferences the session.
+ * Checks only the containers downstream code dereferences unconditionally
+ * (refreshInferredSessionCost, appendArchivedSessions, aggregate).
+ */
+function isPlausibleCachedSession(s: unknown): boolean {
+  if (typeof s !== "object" || s === null) return false;
+  const c = s as Record<string, unknown>;
+  if (typeof c.metricSources !== "object" || c.metricSources === null) return false;
+  if (!Array.isArray(c.usageSegments)) return false;
+  if (typeof c.lastEventAt !== "number") return false;
+  if (c.modelUsage != null && !Array.isArray(c.modelUsage)) return false;
+  return true;
 }
 
 const SCHEMA = `
@@ -99,14 +157,15 @@ export function cacheGet(file: string, mtimeMs: number, size: number): { hit: bo
   const conn = getCacheDb();
   if (!conn) return { hit: false, session: null };
   try {
-    const row = conn
-      .prepare("SELECT mtime_ms, size, parser_version, session_json FROM session_cache WHERE file = ?")
+    const row = stmt(conn, "SELECT mtime_ms, size, parser_version, session_json FROM session_cache WHERE file = ?")
       .get(file) as { mtime_ms: number; size: number; parser_version: number; session_json: string | null } | undefined;
     if (!row || row.mtime_ms !== mtimeMs || row.size !== size || row.parser_version !== PARSER_VERSION) {
       return { hit: false, session: null };
     }
     if (row.session_json == null) return { hit: true, session: null };
-    return { hit: true, session: JSON.parse(row.session_json) as LiveSession };
+    const session = JSON.parse(row.session_json) as LiveSession;
+    if (!isPlausibleCachedSession(session)) return { hit: false, session: null };
+    return { hit: true, session };
   } catch {
     return { hit: false, session: null };
   }
@@ -116,14 +175,13 @@ export function cachePut(file: string, mtimeMs: number, size: number, session: L
   const conn = getCacheDb();
   if (!conn) return;
   try {
-    conn
-      .prepare(
-        `INSERT INTO session_cache (file, mtime_ms, size, parser_version, session_json)
-         VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT(file) DO UPDATE SET mtime_ms = excluded.mtime_ms, size = excluded.size,
-           parser_version = excluded.parser_version, session_json = excluded.session_json`,
-      )
-      .run(file, mtimeMs, size, PARSER_VERSION, session ? JSON.stringify(session) : null);
+    stmt(
+      conn,
+      `INSERT INTO session_cache (file, mtime_ms, size, parser_version, session_json)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(file) DO UPDATE SET mtime_ms = excluded.mtime_ms, size = excluded.size,
+         parser_version = excluded.parser_version, session_json = excluded.session_json`,
+    ).run(file, mtimeMs, size, PARSER_VERSION, session ? JSON.stringify(session) : null);
   } catch {
     // Best-effort; a failed write only costs a future re-parse.
   }
@@ -149,9 +207,51 @@ export function listCachedSessionsUnder(prefixes: string[]): Array<{ file: strin
       .prepare(`SELECT file, session_json, parser_version FROM session_cache WHERE session_json IS NOT NULL AND (${where})`)
       .all(...args) as Array<{ file: string; session_json: string; parser_version: number }>;
     for (const r of rows) {
-      try { out.push({ file: r.file, session: JSON.parse(r.session_json) as LiveSession, parserVersion: r.parser_version }); } catch {}
+      try {
+        const session = JSON.parse(r.session_json) as LiveSession;
+        if (isPlausibleCachedSession(session)) out.push({ file: r.file, session, parserVersion: r.parser_version });
+      } catch {}
     }
   } catch {}
+  return out;
+}
+
+/**
+ * File paths (only) of every cached parsed session under `prefixes`. `file` is
+ * the first column of the row, so SQLite answers without touching the
+ * session_json overflow pages — measured 2.8ms vs 469ms for the full-JSON
+ * variant on a 1,700-row cache. Pair with getCachedSessionRows to hydrate just
+ * the survivors of a cheap filter (the archived-session merge keeps ~3%).
+ */
+export function listCachedFilesUnder(prefixes: string[]): string[] {
+  const conn = getCacheDb();
+  if (!conn || prefixes.length === 0) return [];
+  try {
+    const where = prefixes.map(() => "file LIKE ? ESCAPE '\\'").join(" OR ");
+    const args = prefixes.map((p) => escapeLike(p.replace(/\/+$/, "")) + "/%");
+    const rows = conn
+      .prepare(`SELECT file FROM session_cache WHERE session_json IS NOT NULL AND (${where})`)
+      .all(...args) as Array<{ file: string }>;
+    return rows.map((r) => r.file);
+  } catch {
+    return [];
+  }
+}
+
+/** Hydrate specific cached sessions by primary key (post-filter companion to listCachedFilesUnder). */
+export function getCachedSessionRows(files: string[]): Array<{ file: string; session: LiveSession; parserVersion: number }> {
+  const conn = getCacheDb();
+  if (!conn || files.length === 0) return [];
+  const out: Array<{ file: string; session: LiveSession; parserVersion: number }> = [];
+  for (const file of files) {
+    try {
+      const row = stmt(conn, "SELECT session_json, parser_version FROM session_cache WHERE file = ?")
+        .get(file) as { session_json: string | null; parser_version: number } | undefined;
+      if (!row || row.session_json == null) continue;
+      const session = JSON.parse(row.session_json) as LiveSession;
+      if (isPlausibleCachedSession(session)) out.push({ file, session, parserVersion: row.parser_version });
+    } catch {}
+  }
   return out;
 }
 
@@ -393,4 +493,9 @@ export function _setCacheDbForTest(conn: Database.Database | null): void {
   if (conn) conn.exec(SCHEMA);
   db = conn;
   dbFailed = false;
+  triedCorruptionRecovery = false;
+  // Cached statements belong to the previous connection; stmt() would reset
+  // lazily on owner mismatch, but dropping them now releases the old handles.
+  stmtOwner = null;
+  stmtCache = new Map();
 }
