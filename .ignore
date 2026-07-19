@@ -2,3 +2,6 @@
 # Lockfile matches drown out source hits in repo-wide searches; read it
 # directly (Read / jq / python) when you actually need dependency metadata.
 package-lock.json
+# Per-run measurement artifacts — numbers live in ledger.md/baseline.json;
+# raw run JSONs only add noise to repo-wide searches.
+.optimize/runs/
