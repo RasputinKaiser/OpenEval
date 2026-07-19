@@ -56,6 +56,63 @@
       "ok": {
         "test": true
       }
+    },
+    {
+      "ts": "2026-07-19T01:29:14+00:00",
+      "git": {
+        "rev": "b29139e",
+        "dirty": false
+      },
+      "medians": {
+        "types": 5.321,
+        "test": 12.749,
+        "lint": 15.048,
+        "build": 52.502
+      },
+      "output_tokens": {
+        "types": 0,
+        "test": 75,
+        "lint": 67,
+        "build": 801
+      },
+      "ok": {
+        "types": true,
+        "test": true,
+        "lint": true,
+        "build": true
+      }
+    },
+    {
+      "ts": "2026-07-19T01:31:52+00:00",
+      "git": {
+        "rev": "b29139e",
+        "dirty": true
+      },
+      "medians": {
+        "lint": 2.275
+      },
+      "output_tokens": {
+        "lint": 67
+      },
+      "ok": {
+        "lint": true
+      }
+    },
+    {
+      "ts": "2026-07-19T01:32:36+00:00",
+      "git": {
+        "rev": "b29139e",
+        "dirty": true
+      },
+      "medians": {
+        "bench": 2.91
+      },
+      "output_tokens": {
+        "bench": 28
+      },
+      "ok": {
+        "bench": true
+      }
     }
   ]
 }

@@ -15,3 +15,16 @@ refetch waste 104.9k over 10 sessions (snapshot of primary + 2 worktree slugs).
 - Tokens caveat: repo_tokens rose 385.5k → 397.9k during the run — self-inflation from .optimize/runs/*.json artifacts, not a regression.
 - Backlog: top 3 below.
 - Next run: worktree bootstrap costs ~45s npm ci + cold caches — expect types ~9.3s warm, not 19.7s. Start at backlog #1 (runtime benchmark harness for lib/live.ts scan). Probes are trusted. Session-token comparisons must reuse the same 10-transcript snapshot set or skip the claim.
+
+## Run 2 — 2026-07-18 (full, b29139e, clean tree, estimator heuristic-chars/4, 10k tok ≈ 60s)
+MEASUREMENT NOISE FLAG: machine load avg 18–21 (other agent sessions). The same
+lint command measured 7.7s (run 1) / 15.0s (run 2 sweep) / 2.3s (idle recheck,
+eslint cache warm) with zero relevant code change. Cross-run wall-times on this
+box are unreliable; only back-to-back A/B pairs within one run count as evidence.
+- Probes (warm caches): types 5.3s (cold 19.7s run 1, −73% — incremental working), test 12.7s @ 75 tok output, lint noisy (see flag), build 52.5s under load (cold 43.9s — backlog #3 stays open, number is load-poisoned).
+- Applied: optimize: runtime benchmark for live-session parsing (6c8be58) | new `npm run bench:live` + `bench` probe. Baseline: claude-projects 71.8MB/s cold, codex-sessions 105.0MB/s cold, warm cache hit <1ms; probe median 2.91s, 28 tok output. Deterministic 32MB corpora from golden fixtures; in-memory cache DB; never reads real session dirs. Closes run-1 backlog #1.
+- Applied: optimize: .ignore .optimize/runs/ (86c6e9d) | rg file set for .optimize: 4 files (ledger/backlog/baseline/probes), runs/*.json out. Closes run-1 backlog #4.
+- Verified green after fixes: tsc, lint (0 warnings), test ×3 (run-2 sweep), bench ×4.
+- Tokens: probe outputs now test 75 / lint 67 / build 801 / bench 28 — no loud probes left. Session mining skipped (no session-area fix this run; run-1 snapshot remains the reference set).
+- Backlog: top 3 below.
+- Next run: bench probe is the harness — attempt one parser optimization. Lead: claude-projects parses 30% slower than codex (71.8 vs 105.0MB/s) on same-size corpora; profile parseLiveSession before touching anything, and verify with back-to-back bench medians in the same process batch (machine-load flag above).
