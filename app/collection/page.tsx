@@ -1,5 +1,5 @@
 import CollectionClient from "@/components/CollectionClient";
-import { scanAllSources, type AllSourcesResult } from "@/lib/collection/aggregate";
+import { collectAllSessions, scanAllSources, type AllSourcesResult } from "@/lib/collection/aggregate";
 import { buildRollup, type RollupReport } from "@/lib/collection/rollup";
 
 export const dynamic = "force-dynamic";
@@ -23,6 +23,8 @@ export default async function CollectionPage({ searchParams }: { searchParams?: 
     };
   }
   let rollup: RollupReport | undefined;
-  try { rollup = buildRollup(); } catch {}
+  // Reuse the request's shared parse (same fingerprint-memoized snapshot as
+  // scanAllSources above) instead of re-collecting every source.
+  try { rollup = buildRollup(collectAllSessions()); } catch {}
   return <CollectionClient initialData={data} error={error} initialQuery={q} rollup={rollup} />;
 }

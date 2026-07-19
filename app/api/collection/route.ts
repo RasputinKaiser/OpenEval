@@ -23,6 +23,8 @@ export async function GET(request: Request) {
     );
   }
 
+  // fresh = revalidate the corpus fingerprint NOW (skip the anti-stat-storm
+  // window); it re-parses only if the fingerprint actually changed.
   const data = scanAllSources(limit, { fresh: true });
   return NextResponse.json(
     data,

@@ -2,7 +2,7 @@ import Link from "next/link";
 import clsx from "clsx";
 import { countRuns, listRuns } from "@/lib/db";
 import { loadCases } from "@/lib/cases";
-import { scanAllSources, type AllSourcesResult } from "@/lib/collection/aggregate";
+import { collectAllSessions, scanAllSources, type AllSourcesResult } from "@/lib/collection/aggregate";
 import { buildTimeline, type TimelineReport } from "@/lib/insights/collect";
 import StatusBadge from "@/components/StatusBadge";
 import HarnessBadge from "@/components/HarnessBadge";
@@ -40,7 +40,9 @@ export default async function Page() {
   let collection: AllSourcesResult | null = null;
   let timeline: TimelineReport | null = null;
   try { collection = scanAllSources(12); } catch {}
-  try { timeline = buildTimeline(); } catch {}
+  // Same fingerprint-memoized snapshot as scanAllSources — the timeline no
+  // longer re-parses the full history on every dashboard render.
+  try { timeline = buildTimeline(collectAllSessions()); } catch {}
 
   const byCat = cases.reduce<Record<string, number>>((a, c) => { a[c.category] = (a[c.category] || 0) + 1; return a; }, {});
   const recentSessions = collection?.sessions.slice(0, 6) ?? [];
