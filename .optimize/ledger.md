@@ -32,3 +32,15 @@ box are unreliable; only back-to-back A/B pairs within one run count as evidence
 - Tokens: probe outputs now test 75 / lint 67 / build 801 / bench 28 — no loud probes left. Session mining skipped (no session-area fix this run; run-1 snapshot remains the reference set).
 - Backlog: top 3 below.
 - Next run: bench probe is the harness — attempt one parser optimization. Lead: claude-projects parses 30% slower than codex (71.8 vs 105.0MB/s) on same-size corpora; profile parseLiveSession before touching anything, and verify with back-to-back bench medians in the same process batch (machine-load flag above).
+
+## Run 3 — 2026-07-18 (runtime, e68f23d, clean tree, estimator heuristic-chars/4, 10k tok ≈ 60s)
+Worked backlog #1 (parser hot path). CPU profile attributed the claude/codex gap:
+parseTimestamp 213.8ms (Date.parse/record), tokenSet+sentiment regexes ~360ms,
+GC 140.9ms, vs an I/O floor ~460ms.
+- Applied: optimize: cut live-parser per-record costs (b014e9b) | in-process interleaved A/B (8 samples/side, ×2 runs): claude 842→656ms (−22.1%) @load≈28 and 373→331ms (−11.1%) @load≈14; codex 304→253ms (−17.0%) and 217→203ms (−6.6%). Post-fix profile: parseTimestamp 213.8→118.6ms, tokenSet 207.5→38.9ms, GC 140.9→80.3ms, readFileLines 163.0→89.6ms. Output equivalence: sha256 identical 116/116 entries (goldens + 2×32MB corpora + 9 nasty fixtures + 10 real transcripts/67MB); fastIso fuzz 700,027 strings / 0 mismatches; PARSER_VERSION unchanged (byte-identical outputs). Suite green, lint 0 warnings.
+- Applied: optimize: perf-refactor verification harness (ff78a27) | scripts/perf/{equiv-dump,ab-compare,fuzz-fastiso,gen-nasty} — makes the next parser change's verification ~free (meta-rule).
+- Closed backlog #2 as not-worth-it: tsx child startup 0.44s vs 0.17s user-CPU (strip-types) ×28 test files ≈ <1s wall across parallel workers, against a repo-wide .ts-extension import rewrite. Numbers recorded; do not retry.
+- CONSEQUENCE NOTE (from run 1's dot reporter): `npm test` piped output no longer emits `# pass/# fail` TAP lines — the openeval-dev-loop skill's verify one-liner greps for them and now matches nothing. Judge by exit code, or ask the owner to update the skill.
+- Measurement method note: cross-process bench runs at load 14–30 swung ±40%; the accepted numbers come from scripts/perf/ab-compare.ts (both module graphs in ONE process, alternating AB/BA) — use it for all future parser A/Bs.
+- Backlog: top 3 below.
+- Next run: parser is near its I/O+JSON.parse floor (remaining self-time is JSON.parse per line, ~64% of parse cost). Candidates: (a) prefix-sniff to skip JSON.parse on record types both parsers ignore — HIGH equivalence risk, needs the equiv net; (b) shift runtime focus to scanSourceSessions end-to-end (directory walk + cache-hit path) or dashboard route timings; (c) devloop backlog #3 (warm build on idle machine). Session-token comparisons: run-1 snapshot set only.
