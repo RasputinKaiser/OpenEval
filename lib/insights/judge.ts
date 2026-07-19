@@ -60,6 +60,39 @@ export interface JudgeDigest {
 const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n) + "…" : s);
 
 /**
+ * First index in `points` (sorted ascending by `at`) whose `at` is >= t.
+ * Local copy of lib/insights/timeline.ts's lowerBoundAt (not exported there);
+ * keep the boundary semantics identical: `at === t` lands on the AFTER side.
+ */
+const lowerBoundAt = (points: SessionPoint[], t: number): number => {
+  let lo = 0, hi = points.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (points[mid].at < t) lo = mid + 1; else hi = mid;
+  }
+  return lo;
+};
+
+/** Sessions per side of a marker window — mirrors markerImpact's default. */
+const MARKER_WINDOW = 20;
+
+/**
+ * The `window` sessions on each side of a marker's adoption boundary.
+ * `points` must be sorted ascending by `at` (as `toPoints` returns them — both
+ * judge entry points receive `collectAllPoints()` output): the windows are
+ * contiguous slices around the binary-searched boundary index, equivalent to
+ * `filter(at < t).slice(-window)` / `filter(at >= t).slice(0, window)` without
+ * the two O(N) filters per marker.
+ */
+function markerWindows(points: SessionPoint[], firstSeenAt: number, window: number): { before: SessionPoint[]; after: SessionPoint[] } {
+  const split = lowerBoundAt(points, firstSeenAt); // first index with at >= firstSeenAt
+  return {
+    before: points.slice(Math.max(0, split - window), split),
+    after: points.slice(split, split + window),
+  };
+}
+
+/**
  * Pull just the conversational spine out of a transcript: the user's words and
  * the closing assistant message. Understands the Claude-projects shape
  * (message.content string/blocks), both Codex generations, and Hermes
@@ -124,6 +157,7 @@ export function buildJudgePrompt(digest: JudgeDigest, stats: { durationMin: numb
  * Choose which sessions deserve a judge's attention, most valuable first:
  * the before/after windows of every adoption marker (those sessions decide the
  * impact table), then an even spread over the rest for the overall trend line.
+ * `points` must be sorted ascending by `at` (see markerWindows).
  */
 export function selectJudgeSample(points: SessionPoint[], markers: Marker[], alreadyJudged: Set<string>, max: number): SessionPoint[] {
   const chosen: SessionPoint[] = [];
@@ -136,8 +170,7 @@ export function selectJudgeSample(points: SessionPoint[], markers: Marker[], alr
 
   for (const m of markers) {
     if (m.kind === "model" || m.sessionCount < 3) continue; // mirrors the impact filter
-    const before = points.filter((p) => p.at < m.firstSeenAt).slice(-20);
-    const after = points.filter((p) => p.at >= m.firstSeenAt).slice(0, 20);
+    const { before, after } = markerWindows(points, m.firstSeenAt, MARKER_WINDOW);
     // Interleave so a small budget still covers both sides of the marker.
     for (let i = 0; i < Math.max(before.length, after.length); i++) {
       if (after[i]) push(after[i]);
@@ -297,8 +330,7 @@ function selectJudgeSampleWindowsOnly(points: SessionPoint[], markers: Marker[],
   const seen = new Set<string>();
   for (const m of markers) {
     if (m.kind === "model" || m.sessionCount < 3) continue; // mirrors the impact filter
-    const before = points.filter((p) => p.at < m.firstSeenAt).slice(-20);
-    const after = points.filter((p) => p.at >= m.firstSeenAt).slice(0, 20);
+    const { before, after } = markerWindows(points, m.firstSeenAt, MARKER_WINDOW);
     for (const p of [...before, ...after]) {
       if (!p.path || seen.has(p.path) || alreadyJudged.has(p.path)) continue;
       seen.add(p.path);

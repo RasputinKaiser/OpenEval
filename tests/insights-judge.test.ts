@@ -124,6 +124,35 @@ test("selectJudgeSample prioritizes sessions around markers, skips judged, respe
   assert.equal(selectJudgeSample(points, markers, judgedAll, 6).length, 0);
 });
 
+test("judge sampling boundary: a session at exactly firstSeenAt lands on the after side", () => {
+  // 50 sessions at t=1..50; the marker's firstSeenAt coincides EXACTLY with
+  // the session at t=25 (adoption session). Pins the `<` / `>=` tie semantics
+  // of the binary-searched windows: at === firstSeenAt → after, never before.
+  const sessions = [];
+  for (let t = 1; t <= 50; t++) {
+    sessions.push(session({ startedAt: t * 1000, skillsUsed: t >= 25 ? ["tdd"] : [] }));
+  }
+  const points = toPoints(sessions);
+  const marker = detectMarkers(points).find((m) => m.name === "tdd")!;
+  assert.equal(marker.firstSeenAt, 25_000);
+  assert.ok(points.some((p) => p.at === marker.firstSeenAt), "corpus must contain an exact-tie point");
+
+  const windows = markerWindowSample(points, [marker], new Set());
+  // Full windows: 20 strictly-before (t=5..24) + 20 from the boundary on (t=25..44).
+  assert.equal(windows.length, 40);
+  const before = windows.filter((p) => p.at < marker.firstSeenAt);
+  const after = windows.filter((p) => p.at >= marker.firstSeenAt);
+  assert.deepEqual(before.map((p) => p.at), Array.from({ length: 20 }, (_, i) => (5 + i) * 1000));
+  assert.deepEqual(after.map((p) => p.at), Array.from({ length: 20 }, (_, i) => (25 + i) * 1000));
+  // The tie point itself is in the after window, exactly once.
+  assert.equal(windows.filter((p) => p.at === marker.firstSeenAt).length, 1);
+
+  // selectJudgeSample interleaves after[0] first — the tie point leads the sample.
+  const sample = selectJudgeSample(points, [marker], new Set(), 4);
+  assert.equal(sample[0].at, marker.firstSeenAt);
+  assert.deepEqual(sample.map((p) => p.at).sort((a, b) => a - b), [23_000, 24_000, 25_000, 26_000]);
+});
+
 test("toPoints prefers persisted judge verdicts over the heuristic", () => {
   const s = session({ startedAt: 1000, outcomeSignals: { userNegative: 2, errorTail: true } as OutcomeSignals });
   const judgments = new Map<string, StoredJudgment>([
