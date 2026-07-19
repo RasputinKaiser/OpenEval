@@ -36,20 +36,31 @@ export type Sentiment = "positive" | "negative" | "neutral";
  */
 export function classifySentiment(text: string): Sentiment {
   if (!text) return "neutral";
-  const neg = NEGATIVE.test(text);
-  const pos = POSITIVE.test(text);
-  if (neg) return "negative";
-  if (pos) return "positive";
+  if (NEGATIVE.test(text)) return "negative";
+  if (POSITIVE.test(text)) return "positive";
   return "neutral";
 }
 
 /** Does this user turn look like a re-statement of the previous ask (a struggle signal)? */
 export function isRephrase(text: string, prevUserText: string | null): boolean {
-  if (!text) return false;
-  if (REPHRASE_LEAD.test(text)) return true;
-  if (!prevUserText) return false;
+  return isRephraseTracked(text, prevUserText, { tokens: null });
+}
+
+/**
+ * isRephrase for the parsers' sequential scan. `cache.tokens` must hold the
+ * set this function stored on the previous call (i.e. for prevUserText), or
+ * null; on return it holds the set for `text` under the same rule. Callers
+ * must update their prev-text variable in lockstep with the call. Returns the
+ * same booleans as isRephrase — the cache only avoids tokenizing the previous
+ * turn's text a second time.
+ */
+export function isRephraseTracked(text: string, prevUserText: string | null, cache: { tokens: Set<string> | null }): boolean {
+  if (!text) { cache.tokens = null; return false; }
+  if (REPHRASE_LEAD.test(text)) { cache.tokens = null; return true; }
+  if (!prevUserText) { cache.tokens = null; return false; }
   // High token overlap with the previous short-ish message → likely a rephrase.
-  const a = tokenSet(text), b = tokenSet(prevUserText);
+  const a = tokenSet(text), b = cache.tokens ?? tokenSet(prevUserText);
+  cache.tokens = a;
   if (a.size < 3 || b.size < 3) return false;
   let shared = 0;
   for (const t of a) if (b.has(t)) shared++;
@@ -75,7 +86,23 @@ export function mcpServerFromTool(toolName: string | undefined): string | null {
 }
 
 function tokenSet(text: string): Set<string> {
-  return new Set(
-    text.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 2),
-  );
+  // Single scan with the semantics of the original chain (lowercase →
+  // replace non-[a-z0-9\s] with space → split on \s+ → keep length>2):
+  // after lowercasing, every char outside [a-z0-9] is a token boundary.
+  // toLowerCase() must stay the native call — Unicode mappings like
+  // U+212A (KELVIN SIGN) → "k" land inside [a-z] and an ASCII-only fold
+  // would drop them.
+  const s = text.toLowerCase();
+  const out = new Set<string>();
+  let start = -1;
+  for (let i = 0; i <= s.length; i++) {
+    const c = i < s.length ? s.charCodeAt(i) : -1;
+    if ((c >= 97 && c <= 122) || (c >= 48 && c <= 57)) {
+      if (start < 0) start = i;
+    } else if (start >= 0) {
+      if (i - start > 2) out.add(s.slice(start, i));
+      start = -1;
+    }
+  }
+  return out;
 }

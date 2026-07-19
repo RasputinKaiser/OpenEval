@@ -7,7 +7,7 @@ import { getPath, type FieldMapping } from "./adapters/generic";
 import { hermesJsonToRecords } from "./adapters/hermes";
 import { displayModelId, estimateCostUsd, isPlaceholderModel, rateForModelInfo } from "./pricing";
 import { cacheGet, cachePut, listCachedSessionsUnder, PARSER_VERSION } from "./live-cache";
-import { classifySentiment, isRephrase, looksLikeApologyOrFailure, looksLikeTestsPassed, mcpServerFromTool, JUDGE_PROMPT_MARKER } from "./insights/signals";
+import { classifySentiment, isRephraseTracked, looksLikeApologyOrFailure, looksLikeTestsPassed, mcpServerFromTool, JUDGE_PROMPT_MARKER } from "./insights/signals";
 import { hasAdapter, getAdapter, getDefaultHarness, invalidateRegistry } from "./adapters/registry";
 import { invalidateDescriptorCache } from "./adapters/loader";
 
@@ -433,6 +433,54 @@ export function codexToolOutputError(output: string): boolean {
 
 const MIN_PLAUSIBLE_MS = 1_577_836_800_000; // 2020-01-01
 
+const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+// `!line.trim()` ⇔ `!/\S/.test(line)`: regex \s and String.trim strip the
+// same WhiteSpace ∪ LineTerminator set (incl. NBSP), and the test allocates
+// no per-line string. Shared, non-global — no lastIndex state.
+const NON_WS_RE = /\S/;
+
+// Hoisted from the per-tool_use hot path; contents must not change without
+// auditing readLikeOperations/writeLikeOperations semantics.
+const READ_LIKE_TOOL_HINTS = ["read", "grep", "glob", "webfetch", "websearch"];
+const WRITE_TOOL_NAMES = ["write", "edit", "multiedit"];
+
+/**
+ * Exact-shape fast path for `YYYY-MM-DDTHH:MM:SS.mmmZ` (toISOString output —
+ * what these JSONL files carry on every record; Date.parse's general grammar
+ * costs ~1µs/call, which dominated 6% of a cold scan). Returns NaN unless the
+ * string matches the shape with in-range components (so out-of-range dates
+ * fall back to Date.parse's own NaN, and years < 100 fall back because
+ * Date.UTC would remap them to 1900+y). For matched strings, ECMA-262 defines
+ * Date.parse of an ISO-UTC string as exactly the UTC MakeDate of its
+ * components, which is what Date.UTC computes — identical results.
+ */
+function fastIsoUtcMs(value: string): number {
+  if (value.length !== 24) return NaN;
+  if (
+    value.charCodeAt(4) !== 45 || value.charCodeAt(7) !== 45 || value.charCodeAt(10) !== 84 ||
+    value.charCodeAt(13) !== 58 || value.charCodeAt(16) !== 58 || value.charCodeAt(19) !== 46 ||
+    value.charCodeAt(23) !== 90
+  ) return NaN;
+  let y = 0, mo = 0, d = 0, h = 0, mi = 0, s = 0, ms = 0;
+  for (let i = 0; i < 23; i++) {
+    if (i === 4 || i === 7 || i === 10 || i === 13 || i === 16 || i === 19) continue;
+    const c = value.charCodeAt(i) - 48;
+    if (c < 0 || c > 9) return NaN;
+    if (i < 4) y = y * 10 + c;
+    else if (i < 7) mo = mo * 10 + c;
+    else if (i < 10) d = d * 10 + c;
+    else if (i < 13) h = h * 10 + c;
+    else if (i < 16) mi = mi * 10 + c;
+    else if (i < 19) s = s * 10 + c;
+    else ms = ms * 10 + c;
+  }
+  if (y < 100 || mo < 1 || mo > 12 || d < 1 || h > 23 || mi > 59 || s > 59) return NaN;
+  const leap = y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0);
+  if (d > (mo === 2 && leap ? 29 : DAYS_IN_MONTH[mo - 1])) return NaN;
+  return Date.UTC(y, mo - 1, d, h, mi, s, ms);
+}
+
 function parseTimestamp(value: unknown): number | null {
   let ms: number | null = null;
   if (typeof value === "number" && Number.isFinite(value)) {
@@ -440,7 +488,8 @@ function parseTimestamp(value: unknown): number | null {
     // near 1970 and corrupts startedAt. Anything below ~1e12 is seconds.
     ms = value < 1e12 ? value * 1000 : value;
   } else if (typeof value === "string") {
-    const parsed = Date.parse(value);
+    const fast = fastIsoUtcMs(value);
+    const parsed = Number.isNaN(fast) ? Date.parse(value) : fast;
     if (Number.isFinite(parsed)) ms = parsed;
   }
   // Reject implausible/placeholder timestamps rather than let them pull startedAt down.
@@ -509,6 +558,14 @@ function coalesceModel(...values: unknown[]): string | null {
 }
 
 function ensureModelUsage(map: Map<string, LiveModelUsage>, model: unknown): LiveModelUsage | null {
+  // Keys are inserted as normalizeModelValue output and normalize is
+  // idempotent on them, so a raw string that exactly matches an existing key
+  // resolves to the same entry the normalized path would — skip the per-call
+  // trim/placeholder work for the overwhelmingly common repeat model.
+  if (typeof model === "string") {
+    const hit = map.get(model);
+    if (hit) return hit;
+  }
   const normalized = normalizeModelValue(model);
   if (!normalized) return null;
   let usage = map.get(normalized);
@@ -614,6 +671,13 @@ function topEntries(map: Map<string, number>, limit: number): Array<{ key: strin
 
 function extractFilePaths(value: unknown, out = new Set<string>()): Set<string> {
   if (typeof value === "string") {
+    // Every alternation below requires one of these four substrings
+    // ("/private/tmp/" contains "/tmp/", "../" contains "./"), so bailing on
+    // their absence skips the regex for the common no-path string leaf.
+    if (
+      value.indexOf("/Users/") < 0 && value.indexOf("/home/") < 0 &&
+      value.indexOf("/tmp/") < 0 && value.indexOf("./") < 0
+    ) return out;
     const pathLike = value.match(/(?:\/Users\/[^\s"'<>`]+|\/home\/[^\s"'<>`]+|\/private\/tmp\/[^\s"'<>`]+|\/tmp\/[^\s"'<>`]+|\.{1,2}\/[A-Za-z0-9._/-]+)/g) ?? [];
     for (const candidate of pathLike) {
       const cleaned = candidate.replace(/[),.;:]+$/, "");
@@ -807,7 +871,7 @@ function parseTranscriptRecords(records: Iterable<string>): TranscriptResult {
   const turns: LiveTranscriptTurn[] = [];
   let index = 0;
   for (const line of records) {
-    if (!line.trim()) continue;
+    if (!NON_WS_RE.test(line)) continue;
     index++;
     try {
       turns.push(toTranscriptTurn(JSON.parse(line), index));
@@ -910,11 +974,15 @@ export function* readFileLines(file: string): Generator<string> {
     let n: number;
     while ((n = fs.readSync(fd, buf, 0, CHUNK, null)) > 0) {
       leftover += decoder.write(buf.subarray(0, n));
+      // Cursor scan: re-slicing leftover per line is O(lines × chunk) in
+      // allocations; one tail slice per chunk yields the same line sequence.
+      let start = 0;
       let idx: number;
-      while ((idx = leftover.indexOf("\n")) >= 0) {
-        yield leftover.slice(0, idx);
-        leftover = leftover.slice(idx + 1);
+      while ((idx = leftover.indexOf("\n", start)) >= 0) {
+        yield leftover.slice(start, idx);
+        start = idx + 1;
       }
+      if (start > 0) leftover = leftover.slice(start);
     }
     leftover += decoder.end();
     if (leftover.length) yield leftover;
@@ -984,6 +1052,9 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
   const writeCountByFile = new Map<string, number>();
   let userPositive = 0, userNegative = 0, rephrases = 0;
   let lastUserText: string | null = null;
+  // Carries lastUserText's token set between isRephraseTracked calls; must
+  // only be touched by that call, in lockstep with lastUserText assignments.
+  const rephraseCache: { tokens: Set<string> | null } = { tokens: null };
   let lastAssistantText = "";
   let userTextTurns = 0;
   let firstTsMs = Infinity;
@@ -1048,7 +1119,7 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
   try {
     pathBytes = bytes;
     for (const line of lines) {
-      if (!line.trim()) continue;
+      if (!NON_WS_RE.test(line)) continue;
       lineCount++;
       let obj: any;
       try {
@@ -1084,9 +1155,20 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
       // tool-results, injected <system-reminder>/command wrappers, pasted blobs).
       if (obj.type === "user" && obj.message && obj.isSidechain !== true) {
         const c = obj.message.content;
-        const userText = typeof c === "string"
-          ? c
-          : Array.isArray(c) ? c.filter((b: any) => b?.type === "text").map((b: any) => b.text ?? "").join(" ") : "";
+        // Manual join(" ") over text blocks: the common tool_result-only user
+        // record exits with zero allocations instead of filter+map+join.
+        let userText = "";
+        if (typeof c === "string") {
+          userText = c;
+        } else if (Array.isArray(c)) {
+          let first = true;
+          for (const b of c) {
+            if (b?.type !== "text") continue;
+            if (!first) userText += " ";
+            userText += b.text ?? "";
+            first = false;
+          }
+        }
         const trimmed = userText.trim();
         // A claude-CLI-backed judge leaves its own session files; drop them.
         if (trimmed.startsWith(JUDGE_PROMPT_MARKER)) return null;
@@ -1096,7 +1178,7 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
             const sent = classifySentiment(trimmed);
             if (sent === "positive") userPositive++;
             else if (sent === "negative") userNegative++;
-            if (isRephrase(trimmed, lastUserText)) rephrases++;
+            if (isRephraseTracked(trimmed, lastUserText, rephraseCache)) rephrases++;
             lastUserText = trimmed;
           }
         }
@@ -1124,7 +1206,9 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
         }
       } else if (obj.type === "assistant" && Array.isArray(obj.message?.content)) {
         model = coalesceModel(obj.message?.model, model);
-        const messageModel = coalesceModel(obj.message?.model, model);
+        // coalesceModel(m, model) here is provably `model` again: model is
+        // always null-or-normalized and normalize is idempotent.
+        const messageModel = model;
         const modelUsage = ensureModelUsage(modelUsageByModel, messageModel);
         const messageUsage = obj.message?.usage ?? {};
         const messageInput = numericOrNull(messageUsage.input_tokens);
@@ -1168,11 +1252,11 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
             }
             if (modelUsage) modelUsage.toolCalls++;
             if (typeof b.name === "string") increment(toolCallsByName, b.name);
-            for (const filePath of extractFilePaths(b.input)) touchedFiles.add(filePath);
+            extractFilePaths(b.input, touchedFiles);
             const rawName = String(b.name ?? "");
             const name = rawName.toLowerCase();
-            if (["read", "grep", "glob", "webfetch", "websearch"].some((tool) => name.includes(tool))) readLikeOperations++;
-            const isWrite = ["write", "edit", "multiedit"].some((tool) => name === tool || name.startsWith(tool));
+            if (READ_LIKE_TOOL_HINTS.some((tool) => name.includes(tool))) readLikeOperations++;
+            const isWrite = WRITE_TOOL_NAMES.some((tool) => name === tool || name.startsWith(tool));
             if (name.includes("write") || name.includes("edit")) writeLikeOperations++;
             // --- markers --- (subagent spawns are "Task" or "Agent" across versions)
             if (rawName === "Task" || rawName === "Agent") subagentSpawns++;
@@ -1215,7 +1299,7 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
         }
       } else if (obj.type === "attachment") {
         attachmentCount++;
-        for (const filePath of extractFilePaths(obj.attachment)) touchedFiles.add(filePath);
+        extractFilePaths(obj.attachment, touchedFiles);
         const attachmentType = obj.attachment?.type;
         if (attachmentType === "edited_text_file") writeLikeOperations++;
       } else if (obj.type === "queue-operation") {
@@ -1227,7 +1311,7 @@ function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, 
         if (typeof obj.content === "string" && queueSummary.preview.length < 3) queueSummary.preview.push(jsonPreview(obj.content, 220));
       } else if (obj.type === "file-history-snapshot") {
         snapshotCount++;
-        for (const filePath of extractFilePaths(obj.snapshot)) touchedFiles.add(filePath);
+        extractFilePaths(obj.snapshot, touchedFiles);
       } else if (obj.type === "result") {
         sawResult = true;
         const usage = obj.usage || {};
@@ -1504,6 +1588,9 @@ function parseCodexSession(file: string, lines: Iterable<string>, bytes: number,
   let sumIn = 0, sumOut = 0, sumCached = 0;
   let userPositive = 0, userNegative = 0, rephrases = 0;
   let lastUserText: string | null = null;
+  // Carries lastUserText's token set between isRephraseTracked calls; must
+  // only be touched by that call, in lockstep with lastUserText assignments.
+  const rephraseCache: { tokens: Set<string> | null } = { tokens: null };
   let lastAgentText = "";
   let toolCalls = 0;
   let toolErrors = 0;
@@ -1549,7 +1636,7 @@ function parseCodexSession(file: string, lines: Iterable<string>, bytes: number,
       const sent = classifySentiment(trimmed);
       if (sent === "positive") userPositive++;
       else if (sent === "negative") userNegative++;
-      if (isRephrase(trimmed, lastUserText)) rephrases++;
+      if (isRephraseTracked(trimmed, lastUserText, rephraseCache)) rephrases++;
       lastUserText = trimmed;
     }
     return "recorded";
@@ -1563,7 +1650,7 @@ function parseCodexSession(file: string, lines: Iterable<string>, bytes: number,
     let segmentInput = 0;
     let segmentOutput = 0;
     for (const line of lines) {
-      if (!line.trim()) continue;
+      if (!NON_WS_RE.test(line)) continue;
       lineCount++;
       let obj: any;
       try {
@@ -1716,9 +1803,20 @@ function parseCodexSession(file: string, lines: Iterable<string>, bytes: number,
         if (payload.type === "message") {
           textBlocks++;
           messageCount++;
-          const text = Array.isArray(payload.content)
-            ? payload.content.map((item: any) => item.text).filter(Boolean).join(" ")
-            : "";
+          // Manual filter(Boolean)+join(" "): most message payloads produce no
+          // kept text, and this path runs per response_item. `item.text` (not
+          // item?.text) on purpose — a null item threw before and must still.
+          let text = "";
+          if (Array.isArray(payload.content)) {
+            let first = true;
+            for (const item of payload.content as any[]) {
+              const t = item.text;
+              if (!t) continue;
+              if (!first) text += " ";
+              text += t;
+              first = false;
+            }
+          }
           if (payload.role === "user") responseUserMessageCount++;
           // OpenEval's own CLI-backed judge invocations leave codex_exec stub
           // sessions behind; they are instrumentation, not user work.
@@ -1726,7 +1824,7 @@ function parseCodexSession(file: string, lines: Iterable<string>, bytes: number,
           // Injected wrappers ("<permissions instructions>", "<environment_context>")
           // and orchestrator persona preambles make useless titles — wait for
           // the first real message.
-          if (text && !text.trim().startsWith("<") && !isInjectedPreamble(text, isSubagent)) displayTitle = displayTitle ?? jsonPreview(text, 80);
+          if (displayTitle == null && text && !text.trim().startsWith("<") && !isInjectedPreamble(text, isSubagent)) displayTitle = jsonPreview(text, 80);
         }
         if (payload.type === "function_call") {
           toolCalls++;
