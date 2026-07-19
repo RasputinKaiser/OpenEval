@@ -13,8 +13,21 @@ import path from "node:path";
 import Database from "better-sqlite3";
 import { summarizeLiveSessionFile as newClaude, summarizeCodexSessionFile as newCodex } from "../../lib/live";
 import { _setCacheDbForTest as setNew } from "../../lib/live-cache";
-import { summarizeLiveSessionFile as oldClaude, summarizeCodexSessionFile as oldCodex } from "../../.test-data/oldlib/live";
-import { _setCacheDbForTest as setOld } from "../../.test-data/oldlib/live-cache";
+
+// The baseline graph only exists after the snapshot step in the usage notes,
+// so load it dynamically — a static import would break typecheck (and every
+// tsc run) whenever no A/B is in flight.
+const OLDLIB = path.join(__dirname, "..", "..", ".test-data", "oldlib");
+if (!fs.existsSync(path.join(OLDLIB, "live.ts"))) {
+  console.error("No baseline snapshot at .test-data/oldlib — run the snapshot step from this file's header first.");
+  process.exit(1);
+}
+/* eslint-disable @typescript-eslint/no-var-requires */
+const oldLive = require(path.join(OLDLIB, "live")) as typeof import("../../lib/live");
+const oldCache = require(path.join(OLDLIB, "live-cache")) as typeof import("../../lib/live-cache");
+const oldClaude = oldLive.summarizeLiveSessionFile;
+const oldCodex = oldLive.summarizeCodexSessionFile;
+const setOld = oldCache._setCacheDbForTest;
 
 const BENCH = path.join(__dirname, "..", "..", ".test-data", "bench");
 const MTIME = Date.parse("2026-01-05T10:10:30.000Z");

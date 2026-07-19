@@ -26,6 +26,7 @@
     "test:telemetry": "OPENEVAL_DATA_ROOT=.test-data node --import tsx --test tests/telemetry.test.ts",
     "pricing:check": "tsx scripts/check-pricing-catalog.ts",
     "bench:live": "tsx scripts/bench-live.ts",
+    "bench:scan": "OPENEVAL_DATA_ROOT=.test-data/scanbench-data tsx scripts/perf/scan-bench.ts",
     "run:eval": "tsx lib/cli/run.ts",
     "run:case": "tsx lib/cli/run.ts --case",
     "run:headless": "tsx lib/cli/run.ts --runner headless",
