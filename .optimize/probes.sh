@@ -7,3 +7,4 @@ types | 1 | npx tsc --noEmit
 test  | 3 | npm test --silent
 lint  | 1 | npm run lint --silent
 build | 1 | npm run build --silent
+bench | 3 | npm run bench:live --silent
