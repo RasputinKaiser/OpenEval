@@ -82,5 +82,5 @@ export default async function LivePage(props: { searchParams?: Promise<{ harness
     };
   }
 
-  return <LiveClient initialData={data} error={error} getTranscript={getSessionTranscript} />;
+  return <LiveClient initialData={data} error={error} getTranscript={getSessionTranscript} scannedAt={Date.now()} />;
 }
