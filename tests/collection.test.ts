@@ -466,6 +466,52 @@ test("fingerprintDiscovery tracks file path, mtime, and size", () => {
   assert.notEqual(fingerprintDiscovery([clone((d) => { d.collected!.files.pop(); d.sessionCount = 1; })]), fp);
 });
 
+// ---- content sentinel: same-size mtime-preserving rewrites ----
+
+test("fresh scan re-parses a same-size mtime-preserving rewrite (stat fingerprint blind spot)", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "openeval-sentinel-"));
+  const def: CollectionSourceDef = { id: "sentinel", label: "Sentinel", roots: [dir], format: "jsonl-dir", parseable: true };
+  const file = path.join(dir, "a.jsonl");
+  const pin = new Date("2026-06-28T21:00:00.000Z");
+  writeSessionFile(dir, "a.jsonl", "rw-one");
+  fs.utimesSync(file, pin, pin);
+  const sizeBefore = fs.statSync(file).size;
+  _setCollectionHooksForTest(memoTestHooks(def, 60_000));
+  try {
+    const r1 = scanAllSources(50);
+    assert.equal(r1.totalParsedSessions, 1);
+    assert.equal(r1.sessions[0].sessionId, "rw-one");
+
+    // Rewrite with same-length content and restore the mtime: the
+    // (path, mtime, size) fingerprint cannot see this change.
+    writeSessionFile(dir, "a.jsonl", "rw-two");
+    fs.utimesSync(file, pin, pin);
+    assert.equal(fs.statSync(file).size, sizeBefore, "rewrite must keep the byte size identical");
+    assert.equal(fs.statSync(file).mtimeMs, pin.getTime(), "rewrite must keep the mtime identical");
+
+    // Within the TTL window the memo may legitimately serve the old snapshot.
+    assert.equal(scanAllSources(50).sessions[0].sessionId, "rw-one");
+
+    // fresh:true re-reads content sentinels, detects the rewrite, and serves
+    // the RE-PARSED content — both parse-cache tiers key on the unchanged
+    // stat tuple and must be bypassed, not just invalidated.
+    const r2 = scanAllSources(50, { fresh: true });
+    assert.equal(r2.totalParsedSessions, 1);
+    assert.equal(r2.sessions[0].sessionId, "rw-two");
+    assert.equal(collectAllSessions()[0].sessionId, "rw-two");
+
+    // The persistent cache row (same stat key) must now hold the fresh parse.
+    const row = fileCacheDb.prepare("SELECT session_json FROM session_cache WHERE file = ?").get(file) as { session_json: string };
+    assert.equal(JSON.parse(row.session_json).sessionId, "rw-two");
+
+    // Unchanged corpus afterwards: the sentinel pass must not force recomputes.
+    const r3 = scanAllSources(50, { fresh: true });
+    assert.equal(r3.sessions[0], r2.sessions[0], "matching sentinels must keep serving the memoized parse");
+  } finally {
+    _setCollectionHooksForTest(null);
+  }
+});
+
 // ---- limit-aware session retention ----
 
 test("aggregate retains 100 sessions by default and honors sessionRetention above it", () => {
