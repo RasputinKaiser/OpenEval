@@ -44,3 +44,47 @@ GC 140.9ms, vs an I/O floor ~460ms.
 - Measurement method note: cross-process bench runs at load 14–30 swung ±40%; the accepted numbers come from scripts/perf/ab-compare.ts (both module graphs in ONE process, alternating AB/BA) — use it for all future parser A/Bs.
 - Backlog: top 3 below.
 - Next run: parser is near its I/O+JSON.parse floor (remaining self-time is JSON.parse per line, ~64% of parse cost). Candidates: (a) prefix-sniff to skip JSON.parse on record types both parsers ignore — HIGH equivalence risk, needs the equiv net; (b) shift runtime focus to scanSourceSessions end-to-end (directory walk + cache-hit path) or dashboard route timings; (c) devloop backlog #3 (warm build on idle machine). Session-token comparisons: run-1 snapshot set only.
+
+## Run 4 — 2026-07-18 (runtime+health, 9f5397e, clean tree, estimator heuristic-chars/4, 10k tok ≈ 60s)
+Focus: scan pipeline around the parser + stability ("performance and stability").
+New harness: `npm run bench:scan` (cold/warm/hot over deterministic 85MB corpus) +
+scripts/perf/equiv-scan.ts (scan-layer output hashes). First numbers: cold ≈ parser
+speed (89.7MB/s page-cache-warm), warm 26-50ms/90 files, hot 4-7ms.
+- Applied: optimize: scan-pipeline performance + cache stability hardening (7f18db1)
+  | archived-merge two-step read 144.9ms → 8.1ms (17.8×, real-DB copy, 1,258 rows,
+  identical 14 pruned sessions both paths; runs 2-4×/Collection load — the workflow
+  agent measured 469ms/call on the same table under load, ~0.9-1.9s/page-load).
+  Statement cache (prepare was 2.5× lookup cost, agent-measured 84.6→34.2ms/1,500
+  gets). SESSION_CACHE_LIMIT 500→4000 + LRU (FIFO flooding gave ~0% memory hits at
+  1,500 files). One statSync/file instead of two; discovery walk reused by scan
+  (was two full walks per pass). Equivalence: equiv-scan 8/8 hashes identical
+  incl. archived path (9+4 archived sessions exercised); suite green; lint clean.
+  STABILITY (confirmed-repro bug): transient fs errors during parse were cached as
+  PERMANENT null tombstones (sessions silently vanish until file mtime changes) —
+  parsers now rethrow errno-carrying errors so the file is skipped uncached;
+  torn/garbage cache rows now gate to miss instead of crash; corrupt cache DB now
+  renamed aside + rebuilt once (was sticky-dead until manual delete). All three
+  pinned by tests/cache-stability.test.ts.
+- Applied: optimize: pin flaky tests (cb37dec) | week-boundary Date.now bomb,
+  killed-run settings poison, pid-reuse workdirs, two files racing the shared
+  .test-data SQLite DB across parallel test processes. Suite 5×-green baseline
+  (222→228 tests now).
+- Applied: optimize: bench:scan + equiv-scan harness; ab-compare defect fix (74df38a)
+  | run-3's ab-compare statically imported .test-data/oldlib → tsc broke whenever
+  no snapshot existed. Committed-state typecheck was red; now dynamic require.
+- Measurement notes: machine load hit 122 (!) during final benches — scan-bench
+  absolutes from today are load-poisoned; the accepted numbers are the real-DB
+  micro-bench (17.8×) and byte-identical equivalence hashes. bench corpus files
+  share one sessionId (repeated fixture) — equiv-scan rewrites ids + pins mtimes;
+  scan-bench inherits the limitation (fine for timing, useless for archived-path
+  counts).
+- Deferred with design attached (workflow wf_48859df9): request-scoped sharing of
+  the full-history pass between scanAllSources/buildRollup/buildTimeline (React
+  cache()); cachePut chunk-batching; /live TTL memo (staleness semantics change);
+  busy_timeout tuning; readFileLines giant-line cap (behavior change); walk
+  warning for skipped symlinked dirs; live.test home-dir dependency isolation.
+- Backlog: top 3 below.
+- Next run: measure a Collection page load end-to-end (route timing, dev server)
+  to bank the P1-P5 wins as a user-visible number, then take backlog #1
+  (request-scoped sharing) with equiv-scan as the gate. Machine-load flag applies
+  to every wall-clock number.
