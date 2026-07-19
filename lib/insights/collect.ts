@@ -32,17 +32,25 @@ function downsample<T>(xs: T[], max: number): T[] {
   return out;
 }
 
+/** Session shape the timeline needs: a parsed session tagged with its source. */
+export type TimelineSession = LiveSession & { sourceLabel: string };
+
 /**
  * Full-history points + markers with persisted judge verdicts blended in.
  * Shared by the report builder and the judging pass (which needs the same
- * points to pick its sample).
+ * points to pick its sample). Pass `sessionsIn` (e.g. from
+ * `collectAllSessions()`) to reuse an already-parsed collection; judgments
+ * are still loaded fresh on every call.
  */
-export function collectAllPoints(limitPerSource = 100_000): { points: SessionPoint[]; markers: Marker[] } {
-  const sessions: Array<LiveSession & { sourceLabel: string }> = [];
-  for (const def of allCollectionSources()) {
-    if (!def.parseable) continue;
-    for (const s of collectSourceSessions(defToSpec(def), limitPerSource, { includeArchived: true })) {
-      sessions.push({ ...s, sourceLabel: def.label });
+export function collectAllPoints(sessionsIn?: TimelineSession[], limitPerSource = 100_000): { points: SessionPoint[]; markers: Marker[] } {
+  let sessions = sessionsIn;
+  if (!sessions) {
+    sessions = [];
+    for (const def of allCollectionSources()) {
+      if (!def.parseable) continue;
+      for (const s of collectSourceSessions(defToSpec(def), limitPerSource, { includeArchived: true })) {
+        sessions.push({ ...s, sourceLabel: def.label });
+      }
     }
   }
   const points = toPoints(sessions, loadCurrentJudgments());
@@ -55,8 +63,8 @@ export function collectAllPoints(limitPerSource = 100_000): { points: SessionPoi
  * overall outcome trend. Heavy on a cold cache; the per-file session cache makes
  * repeat calls cheap.
  */
-export function buildTimeline(limitPerSource = 100_000): TimelineReport {
-  const { points, markers } = collectAllPoints(limitPerSource);
+export function buildTimeline(sessionsIn?: TimelineSession[]): TimelineReport {
+  const { points, markers } = collectAllPoints(sessionsIn);
 
   const withSignal = points.filter((p) => p.outcomeHasSignal);
   const half = Math.floor(withSignal.length / 2);

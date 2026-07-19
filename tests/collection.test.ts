@@ -4,10 +4,12 @@ import Database from "better-sqlite3";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { allCollectionSources, defToSpec, KNOWN_COLLECTION_SOURCES } from "../lib/collection/sources";
-import { looksLikeTranscriptFile } from "../lib/collection/discover";
+import { allCollectionSources, defToSpec, KNOWN_COLLECTION_SOURCES, type CollectionSourceDef } from "../lib/collection/sources";
+import { looksLikeTranscriptFile, type DiscoveredSource } from "../lib/collection/discover";
 import { _setCacheDbForTest } from "../lib/live-cache";
-import { scanSourceSessions } from "../lib/live";
+import { collectSourceFiles, scanSourceSessions } from "../lib/live";
+import { _setCollectionHooksForTest, collectAllSessions, fingerprintDiscovery, scanAllSources } from "../lib/collection/aggregate";
+import { buildRollup } from "../lib/collection/rollup";
 
 // Every scan goes through the live-cache; use a file-level in-memory DB so
 // parallel test processes never race on the shared .test-data SQLite cache.
@@ -330,6 +332,138 @@ test("collection model rollups sanitize local model paths and expose pricing evi
   assert.equal((agg.byModel[0] as any).familyRateSessions, 1);
   assert.equal((agg.byModel[0] as any).listedRateSessions, 0);
   assert.equal((agg.usageSummary as any).sessionsWithPricedUsage, 1);
+});
+
+// ---- corpus-fingerprint memo (scanAllSources / collectAllSessions) ----
+
+function writeSessionFile(dir: string, name: string, sessionId: string, extraText = "done"): void {
+  fs.writeFileSync(
+    path.join(dir, name),
+    [
+      { type: "system", sessionId, cwd: "/tmp/proj", timestamp: "2026-06-28T20:00:00.000Z" },
+      { type: "assistant", message: { content: [{ type: "text", text: extraText }] } },
+      { type: "result", duration_ms: 1000, num_turns: 1, usage: { input_tokens: 10, output_tokens: 5 } },
+    ].map((l) => JSON.stringify(l)).join("\n"),
+    "utf8",
+  );
+}
+
+/** Hooks that mirror discoverKnownSources for one temp-dir source. */
+function memoTestHooks(def: CollectionSourceDef, ttlMs: number, unknownDirs: string[] = []) {
+  const discover = (): DiscoveredSource[] => {
+    const collected = collectSourceFiles(defToSpec(def));
+    let lastActivityMs: number | null = null;
+    for (const f of collected.files) {
+      if (lastActivityMs == null || f.mtime > lastActivityMs) lastActivityMs = f.mtime;
+    }
+    return [{
+      id: def.id, label: def.label, format: def.format, parseable: def.parseable,
+      roots: def.roots, presentRoots: def.roots,
+      sessionCount: collected.files.length, lastActivityMs,
+      status: collected.files.length > 0 ? "present" : "empty",
+      collected,
+    }];
+  };
+  const unknown = () => unknownDirs.map((dir) => ({
+    dir, displayDir: dir, sampleFile: path.join(dir, "s.jsonl"), fileCount: 1, reason: "test",
+  }));
+  return { discover, sources: () => [def], unknown, fingerprintTtlMs: ttlMs };
+}
+
+test("scanAllSources memo serves cached parse while the corpus fingerprint is unchanged", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "openeval-memo-"));
+  const def: CollectionSourceDef = { id: "memo-src", label: "Memo Src", roots: [dir], format: "jsonl-dir", parseable: true };
+  writeSessionFile(dir, "a.jsonl", "memo-a");
+  // Long TTL so only explicit `fresh` revalidates; the fingerprint check itself
+  // is what these assertions target.
+  const unknownDirs: string[] = [];
+  _setCollectionHooksForTest(memoTestHooks(def, 60_000, unknownDirs));
+  try {
+    const r1 = scanAllSources(50);
+    assert.equal(r1.totalParsedSessions, 1);
+    assert.equal(r1.sessions[0].sessionId, "memo-a");
+
+    // fresh → fingerprint revalidated; unchanged files → memoized objects served.
+    const r2 = scanAllSources(50, { fresh: true });
+    assert.equal(r2.totalParsedSessions, 1);
+    assert.equal(r2.sessions[0], r1.sessions[0], "unchanged fingerprint must serve the memoized parse");
+
+    // The shared full-history collection rides the same snapshot.
+    const shared = collectAllSessions({ fresh: true });
+    assert.equal(shared.length, 1);
+    assert.equal(shared[0].sourceId, "memo-src");
+    assert.equal(shared[0].sourceLabel, "Memo Src");
+    assert.equal(collectAllSessions({ fresh: true })[0], shared[0]);
+    assert.equal(buildRollup(shared).heatmapSessions, 1);
+
+    // A fresh rescan with an unchanged corpus must still refresh the
+    // unknown-candidate walk (its dirs live outside the fingerprint).
+    unknownDirs.push("/tmp/new-agent");
+    assert.equal(scanAllSources(50).unknown.length, 0, "non-fresh within TTL keeps the memoized unknown list");
+    const r3 = scanAllSources(50, { fresh: true });
+    assert.equal(r3.unknown.length, 1);
+    assert.equal(r3.unknown[0].dir, "/tmp/new-agent");
+    assert.equal(r3.sessions[0], r1.sessions[0], "parse memo must survive an unknown-only refresh");
+  } finally {
+    _setCollectionHooksForTest(null);
+  }
+});
+
+test("scanAllSources memo invalidates when a session file is added or changes size", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "openeval-memo-inv-"));
+  const def: CollectionSourceDef = { id: "memo-inv", label: "Memo Inv", roots: [dir], format: "jsonl-dir", parseable: true };
+  writeSessionFile(dir, "a.jsonl", "inv-a");
+  _setCollectionHooksForTest(memoTestHooks(def, 60_000));
+  try {
+    const r1 = scanAllSources(50);
+    assert.equal(r1.totalParsedSessions, 1);
+
+    // New file: within the TTL the memo is served stale (anti-stat-storm)…
+    writeSessionFile(dir, "b.jsonl", "inv-b");
+    assert.equal(scanAllSources(50).totalParsedSessions, 1);
+    // …but fresh revalidates the fingerprint and recomputes.
+    const r2 = scanAllSources(50, { fresh: true });
+    assert.equal(r2.totalParsedSessions, 2);
+    assert.equal(collectAllSessions().length, 2);
+
+    // Same file, different content/size: fingerprint changes again.
+    writeSessionFile(dir, "b.jsonl", "inv-b", "done with a longer final message");
+    const r3 = scanAllSources(50, { fresh: true });
+    assert.equal(r3.totalParsedSessions, 2);
+    const b3 = r3.sessions.find((s) => s.sessionId === "inv-b");
+    const b2 = r2.sessions.find((s) => s.sessionId === "inv-b");
+    assert.ok(b3 && b2 && b3 !== b2, "changed file must be re-parsed, not served from the memo");
+  } finally {
+    _setCollectionHooksForTest(null);
+  }
+});
+
+test("fingerprintDiscovery tracks file path, mtime, and size", () => {
+  const base: DiscoveredSource = {
+    id: "fp", label: "FP", format: "jsonl-dir", parseable: true,
+    roots: ["/tmp/fp"], presentRoots: ["/tmp/fp"],
+    sessionCount: 2, lastActivityMs: 2_000, status: "present",
+    collected: {
+      files: [
+        { file: "/tmp/fp/a.jsonl", project: "p", mtime: 1_000, size: 10 },
+        { file: "/tmp/fp/b.jsonl", project: "p", mtime: 2_000, size: 20 },
+      ],
+      scanWarnings: [],
+    },
+  };
+  const clone = (mutate: (d: DiscoveredSource) => void): DiscoveredSource => {
+    const d: DiscoveredSource = JSON.parse(JSON.stringify(base));
+    mutate(d);
+    return d;
+  };
+  const fp = fingerprintDiscovery([base]);
+  assert.equal(fingerprintDiscovery([clone(() => {})]), fp, "identical discovery → identical fingerprint");
+  // File order must not matter (walk order is fs-dependent).
+  assert.equal(fingerprintDiscovery([clone((d) => d.collected!.files.reverse())]), fp);
+  assert.notEqual(fingerprintDiscovery([clone((d) => { d.collected!.files[0].mtime = 1_001; })]), fp);
+  assert.notEqual(fingerprintDiscovery([clone((d) => { d.collected!.files[0].size = 11; })]), fp);
+  assert.notEqual(fingerprintDiscovery([clone((d) => { d.collected!.files[0].file = "/tmp/fp/renamed.jsonl"; })]), fp);
+  assert.notEqual(fingerprintDiscovery([clone((d) => { d.collected!.files.pop(); d.sessionCount = 1; })]), fp);
 });
 
 test("archived sessions are repriced from tokens instead of preserving stale cached estimates", () => {
