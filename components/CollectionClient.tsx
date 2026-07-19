@@ -159,6 +159,17 @@ type SessionSort = "recent" | "tokens" | "duration" | "tools";
 const LOAD_STEP = 160;
 const MAX_LIMIT = 10_000;
 
+/** Full `?limit=` response — `AllSourcesResult` plus its continuation cursor. */
+type CollectionPayload = AllSourcesResult & { nextCursor?: string | null };
+
+/** Sessions-only `?cursor=` page — no stats/rollups, so paging stays O(page). */
+interface CursorPage {
+  sessions: AllSourcesResult["sessions"];
+  nextCursor: string | null;
+  totalParsedSessions: number;
+  generatedAtMs: number;
+}
+
 /**
  * Self-ticking relative label, isolated so the 30s tick re-renders only this
  * span — not the whole (potentially 10k-row) page. Starts at the payload's own
@@ -192,10 +203,11 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
   const [sessionSort, setSessionSort] = useState<SessionSort>("recent");
   const [harnessFilter, setHarnessFilter] = useState("all");
   const [modelFilter, setModelFilter] = useState("all");
-  // The scanner keeps only the newest ~100 sessions per source, so a higher
-  // limit may return nothing new even while totalParsedSessions is larger.
-  // Once a load-more round adds no rows, stop offering it.
-  const [listExhausted, setListExhausted] = useState(false);
+  // Exhaustion is cursor-driven: the API returns nextCursor=null once the
+  // listable window (snapshot cap, retention) is walked, even while
+  // totalParsedSessions is larger. `undefined` = no cursor yet (server-rendered
+  // initial data) — the first load-more bootstraps one via a full ?limit= fetch.
+  const [nextCursor, setNextCursor] = useState<string | null | undefined>(undefined);
   const ranInitial = useRef(false);
 
   // A ?q= handoff (e.g. from the dashboard search box) runs immediately.
@@ -261,13 +273,14 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
     }
   }
 
-  async function fetchCollection(limit: number, busy: (v: boolean) => void): Promise<AllSourcesResult | null> {
+  async function fetchCollection(limit: number, busy: (v: boolean) => void): Promise<CollectionPayload | null> {
     busy(true);
     try {
       const res = await fetch(`/api/collection?limit=${Math.min(MAX_LIMIT, Math.max(1, limit))}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const next = (await res.json()) as AllSourcesResult;
+      const next = (await res.json()) as CollectionPayload;
       setData(next);
+      setNextCursor(next.nextCursor ?? null);
       setErr(undefined);
       return next;
     } catch (e) {
@@ -278,16 +291,39 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
     }
   }
 
-  // Rescan keeps however many rows are already loaded instead of snapping back to 80.
+  // Rescan keeps however many rows are already loaded instead of snapping back
+  // to 80; the full-replace response also resets the continuation cursor.
   async function refresh() {
-    const next = await fetchCollection(Math.max(80, data.sessions.length), setLoading);
-    if (next && next.sessions.length > data.sessions.length) setListExhausted(false);
+    await fetchCollection(Math.max(80, data.sessions.length), setLoading);
   }
 
   async function loadMore() {
-    const prevLen = data.sessions.length;
-    const next = await fetchCollection(prevLen + LOAD_STEP, setLoadingMore);
-    if (next) setListExhausted(next.sessions.length <= prevLen);
+    if (loading || loadingMore || nextCursor === null) return;
+    // No cursor yet (initial data came from the server render): one full
+    // ?limit= fetch replaces the list and yields a cursor for later pages.
+    if (nextCursor === undefined) {
+      await fetchCollection(data.sessions.length + LOAD_STEP, setLoadingMore);
+      return;
+    }
+    setLoadingMore(true);
+    try {
+      const res = await fetch(`/api/collection?cursor=${encodeURIComponent(nextCursor)}&page=${LOAD_STEP}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const page = (await res.json()) as CursorPage;
+      setData((prev) => {
+        // The vanished-cursor fallback can overlap already-loaded rows — dedupe
+        // on the same identity the row keys use.
+        const seen = new Set(prev.sessions.map((s) => s.path ?? s.sessionId));
+        const added = page.sessions.filter((s) => !seen.has(s.path ?? s.sessionId));
+        return { ...prev, sessions: [...prev.sessions, ...added], totalParsedSessions: page.totalParsedSessions };
+      });
+      setNextCursor(page.nextCursor);
+      setErr(undefined);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoadingMore(false);
+    }
   }
 
   const models = data.byModel ?? [];
@@ -327,7 +363,8 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
   }, [data.sessions, harnessFilter, modelFilter, sessionSort]);
 
   const sessionsFiltered = harnessFilter !== "all" || modelFilter !== "all";
-  const moreAvailable = !listExhausted && data.sessions.length < data.totalParsedSessions;
+  // undefined (no cursor yet) still offers Load more — only an explicit null is exhausted.
+  const moreAvailable = nextCursor !== null && data.sessions.length < data.totalParsedSessions;
   const loadedLabel = `${fmtNumFull(data.sessions.length)} of ${fmtNumFull(data.totalParsedSessions)} loaded`;
   const hm = rollup?.heatmap ?? [];
   const hasHeatmap = hm.some((row) => row.some((v) => v > 0));
