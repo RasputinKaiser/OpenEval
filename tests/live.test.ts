@@ -1021,20 +1021,113 @@ test("scanLiveSessions reports unsupported harnesses honestly", () => {
   assert.ok(data.scanWarnings.some((warning) => warning.includes("does not have a registered live trace source")));
 });
 
-test("live API accepts harness query and unknown harnesses", async () => {
-  const ncodeResponse = await liveGet(new Request("http://localhost/api/live?harness=ncode&limit=1"));
-  assert.equal(ncodeResponse.status, 200);
-  const ncodeData = await ncodeResponse.json();
-  assert.equal(ncodeData.sourceHarness, "ncode");
-  assert.equal(ncodeData.sourceStatus, "available");
-  assert.ok(ncodeData.totalSessions <= 1);
+test("live API serves seeded descriptor sessions with exact content and rejects unknown harnesses", async () => {
+  // Seeded temp root + descriptor: the API result is fully determined by these
+  // two fixture sessions, never by whatever transcripts exist on the machine.
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "openeval-live-api-"));
+  // Unique id per run: a stale descriptor leaked by a crashed earlier run would
+  // otherwise already be registered under a fixed id and shadow this fresh one
+  // (the registry only refreshes when the id is unknown).
+  const sourceId = `tmp-live-api-${Date.now()}`;
+  const descPath = path.join(HARNESS_DESC_DIR, `${sourceId}.harness.json`);
+  fs.mkdirSync(HARNESS_DESC_DIR, { recursive: true });
+  const sessionLine = (id: string, input: number, output: number, cost: number) => JSON.stringify({
+    type: "done",
+    session_id: id,
+    model: "api-model",
+    duration_ms: 1500,
+    num_turns: 3,
+    usage: { input_tokens: input, output_tokens: output, cost_usd: cost },
+    stop_reason: "completed",
+    is_error: false,
+  });
+  // Costs 0.25 + 0.5 sum exactly in binary floating point.
+  fs.writeFileSync(path.join(root, "session-a.jsonl"), sessionLine("api-session-a", 100, 25, 0.25), "utf8");
+  fs.writeFileSync(path.join(root, "session-b.jsonl"), sessionLine("api-session-b", 40, 10, 0.5), "utf8");
+  fs.writeFileSync(descPath, JSON.stringify({
+    id: sourceId,
+    label: "Temporary API Source",
+    binNames: [sourceId],
+    output: "jsonl",
+    argTemplate: ["run"],
+    fields: {
+      sessionId: "session_id",
+      model: "model",
+      durationMs: "duration_ms",
+      numTurns: "num_turns",
+      inputTokens: "usage.input_tokens",
+      outputTokens: "usage.output_tokens",
+      costUsd: "usage.cost_usd",
+      stopReason: "stop_reason",
+      isError: "is_error",
+    },
+    liveTrace: { roots: [root], maxDepth: 1 },
+  }), "utf8");
 
-  const codexResponse = await liveGet(new Request("http://localhost/api/live?harness=codex&limit=1"));
-  assert.equal(codexResponse.status, 200);
-  const codexData = await codexResponse.json();
-  assert.equal(codexData.sourceHarness, "codex");
-  assert.equal(codexData.sourceStatus, "available");
-  assert.ok(codexData.totalSessions <= 1);
+  try {
+    const response = await liveGet(new Request(`http://localhost/api/live?harness=${sourceId}&limit=10`));
+    assert.equal(response.status, 200);
+    const data = await response.json();
+    assert.equal(data.sourceHarness, sourceId);
+    assert.equal(data.sourceStatus, "available");
+    assert.equal(data.totalSessions, 2);
+    assert.deepEqual(
+      data.sessions.map((s: { sessionId: string }) => s.sessionId).sort(),
+      ["api-session-a", "api-session-b"],
+    );
+    assert.ok(data.sessions.every((s: { model: string | null }) => s.model === "api-model"));
+    assert.equal(data.usageSummary.totalInputTokens, 140);
+    assert.equal(data.usageSummary.totalOutputTokens, 35);
+    assert.equal(data.usageSummary.totalTokens, 175);
+    assert.equal(data.usageSummary.totalCostUsd, 0.75);
+    assert.equal(data.usageSummary.sessionsWithMeasuredUsage, 2);
+    assert.equal(data.usageSummary.sessionsWithMeasuredCost, 2);
+    assert.equal(data.usageSummary.tokenCoverage, 1);
+    assert.equal(typeof data.sig, "string");
+
+    // limit is respected: same source, capped to one session.
+    const limited = await liveGet(new Request(`http://localhost/api/live?harness=${sourceId}&limit=1`));
+    assert.equal(limited.status, 200);
+    const limitedData = await limited.json();
+    assert.equal(limitedData.totalSessions, 1);
+    assert.ok(["api-session-a", "api-session-b"].includes(limitedData.sessions[0].sessionId));
+
+    // Unknown harness through the API: honest unavailable payload, no throw.
+    const unknown = await liveGet(new Request("http://localhost/api/live?harness=totally-unknown-harness&limit=1"));
+    assert.equal(unknown.status, 200);
+    const unknownData = await unknown.json();
+    assert.equal(unknownData.sourceHarness, "totally-unknown-harness");
+    assert.equal(unknownData.sourceStatus, "unavailable");
+    assert.equal(unknownData.totalSessions, 0);
+    assert.ok(unknownData.scanWarnings.some((warning: string) => warning.includes("does not have a registered live trace source")));
+  } finally {
+    fs.rmSync(descPath, { force: true });
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("live API resolves built-in default roots without throwing on any machine", async () => {
+  // Default-root resolution smoke test: ncode/codex declare home-relative
+  // liveTrace roots. Assert only shape — never the machine's session content —
+  // so this passes on a box with zero, one, or a thousand real sessions.
+  const harnesses = ["ncode", "codex"];
+  const responses = await Promise.all(
+    harnesses.map((harness) => liveGet(new Request(`http://localhost/api/live?harness=${harness}&limit=1`))),
+  );
+  const payloads = await Promise.all(responses.map((response) => response.json()));
+  harnesses.forEach((harness, i) => {
+    assert.equal(responses[i].status, 200);
+    const data = payloads[i];
+    assert.equal(data.sourceHarness, harness);
+    assert.equal(data.sourceStatus, "available");
+    assert.ok(Array.isArray(data.sessions));
+    assert.equal(typeof data.totalSessions, "number");
+    assert.ok(data.totalSessions <= 1, `limit=1 respected for ${harness}`);
+    assert.equal(data.sessions.length, data.totalSessions);
+    assert.equal(typeof data.usageSummary.totalTokens, "number");
+    assert.ok(Array.isArray(data.scanWarnings));
+    assert.equal(typeof data.sig, "string");
+  });
 });
 
 test("live API sig shortcut returns a tiny unchanged payload on match and the full payload otherwise", async () => {
