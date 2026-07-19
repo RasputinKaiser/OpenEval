@@ -232,7 +232,9 @@ function computeAllSources(): AllSourcesResult {
     };
 
     if (def.parseable && base.status === "present") {
-      const agg: LiveAggregate = scanSourceSessions(defToSpec(def), FULL_HISTORY, { includeArchived: true });
+      // Reuse discovery's walk (files + warnings) instead of re-walking the
+      // whole source tree for the scan.
+      const agg: LiveAggregate = scanSourceSessions(defToSpec(def), FULL_HISTORY, { includeArchived: true, preCollected: disc?.collected });
       base.archivedSessions = agg.archivedSessions;
       base.parsedSessions = agg.totalSessions;
       base.totalCostUsd = agg.totalCostUsd;

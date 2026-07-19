@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { listSourceFiles } from "../live";
+import { collectSourceFiles, type CollectedSourceFiles } from "../live";
 import { allCollectionSources, defToSpec } from "./sources";
 
 export interface DiscoveredSource {
@@ -15,6 +15,8 @@ export interface DiscoveredSource {
   lastActivityMs: number | null;
   status: "present" | "empty" | "absent";
   note?: string;
+  /** The walk behind sessionCount/lastActivityMs, reusable by the scan itself. */
+  collected?: CollectedSourceFiles;
 }
 
 export interface UnknownCandidate {
@@ -80,10 +82,11 @@ export function discoverKnownSources(): DiscoveredSource[] {
     let sessionCount = 0;
     let lastActivityMs: number | null = null;
 
+    let collected: CollectedSourceFiles | undefined;
     if (def.parseable) {
-      const files = listSourceFiles(defToSpec(def));
-      sessionCount = files.length;
-      for (const f of files) {
+      collected = collectSourceFiles(defToSpec(def));
+      sessionCount = collected.files.length;
+      for (const f of collected.files) {
         if (lastActivityMs == null || f.mtime > lastActivityMs) lastActivityMs = f.mtime;
       }
       for (const r of roots) {
@@ -107,7 +110,7 @@ export function discoverKnownSources(): DiscoveredSource[] {
 
     out.push({
       id: def.id, label: def.label, format: def.format, parseable: def.parseable,
-      roots, presentRoots, sessionCount, lastActivityMs, status, note: def.note,
+      roots, presentRoots, sessionCount, lastActivityMs, status, note: def.note, collected,
     });
   }
   return out;
