@@ -14,7 +14,20 @@ jobs:
         with:
           node-version: 20
           cache: npm
+      # Cache the installed tree itself (not just the npm download cache) so
+      # unchanged lockfiles skip npm ci entirely, including the better-sqlite3
+      # native build. Key pins OS + Node major because the cached tree holds a
+      # compiled ABI-specific binding.
+      - uses: actions/cache@v4
+        id: node-modules-cache
+        with:
+          path: node_modules
+          key: node-modules-${{ runner.os }}-node20-${{ hashFiles('package-lock.json') }}
       - run: npm ci
+        if: steps.node-modules-cache.outputs.cache-hit != 'true'
+      # Smoke the dev-runtime doctor itself (report-only checks; exit 0 unless
+      # the environment is genuinely broken).
+      - run: npm run doctor
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test
