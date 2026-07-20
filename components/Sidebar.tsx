@@ -98,7 +98,7 @@ export default function Sidebar() {
           )}
         </div>
       </div>
-      <nav className="flex gap-1 overflow-x-auto px-2 pb-2 md:flex-1 md:flex-col md:space-y-0.5 md:overflow-visible md:p-2">
+      <nav aria-label="Primary" className="flex gap-1 overflow-x-auto px-2 pb-2 md:flex-1 md:flex-col md:space-y-0.5 md:overflow-visible md:p-2">
         {SECTIONS.map((section, si) => (
           <div key={section.label ?? si} className="flex gap-1 md:block md:space-y-0.5 shrink-0">
             {section.label && !collapsed && (
@@ -114,20 +114,25 @@ export default function Sidebar() {
                   key={item.href}
                   href={item.href}
                   title={collapsed ? item.label : undefined}
+                  aria-current={active ? "page" : undefined}
                   className={clsx(
                     "relative flex shrink-0 items-center gap-2 rounded-md text-sm transition-colors",
                     collapsed ? "md:justify-center md:px-0 px-3 py-3 md:py-2" : "px-3 py-3 md:py-2",
                     active ? "bg-accent/15 text-accent-soft" : "text-fg-muted hover:bg-bg-elev hover:text-fg"
                   )}
                 >
-                  {active && <div className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full bg-accent-soft" />}
-                  <Icon className="size-4 shrink-0" />
-                  {!collapsed && <span>{item.label}</span>}
+                  {active && <div aria-hidden="true" className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full bg-accent-soft" />}
+                  <Icon aria-hidden="true" className="size-4 shrink-0" />
+                  {/* Collapsed hides the label visually (md+) but keeps it for AT. */}
+                  <span className={clsx(collapsed && "md:sr-only")}>{item.label}</span>
                   {showBadge && (
-                    <span className="absolute right-1 top-1.5 size-2 rounded-full bg-accent-soft animate-pulse" />
+                    <span aria-hidden="true" className="absolute right-1 top-1.5 size-2 rounded-full bg-accent-soft animate-pulse" />
+                  )}
+                  {showBadge && (
+                    <span className="sr-only">{runningCount} running</span>
                   )}
                   {showBadge && !collapsed && (
-                    <span className="ml-auto text-[10px] mono text-accent-soft bg-accent/15 rounded-full px-1.5 tabular-nums">{runningCount}</span>
+                    <span aria-hidden="true" className="ml-auto text-[10px] mono text-accent-soft bg-accent/15 rounded-full px-1.5 tabular-nums">{runningCount}</span>
                   )}
                 </Link>
               );
@@ -144,7 +149,7 @@ export default function Sidebar() {
             className="min-h-10 min-w-10 flex items-center justify-center rounded-md text-fg-dim hover:text-fg hover:bg-bg-elev transition-colors"
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
-            {collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
+            {collapsed ? <PanelLeftOpen aria-hidden="true" className="size-4" /> : <PanelLeftClose aria-hidden="true" className="size-4" />}
           </button>
         </div>
       </div>

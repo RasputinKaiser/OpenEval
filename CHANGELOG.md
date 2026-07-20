@@ -2,6 +2,20 @@
 
 All notable public changes to OpenEval are recorded here.
 
+## [Unreleased]
+
+Seeded for the PLAN-UX-STABILITY batch; entries from the batch's units land here as they integrate.
+
+### Added
+
+- `npm run doctor` — dev-runtime health checks for the recurring environmental failure classes that masquerade as app bugs: Node version vs `.nvmrc` and the `engines` floor, `better-sqlite3` native-binding loadability (with rebuild hint), stale or incomplete `.next` cache detection (`--fix` clears it), report-only port-3000 occupancy, strictly read-only `data/eval.db` `PRAGMA quick_check`, and disk headroom. `--json` emits machine-readable results.
+- README Troubleshooting section mapping those failure classes to fixes.
+
+### CI
+
+- Cache the installed `node_modules` tree keyed on OS, Node major, and the lockfile hash, skipping `npm ci` (including the `better-sqlite3` native build) on unchanged lockfiles.
+- Run `npm run doctor` as a smoke step.
+
 ## [0.1.0] - 2026-07-15
 
 OpenEval's first tagged public release.

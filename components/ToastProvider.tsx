@@ -49,18 +49,22 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={{ toast }}>
       {children}
-      <div className="fixed bottom-4 right-4 z-[110] flex flex-col gap-2 max-w-sm">
+      {/* Live region exists from mount so screen readers announce new toasts. */}
+      <div aria-live="polite" aria-label="Notifications" role="region" className="fixed bottom-4 right-4 z-[110] flex flex-col gap-2 max-w-sm">
         {toasts.map((t) => {
           const Icon = icons[t.variant];
           return (
             <div
               key={t.id}
-              className="rounded-lg border border-bd bg-bg-subtle shadow-2xl p-4 flex items-start gap-3"
-              style={{ animation: "menu-enter 150ms cubic-bezier(0.2, 0, 0, 1)" }}
+              className="rounded-lg border border-bd bg-bg-subtle shadow-2xl p-4 flex items-start gap-3 anim-menu-enter"
             >
-              <Icon className={clsx("size-4 shrink-0 mt-0.5", iconColors[t.variant])} />
+              <Icon aria-hidden="true" className={clsx("size-4 shrink-0 mt-0.5", iconColors[t.variant])} />
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium">{t.title}</div>
+                <div className="text-sm font-medium">
+                  {/* Variant is conveyed by color+icon visually; give AT the word. */}
+                  <span className="sr-only">{t.variant === "success" ? "Success: " : t.variant === "error" ? "Error: " : "Info: "}</span>
+                  {t.title}
+                </div>
                 {t.description && <div className="mt-0.5 text-xs text-fg-muted">{t.description}</div>}
                 {t.actionHref && t.actionLabel && (
                   <Link href={t.actionHref} onClick={() => dismiss(t.id)} className="mt-1.5 inline-block text-xs text-accent-soft hover:underline">
@@ -68,8 +72,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                   </Link>
                 )}
               </div>
-              <button onClick={() => dismiss(t.id)} className="min-h-8 min-w-8 flex items-center justify-center rounded text-fg-dim hover:text-fg shrink-0">
-                <X className="size-3.5" />
+              <button onClick={() => dismiss(t.id)} aria-label="Dismiss notification" className="min-h-8 min-w-8 flex items-center justify-center rounded text-fg-dim hover:text-fg shrink-0">
+                <X aria-hidden="true" className="size-3.5" />
               </button>
             </div>
           );

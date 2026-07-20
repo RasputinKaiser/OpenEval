@@ -1,5 +1,8 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { Loader2 } from "lucide-react";
+
 export type ArtifactKind = "svg" | "html" | "text";
 
 export function artifactKind(path: string, content: string): ArtifactKind {
@@ -26,18 +29,35 @@ interface Props {
  */
 export default function ArtifactPreview({ path, content, kind, className }: Props) {
   const resolved = kind ?? artifactKind(path, content);
+  const [loaded, setLoaded] = useState(false);
+
+  // New document content = new load cycle; show the affordance again.
+  useEffect(() => { setLoaded(false); }, [path, content]);
+
   if (resolved === "text") {
     return (
       <pre className={className ?? "max-h-[420px] overflow-auto rounded-md bg-white p-4 text-[11px] text-[#20242d]"}>{content}</pre>
     );
   }
   return (
-    <iframe
-      sandbox=""
-      loading="lazy"
-      srcDoc={resolved === "svg" ? svgDocument(content) : content}
-      title={`Preview of ${path}`}
-      className={className ?? "h-[420px] w-full rounded-md bg-white ring-1 ring-white/10"}
-    />
+    <div className="relative">
+      <iframe
+        sandbox=""
+        loading="lazy"
+        srcDoc={resolved === "svg" ? svgDocument(content) : content}
+        title={`Preview of ${path}`}
+        onLoad={() => setLoaded(true)}
+        className={className ?? "h-[420px] w-full rounded-md bg-white ring-1 ring-white/10"}
+      />
+      {!loaded && (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-md bg-white/80 text-sm text-[#5f6673]"
+        >
+          <Loader2 className="mr-2 size-4 animate-spin" />
+          Loading preview
+        </div>
+      )}
+    </div>
   );
 }

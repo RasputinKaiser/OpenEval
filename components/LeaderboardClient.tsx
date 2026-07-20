@@ -3,10 +3,15 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import clsx from "clsx";
-import { Loader2, Trophy, GitCompareArrows, ArrowUp, ArrowDown } from "lucide-react";
+import { AlertTriangle, Loader2, Trophy, GitCompareArrows, ArrowUp, ArrowDown } from "lucide-react";
 import HarnessBadge from "./HarnessBadge";
 import PageHeader from "./PageHeader";
 import { cachedFetch } from "@/lib/cached-fetch";
+import { fmtDuration, fmtNum, fmtNumFull, fmtPct, fmtUsd, fmtUsdFull } from "@/lib/format";
+
+/** Sticky harness column: row identity stays put while metrics scroll on narrow screens. */
+const STICKY_TH = "sticky left-0 z-[2] bg-bg-subtle";
+const STICKY_TD = "sticky left-0 z-[1] bg-bg-subtle";
 
 interface HarnessAggregate {
   harness: string;
@@ -25,23 +30,19 @@ interface HarnessAggregate {
   latestRunAt: number | null;
 }
 
-function fmtDur(ms: number) {
-  if (!ms) return "—";
-  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
-  const m = Math.floor(ms / 60_000), s = Math.floor((ms % 60_000) / 1000);
-  return `${m}m ${s}s`;
-}
-
 export default function LeaderboardClient() {
   const [rows, setRows] = useState<HarnessAggregate[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<keyof HarnessAggregate>("passRate");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
   useEffect(() => {
     let cancelled = false;
     cachedFetch<{ harnesses: HarnessAggregate[] }>("/api/harnesses/leaderboard")
-      .then((d) => { if (!cancelled) setRows(d.harnesses || []); })
+      .then((d) => { if (!cancelled) { setRows(d.harnesses || []); setLoadError(null); } })
+      // Never surface a failed fetch as a runtime overlay — show a retryable banner.
+      .catch((e) => { if (!cancelled) setLoadError(e instanceof Error ? e.message : String(e)); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, []);
@@ -74,16 +75,26 @@ export default function LeaderboardClient() {
   }
 
   return (
-    <div className="p-8 max-w-7xl mx-auto">
+    <div className="p-4 md:p-8 max-w-7xl mx-auto">
       <PageHeader
         icon={Trophy}
         title="Harness Leaderboard"
         subtitle="Compare agent CLIs head-to-head: pass rate, cost, tokens, speed. The payoff for running the same suite across harnesses."
       />
 
+      {loadError && (
+        <div className="mb-4 rounded-lg border border-err/40 bg-err/10 p-3 flex items-start gap-2.5" role="alert">
+          <AlertTriangle className="size-4 text-err shrink-0 mt-0.5" />
+          <div className="min-w-0 text-sm">
+            <span className="font-medium text-err">Couldn&apos;t load the leaderboard</span>
+            <span className="text-fg-muted"> — {loadError}. Reload the page to retry.</span>
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div className="flex items-center gap-2 text-sm text-fg-muted"><Loader2 className="size-4 animate-spin" /> Aggregating runs…</div>
-      ) : rows.length === 0 ? (
+      ) : loadError ? null : rows.length === 0 ? (
         <section className="card p-10 text-center">
           <div className="text-sm text-fg-muted mb-2">No runs yet. Fan a suite across harnesses to populate the leaderboard:</div>
           <pre className="text-[11px] mono bg-bg border border-bd-subtle rounded-md p-3 inline-block text-left mt-2">{`npx tsx lib/cli/run.ts \\\n  --harness claude-code --harness codex \\\n  --parallel 4 --category agentic-swe`}</pre>
@@ -98,8 +109,8 @@ export default function LeaderboardClient() {
                 <span className="text-fg-muted">Leading harness: </span>
                 <HarnessBadge harness={best.harness} />
                 {best.model && <span className="ml-1.5 text-[11px] mono text-fg-dim">{best.model}</span>}
-                <span className="ml-2 mono font-medium">{(best.passRate * 100).toFixed(0)}%</span>
-                <span className="text-fg-dim"> across {best.totalCases} case(s) in {best.runCount} run(s)</span>
+                <span className="ml-2 mono font-medium tabular-nums">{fmtPct(best.passRate)}</span>
+                <span className="text-fg-dim"> across {fmtNum(best.totalCases)} case{best.totalCases === 1 ? "" : "s"} in {fmtNum(best.runCount)} run{best.runCount === 1 ? "" : "s"}</span>
               </div>
             </section>
           )}
@@ -109,7 +120,7 @@ export default function LeaderboardClient() {
                 <thead className="sticky top-0 z-10 text-[11px] uppercase tracking-wider text-fg-muted bg-bg-subtle border-b border-bd-subtle">
                   <tr>
                     <th className="text-center px-2 py-2 font-medium w-8">#</th>
-                    <th className="text-left px-4 py-2 font-medium">
+                    <th className={clsx("text-left px-4 py-2 font-medium", STICKY_TH)}>
                       <SortBtn label="Harness" k="harness" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="left" />
                     </th>
                     <th className="text-right px-4 py-2 font-medium">
@@ -153,7 +164,7 @@ export default function LeaderboardClient() {
                           "text-fg-dim"
                         )}>{idx + 1}</span>
                       </td>
-                      <td className="px-4 py-2.5"><HarnessBadge harness={r.harness} /></td>
+                      <td className={clsx("px-4 py-2.5", STICKY_TD)}><HarnessBadge harness={r.harness} /></td>
                       <td className="px-4 py-2.5 text-right mono">{r.runCount}</td>
                       <td className="px-4 py-2.5 text-right mono">{r.totalCases}</td>
                       <td className="px-4 py-2.5 text-right">
@@ -166,7 +177,7 @@ export default function LeaderboardClient() {
                             </div>
                           </div>
                           <span className={clsx("mono font-semibold tabular-nums", r.passRate >= 0.8 ? "text-ok" : r.passRate >= 0.5 ? "text-fg-muted" : "text-err")}>
-                            {(r.passRate * 100).toFixed(0)}%
+                            {fmtPct(r.passRate)}
                           </span>
                         </div>
                       </td>
@@ -174,10 +185,10 @@ export default function LeaderboardClient() {
                         <span className="text-ok">{r.passed}</span> / <span className="text-err">{r.failed}</span>
                         {r.errored > 0 && <span className="text-fg-dim"> · {r.errored} err</span>}
                       </td>
-                      <td className="px-4 py-2.5 text-right mono">${r.totalCostUsd.toFixed(4)}</td>
-                      <td className="px-4 py-2.5 text-right mono text-xs">{r.totalTokensIn.toLocaleString()} / {r.totalTokensOut.toLocaleString()}</td>
+                      <td className="px-4 py-2.5 text-right mono" title={fmtUsdFull(r.totalCostUsd)}>{fmtUsd(r.totalCostUsd)}</td>
+                      <td className="px-4 py-2.5 text-right mono text-xs" title={`${fmtNumFull(r.totalTokensIn)} in / ${fmtNumFull(r.totalTokensOut)} out`}>{fmtNum(r.totalTokensIn)} / {fmtNum(r.totalTokensOut)}</td>
                       <td className="px-4 py-2.5 text-right mono">{r.avgTokPerSec.toFixed(1)}</td>
-                      <td className="px-4 py-2.5 text-right mono">{fmtDur(r.totalDurationMs)}</td>
+                      <td className="px-4 py-2.5 text-right mono">{fmtDuration(r.totalDurationMs)}</td>
                       <td className="px-4 py-2.5 text-[11px] text-fg-dim mono">{r.model || "—"}</td>
                     </tr>
                   ))}

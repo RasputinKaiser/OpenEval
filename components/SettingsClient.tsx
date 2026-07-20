@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from "react";
 import clsx from "clsx";
-import { AlertCircle, CheckCircle2, RotateCcw, Save, Settings as SettingsIcon } from "lucide-react";
+import { AlertCircle, CheckCircle2, PlayCircle, RotateCcw, Save, Settings as SettingsIcon, Stethoscope } from "lucide-react";
 import PageHeader from "./PageHeader";
 import HarnessPicker from "./HarnessPicker";
 import ModelPicker from "./ModelPicker";
 import { useRedaction } from "@/lib/use-redaction";
+import { ONBOARDING_DISMISSED_KEY, SHOW_ONBOARDING_EVENT } from "./first-run-steps";
 
 /**
  * Run defaults consumed by NewRunClient when creating a run (URL params win).
@@ -25,7 +26,22 @@ type Settings = typeof DEFAULTS;
 type JudgeSettings = { judgeSource: string; judgeModel: string };
 type EffectiveJudge = { source: string; model: string; name: string };
 type EnvironmentOverrides = { source: boolean; model: boolean; openrouterKey: boolean };
+type EnvironmentOverrideValues = { judgeHarness: string | null; judgeModel: string | null };
 type HarnessOption = { id: string; label: string; status: string };
+
+/** Safe display boundary: maintenance stats are untrusted JSON — never hand objects to JSX children. */
+function displayStat(v: unknown): string {
+  if (v === null || v === undefined) return "—";
+  if (typeof v === "object") {
+    try {
+      const s = JSON.stringify(v);
+      return s.length > 140 ? `${s.slice(0, 140)}…` : s;
+    } catch {
+      return "[unrenderable]";
+    }
+  }
+  return String(v);
+}
 
 export function readRunDefaults(): Settings {
   try {
@@ -39,6 +55,8 @@ export default function SettingsClient() {
   const [judge, setJudge] = useState<JudgeSettings>({ judgeSource: "", judgeModel: "" });
   const [effectiveJudge, setEffectiveJudge] = useState<EffectiveJudge | null>(null);
   const [environmentOverrides, setEnvironmentOverrides] = useState<EnvironmentOverrides>({ source: false, model: false, openrouterKey: false });
+  const [environmentOverrideValues, setEnvironmentOverrideValues] = useState<EnvironmentOverrideValues>({ judgeHarness: null, judgeModel: null });
+  const [maintenance, setMaintenance] = useState<Record<string, unknown> | null>(null);
   const [harnessOptions, setHarnessOptions] = useState<HarnessOption[]>([]);
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -51,7 +69,7 @@ export default function SettingsClient() {
     Promise.all([
       fetch("/api/settings").then(async (r) => {
         if (!r.ok) throw new Error(`Settings unavailable (${r.status})`);
-        return r.json() as Promise<{ settings: JudgeSettings; effectiveJudge: EffectiveJudge; environmentOverrides: EnvironmentOverrides }>;
+        return r.json() as Promise<{ settings: JudgeSettings; effectiveJudge: EffectiveJudge; environmentOverrides: EnvironmentOverrides; environmentOverrideValues?: EnvironmentOverrideValues }>;
       }),
       fetch("/api/harnesses").then(async (r) => {
         if (!r.ok) throw new Error(`Harness registry unavailable (${r.status})`);
@@ -62,11 +80,32 @@ export default function SettingsClient() {
         setJudge({ judgeSource: settingsResponse.settings?.judgeSource ?? "", judgeModel: settingsResponse.settings?.judgeModel ?? "" });
         setEffectiveJudge(settingsResponse.effectiveJudge ?? null);
         setEnvironmentOverrides(settingsResponse.environmentOverrides ?? { source: false, model: false, openrouterKey: false });
+        setEnvironmentOverrideValues(settingsResponse.environmentOverrideValues ?? { judgeHarness: null, judgeModel: null });
         setHarnessOptions((harnessResponse.harnesses ?? []).map((h) => ({ id: h.id, label: h.label, status: h.status })));
       })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
   }, []);
+
+  // Diagnostics (maintenance stats) is optional server surface — feature-detect
+  // it so Settings works identically on servers that don't expose it yet.
+  useEffect(() => {
+    const ctrl = new AbortController();
+    fetch("/api/settings/maintenance", { signal: ctrl.signal })
+      .then(async (r) => {
+        if (!r.ok) return null;
+        const d: unknown = await r.json().catch(() => null);
+        return d && typeof d === "object" && !Array.isArray(d) ? (d as Record<string, unknown>) : null;
+      })
+      .then((d) => { if (d && Object.keys(d).length > 0) setMaintenance(d); })
+      .catch(() => {});
+    return () => ctrl.abort();
+  }, []);
+
+  function replayTour() {
+    try { localStorage.removeItem(ONBOARDING_DISMISSED_KEY); } catch {}
+    window.dispatchEvent(new Event(SHOW_ONBOARDING_EVENT));
+  }
 
   function update<K extends keyof Settings>(key: K, value: Settings[K]) {
     setSettings((s) => ({ ...s, [key]: value }));
@@ -186,16 +225,49 @@ export default function SettingsClient() {
                 <CheckCircle2 className="size-3.5 text-ok" /> Effective judge
               </div>
               <div className="mono text-sm mt-1">{effectiveJudge.name}</div>
-              {(environmentOverrides.source || environmentOverrides.model) && <div className="text-[10px] text-warn mt-1">An environment override is active, so the saved selection may not be used until that variable is cleared.</div>}
+              <p className="text-[10px] text-fg-dim mt-1">This is what rubric graders will actually call right now, after environment variables and saved settings are combined.</p>
+              {(environmentOverrides.source || environmentOverrides.model) && (
+                <div className="mt-2 space-y-1">
+                  {environmentOverrides.source && (
+                    <div className="text-[10px] text-warn mono break-all">JUDGE_HARNESS={environmentOverrideValues.judgeHarness ?? ""} — this environment variable overrides the saved judge source until it is unset.</div>
+                  )}
+                  {environmentOverrides.model && (
+                    <div className="text-[10px] text-warn mono break-all">JUDGE_MODEL={environmentOverrideValues.judgeModel ?? ""} — this environment variable overrides the saved judge model until it is unset.</div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
 
         <div className="card p-5">
           <h2 className="text-sm font-medium mb-1">Privacy</h2>
-          <p className="text-[11px] text-fg-dim mb-4">The same app-wide toggle shown on Live, Collection, and transcript pages. Applies immediately.</p>
+          <p className="text-[11px] text-fg-dim mb-4">Hides your username and home-directory paths everywhere in the UI — the same app-wide toggle shown on Live, Collection, and transcript pages. Applies immediately; raw paths never leave this machine either way.</p>
           <Toggle label="Redact local usernames and paths" checked={redact} onChange={setRedact} />
         </div>
+
+        <div className="card p-5">
+          <h2 className="text-sm font-medium mb-1">Welcome tour</h2>
+          <p className="text-[11px] text-fg-dim mb-3">Show the first-run introduction again on this browser. Dismissing it hides it until you replay it here.</p>
+          <button onClick={replayTour} className="flex items-center gap-2 px-3 py-2 rounded-md border border-bd text-sm text-fg-muted hover:bg-bg-elev transition-colors">
+            <PlayCircle className="size-4" /> Replay welcome tour
+          </button>
+        </div>
+
+        {maintenance && (
+          <div className="card p-5">
+            <h2 className="text-sm font-medium mb-1 flex items-center gap-1.5"><Stethoscope className="size-3.5 text-accent-soft" /> Diagnostics</h2>
+            <p className="text-[11px] text-fg-dim mb-4">Read-only maintenance statistics reported by this server.</p>
+            <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2">
+              {Object.entries(maintenance).slice(0, 24).map(([key, value]) => (
+                <div key={key} className="flex items-baseline justify-between gap-3 min-w-0">
+                  <dt className="text-[11px] text-fg-muted truncate shrink-0 max-w-[55%]" title={key}>{key}</dt>
+                  <dd className="text-xs mono text-right break-all min-w-0">{displayStat(value)}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        )}
 
         <div className="flex items-center gap-3">
           <button onClick={save} disabled={saving || loading} className="flex items-center gap-2 px-4 py-2.5 rounded-md bg-accent hover:bg-accent/90 disabled:opacity-50 active:scale-[0.96] text-white text-sm font-medium transition-colors">

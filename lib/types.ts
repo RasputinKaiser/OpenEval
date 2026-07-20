@@ -90,6 +90,8 @@ export interface RunnerContext {
   images?: string[];
   harness?: string;
   onEvent?: (event: RunnerEvent) => void;
+  /** Cancellation: aborting kills the harness process tree (headless) / tmux session mid-case. */
+  signal?: AbortSignal;
 }
 
 export type RunnerEvent =

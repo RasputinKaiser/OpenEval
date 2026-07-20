@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "node:fs";
 import path from "node:path";
+import { z } from "zod";
 import { getRunCaseByCaseId } from "@/lib/db";
 import { resolveWithin } from "@/lib/config";
 import { isTerminalCaseStatus } from "@/lib/status";
+import { badRequest, notFound, parseQuery } from "@/lib/api-http";
+
+const querySchema = z.object({
+  path: z.string().min(1, "path is required"),
+});
 
 export async function GET(
   req: NextRequest,
@@ -11,25 +17,23 @@ export async function GET(
 ) {
   const params = await props.params;
   const { id: runId, caseId } = params;
-  const artifactPath = req.nextUrl.searchParams.get("path");
-
-  if (!artifactPath) {
-    return NextResponse.json({ error: "Missing path parameter" }, { status: 400 });
-  }
+  const query = parseQuery(req, querySchema);
+  if (!query.ok) return query.response;
+  const artifactPath = query.data.path;
 
   const rc = getRunCaseByCaseId(runId, caseId);
   if (!rc) {
-    return NextResponse.json({ error: "Case not found" }, { status: 404 });
+    return notFound("Case not found", { detail: `Run "${runId}" has no case "${caseId}".` });
   }
   if (!rc.workdir_path || !path.isAbsolute(rc.workdir_path)) {
-    return NextResponse.json({ error: "Case has no artifact workdir" }, { status: 404 });
+    return notFound("Case has no artifact workdir");
   }
 
   // Resolve within the case workdir: blocks `..`/absolute-path escapes while
   // still allowing nested artifact subpaths (e.g. dist/index.html).
   const fullPath = resolveWithin(rc.workdir_path, artifactPath);
   if (!fullPath) {
-    return NextResponse.json({ error: "Invalid path" }, { status: 400 });
+    return badRequest("Invalid path", { detail: "Artifact paths must stay inside the case workdir." });
   }
 
   try {
@@ -37,7 +41,7 @@ export async function GET(
     const realArtifact = fs.realpathSync(fullPath);
     const realRelative = path.relative(realWorkdir, realArtifact);
     if (!realRelative || realRelative.startsWith("..") || path.isAbsolute(realRelative)) {
-      return NextResponse.json({ error: "Invalid path" }, { status: 400 });
+      return badRequest("Invalid path", { detail: "Artifact paths must stay inside the case workdir." });
     }
     const content = fs.readFileSync(realArtifact, "utf8");
     const isTerminal = isTerminalCaseStatus(rc.status);
@@ -46,9 +50,6 @@ export async function GET(
       : { "Cache-Control": "no-cache" };
     return NextResponse.json({ path: artifactPath, content }, { headers });
   } catch {
-    return NextResponse.json(
-      { error: "Artifact not found. Run the case or oracle solve script first." },
-      { status: 404 }
-    );
+    return notFound("Artifact not found. Run the case or oracle solve script first.");
   }
 }

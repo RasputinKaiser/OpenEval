@@ -119,6 +119,35 @@ button:active:not(:disabled) { transform: scale(0.96); }
   border-radius: 4px;
 }
 
+/* Skip-to-content target: focusable for the skip link. A full outline around
+   the whole main region is noise, but focus must still be visible (WCAG
+   2.4.7) — mark the content edge with an accent bar instead. */
+#main:focus-visible {
+  outline: none;
+  box-shadow: inset 3px 0 0 var(--color-accent);
+}
+
+/* Visually hidden until keyboard-focused; theme-aware so text stays AA in
+   both themes (accent-on-white is only ~4.4:1 for small text). */
+.skip-link {
+  position: fixed;
+  top: -100px;
+  left: 12px;
+  z-index: 200;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  background: var(--color-bg-elev);
+  color: var(--color-fg);
+  border: 1px solid var(--color-bd);
+  transition: top 150ms cubic-bezier(0.2, 0, 0, 1);
+}
+.skip-link:focus { top: 12px; }
+@media (prefers-reduced-motion: reduce) {
+  .skip-link { transition: none; }
+}
+
 /*
  * One table voice for the whole app: quiet uppercase headers (sticky inside
  * scroll containers), hairline rows, hover trace, numerics right-aligned via
@@ -174,6 +203,16 @@ button:active:not(:disabled) { transform: scale(0.96); }
 }
 
 @keyframes menu-enter { from { transform: translateY(-4px) scale(0.98); opacity: 0; } to { transform: translateY(0) scale(1); opacity: 1; } }
+
+/* Class form of the popover/modal enter animation so reduced-motion can win.
+   The [style*=] fallback covers components that still inline the animation. */
+.anim-menu-enter { animation: menu-enter 150ms cubic-bezier(0.2, 0, 0, 1); }
+@media (prefers-reduced-motion: reduce) {
+  .anim-menu-enter,
+  [style*="menu-enter"] { animation: none !important; }
+  /* Blinking activity dots read fine as static dots. */
+  .animate-pulse { animation: none; }
+}
 
 .icon-crossfade > * {
   transition: opacity 200ms cubic-bezier(0.2, 0, 0, 1);

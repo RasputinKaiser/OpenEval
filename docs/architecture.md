@@ -127,6 +127,19 @@ events
 
 During execution, `executeCase()` inserts the run case, appends `case_started`, tool, assistant message, grading, grader result, and case-finished events, updates the run case with runner and grader JSON, and stores transcript event lines in `data/transcripts/`.
 
+### Durability and maintenance
+
+On the first open per process, `lib/db.ts` runs `PRAGMA quick_check` against `eval.db`. If the file fails to open (`SQLITE_NOTADB`) or fails the check (`SQLITE_CORRUPT`), the process does not crash-loop: the bad database — together with its `-wal`/`-shm` siblings — is moved aside once to `eval.db.corrupt-<timestamp>` (kept for forensics, never deleted), a fresh database is created with the current schema, and a recovery notice (timestamp, reason, moved-aside path) is recorded in process state. The notice is surfaced through `GET /api/settings/maintenance` so the dashboard can warn the operator; run history from before the corruption remains in the moved-aside file. This mirrors the corruption-recovery contract of `lib/live-cache.ts`.
+
+Migrations are formalized by a `schema_version` table (`version`, `applied_at`): each versioned data migration runs once inside a transaction and is recorded; versions already covered by the legacy `PRAGMA user_version` marker are recorded without re-running, and `user_version` is kept in sync for older checkouts. Additive column migrations remain idempotent presence-checked `ALTER TABLE`s.
+
+`/api/settings/maintenance` (local-only — it re-validates the `Host` header with the same rules as the middleware, for GET as well as mutating methods) exposes:
+
+- `GET` — DB size stats (main/WAL/SHM bytes, page counts, freelist, journal mode), table row counts, schema version, and any recovery notice. Paths in responses are redacted.
+- `POST {"action": "quick_check" | "integrity_check"}` — integrity verification.
+- `POST {"action": "checkpoint"}` — `PRAGMA wal_checkpoint(TRUNCATE)`.
+- `POST {"action": "vacuum"}` — `VACUUM`, reporting size before/after.
+
 ## Dashboard And APIs
 
 Primary pages from the app and README:
@@ -165,7 +178,7 @@ API routes:
 | `POST /api/runs` | Create and start a run. |
 | `GET /api/runs/[id]` | Run and run cases, with optional `lite=1`. |
 | `GET /api/runs/[id]/case/[caseId]` | Full run case record. |
-| `GET /api/runs/[id]/case/[caseId]/artifact?path=<filename>` | Reads a top-level artifact file from the case workdir. |
+| `GET /api/runs/[id]/case/[caseId]/artifact?path=<filename>` | Reads an artifact file from the case workdir. Subject to the workdir retention policy below — artifacts of pruned runs return 404. |
 | `GET /api/runs/[id]/telemetry` | Computed run telemetry. |
 | `GET /api/runs/[id]/report` | Run report (Markdown or bundle download). |
 | `POST /api/runs/[id]/cancel` | Cancel a running run. |
@@ -231,3 +244,7 @@ data/reports/
 ```
 
 `ensureDirs()` creates `data/`, `data/workdirs/`, and `data/transcripts/`. `data/reports/<runId>/` is the default output directory for `npm run report -- <runId> --bundle` (report.md, manifest.json, summary.json, and per-case JSON artifacts). The README also treats `data/` as the ignored local runtime area for SQLite, transcripts, workdirs, and artifacts.
+
+### Workdir retention
+
+Terminal runs keep their workdirs as evidence: the case-detail artifact endpoint serves files straight from `data/workdirs/<runId>/<caseId>__s<sample>/`. After each finished run, `cleanupOldWorkdirs()` (`lib/run.ts`) prunes workdirs beyond the 5 most recent runs (by workdir mtime). The finishing run's own workdir and the workdir of any run still marked `running` are never pruned — parallel runs are legal and their workdirs are live. Pruning removes only workdirs: run/case rows, transcripts (`data/transcripts/`), and reports survive, so the case-detail page degrades to "artifact not found" for pruned runs while every other trace of the run remains.

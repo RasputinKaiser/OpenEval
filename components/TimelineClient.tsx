@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import clsx from "clsx";
-import { Activity, TrendingUp, TrendingDown, AlertTriangle, ArrowLeft, Gavel, Scale, LineChart, GitCompareArrows, Zap, CalendarPlus } from "lucide-react";
+import { Activity, TrendingUp, TrendingDown, AlertTriangle, ArrowLeft, Gavel, Scale, LineChart, GitCompareArrows, Zap, CalendarPlus, Filter } from "lucide-react";
 import PageHeader from "./PageHeader";
 import { KIND_COLOR, KIND_ICON, KIND_LABEL } from "./markerKinds";
 import { SectionHeader, SectionNav } from "./Section";
@@ -13,6 +13,18 @@ import type { TimelineReport } from "@/lib/insights/collect";
 import type { MarkerKind } from "@/lib/insights/timeline";
 import type { JudgeJobStatus } from "@/lib/insights/judge";
 
+
+const MARKER_KINDS: MarkerKind[] = ["skill", "mcp", "subagent", "model"];
+type KindFilter = MarkerKind | "all";
+
+const isMarkerKind = (v: string | null): v is MarkerKind => MARKER_KINDS.includes(v as MarkerKind);
+
+/**
+ * Sticky first column for the wide impact table — row identity stays visible
+ * while the delta columns scroll on narrow screens.
+ */
+const STICKY_TH = "sticky left-0 z-[2]";
+const STICKY_TD = "sticky left-0 z-[1] bg-bg-subtle";
 
 /** A colored delta chip. `lowerIsBetter` flips the good/bad coloring. */
 function Delta({ value, lowerIsBetter, fmt }: { value: number; lowerIsBetter?: boolean; fmt: (v: number) => string }) {
@@ -55,6 +67,32 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
   const [err, setErr] = useState(error);
   const [job, setJob] = useState<JudgeJobStatus | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Marker-kind filter, mirrored into `?kind=` so a filtered view survives
+  // reload/share. Read on mount (not in the initializer) to keep SSR and the
+  // first client render identical.
+  const [kindFilter, setKindFilter] = useState<KindFilter>("all");
+
+  useEffect(() => {
+    const fromUrl = new URLSearchParams(window.location.search).get("kind");
+    if (isMarkerKind(fromUrl)) setKindFilter(fromUrl);
+  }, []);
+
+  const applyKindFilter = useCallback((kind: KindFilter) => {
+    setKindFilter(kind);
+    const url = new URL(window.location.href);
+    if (kind === "all") url.searchParams.delete("kind");
+    else url.searchParams.set("kind", kind);
+    window.history.replaceState(null, "", url);
+  }, []);
+
+  const visibleMarkers = useMemo(
+    () => (kindFilter === "all" ? data.markers : data.markers.filter((m) => m.kind === kindFilter)),
+    [data.markers, kindFilter],
+  );
+  const visibleImpacts = useMemo(
+    () => (kindFilter === "all" ? data.impacts : data.impacts.filter((im) => im.marker.kind === kindFilter)),
+    [data.impacts, kindFilter],
+  );
 
   const trend = data.overall.trend;
   const TrendIcon = trend >= 0 ? TrendingUp : TrendingDown;
@@ -255,6 +293,40 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
         </div>
       </section>
 
+      <div className="flex flex-wrap items-center gap-1.5 mb-3" role="group" aria-label="Filter markers by kind">
+        <span className="inline-flex items-center gap-1 text-[11px] text-fg-dim mr-1"><Filter className="size-3" /> Markers</span>
+        <button
+          type="button"
+          onClick={() => applyKindFilter("all")}
+          aria-pressed={kindFilter === "all"}
+          className={clsx(
+            "rounded-full border px-2.5 py-0.5 text-[11px] transition-colors",
+            kindFilter === "all" ? "border-accent/50 bg-accent/10 text-accent-soft" : "border-bd text-fg-muted hover:bg-bg-elev hover:text-fg",
+          )}
+        >
+          All <span className="mono tabular-nums text-fg-dim">{data.markers.length}</span>
+        </button>
+        {MARKER_KINDS.map((k) => {
+          const n = data.markers.filter((m) => m.kind === k).length;
+          if (n === 0) return null;
+          return (
+            <button
+              key={k}
+              type="button"
+              onClick={() => applyKindFilter(kindFilter === k ? "all" : k)}
+              aria-pressed={kindFilter === k}
+              className={clsx(
+                "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] transition-colors",
+                kindFilter === k ? "border-accent/50 bg-accent/10 text-accent-soft" : "border-bd text-fg-muted hover:bg-bg-elev hover:text-fg",
+              )}
+            >
+              <span className="size-1.5 rounded-full" style={{ background: KIND_COLOR[k] }} aria-hidden />
+              {KIND_LABEL[k]}s <span className="mono tabular-nums text-fg-dim">{n}</span>
+            </button>
+          );
+        })}
+      </div>
+
       <section id="outcome" className="scroll-mt-16 mb-6">
         <SectionHeader
           icon={LineChart}
@@ -263,7 +335,7 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
           right={`${data.outcomeSeries.length} sessions plotted`}
         />
         <div className="card p-4">
-          <OutcomeChart series={data.outcomeSeries} markers={data.markers} changePoints={data.changePoints ?? []} />
+          <OutcomeChart series={data.outcomeSeries} markers={visibleMarkers} changePoints={data.changePoints ?? []} />
         </div>
       </section>
 
@@ -272,7 +344,7 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
           icon={GitCompareArrows}
           title="Impact"
           desc="Before vs. after each adoption — what actually moved when you started using it"
-          right={`${data.impacts.length} measured`}
+          right={kindFilter === "all" ? `${data.impacts.length} measured` : `${visibleImpacts.length} of ${data.impacts.length} measured`}
         />
         <div className="card overflow-hidden">
         <div className="px-3 py-2 text-[11px] text-fg-dim border-b border-bd/50">
@@ -282,7 +354,7 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
           <table className="data-table">
             <thead>
               <tr>
-                <th>Adopted</th>
+                <th className={STICKY_TH}>Adopted</th>
                 <th className="num">Outcome Δ</th>
                 <th className="num">Tool-err Δ</th>
                 <th className="num">Cost Δ</th>
@@ -294,16 +366,19 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
               {data.impacts.length === 0 && (
                 <tr><td colSpan={6} className="px-3 py-6 text-center text-fg-dim text-sm">Not enough history around any adoption yet.</td></tr>
               )}
+              {data.impacts.length > 0 && visibleImpacts.length === 0 && (
+                <tr><td colSpan={6} className="px-3 py-6 text-center text-fg-dim text-sm">No measured {kindFilter === "all" ? "" : `${KIND_LABEL[kindFilter as MarkerKind]} `}adoptions match the current marker filter.</td></tr>
+              )}
               {(() => {
-                const maxDelta = Math.max(...data.impacts.map((x) => Math.abs(x.deltas.outcome)), 1e-9);
-                return data.impacts.map((im) => {
+                const maxDelta = Math.max(...visibleImpacts.map((x) => Math.abs(x.deltas.outcome)), 1e-9);
+                return visibleImpacts.map((im) => {
                 const Icon = KIND_ICON[im.marker.kind];
                 return (
                   <tr key={`${im.marker.kind}-${im.marker.name}`} className={clsx(im.lowConfidence && "opacity-60")}>
-                    <td>
+                    <td className={STICKY_TD}>
                       <div className="flex items-center gap-1.5">
                         <Icon className="size-3.5 shrink-0" style={{ color: KIND_COLOR[im.marker.kind] }} />
-                        <span className="font-medium truncate max-w-[240px]">{im.marker.name}</span>
+                        <span className="font-medium truncate max-w-[160px] md:max-w-[240px]">{im.marker.name}</span>
                       </div>
                       <div className="text-[10px] text-fg-dim mono">
                         {KIND_LABEL[im.marker.kind]} · {fmtDate(im.marker.firstSeenAt)} · n={im.nBefore}/{im.nAfter}
@@ -400,14 +475,17 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
           icon={CalendarPlus}
           title="Adoptions"
           desc="Every skill, plugin, subagent, and model — the day it first appeared in your workflow"
-          right={`${data.markers.length} total`}
+          right={kindFilter === "all" ? `${data.markers.length} total` : `${visibleMarkers.length} of ${data.markers.length}`}
         />
         <div className="card overflow-hidden">
         <div className="max-h-[480px] overflow-y-auto px-4 py-3">
           {(() => {
             // Newest first, grouped by month; each group renders on a shared rail.
+            if (visibleMarkers.length === 0) {
+              return <p className="text-sm text-fg-dim py-4 text-center">No adoptions match the current marker filter.</p>;
+            }
             const groups: Array<{ label: string; items: typeof data.markers }> = [];
-            for (const m of [...data.markers].reverse()) {
+            for (const m of [...visibleMarkers].reverse()) {
               const label = new Date(m.firstSeenAt).toLocaleDateString(undefined, { month: "long", year: "numeric" });
               const last = groups[groups.length - 1];
               if (last && last.label === label) last.items.push(m);

@@ -40,7 +40,7 @@ function fmtMetric(v: number, metric: WeeklyMetric, estimated: boolean): string 
 }
 
 export function WeeklyUsageChart({ rollup }: { rollup: RollupReport }) {
-  const { tip, show, showAt, hide } = useChartTooltip();
+  const { tip, show, showAt, hide, togglePin } = useChartTooltip();
   const [metric, setMetric] = useState<WeeklyMetric>("cost");
   const [hovered, setHovered] = useState<number | null>(null);
 
@@ -89,11 +89,13 @@ export function WeeklyUsageChart({ rollup }: { rollup: RollupReport }) {
           return (
             <button
               key={w.startMs}
+              type="button"
               className="flex-1 flex flex-col items-center gap-1 min-w-0 outline-none"
               aria-label={`Week of ${w.label}: ${fmtMetric(v, metric, rollup.anyEstimatedCost)}`}
               onMouseMove={(e) => { show(e, tipFor(w)); setHovered(i); }}
               onFocus={(e) => { showAt(e.currentTarget, tipFor(w)); setHovered(i); }}
               onBlur={() => { hide(); setHovered(null); }}
+              onClick={(e) => { e.stopPropagation(); togglePin(e, tipFor(w), `week-${w.startMs}`); }}
             >
               <div
                 className="w-full rounded-t-[4px] transition-[background,box-shadow] duration-100"
@@ -117,10 +119,18 @@ export function WeeklyUsageChart({ rollup }: { rollup: RollupReport }) {
 
 
 export function ActivityHeatmap({ heatmap, totalSessions }: { heatmap: number[][]; totalSessions: number }) {
-  const { tip, show, hide } = useChartTooltip();
+  const { tip, show, showAt, hide, togglePin } = useChartTooltip();
   const [cell, setCell] = useState<{ d: number; h: number } | null>(null);
 
   const maxCell = Math.max(1, ...heatmap.map((row) => Math.max(...row)));
+
+  const tipFor = (d: number, h: number, v: number) => (
+    <div>
+      <span className="font-medium">{v}</span>
+      <span className="text-fg-muted"> session{v === 1 ? "" : "s"}</span>
+      <div className="text-fg-dim mono">{DAYS[d]} {String(h).padStart(2, "0")}:00–{String((h + 1) % 24).padStart(2, "0")}:00</div>
+    </div>
+  );
 
   return (
     <div className="card p-4 lg:col-span-2">
@@ -135,20 +145,15 @@ export function ActivityHeatmap({ heatmap, totalSessions }: { heatmap: number[][
             {row.map((v, h) => {
               const active = cell?.d === d && cell?.h === h;
               return (
-                <div
+                <button
                   key={h}
-                  className={clsx("flex-1 h-[11px] rounded-[2px] min-w-0 transition-[box-shadow] duration-75", v === 0 && "bg-bg-elev")}
+                  type="button"
+                  className={clsx("flex-1 h-[11px] rounded-[2px] min-w-0 transition-[box-shadow] duration-75 outline-none", v === 0 && "bg-bg-elev")}
                   aria-label={`${DAYS[d]} ${String(h).padStart(2, "0")}:00 — ${v} session${v === 1 ? "" : "s"}`}
-                  onMouseMove={(e) => {
-                    setCell({ d, h });
-                    show(e, (
-                      <div>
-                        <span className="font-medium">{v}</span>
-                        <span className="text-fg-muted"> session{v === 1 ? "" : "s"}</span>
-                        <div className="text-fg-dim mono">{DAYS[d]} {String(h).padStart(2, "0")}:00–{String((h + 1) % 24).padStart(2, "0")}:00</div>
-                      </div>
-                    ));
-                  }}
+                  onMouseMove={(e) => { setCell({ d, h }); show(e, tipFor(d, h, v)); }}
+                  onFocus={(e) => { setCell({ d, h }); showAt(e.currentTarget, tipFor(d, h, v)); }}
+                  onBlur={() => { hide(); setCell(null); }}
+                  onClick={(e) => { e.stopPropagation(); togglePin(e, tipFor(d, h, v), `hm-${d}-${h}`); }}
                   style={{
                     background: v > 0
                       ? `color-mix(in srgb, var(--color-accent) ${Math.round(18 + 82 * (v / maxCell))}%, transparent)`
@@ -177,7 +182,7 @@ export function ActivityHeatmap({ heatmap, totalSessions }: { heatmap: number[][
 // ---- Tool health ----
 
 export function ToolHealthList({ tools, fullWidth, hideHeading }: { tools: ToolRollup[]; fullWidth?: boolean; hideHeading?: boolean }) {
-  const { tip, show, showAt, hide } = useChartTooltip();
+  const { tip, show, showAt, hide, togglePin } = useChartTooltip();
   const [hovered, setHovered] = useState<string | null>(null);
   const maxCalls = tools[0]?.calls || 1;
 
@@ -207,10 +212,12 @@ export function ToolHealthList({ tools, fullWidth, hideHeading }: { tools: ToolR
           return (
             <button
               key={t.name}
+              type="button"
               className={clsx("block w-full text-left text-[12px] rounded px-1.5 py-1 -mx-1.5 outline-none transition-colors", active && "bg-bg-elev")}
               onMouseMove={(e) => { show(e, tipFor(t)); setHovered(t.name); }}
               onFocus={(e) => { showAt(e.currentTarget, tipFor(t)); setHovered(t.name); }}
               onBlur={() => { hide(); setHovered(null); }}
+              onClick={(e) => { e.stopPropagation(); togglePin(e, tipFor(t), `tool-${t.name}`); }}
             >
               <div className="flex items-center justify-between gap-2 min-w-0">
                 <span className={clsx("truncate mono text-[11px]", active ? "text-fg" : "text-fg-muted")}>{t.name}</span>

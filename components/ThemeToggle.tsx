@@ -38,7 +38,7 @@ export default function ThemeToggle({ collapsed }: { collapsed?: boolean }) {
       aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
       title={collapsed ? (theme === "dark" ? "Light mode" : "Dark mode") : undefined}
     >
-      {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
+      {theme === "dark" ? <Sun aria-hidden="true" className="size-4" /> : <Moon aria-hidden="true" className="size-4" />}
     </button>
   );
 }

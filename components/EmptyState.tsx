@@ -1,18 +1,26 @@
 import { type LucideIcon } from "lucide-react";
 import Link from "next/link";
 
+/**
+ * Shared empty-state surface. Always give the user a concrete next action:
+ * `actionHref`/`actionLabel` render a primary link (e.g. "New run" → /runs/new)
+ * and `command` renders an equivalent CLI one-liner as a secondary path.
+ */
 export default function EmptyState({
   icon: Icon,
   title,
   description,
   actionHref,
   actionLabel,
+  command,
 }: {
   icon: LucideIcon;
   title: string;
   description?: string;
   actionHref?: string;
   actionLabel?: string;
+  /** CLI one-liner offered as the secondary next action. */
+  command?: string;
 }) {
   return (
     <div className="flex flex-col items-center justify-center py-12 px-6 text-center">
@@ -28,6 +36,11 @@ export default function EmptyState({
         >
           {actionLabel}
         </Link>
+      )}
+      {command && (
+        <code className="mt-3 block rounded-md border border-bd-subtle bg-bg-subtle px-3 py-1.5 text-[11px] mono text-fg-muted select-all">
+          {command}
+        </code>
       )}
     </div>
   );
