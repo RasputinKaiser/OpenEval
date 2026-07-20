@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { listRuns, getRunCaseSummariesBatch } from "@/lib/db";
+import { internalError } from "@/lib/api-http";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +21,7 @@ export interface HarnessAggregate {
   latestRunAt: number | null;
 }
 
-export async function GET() {
+function aggregateByHarness(): HarnessAggregate[] {
   const runs = listRuns(200);
   const runIds = runs.map((r) => r.id);
   const caseSummaries = getRunCaseSummariesBatch(runIds);
@@ -65,9 +66,16 @@ export async function GET() {
     avgTokPerSec: a.totalDurationMs > 0 ? a.totalTokensOut / (a.totalDurationMs / 1000) : 0,
   }));
   list.sort((a, b) => b.passRate - a.passRate || b.runCount - a.runCount);
+  return list;
+}
 
-  return NextResponse.json(
-    { harnesses: list },
-    { headers: { "Cache-Control": "private, max-age=30, stale-while-revalidate=120" } }
-  );
+export async function GET() {
+  try {
+    return NextResponse.json(
+      { harnesses: aggregateByHarness() },
+      { headers: { "Cache-Control": "private, max-age=30, stale-while-revalidate=120" } }
+    );
+  } catch (error) {
+    return internalError("Failed to build harness leaderboard", error);
+  }
 }

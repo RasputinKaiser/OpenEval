@@ -23,7 +23,7 @@ export default function PageHeader({
     <header className="mb-5">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <h1 className="text-xl font-semibold tracking-tight flex items-center gap-2 min-w-0">
-          <span className="grid place-items-center size-8 rounded-lg bg-accent/10 shrink-0">
+          <span aria-hidden="true" className="grid place-items-center size-8 rounded-lg bg-accent/10 shrink-0">
             <Icon className="size-4 text-accent-soft" />
           </span>
           <span className="truncate">{title}</span>

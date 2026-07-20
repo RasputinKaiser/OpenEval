@@ -13,6 +13,7 @@ export function RedactToggle({ redact, onToggle, compact }: { redact: boolean; o
   return (
     <button
       onClick={onToggle}
+      aria-pressed={redact}
       title="Hide local usernames in paths, titles, and content (one preference, app-wide)"
       className={clsx(
         "flex items-center gap-1.5 rounded-md border transition-colors",

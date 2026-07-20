@@ -46,7 +46,7 @@ export default function OutcomeChart({
   markers: Marker[];
   changePoints: ChangePoint[];
 }) {
-  const { tip, show, hide } = useChartTooltip();
+  const { tip, pinned, show, showAt, hide, togglePin } = useChartTooltip();
   const [cross, setCross] = useState<number | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const [measuredW, setMeasuredW] = useState(900);
@@ -66,6 +66,11 @@ export default function OutcomeChart({
   }, []);
 
   const W = Math.round(measuredW * zoom), H = 264;
+
+  // When a pinned tip dismisses (Escape / tap away), retire the crosshair too.
+  useEffect(() => {
+    if (!tip) setCross(null);
+  }, [tip]);
 
   /** Multiply zoom, keeping the time under `anchorClientX` (default: viewport center) in place. */
   const zoomBy = useCallback((factor: number, anchorClientX?: number) => {
@@ -141,9 +146,7 @@ export default function OutcomeChart({
   d.setDate(1); d.setHours(0, 0, 0, 0); d.setMonth(d.getMonth() + 1);
   while (d.getTime() < t1) { months.push(d.getTime()); d.setMonth(d.getMonth() + 1); }
 
-  // Crosshair: map pointer → viewBox x → nearest series point (readers aim at
-  // a date, never at a 2px line).
-  const onPlotMove = (e: React.MouseEvent<SVGSVGElement>) => {
+  const nearestIdx = (e: React.MouseEvent<SVGSVGElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const sx = ((e.clientX - rect.left) / Math.max(rect.width, 1)) * W;
     let best = 0, bestDist = Infinity;
@@ -151,14 +154,32 @@ export default function OutcomeChart({
       const dist = Math.abs(x(series[i].at) - sx);
       if (dist < bestDist) { bestDist = dist; best = i; }
     }
+    return best;
+  };
+
+  const pointTip = (p: SeriesPoint) => (
+    <div>
+      <div><span className="font-medium tabular-nums">{p.value.toFixed(2)}</span><span className="text-fg-muted"> outcome</span></div>
+      <div className="text-fg-dim mono">{fmtDate(p.at)} · trailing median of {p.n}</div>
+    </div>
+  );
+
+  // Crosshair: map pointer → viewBox x → nearest series point (readers aim at
+  // a date, never at a 2px line).
+  const onPlotMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (pinned) return; // a pinned tip holds the crosshair too
+    const best = nearestIdx(e);
     setCross(best);
-    const p = series[best];
-    show(e, (
-      <div>
-        <div><span className="font-medium tabular-nums">{p.value.toFixed(2)}</span><span className="text-fg-muted"> outcome</span></div>
-        <div className="text-fg-dim mono">{fmtDate(p.at)} · trailing median of {p.n}</div>
-      </div>
-    ));
+    show(e, pointTip(series[best]));
+  };
+
+  // Tap/click anywhere on the plot pins the nearest point — hoverless devices
+  // get the same reading the crosshair gives mouse users.
+  const onPlotClick = (e: React.MouseEvent<SVGSVGElement>) => {
+    e.stopPropagation();
+    const best = nearestIdx(e);
+    setCross(best);
+    togglePin(e, pointTip(series[best]), `pt-${series[best].at}`);
   };
 
   return (
@@ -203,7 +224,8 @@ export default function OutcomeChart({
         height={H}
         className="block"
         onMouseMove={onPlotMove}
-        onMouseLeave={() => { hide(); setCross(null); }}
+        onClick={onPlotClick}
+        onMouseLeave={() => { if (!pinned) { hide(); setCross(null); } }}
       >
         {/* y gridlines at 0 / .5 / 1 — labels live in the pinned overlay so they survive panning */}
         {[0, 0.5, 1].map((v) => (
@@ -220,28 +242,46 @@ export default function OutcomeChart({
         ))}
 
         {/* detected outcome shifts — vertical flags */}
-        {shownShifts.map((c) => (
-          <g key={c.at}>
-            <line
-              x1={x(c.at)} y1={PAD_T} x2={x(c.at)} y2={H - PAD_B}
-              stroke={c.delta > 0 ? "var(--color-ok)" : "var(--color-err)"}
-              strokeWidth={1.5} strokeDasharray="4 3" opacity={0.7}
-            />
-            <rect
-              x={x(c.at) - 6} y={PAD_T - 2} width={12} height={H - PAD_T - PAD_B} fill="transparent" className="cursor-help"
-              onMouseMove={(e) => {
-                e.stopPropagation();
-                setCross(null);
-                show(e, (
-                  <div>
-                    <div><span className="font-medium">Shift {fmtSigned(c.delta)}</span><span className="text-fg-muted"> (z={c.zScore.toFixed(1)})</span></div>
-                    <div className="text-fg-dim mono">{fmtDate(c.at)} · {c.nearMarkers[0] ?? "unattributed"}</div>
-                  </div>
-                ));
-              }}
-            />
-          </g>
-        ))}
+        {shownShifts.map((c) => {
+          const shiftTip = (
+            <div>
+              <div><span className="font-medium">Shift {fmtSigned(c.delta)}</span><span className="text-fg-muted"> (z={c.zScore.toFixed(1)})</span></div>
+              <div className="text-fg-dim mono">{fmtDate(c.at)} · {c.nearMarkers[0] ?? "unattributed"}</div>
+            </div>
+          );
+          return (
+            <g key={c.at}>
+              <line
+                x1={x(c.at)} y1={PAD_T} x2={x(c.at)} y2={H - PAD_B}
+                stroke={c.delta > 0 ? "var(--color-ok)" : "var(--color-err)"}
+                strokeWidth={1.5} strokeDasharray="4 3" opacity={0.7}
+              />
+              <rect
+                x={x(c.at) - 6} y={PAD_T - 2} width={12} height={H - PAD_T - PAD_B} fill="transparent" className="cursor-help"
+                tabIndex={0}
+                role="button"
+                aria-pressed={tip?.pinKey === `shift-${c.at}`}
+                aria-label={`Detected shift ${fmtSigned(c.delta)} on ${fmtDate(c.at)} — show details`}
+                onMouseMove={(e) => {
+                  if (pinned) return;
+                  e.stopPropagation();
+                  setCross(null);
+                  show(e, shiftTip);
+                }}
+                onFocus={(e) => { setCross(null); showAt(e.currentTarget, shiftTip); }}
+                onBlur={() => hide()}
+                onClick={(e) => { e.stopPropagation(); togglePin(e, shiftTip, `shift-${c.at}`); }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    togglePin({ clientX: 0, clientY: 0, currentTarget: e.currentTarget }, shiftTip, `shift-${c.at}`);
+                  }
+                }}
+              />
+            </g>
+          );
+        })}
 
                 <path d={area} fill="var(--color-accent)" opacity={0.08} />
         <path d={path} fill="none" stroke="var(--color-accent-soft)" strokeWidth={1.75} strokeLinejoin="round" />
@@ -258,30 +298,47 @@ export default function OutcomeChart({
         {clusters.map((c) => {
           const n = c.markers.length;
           const r = Math.min(6, 3 + (n - 1) * 0.9);
+          const key = `${c.kind}-${c.x.toFixed(0)}`;
+          const clusterTip = (
+            <div>
+              <div className="font-medium">{n} {KIND_LABEL[c.kind]}{n === 1 ? "" : "s"} adopted</div>
+              {c.markers.slice(0, 6).map((m) => (
+                <div key={m.name} className="text-fg-muted flex justify-between gap-3">
+                  <span className="truncate max-w-[190px]">{m.name}</span>
+                  <span className="text-fg-dim mono shrink-0">{fmtDate(m.firstSeenAt).slice(5)} ·×{m.sessionCount}</span>
+                </div>
+              ))}
+              {n > 6 && <div className="text-fg-dim">+{n - 6} more</div>}
+            </div>
+          );
           return (
             <circle
-              key={`${c.kind}-${c.x.toFixed(0)}`}
+              key={key}
               cx={c.x}
               cy={laneY(c.kind)}
               r={r}
               fill={KIND_COLOR[c.kind]}
               opacity={c.kind === "model" ? 0.55 : 0.9}
               className="cursor-help"
+              tabIndex={0}
+              role="button"
+              aria-pressed={tip?.pinKey === `cluster-${key}`}
+              aria-label={`${n} ${KIND_LABEL[c.kind]}${n === 1 ? "" : "s"} adopted around ${fmtDate(c.markers[0].firstSeenAt)} — show details`}
               onMouseMove={(e) => {
+                if (pinned) return;
                 e.stopPropagation();
                 setCross(null);
-                show(e, (
-                  <div>
-                    <div className="font-medium">{n} {KIND_LABEL[c.kind]}{n === 1 ? "" : "s"} adopted</div>
-                    {c.markers.slice(0, 6).map((m) => (
-                      <div key={m.name} className="text-fg-muted flex justify-between gap-3">
-                        <span className="truncate max-w-[190px]">{m.name}</span>
-                        <span className="text-fg-dim mono shrink-0">{fmtDate(m.firstSeenAt).slice(5)} ·×{m.sessionCount}</span>
-                      </div>
-                    ))}
-                    {n > 6 && <div className="text-fg-dim">+{n - 6} more</div>}
-                  </div>
-                ));
+                show(e, clusterTip);
+              }}
+              onFocus={(e) => { setCross(null); showAt(e.currentTarget, clusterTip); }}
+              onBlur={() => hide()}
+              onClick={(e) => { e.stopPropagation(); togglePin(e, clusterTip, `cluster-${key}`); }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  togglePin({ clientX: 0, clientY: 0, currentTarget: e.currentTarget }, clusterTip, `cluster-${key}`);
+                }
               }}
             />
           );

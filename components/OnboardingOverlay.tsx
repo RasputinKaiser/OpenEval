@@ -4,30 +4,47 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Check, Terminal } from "lucide-react";
 import { cachedFetch } from "@/lib/cached-fetch";
+import { ONBOARDING_DISMISSED_KEY, SHOW_ONBOARDING_EVENT } from "./first-run-steps";
 
 export default function OnboardingOverlay() {
   const [show, setShow] = useState(false);
 
   useEffect(() => {
     try {
-      const dismissed = localStorage.getItem("openeval-onboarding-dismissed");
+      const dismissed = localStorage.getItem(ONBOARDING_DISMISSED_KEY);
       if (!dismissed) {
         cachedFetch<{ runs: unknown[] }>("/api/runs")
           .then((d) => { if ((d.runs ?? []).length === 0) setShow(true); })
-          .catch(() => setShow(true));
+          // A failed poll is "unknown", not "new user" — never pop a modal
+          // over the app because the API was briefly unreachable.
+          .catch(() => {});
       }
     } catch {}
   }, []);
 
+  // Re-entry: Settings dispatches this event to replay the tour on demand.
+  useEffect(() => {
+    const onShow = () => setShow(true);
+    window.addEventListener(SHOW_ONBOARDING_EVENT, onShow);
+    return () => window.removeEventListener(SHOW_ONBOARDING_EVENT, onShow);
+  }, []);
+
+  useEffect(() => {
+    if (!show) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") dismiss(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [show]);
+
   function dismiss() {
-    try { localStorage.setItem("openeval-onboarding-dismissed", "1"); } catch {}
+    try { localStorage.setItem(ONBOARDING_DISMISSED_KEY, "1"); } catch {}
     setShow(false);
   }
 
   if (!show) return null;
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Welcome to OpenEval">
       <div className="absolute inset-0 bg-black/60" onClick={dismiss} />
       <div className="relative w-full max-w-md rounded-lg border border-bd bg-bg-subtle shadow-2xl overflow-hidden" style={{ animation: "menu-enter 200ms cubic-bezier(0.2, 0, 0, 1)" }}>
         <div className="p-6 text-center">
@@ -44,8 +61,8 @@ export default function OnboardingOverlay() {
                 <span className="text-sm font-semibold text-accent-soft">1</span>
               </div>
               <div className="flex-1">
-                <div className="text-sm font-medium">Start your first run</div>
-                <div className="text-[11px] text-fg-muted">Pick cases, choose a harness, and launch.</div>
+                <div className="text-sm font-medium">Detect your agent CLIs</div>
+                <div className="text-[11px] text-fg-muted">OpenEval finds ncode, Claude Code, Codex, and custom harnesses on PATH.</div>
               </div>
             </div>
             <div className="flex items-center gap-3 p-3 rounded-lg border border-bd-subtle bg-bg/40">
@@ -53,8 +70,8 @@ export default function OnboardingOverlay() {
                 <span className="text-sm font-semibold text-accent-soft">2</span>
               </div>
               <div className="flex-1">
-                <div className="text-sm font-medium">Watch results stream live</div>
-                <div className="text-[11px] text-fg-muted">See tool calls, tokens, and grader results in real time.</div>
+                <div className="text-sm font-medium">See sessions already on this machine</div>
+                <div className="text-[11px] text-fg-muted">Live and Collection surface past transcripts before any eval runs.</div>
               </div>
             </div>
             <div className="flex items-center gap-3 p-3 rounded-lg border border-bd-subtle bg-bg/40">
@@ -62,8 +79,8 @@ export default function OnboardingOverlay() {
                 <span className="text-sm font-semibold text-accent-soft">3</span>
               </div>
               <div className="flex-1">
-                <div className="text-sm font-medium">Compare harnesses</div>
-                <div className="text-[11px] text-fg-muted">Diff results across agent CLIs head-to-head.</div>
+                <div className="text-sm font-medium">Launch your first eval run</div>
+                <div className="text-[11px] text-fg-muted">Pick cases, choose a harness, and watch graded results stream in.</div>
               </div>
             </div>
           </div>
@@ -84,7 +101,7 @@ export default function OnboardingOverlay() {
           </div>
         </div>
         <div className="border-t border-bd-subtle px-6 py-2 text-[10px] text-fg-dim text-center flex items-center justify-center gap-1">
-          <Check className="size-3" /> Press <kbd className="rounded bg-bg-elev px-1 py-0.5">?</kbd> for keyboard shortcuts
+          <Check className="size-3" /> Press <kbd className="rounded bg-bg-elev px-1 py-0.5">?</kbd> for shortcuts · replay this tour anytime from Settings
         </div>
       </div>
     </div>

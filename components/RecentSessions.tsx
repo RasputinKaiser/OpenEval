@@ -14,7 +14,15 @@ export default function RecentSessions({ sessions }: { sessions: AllSourcesResul
   const { redact, show } = useRedactedShow(harvestFrom);
 
   if (sessions.length === 0) {
-    return <div className="text-center py-10 text-sm text-fg-dim">No sessions discovered yet.</div>;
+    return (
+      <div className="text-center py-10">
+        <div className="text-sm text-fg-dim">No sessions discovered yet.</div>
+        <div className="text-xs text-fg-dim mt-1.5">
+          Transcripts from any harness on this machine appear here automatically —{" "}
+          <Link href="/live" className="text-accent-soft hover:underline">watch detection on Live</Link>.
+        </div>
+      </div>
+    );
   }
 
   return (

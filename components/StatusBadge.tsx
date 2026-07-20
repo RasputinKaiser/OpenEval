@@ -25,7 +25,7 @@ export default function StatusBadge({ status, size = "sm" }: { status: Status | 
       m.bg, m.border,
       size === "xs" ? "text-[10px]" : size === "md" ? "text-xs" : "text-[11px]"
     )}>
-      <Icon className={clsx("size-3", m.color, animated && "animate-spin")} />
+      <Icon aria-hidden="true" className={clsx("size-3", m.color, animated && "animate-spin")} />
       <span className={m.color}>{m.label}</span>
     </span>
   );

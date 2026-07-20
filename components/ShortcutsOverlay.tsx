@@ -1,37 +1,49 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import clsx from "clsx";
+import { useFocusTrap } from "@/lib/use-focus-trap";
 
 const SHORTCUTS = [
-  { keys: ["", "K"], label: "Open command palette", group: "Global" },
+  { keys: ["⌘", "K"], label: "Open command palette (Ctrl+K on Windows/Linux)", group: "Global" },
   { keys: ["/"], label: "Focus search on current page", group: "Global" },
   { keys: ["?"], label: "Toggle this shortcuts help", group: "Global" },
   { keys: ["Esc"], label: "Close drawer / modal / overlay", group: "Global" },
   { keys: ["↑", "↓"], label: "Navigate command palette results", group: "Command Palette" },
   { keys: ["Enter"], label: "Open selected command", group: "Command Palette" },
+  { keys: ["g", "d"], label: "Go to Dashboard", group: "Navigation" },
   { keys: ["g", "r"], label: "Go to Runs", group: "Navigation" },
   { keys: ["g", "l"], label: "Go to Live", group: "Navigation" },
   { keys: ["g", "c"], label: "Go to Cases", group: "Navigation" },
-  { keys: ["g", "d"], label: "Go to Dashboard", group: "Navigation" },
   { keys: ["g", "n"], label: "Go to New Run", group: "Navigation" },
+  { keys: ["g", "h"], label: "Go to Leaderboard", group: "Navigation" },
+  { keys: ["g", "o"], label: "Go to Compare", group: "Navigation" },
+  { keys: ["g", "a"], label: "Go to Accuracy", group: "Navigation" },
+  { keys: ["g", "p"], label: "Go to Harnesses", group: "Navigation" },
 ];
 
 const GROUPS = ["Global", "Command Palette", "Navigation"] as const;
 
 export default function ShortcutsOverlay() {
   const [open, setOpen] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(panelRef, open);
 
   useEffect(() => {
     function handler(e: KeyboardEvent) {
       if (e.key === "?" && !e.metaKey && !e.ctrlKey) {
         const active = document.activeElement;
         const tag = active?.tagName?.toLowerCase();
-        if (tag === "input" || tag === "textarea") return;
+        if (tag === "input" || tag === "textarea" || tag === "select" || (active as HTMLElement)?.isContentEditable) return;
         e.preventDefault();
         setOpen((o) => !o);
       }
-      if (e.key === "Escape" && open) setOpen(false);
+      if (e.key === "Escape" && open) {
+        // Claim the Escape so overlays underneath (e.g. MobileNav) stay open.
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        setOpen(false);
+      }
     }
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -41,12 +53,20 @@ export default function ShortcutsOverlay() {
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/50 transition-opacity duration-150" onClick={() => setOpen(false)} />
-      <div className="relative w-full max-w-md mx-4 rounded-lg border border-bd bg-bg-subtle shadow-2xl overflow-hidden" style={{ animation: "menu-enter 120ms cubic-bezier(0.2, 0, 0, 1)" }}>
+      <div aria-hidden="true" className="absolute inset-0 bg-black/50 transition-opacity duration-150" onClick={() => setOpen(false)} />
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="shortcuts-overlay-title"
+        tabIndex={-1}
+        className="relative w-full max-w-md mx-4 rounded-lg border border-bd bg-bg-subtle shadow-2xl overflow-hidden anim-menu-enter"
+      >
         <div className="border-b border-bd-subtle px-4 py-3">
-          <h2 className="text-sm font-semibold">Keyboard Shortcuts</h2>
+          <h2 id="shortcuts-overlay-title" className="text-sm font-semibold">Keyboard Shortcuts</h2>
         </div>
-        <div className="max-h-[60vh] overflow-y-auto py-3">
+        {/* Focusable so keyboard users can scroll the list. */}
+        <div tabIndex={0} data-autofocus aria-label="Shortcut list" className="max-h-[60vh] overflow-y-auto py-3">
           {GROUPS.map((group) => (
             <div key={group} className="mb-3">
               <div className="px-4 pb-1 text-[9px] uppercase tracking-wider text-fg-dim">{group}</div>

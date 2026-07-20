@@ -7,6 +7,7 @@ import { buildTimeline, type TimelineReport } from "@/lib/insights/collect";
 import StatusBadge from "@/components/StatusBadge";
 import HarnessBadge from "@/components/HarnessBadge";
 import RecentSessions from "@/components/RecentSessions";
+import FirstRunGuide from "@/components/FirstRunGuide";
 import { KIND_ICON } from "@/components/markerKinds";
 import { Sparkline } from "@/components/Sparkline";
 import { fmtNum, fmtNumFull, fmtUsd, fmtUsdFull, fmtDuration, fmtSigned, fmtPct } from "@/lib/format";
@@ -46,6 +47,12 @@ export default async function Page() {
 
   const byCat = cases.reduce<Record<string, number>>((a, c) => { a[c.category] = (a[c.category] || 0) + 1; return a; }, {});
   const recentSessions = collection?.sessions.slice(0, 6) ?? [];
+  // True first run: no eval runs recorded AND the collection scan measurably
+  // found zero session files — totalFiles counts detect-only (parseable:false)
+  // sources too, so an operator with e.g. only Cursor history is not dropped
+  // into the intro guide. A failed scan (null) is "unknown", not "empty": the
+  // guide requires a successful scan that found nothing.
+  const firstRun = totalRuns === 0 && collection !== null && collection.totalFiles === 0;
   const trend = timeline?.overall.trend ?? 0;
   const TrendIcon = trend >= 0 ? TrendingUp : TrendingDown;
   const topImpacts = (timeline?.impacts ?? []).filter((im) => !im.lowConfidence).slice(0, 3);
@@ -71,6 +78,10 @@ export default async function Page() {
         </div>
       </header>
 
+      {firstRun ? (
+        <FirstRunGuide />
+      ) : (
+      <>
       <section className="stagger-grid grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mb-6">
         <Stat
           icon={Boxes}
@@ -153,6 +164,8 @@ export default async function Page() {
           )}
         </section>
       </div>
+      </>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <section className="card p-5 lg:col-span-2">

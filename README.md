@@ -88,6 +88,7 @@ The dashboard currently exposes these primary routes:
 | `start` | `next start` | Serve the production build. |
 | `lint` | `next lint` | Run the Next.js ESLint pass. |
 | `typecheck` | `tsc --noEmit` | Run TypeScript without emitting files. |
+| `doctor` | `tsx scripts/doctor.ts` | Diagnose dev-runtime health: Node vs `.nvmrc`, `better-sqlite3` binding, stale `.next` cache (`--fix` clears), port 3000, read-only DB `quick_check`, disk headroom. |
 | `test` | `node --import tsx --test --test-reporter=dot tests/*.test.ts` | Run the full test suite (what CI runs); judge by exit code — the dot reporter keeps output terse. |
 | `test:live` | `node --import tsx --test tests/live.test.ts` | Run only the live-trace tests. |
 | `test:telemetry` | `node --import tsx --test tests/telemetry.test.ts` | Run only the telemetry tests. |
@@ -340,6 +341,29 @@ Build for production:
 npm run build
 npm start
 ```
+
+## Troubleshooting
+
+When local dev misbehaves, run the doctor first — the most common failures are environmental, not app bugs:
+
+```bash
+npm run doctor          # diagnose
+npm run doctor -- --fix # also clear a flagged .next cache
+npm run doctor -- --json
+```
+
+What it checks and what the findings mean:
+
+| Symptom | Doctor finding | Fix |
+| --- | --- | --- |
+| Missing-chunk errors, blank pages, hung dev server | Stale or incomplete `.next` cache | `rm -rf .next` (or `--fix`), restart `npm run dev`. Always restart the dev server after `next build`. |
+| `ERR_DLOPEN_FAILED` / `NODE_MODULE_VERSION` mismatch on startup | `better-sqlite3` binding fails to load | `npm rebuild better-sqlite3` — happens after switching Node majors. |
+| Dev server silently starts on port 3001 | Port 3000 occupied | The doctor reports the process report-only; stop the stale server yourself if it is a leftover. |
+| Node behaves differently than CI | Running Node differs from `.nvmrc` | `nvm use`, then rebuild native modules. |
+| Dashboard errors reading history | `data/eval.db` fails `PRAGMA quick_check` | Back up `data/` before anything else; the check itself is strictly read-only. |
+| Builds or runs fail with ENOSPC-shaped errors | Low disk headroom | Free space; workdirs and WAL files grow during runs. |
+
+The doctor never kills processes and never writes to `data/` — its only mutating action is clearing `.next`, and only with `--fix`.
 
 ## Adding a Case
 

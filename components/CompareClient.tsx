@@ -3,9 +3,14 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import clsx from "clsx";
-import { ArrowRight, GitCompareArrows, Loader2 } from "lucide-react";
+import { AlertTriangle, ArrowRight, GitCompareArrows, Loader2 } from "lucide-react";
 import PageHeader from "./PageHeader";
 import { presentSummaryCost } from "@/lib/cost-display";
+import { fmtNum, fmtNumFull, fmtPct as fmtPctStrict } from "@/lib/format";
+
+/** Sticky first column: case identity stays put while deltas scroll on narrow screens. */
+const STICKY_TH = "sticky left-0 z-[2] bg-bg-subtle";
+const STICKY_TD = "sticky left-0 z-[1] bg-bg-subtle";
 
 interface RunLite { id: string; name: string; createdAt: number; status: string; passRate: number | null; model?: string; }
 interface Props { runs: RunLite[]; initialA?: string; initialB?: string; }
@@ -22,17 +27,22 @@ export default function CompareClient({ runs, initialA, initialB }: Props) {
   const [summaryA, setSummaryA] = useState<any>(null);
   const [summaryB, setSummaryB] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"all" | "regressions" | "improvements">("all");
 
   useEffect(() => { setA(initialA || runs[0]?.id || ""); setB(initialB || runs[1]?.id || ""); }, [initialA, initialB, runs]);
 
   useEffect(() => {
-    if (!a || !b || a === b) { setRows([]); return; }
+    if (!a || !b || a === b) { setRows([]); setSummaryA(null); setSummaryB(null); return; }
+    let cancelled = false;
     setLoading(true);
-    Promise.all([
-      fetch(`/api/runs/${a}?lite=1`).then((r) => r.json()),
-      fetch(`/api/runs/${b}?lite=1`).then((r) => r.json()),
-    ]).then(([da, db]: [any, any]) => {
+    setLoadError(null);
+    const get = (id: string) => fetch(`/api/runs/${id}?lite=1`).then((r) => {
+      if (!r.ok) throw new Error(`HTTP ${r.status} loading run ${id}`);
+      return r.json();
+    });
+    Promise.all([get(a), get(b)]).then(([da, db]: [any, any]) => {
+      if (cancelled) return;
       setSummaryA(da.run?.summary);
       setSummaryB(db.run?.summary);
       // Key by case AND sample so pass@k runs diff sample-to-sample instead of
@@ -64,7 +74,13 @@ export default function CompareClient({ runs, initialA, initialB }: Props) {
       }
       out.sort((x, y) => cmp(x.caseName, y.caseName) || x.sample - y.sample);
       setRows(out);
-    }).finally(() => setLoading(false));
+    }).catch((e) => {
+      // Never surface a failed poll as a runtime overlay — show a stale-data
+      // banner, and drop the previous pair's summaries so their deltas can't
+      // be misattributed to the newly selected runs.
+      if (!cancelled) { setRows([]); setSummaryA(null); setSummaryB(null); setLoadError(e instanceof Error ? e.message : String(e)); }
+    }).finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [a, b]);
 
   const regressions = rows.filter((r) => r.aStatus === "passed" && r.bStatus && r.bStatus !== "passed");
@@ -74,42 +90,77 @@ export default function CompareClient({ runs, initialA, initialB }: Props) {
   const multiSample = new Set([...sampleCounts].filter(([, count]) => count > 1).map(([caseId]) => caseId));
 
   return (
-    <div className="p-8 max-w-7xl mx-auto">
+    <div className="p-4 md:p-8 max-w-7xl mx-auto">
       <PageHeader icon={GitCompareArrows} title="Compare runs" subtitle="Diff two runs to surface per-case regressions and model deltas." />
 
-      <div className="card p-4 mb-4">
-        <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-3 items-end">
-          <RunSelect label="Baseline A" value={a} onChange={setA} runs={runs} />
-          <ArrowRight className="size-4 text-fg-dim mb-3 hidden md:block" />
-          <RunSelect label="Comparison B" value={b} onChange={setB} runs={runs} />
+      {runs.length >= 2 && (
+        <div className="card p-4 mb-4">
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-3 items-end">
+            <RunSelect label="Baseline A" value={a} onChange={setA} runs={runs} />
+            <ArrowRight className="size-4 text-fg-dim mb-3 hidden md:block" />
+            <RunSelect label="Comparison B" value={b} onChange={setB} runs={runs} />
+          </div>
         </div>
-      </div>
+      )}
+
+      {loadError && (
+        <div className="mb-4 rounded-lg border border-err/40 bg-err/10 p-3 flex items-start gap-2.5" role="alert">
+          <AlertTriangle className="size-4 text-err shrink-0 mt-0.5" />
+          <div className="min-w-0 text-sm">
+            <span className="font-medium text-err">Couldn&apos;t load the diff</span>
+            <span className="text-fg-muted"> — {loadError}. Re-select a run to retry.</span>
+          </div>
+        </div>
+      )}
 
       {a && b && a !== b && summaryA && summaryB && (
         <section className="stagger-grid grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-          <Delta label="Pass rate" a={`${(summaryA.passRate * 100).toFixed(0)}%`} b={`${(summaryB.passRate * 100).toFixed(0)}%`} higherIsBetter aVal={summaryA.passRate} bVal={summaryB.passRate} />
+          <Delta label="Pass rate" a={fmtPctStrict(summaryA.passRate)} b={fmtPctStrict(summaryB.passRate)} higherIsBetter aVal={summaryA.passRate} bVal={summaryB.passRate} />
           <Delta label="pass@1" a={fmtPct(summaryA.passAt1)} b={fmtPct(summaryB.passAt1)} aVal={summaryA.passAt1} bVal={summaryB.passAt1} higherIsBetter hint={`95% CI ${fmtCi(summaryA.passAt1Ci95)} → ${fmtCi(summaryB.passAt1Ci95)}`} />
           <Delta label="pass@k" a={fmtPct(summaryA.passAtK)} b={fmtPct(summaryB.passAtK)} aVal={summaryA.passAtK} bVal={summaryB.passAtK} />
           <Delta label="pass^k (reliability)" a={fmtPct(summaryA.passPowK)} b={fmtPct(summaryB.passPowK)} aVal={summaryA.passPowK} bVal={summaryB.passPowK} />
           <Delta label="Cost coverage" a={presentSummaryCost(summaryA).value} b={presentSummaryCost(summaryB).value} aVal={summaryA.totalCostUsd} bVal={summaryB.totalCostUsd} lowerIsBetter comparable={(summaryA.missingCostCases ?? 0) === 0 && (summaryB.missingCostCases ?? 0) === 0} />
           <Delta label="Avg tok/s" a={(summaryA.totalTokensOut / Math.max(summaryA.totalDurationMs / 1000, 0.001)).toFixed(1)} b={(summaryB.totalTokensOut / Math.max(summaryB.totalDurationMs / 1000, 0.001)).toFixed(1)} aVal={summaryA.totalTokensOut / Math.max(summaryA.totalDurationMs, 1)} bVal={summaryB.totalTokensOut / Math.max(summaryB.totalDurationMs, 1)} />
-          <Delta label="Tokens in" a={summaryA.totalTokensIn.toLocaleString()} b={summaryB.totalTokensIn.toLocaleString()} aVal={summaryA.totalTokensIn} bVal={summaryB.totalTokensIn} lowerIsBetter />
+          <Delta label="Tokens in" a={fmtNum(summaryA.totalTokensIn)} b={fmtNum(summaryB.totalTokensIn)} aVal={summaryA.totalTokensIn} bVal={summaryB.totalTokensIn} lowerIsBetter fmtDiff={(d) => fmtNum(d)} hint={`${fmtNumFull(summaryA.totalTokensIn)} → ${fmtNumFull(summaryB.totalTokensIn)}`} />
           <Delta label="Errors" a={String(summaryA.errored)} b={String(summaryB.errored)} aVal={summaryA.errored} bVal={summaryB.errored} lowerIsBetter />
         </section>
       )}
 
       {loading && <div className="text-sm text-fg-muted mb-4 flex items-center gap-2"><Loader2 className="size-3.5 animate-spin" /> Loading diff…</div>}
 
-      {runs.length < 2 && (
+      {runs.length === 0 && (
         <section className="card p-10 text-center">
-          <div className="text-sm text-fg-muted">Create at least two runs to compare regressions and performance deltas.</div>
-          <Link href="/runs/new" className="mt-3 inline-flex text-xs text-accent-soft hover:underline">Start another run</Link>
+          <div className="text-sm font-medium mb-1">No runs to compare yet</div>
+          <div className="text-sm text-fg-muted">A comparison needs two finished runs. Start a run, then re-run the same suite with a different harness, model, or commit to diff them here.</div>
+          <Link href="/runs/new" className="mt-3 inline-flex text-xs text-accent-soft hover:underline">Start your first run →</Link>
+        </section>
+      )}
+
+      {runs.length === 1 && (
+        <section className="card p-10 text-center">
+          <div className="text-sm font-medium mb-1">Only one run so far</div>
+          <div className="text-sm text-fg-muted">
+            Comparing needs a second run as the other side of the diff — typically the same suite on a different harness, model, or after a code change.
+          </div>
+          <Link href="/runs/new" className="mt-3 inline-flex text-xs text-accent-soft hover:underline">Start a second run →</Link>
+        </section>
+      )}
+
+      {runs.length >= 2 && (!a || !b) && (
+        <section className="card p-6 text-center text-sm text-fg-muted">
+          Select a baseline (A) and a comparison (B) above — usually the older run as A and the newer as B. The diff highlights per-case regressions, improvements, and speed/cost deltas.
         </section>
       )}
 
       {a && b && a === b && (
         <section className="card p-6 text-center text-sm text-fg-muted">
-          Pick two different runs to compute a useful diff.
+          Both sides point at the same run. Pick two different runs to compute a useful diff.
+        </section>
+      )}
+
+      {a && b && a !== b && !loading && !loadError && rows.length === 0 && (summaryA || summaryB) && (
+        <section className="card p-6 text-center text-sm text-fg-muted">
+          These runs share no graded cases yet, so there is nothing to diff.
         </section>
       )}
 
@@ -127,7 +178,7 @@ export default function CompareClient({ runs, initialA, initialB }: Props) {
               <table className="w-full text-sm">
                 <thead className="sticky top-0 z-10 text-[11px] uppercase tracking-wider text-fg-muted bg-bg-subtle border-b border-bd-subtle">
                   <tr>
-                    <th className="text-left px-4 py-2 font-medium">Case</th>
+                    <th className={clsx("text-left px-4 py-2 font-medium", STICKY_TH)}>Case</th>
                     <th className="text-left px-4 py-2 font-medium">A</th>
                     <th className="text-left px-4 py-2 font-medium">B</th>
                     <th className="text-right px-4 py-2 font-medium">tok/s Δ</th>
@@ -141,12 +192,12 @@ export default function CompareClient({ runs, initialA, initialB }: Props) {
                     const improved = r.aStatus && r.aStatus !== "passed" && r.bStatus === "passed";
                     return (
                       <tr key={`${r.caseId}::${r.sample}`} className={clsx(regressed && "bg-err/5", improved && "bg-ok/5", "hover:bg-bg-elev")}>
-                        <td className="px-4 py-2 pl-3 relative">
+                        <td className={clsx("px-4 py-2 pl-3 relative max-w-[220px] md:max-w-none", STICKY_TD)}>
                           {(regressed || improved) && (
                             <div className={clsx("absolute left-0 top-0 bottom-0 w-0.5", regressed ? "bg-err" : "bg-ok")} />
                           )}
-                          <Link href={`/runs/${b}/case/${r.caseId}`} className="hover:text-accent-soft">{r.caseName}</Link>
-                          <div className="text-[10px] text-fg-dim mono">{r.caseId}{multiSample.has(r.caseId) ? ` · sample ${r.sample}` : ""} · {r.category}{r.difficulty ? ` · ${r.difficulty}` : ""}</div>
+                          <Link href={`/runs/${b}/case/${r.caseId}`} className="hover:text-accent-soft block truncate">{r.caseName}</Link>
+                          <div className="text-[10px] text-fg-dim mono truncate">{r.caseId}{multiSample.has(r.caseId) ? ` · sample ${r.sample}` : ""} · {r.category}{r.difficulty ? ` · ${r.difficulty}` : ""}</div>
                         </td>
                         <td className="px-4 py-2"><StatusPill status={r.aStatus} /></td>
                         <td className="px-4 py-2"><StatusPill status={r.bStatus} /></td>
@@ -220,7 +271,7 @@ function DeltaText({ value, digits, prefix = "", higherIsBetter, lowerIsBetter }
   );
 }
 
-function Delta({ label, a, b, aVal, bVal, higherIsBetter, lowerIsBetter, comparable = true, hint }: { label: string; a: string; b: string; aVal: number; bVal: number; higherIsBetter?: boolean; lowerIsBetter?: boolean; comparable?: boolean; hint?: string }) {
+function Delta({ label, a, b, aVal, bVal, higherIsBetter, lowerIsBetter, comparable = true, hint, fmtDiff }: { label: string; a: string; b: string; aVal: number; bVal: number; higherIsBetter?: boolean; lowerIsBetter?: boolean; comparable?: boolean; hint?: string; fmtDiff?: (d: number) => string }) {
   const diff = bVal - aVal;
   let tone = "text-fg-muted";
   let bgTone = "";
@@ -243,7 +294,7 @@ function Delta({ label, a, b, aVal, bVal, higherIsBetter, lowerIsBetter, compara
         <span className="text-fg-dim">→</span>
         <span className="text-sm mono font-medium tabular-nums">{b}</span>
       </div>
-      <div className={clsx("text-[11px] mono mt-0.5 tabular-nums", tone)}>{comparable ? `${arrow} ${diff > 0 ? "+" : ""}${diff.toFixed(2)}` : "incomplete coverage — not comparable"}</div>
+      <div className={clsx("text-[11px] mono mt-0.5 tabular-nums", tone)}>{comparable ? `${arrow} ${diff > 0 ? "+" : ""}${fmtDiff ? fmtDiff(diff) : diff.toFixed(2)}` : "incomplete coverage — not comparable"}</div>
       {hint && <div className="text-[10px] mono text-fg-dim mt-0.5 tabular-nums">{hint}</div>}
     </div>
   );

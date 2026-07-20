@@ -1,46 +1,32 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ReactNode } from "react";
-import clsx from "clsx";
-import {
-  Activity,
-  AlertCircle,
-  AlertTriangle,
-  ArrowDownWideNarrow,
-  BarChart3,
-  Clock3,
-  Cpu,
-  FileText,
-  Filter,
-  FolderGit2,
-  Gauge,
-  GitBranch,
-  GitFork,
-  Inbox,
-  Layers,
-  Loader2,
-  MessageSquareText,
-  RefreshCw,
-  Search,
-  ShieldAlert,
-  ShieldCheck,
-  Sparkles,
-  Timer,
-  Wrench,
-  X,
-  Zap,
-} from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Activity, AlertTriangle, Clock3, Cpu, FolderGit2, Gauge, Layers, RefreshCw, ShieldAlert, Timer } from "lucide-react";
 import HarnessPicker from "./HarnessPicker";
 import PageHeader from "./PageHeader";
 import { SectionHeader, SectionNav } from "./Section";
 import { RedactToggle } from "./RedactToggle";
-import { compactDisplayPath, redactNamedUsers, redactSensitiveText } from "@/lib/redaction";
 import { useRedactedShow } from "@/lib/use-redaction";
-import { Sparkline } from "@/components/Sparkline";
-import type { LiveAggregate, LiveSession, LiveTranscriptTurn, MetricSource, TranscriptResult } from "@/lib/live";
-import { useFocusOnSlash } from "@/lib/use-focus-slash";
+import type { LiveAggregate, LiveSession, TranscriptResult } from "@/lib/live";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
+import {
+  applyLiveViewState,
+  displayText,
+  isSessionStale,
+  mergeAggregate,
+  parseLiveViewState,
+  qualityTone,
+  selectVisibleSessions,
+  sessionKey,
+  type FilterMode,
+  type SortMode,
+} from "./live/live-shared";
+import { EmptyCard, ErrorCard, LoadingSkeleton, MetricGroup, Stat, UpdatedIndicator } from "./live/LivePrimitives";
+import { LiveUsageStrip } from "./live/LiveUsageStrip";
+import { ModelPanel, TraceIntelligencePanels } from "./live/LivePanels";
+import { SessionFilters } from "./live/SessionFilters";
+import { SessionTable } from "./live/SessionTable";
+import { SessionDrawer } from "./live/SessionDrawer";
 
 type LiveClientProps = {
   initialData?: LiveAggregate | null;
@@ -50,9 +36,6 @@ type LiveClientProps = {
   scannedAt?: number;
 };
 
-type FilterMode = "all" | "attention" | "stale" | "missing";
-type SortMode = "recent" | "quality" | "errors";
-
 type LivePollResponse =
   | (LiveAggregate & { sig?: string; generatedAt?: number })
   | { unchanged: true; sig: string; generatedAt: number };
@@ -60,38 +43,6 @@ type LivePollResponse =
 const HARNESS_STORAGE_KEY = "openeval.live.harness";
 const POLL_VISIBLE_MS = 10000;
 const POLL_HIDDEN_MS = 30000;
-
-function sessionKey(session: LiveSession): string {
-  return session.path ?? `${session.sessionId}\u0000${session.project}`;
-}
-
-// Reuse the previous session object (same reference) when its identity marker
-// is unchanged so React.memo'd rows skip re-rendering; only genuinely-changed
-// sessions get new references. The aggregate wrapper always comes from `next`:
-// a full payload means the server's signature already judged the content
-// changed, and second-guessing it here with a narrower field list would risk
-// silently discarding real updates.
-function mergeAggregate(prev: LiveAggregate | null, next: LiveAggregate): LiveAggregate {
-  if (!prev || prev.sessions.length === 0) return next;
-  const prevByKey = new Map(prev.sessions.map((session) => [sessionKey(session), session]));
-  const sessions = next.sessions.map((session) => {
-    const old = prevByKey.get(sessionKey(session));
-    if (
-      old &&
-      old.lastEventAt === session.lastEventAt &&
-      old.lineCount === session.lineCount &&
-      old.pathBytes === session.pathBytes &&
-      old.toolCalls === session.toolCalls &&
-      old.toolErrors === session.toolErrors &&
-      old.dataQuality === session.dataQuality &&
-      old.archived === session.archived
-    ) {
-      return old;
-    }
-    return session;
-  });
-  return { ...next, sessions };
-}
 
 export default function LiveClient({ initialData, error: initialError, getTranscript, scannedAt }: LiveClientProps) {
   const [data, setData] = useState<LiveAggregate | null>(initialData ?? null);
@@ -114,8 +65,6 @@ export default function LiveClient({ initialData, error: initialError, getTransc
   const [sort, setSort] = useState<SortMode>("recent");
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, 200);
-  const searchRef = useRef<HTMLInputElement>(null);
-  useFocusOnSlash(searchRef);
 
   const lastSigRef = useRef("");
   // The RSC just scanned; skip the immediate mount poll when initialData is
@@ -131,6 +80,11 @@ export default function LiveClient({ initialData, error: initialError, getTransc
       const storedHarness = window.localStorage.getItem(HARNESS_STORAGE_KEY);
       if (urlHarness) setSelectedHarness(urlHarness);
       else if (storedHarness) setSelectedHarness(storedHarness);
+      // Restore filter/sort/search from the URL so views are shareable.
+      const view = parseLiveViewState(url.searchParams);
+      setFilter(view.filter);
+      setSort(view.sort);
+      setSearch(view.search);
     } catch {}
   }, []);
 
@@ -144,6 +98,24 @@ export default function LiveClient({ initialData, error: initialError, getTransc
     } catch {}
   }, [selectedHarness]);
 
+  // Mirror filter/sort/search into the URL (defaults omitted) so the current
+  // view can be shared or restored on reload. The first run is skipped: it
+  // fires in the same commit as the URL-restore effect above but with the
+  // default-state closure, and writing then would momentarily strip the
+  // shared params before restore kicks in.
+  const skipFirstViewSyncRef = useRef(true);
+  useEffect(() => {
+    if (skipFirstViewSyncRef.current) {
+      skipFirstViewSyncRef.current = false;
+      return;
+    }
+    try {
+      const url = new URL(window.location.href);
+      applyLiveViewState(url.searchParams, { filter, sort, search: debouncedSearch });
+      window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+    } catch {}
+  }, [filter, sort, debouncedSearch]);
+
   useEffect(() => {
     let cancelled = false;
     let t: ReturnType<typeof setTimeout>;
@@ -154,6 +126,12 @@ export default function LiveClient({ initialData, error: initialError, getTransc
       try {
         const params = new URLSearchParams();
         if (selectedHarness) params.set("harness", selectedHarness);
+        // The RSC render honors ?limit=; the poll must forward it too, or the
+        // first poll silently replaces the page with the default-limit scan.
+        try {
+          const limit = new URL(window.location.href).searchParams.get("limit");
+          if (limit) params.set("limit", limit);
+        } catch {}
         // The server compares this against the fresh scan's signature and
         // answers {unchanged:true} instead of the full aggregate on a match.
         if (lastSigRef.current) params.set("sig", lastSigRef.current);
@@ -168,11 +146,16 @@ export default function LiveClient({ initialData, error: initialError, getTransc
             const next = d as LiveAggregate & { sig?: string };
             lastSigRef.current = next.sig ?? "";
             setData((prev) => mergeAggregate(prev, next));
-            if (next.totalSessions > 0) setError(undefined);
+            // Any parsed 200 means polling recovered — clearing must not be
+            // gated on session count, or the stale indicator sticks forever
+            // on an empty-but-healthy source.
+            setError(undefined);
           }
           setUpdatedAt(Date.now());
         }
       } catch (e) {
+        // Keep showing the last good data; the header indicator flips to an
+        // explicit stale state instead of silently looking fresh.
         if (!cancelled && !(e instanceof DOMException && e.name === "AbortError")) {
           setError(e instanceof Error ? e.message : String(e));
         }
@@ -202,25 +185,36 @@ export default function LiveClient({ initialData, error: initialError, getTransc
     };
   }, [selectedHarness, scannedAt]);
 
-  const visibleSessions = useMemo(() => {
-    const sessions = data?.sessions ?? [];
-    const q = debouncedSearch.trim().toLowerCase();
-    const filtered = sessions.filter((session) => {
-      if (filter === "attention" && !needsAttention(session)) return false;
-      if (filter === "stale" && !isSessionStale(session)) return false;
-      if (filter === "missing" && !Object.values(session.metricSources).some((source) => source === "missing" || source === "malformed")) return false;
-      if (q) {
-        const hay = `${session.sessionId} ${session.project} ${session.displayTitle ?? ""} ${session.model ?? ""}`.toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      return true;
+  // Re-point the open drawer at the freshest object for its session: polls
+  // hand changed sessions NEW references (mergeAggregate), so holding the
+  // click-time reference would freeze the drawer while the row behind it
+  // keeps updating.
+  useEffect(() => {
+    setSelected((current) => {
+      if (!current) return current;
+      const fresh = data?.sessions.find((s) => sessionKey(s) === sessionKey(current));
+      return fresh && fresh !== current ? fresh : current;
     });
-    return [...filtered].sort((a, b) => {
-      if (sort === "quality") return a.dataQuality - b.dataQuality || b.lastEventAt - a.lastEventAt;
-      if (sort === "errors") return b.toolErrors - a.toolErrors || b.hookErrors - a.hookErrors || b.lastEventAt - a.lastEventAt;
-      return b.lastEventAt - a.lastEventAt;
+  }, [data]);
+
+  const visibleSessions = useMemo(
+    () => selectVisibleSessions(data?.sessions ?? [], { filter, sort, search: debouncedSearch }),
+    [data, filter, sort, debouncedSearch]
+  );
+
+  // Drawer prev/next moves through the currently visible (filtered + sorted)
+  // order. Matched by key, not reference: polls can replace the selected
+  // session object while the drawer is open.
+  const selectedIndex = selected ? visibleSessions.findIndex((s) => sessionKey(s) === sessionKey(selected)) : -1;
+  const navigateDrawer = useCallback((delta: 1 | -1) => {
+    setSelected((current) => {
+      if (!current) return current;
+      const list = visibleSessions;
+      const index = list.findIndex((s) => sessionKey(s) === sessionKey(current));
+      if (index === -1) return current;
+      return list[index + delta] ?? current;
     });
-  }, [data, filter, sort, debouncedSearch]);
+  }, [visibleSessions]);
 
   if (loading && !data) return <LoadingSkeleton />;
   if (!data) return error ? <ErrorCard message={error} /> : <EmptyCard warnings={[]} />;
@@ -228,7 +222,7 @@ export default function LiveClient({ initialData, error: initialError, getTransc
   const toolErrorRate = data.totalToolCalls > 0 ? data.totalToolErrors / data.totalToolCalls : 0;
   // Server staleSessions is stamped at scan time and freezes under the
   // unchanged-sig poll shortcut; derive it from lastEventAt instead.
-  const staleCount = data.sessions.filter(isSessionStale).length;
+  const staleCount = data.sessions.filter((s) => isSessionStale(s)).length;
   const modelEvidenceLabel = data.sessionsWithMissingModel ? "Unknown model" : "Inferred model";
   const modelEvidenceValue = data.sessionsWithMissingModel ? data.sessionsWithMissingModel : data.sessionsWithInferredModel;
   const modelEvidenceTone = data.sessionsWithMissingModel ? "warn" : undefined;
@@ -251,7 +245,7 @@ export default function LiveClient({ initialData, error: initialError, getTransc
               setSelectedHarness(harness || "");
             }} />
             <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-              <UpdatedIndicator updatedAt={updatedAt} />
+              <UpdatedIndicator updatedAt={updatedAt} staleError={data ? error : undefined} />
               <RedactToggle redact={redact} onToggle={() => setRedact((value) => !value)} />
               <button
                 type="button"
@@ -287,7 +281,7 @@ export default function LiveClient({ initialData, error: initialError, getTransc
         </div>
       )}
 
-      <UsageStrip data={data} />
+      <LiveUsageStrip data={data} />
 
       <section id="quality" className="scroll-mt-16 mb-6">
         <SectionHeader
@@ -323,69 +317,23 @@ export default function LiveClient({ initialData, error: initialError, getTransc
       />
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.1fr_1.8fr]">
         <ModelPanel data={data} />
-        <section className="card overflow-hidden">
-          <div className="flex flex-col gap-3 border-b border-bd-subtle px-4 py-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <div className="flex items-center gap-2 text-sm font-medium">
-                <FolderGit2 className="size-4 text-fg-muted" /> Recent sessions
-              </div>
-              <div className="mt-1 text-xs text-fg-muted">
-                {visibleSessions.length}/{data.sessions.length} shown · values marked missing are not treated as zero-confidence measurements
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <SelectPill icon={Filter} value={filter} onChange={(v) => setFilter(v as FilterMode)} options={[
-                ["all", "All"],
-                ["attention", "Attention"],
-                ["stale", "Stale"],
-                ["missing", "Missing"],
-              ]} />
-              <SelectPill icon={ArrowDownWideNarrow} value={sort} onChange={(v) => setSort(v as SortMode)} options={[
-                ["recent", "Recent"],
-                ["quality", "Quality"],
-                ["errors", "Errors"],
-              ]} />
-              <div className="relative">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3 text-fg-dim" />
-                <input
-                  ref={searchRef}
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search…"
-                  className="w-32 lg:w-44 pl-8 pr-2 py-1.5 text-[11px] bg-bg border border-bd rounded-md focus:outline-none focus:border-accent focus:w-40 lg:focus:w-52 transition-[width,border-color] placeholder:text-fg-dim"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="hidden grid-cols-[minmax(220px,1.7fr)_90px_100px_100px_90px_80px] gap-3 border-b border-bd-subtle bg-bg-subtle px-4 py-2 text-[10px] uppercase tracking-wider text-fg-muted md:grid">
-            <div>Session / project</div>
-            <div>Freshness</div>
-            <div>Quality</div>
-            <div>Sources</div>
-            <div className="text-right">Tools</div>
-            <div className="text-right">Status</div>
-          </div>
-
-          <div className="scroll-contain max-h-[64vh] overflow-y-auto divide-y divide-bd-subtle">
-            {visibleSessions.map((session) => (
-              <SessionRow
-                key={sessionKey(session)}
-                session={session}
-                // Computed in the parent (which re-renders on each poll tick)
-                // so a memo'd row still repaints when it crosses the 12h
-                // stale boundary despite its reused session reference.
-                stale={isSessionStale(session)}
-                redact={redact}
-                users={users}
-                onSelect={handleSelectSession}
-              />
-            ))}
-            {visibleSessions.length === 0 && (
-              <div className="p-8 text-center text-sm text-fg-muted">No sessions match the current filter.</div>
-            )}
-          </div>
-        </section>
+        <SessionTable
+          sessions={visibleSessions}
+          totalCount={data.sessions.length}
+          redact={redact}
+          users={users}
+          onSelect={handleSelectSession}
+          controls={
+            <SessionFilters
+              filter={filter}
+              sort={sort}
+              search={search}
+              onFilterChange={setFilter}
+              onSortChange={setSort}
+              onSearchChange={setSearch}
+            />
+          }
+        />
       </div>
       </section>
 
@@ -397,911 +345,13 @@ export default function LiveClient({ initialData, error: initialError, getTransc
           redact={redact}
           users={users}
           onClose={() => setSelected(null)}
+          onNavigate={navigateDrawer}
+          hasPrev={selectedIndex > 0}
+          hasNext={selectedIndex !== -1 && selectedIndex < visibleSessions.length - 1}
           getTranscript={getTranscript}
           harness={data.sourceHarness}
         />
       )}
     </div>
   );
-}
-
-// The parent re-renders on every poll tick (updatedAt); these panels only
-// depend on `data`, so memo lets the unchanged-reference case skip them.
-const ModelPanel = React.memo(function ModelPanel({ data }: { data: LiveAggregate }) {
-  return (
-    <section className="card overflow-hidden">
-      <div className="border-b border-bd-subtle px-4 py-3">
-        <div className="flex items-center gap-2 text-sm font-medium">
-          <BarChart3 className="size-4 text-fg-muted" /> Model evidence
-        </div>
-        <div className="mt-1 text-xs text-fg-muted">
-          Inferred rows use the harness descriptor&apos;s declared default model; unknown rows mean the trace did not report model metadata.
-        </div>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="sticky top-0 bg-bg-subtle text-[10px] uppercase tracking-wider text-fg-muted">
-            <tr>
-              <th className="px-4 py-2 text-left font-medium">Model</th>
-              <th className="px-4 py-2 text-right font-medium">Sessions</th>
-              <th className="px-4 py-2 text-right font-medium">Quality</th>
-              <th className="px-4 py-2 text-right font-medium">Missing</th>
-              <th className="px-4 py-2 text-right font-medium">Errors</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-bd-subtle">
-            {data.byModel.map((model) => (
-              <tr key={model.model} className="hover:bg-bg-elev">
-                <td className="px-4 py-2">
-                  <span className="mono text-xs">{model.model}</span>
-                </td>
-                <td className="px-4 py-2 text-right mono tabular-nums">{model.sessions}</td>
-                <td className="px-4 py-2 text-right">
-                  <QualityBadge value={model.avgDataQuality} />
-                </td>
-                <td className="px-4 py-2 text-right text-xs text-fg-muted">
-                  {model.missingTokens + model.missingCost ? `${model.missingTokens} token / ${model.missingCost} cost` : "—"}
-                </td>
-                <td className={clsx("px-4 py-2 text-right mono tabular-nums", model.errors > 0 && "text-err")}>{model.errors}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  );
-});
-
-const TraceIntelligencePanels = React.memo(function TraceIntelligencePanels({ data, redact, users }: { data: LiveAggregate; redact: boolean; users: ReadonlySet<string> }) {
-  const queueTotal = data.queueTotals.enqueue + data.queueTotals.dequeue + data.queueTotals.remove + data.queueTotals.popAll;
-  return (
-    <section id="intelligence" className="scroll-mt-16 mb-4">
-    <SectionHeader
-      icon={GitFork}
-      title="Trace intelligence"
-      desc="Execution graph, tool reliability, operator queue, and file impact across the scanned sessions"
-      right={`${fmt(data.totalToolCalls)} tool calls`}
-    />
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 2xl:grid-cols-4">
-      <section className="card overflow-hidden">
-        <PanelHeader icon={GitFork} title="Execution graph" subtitle="Root thread, sidechains, and agents." />
-        <div className="grid grid-cols-3 gap-2 p-4">
-          <TinyMetric label="Sidechain msgs" value={fmt(data.sidechainMessages)} />
-          <TinyMetric label="Agent sessions" value={fmt(data.agentSessions)} />
-          <TinyMetric label="Projects" value={fmt(data.totalProjects)} />
-        </div>
-        <div className="border-t border-bd-subtle px-4 py-3">
-          <div className="mb-2 text-[10px] uppercase tracking-wider text-fg-muted">Top branches</div>
-          <ListStack items={data.topBranches.map((branch) => ({
-            key: branch.branch,
-            label: branch.branch,
-            value: `${branch.sessions} sessions`,
-          }))} redact={redact} users={users} empty="No branch metadata found." />
-        </div>
-      </section>
-
-      <section className="card overflow-hidden">
-        <PanelHeader icon={Wrench} title="Tool reliability" subtitle="Tool mix and error concentration." />
-        <div className="divide-y divide-bd-subtle">
-          {data.byTool.slice(0, 6).map((tool) => (
-            <div key={tool.name} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 px-4 py-2 text-sm">
-              <span className="truncate">{tool.name}</span>
-              <span className="mono tabular-nums text-xs text-fg-muted">{tool.calls}</span>
-              <span className={clsx("mono tabular-nums text-xs", tool.errors ? "text-err" : "text-fg-dim")}>{tool.errors} err</span>
-            </div>
-          ))}
-          {data.byTool.length === 0 && <div className="p-4 text-sm text-fg-muted">No tool calls found.</div>}
-        </div>
-      </section>
-
-      <section className="card overflow-hidden">
-        <PanelHeader icon={Zap} title="Operator queue" subtitle="Queued prompts and interruption flow." />
-        <div className="grid grid-cols-4 gap-2 p-4">
-          <TinyMetric label="Total" value={fmt(queueTotal)} />
-          <TinyMetric label="Enq" value={fmt(data.queueTotals.enqueue)} />
-          <TinyMetric label="Deq" value={fmt(data.queueTotals.dequeue)} />
-          <TinyMetric label="Drop" value={fmt(data.queueTotals.remove + data.queueTotals.popAll)} />
-        </div>
-        <div className="border-t border-bd-subtle px-4 py-3">
-          <ListStack items={data.queueTotals.preview.map((preview, index) => ({
-            key: `${index}-${preview}`,
-            label: preview,
-          }))} redact={redact} users={users} empty="No queued prompt previews." />
-        </div>
-      </section>
-
-      <section className="card overflow-hidden">
-        <PanelHeader icon={FileText} title="File / repo impact" subtitle="Touched files inferred from tools and snapshots." />
-        <div className="border-b border-bd-subtle px-4 py-3">
-          <div className="flex items-center gap-2 text-xs text-fg-muted">
-            <GitBranch className="size-3.5" />
-            {data.topBranches[0]?.branch ?? "branch missing"}
-          </div>
-        </div>
-        <div className="px-4 py-3">
-          <ListStack items={data.topFiles.slice(0, 6).map((file) => ({
-            key: file.file,
-            label: compactDisplayPath(file.file, redact),
-            value: `${file.sessions} sessions`,
-          }))} redact={false} users={users} empty="No touched files inferred." />
-        </div>
-      </section>
-    </div>
-    </section>
-  );
-});
-
-const UsageStrip = React.memo(function UsageStrip({ data }: { data: LiveAggregate }) {
-  const usage = data.usageSummary;
-  const tokenMeasured = usage.sessionsWithMeasuredUsage;
-  const costPriced = usage.sessionsWithPricedUsage;
-  const costEstimated = data.sessionsWithInferredCost > 0;
-  const measuredTone = tokenMeasured === data.totalSessions && data.totalSessions > 0 ? "ok" : tokenMeasured > 0 ? "warn" : "warn";
-  return (
-    <section id="usage" className="scroll-mt-16 mb-6 card overflow-hidden">
-      <div className="flex flex-col gap-2 border-b border-bd-subtle px-4 py-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <div className="flex items-center gap-2 text-sm font-medium">
-            <Cpu className="size-4 text-fg-muted" /> Usage
-          </div>
-          <div className="mt-1 text-xs text-fg-muted">
-            Tokens and cost are shown only when the selected trace source reports them.
-          </div>
-        </div>
-        <div className={clsx(
-          "inline-flex w-fit items-center gap-1 rounded border px-2 py-1 text-[10px] uppercase tracking-wider",
-          measuredTone === "ok" ? "border-ok/30 bg-ok/10 text-ok" : "border-warn/30 bg-warn/10 text-warn"
-        )}>
-          {tokenMeasured}/{data.totalSessions} usage measured
-        </div>
-      </div>
-      <div className="grid grid-cols-1 gap-3 p-4 md:grid-cols-2 lg:grid-cols-3">
-        <MetricGroup label="Volume">
-          <TinyMetric label="Total tok" value={usage.totalTokens ? fmt(usage.totalTokens) : "missing"} />
-          <TinyMetric label="Input" value={usage.totalInputTokens ? fmt(usage.totalInputTokens) : "missing"} />
-          <TinyMetric label="Output" value={usage.totalOutputTokens ? fmt(usage.totalOutputTokens) : "missing"} />
-        </MetricGroup>
-        <MetricGroup label="Cache">
-          <TinyMetric label="Cache read" value={usage.totalCacheReadTokens ? fmt(usage.totalCacheReadTokens) : "missing"} />
-          <TinyMetric label="Cache create" value={usage.totalCacheCreateTokens ? fmt(usage.totalCacheCreateTokens) : "missing"} />
-          <TinyMetric label="Coverage" value={`${Math.round(usage.tokenCoverage * 100)}%`} />
-        </MetricGroup>
-        <MetricGroup label="Cost & rate">
-          <TinyMetric label={costEstimated ? "Est. cost" : "Cost"} value={costPriced ? `${costEstimated ? "~" : ""}$${usage.totalCostUsd.toFixed(4)}` : "missing"} />
-          <TinyMetric label="Out tok/s" value={usage.avgOutputTokPerSec ? usage.avgOutputTokPerSec.toFixed(1) : "missing"} />
-        </MetricGroup>
-      </div>
-      {data.totalSessions > 0 && tokenMeasured === 0 && (
-        <div className="border-t border-bd-subtle px-4 py-3 text-xs text-warn">
-          This source currently has no measured token usage in the scanned sessions; values are marked missing instead of treated as zero.
-        </div>
-      )}
-    </section>
-  );
-});
-
-// Isolated ticker so the once-a-second re-render stays inside this tiny
-// component instead of touching the session table.
-function UpdatedIndicator({ updatedAt }: { updatedAt: number | null }) {
-  const [now, setNow] = useState<number | null>(null);
-  useEffect(() => {
-    setNow(Date.now());
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
-  if (updatedAt == null) return null;
-  const seconds = now == null ? 0 : Math.max(0, Math.floor((now - updatedAt) / 1000));
-  const label = seconds < 1 ? "updated just now" : seconds < 120 ? `updated ${seconds}s ago` : `updated ${Math.floor(seconds / 60)}m ago`;
-  return (
-    <span
-      className="inline-flex items-center gap-1.5 px-1 text-[10px] tabular-nums text-fg-dim"
-      title="Time since the last successful live poll"
-    >
-      <span className="size-1.5 rounded-full bg-ok/60" aria-hidden />
-      {label}
-    </span>
-  );
-}
-
-function PanelHeader({ icon: Icon, title, subtitle }: { icon: any; title: string; subtitle: string }) {
-  return (
-    <div className="border-b border-bd-subtle px-4 py-3">
-      <div className="flex items-center gap-2 text-sm font-medium">
-        <Icon className="size-4 text-fg-muted" /> {title}
-      </div>
-      <div className="mt-1 text-xs text-fg-muted">{subtitle}</div>
-    </div>
-  );
-}
-
-function TinyMetric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between gap-2">
-      <span className="text-[10px] text-fg-muted truncate">{label}</span>
-      <span className="mono text-xs font-semibold tabular-nums text-fg">{value}</span>
-    </div>
-  );
-}
-
-function DetailPanel({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="rounded-lg border border-bd bg-bg/45 p-4">
-      <div className="mb-3 text-sm font-medium">{title}</div>
-      {children}
-    </section>
-  );
-}
-
-function ListStack({ items, redact, users, empty }: { items: Array<{ key: string; label: string; value?: string }>; redact: boolean; users: ReadonlySet<string>; empty: string }) {
-  if (items.length === 0) return <div className="text-sm text-fg-muted">{empty}</div>;
-  return (
-    <div className="space-y-2">
-      {items.map((item) => (
-        <div key={item.key} className="flex min-w-0 items-center justify-between gap-3 text-xs">
-          <span className="truncate text-fg-muted">{displayText(item.label, redact, users)}</span>
-          {item.value ? <span className="mono shrink-0 text-[10px] text-fg-dim">{item.value}</span> : null}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-const SessionRow = React.memo(function SessionRow({ session, stale, redact, users, onSelect }: { session: LiveSession; stale: boolean; redact: boolean; users: ReadonlySet<string>; onSelect: (s: LiveSession) => void }) {
-  const attention = needsAttention(session);
-  const edgeColor = session.isError || session.toolErrors > 0 ? "bg-err" : session.hookErrors > 0 ? "bg-warn" : attention ? "bg-warn/50" : stale ? "bg-fg-dim" : "bg-ok/40";
-  return (
-    <button
-      type="button"
-      onClick={() => onSelect(session)}
-      className={clsx(
-        "cv-auto relative grid w-full gap-3 pl-4 pr-4 py-3 text-left transition-colors hover:bg-bg-elev md:grid-cols-[minmax(220px,1.7fr)_90px_100px_100px_90px_80px] md:items-center",
-        attention && "bg-warn/5"
-      )}
-    >
-      <div className={clsx("absolute left-0 top-2 bottom-2 w-0.5 rounded-full", edgeColor)} />
-      <div className="min-w-0">
-        <div className="flex min-w-0 items-center gap-2">
-          {attention ? <ShieldAlert className="size-4 shrink-0 text-warn" /> : <ShieldCheck className="size-4 shrink-0 text-ok" />}
-          <span className="truncate text-sm font-medium">{compactDisplayPath(session.project || "(unknown)", redact)}</span>
-        </div>
-        <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-fg-dim">
-          <span className="mono">{shortId(session.sessionId)}</span>
-          <span>·</span>
-          {session.displayTitle ? (
-            <>
-              <span>{displayText(session.displayTitle, redact, users)}</span>
-              <span>·</span>
-            </>
-          ) : null}
-          <span>{displayText(session.model || "model missing", redact, users)}</span>
-          {session.traceGraph.sidechainMessages > 0 ? <span className="rounded bg-accent/10 px-1.5 py-0.5 text-accent-soft">{session.traceGraph.sidechainMessages} side</span> : null}
-          {session.traceGraph.agentCount > 0 ? <span className="rounded bg-bg-elev px-1.5 py-0.5 text-fg-muted">{session.traceGraph.agentCount} agent</span> : null}
-          {session.modeSummary.gitBranch ? <span className="rounded bg-bg-elev px-1.5 py-0.5 text-fg-muted">{displayText(session.modeSummary.gitBranch, redact, users)}</span> : null}
-          <span className={clsx(
-            "rounded px-1.5 py-0.5 tabular-nums",
-            session.metricSources.tokens === "measured" ? "bg-ok/10 text-ok" : "bg-warn/10 text-warn"
-          )}>
-            {session.metricSources.tokens === "measured" ? `${fmt(session.totalTokens)} tok` : "usage missing"}
-          </span>
-          {session.usageSegments.length > 1 && (
-            <Sparkline data={session.usageSegments.map((s) => s.outTokPerSec)} width={36} height={14} color="#a78bff" />
-          )}
-          {session.parseWarnings.slice(0, 2).map((warning) => (
-            <span key={warning} className="rounded bg-warn/10 px-1.5 py-0.5 text-warn">{displayText(warning, redact, users)}</span>
-          ))}
-        </div>
-      </div>
-      <div className="text-xs text-fg-muted md:text-left">
-        <div>{relativeTime(session.lastEventAt)}</div>
-        <div className="mono text-[10px] tabular-nums text-fg-dim">{fmtMs(session.durationMs)}</div>
-      </div>
-      <QualityBadge value={session.dataQuality} />
-      <div className="flex flex-wrap gap-1">
-        <SourceChip label="model" source={session.metricSources.model} />
-        <SourceChip label="tok" source={session.metricSources.tokens} />
-        <SourceChip label="dur" source={session.metricSources.duration} />
-      </div>
-      <div className="flex items-center gap-2 text-xs md:justify-end">
-        <span className="mono inline-flex items-center gap-1 text-fg-muted"><Wrench className="size-3" />{session.toolCalls}</span>
-        <span className={clsx("mono inline-flex items-center gap-1", session.toolErrors > 0 ? "text-err" : "text-fg-muted")}>
-          <AlertTriangle className="size-3" />{session.toolErrors}
-        </span>
-      </div>
-      <StatusPill session={session} stale={stale} />
-    </button>
-  );
-});
-
-function SessionDrawer({
-  session,
-  redact,
-  users,
-  onClose,
-  getTranscript,
-  harness,
-}: {
-  session: LiveSession;
-  redact: boolean;
-  users: ReadonlySet<string>;
-  onClose: () => void;
-  getTranscript?: (filePath: string, harness?: string) => Promise<TranscriptResult>;
-  harness: string;
-}) {
-  const [turns, setTurns] = useState<LiveTranscriptTurn[] | null>(null);
-  const [transcriptError, setTranscriptError] = useState<string | null>(null);
-  const [mounted, setMounted] = useState(false);
-  const [closing, setClosing] = useState(false);
-  const onCloseRef = useRef(onClose);
-  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
-
-  useEffect(() => {
-    const id = requestAnimationFrame(() => setMounted(true));
-    return () => cancelAnimationFrame(id);
-  }, []);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      if (closing) return;
-      setClosing(true);
-      setTimeout(() => onCloseRef.current(), 180);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [closing]);
-
-  const requestClose = () => {
-    if (closing) return;
-    setClosing(true);
-    setTimeout(() => onCloseRef.current(), 180);
-  };
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!getTranscript || !session.path) {
-      if (!cancelled) setTurns([]);
-      return;
-    }
-    setTurns(null);
-    setTranscriptError(null);
-    getTranscript(session.path, harness)
-      .then((res) => {
-        if (cancelled) return;
-        if (res.error) {
-          setTranscriptError(`Failed to parse session transcript: ${res.error}`);
-          setTurns([]);
-        } else {
-          setTurns(res.turns);
-        }
-      })
-      .catch((e) => {
-        if (!cancelled) {
-          setTranscriptError(`Failed to parse session transcript: ${e instanceof Error ? e.message : String(e)}`);
-          setTurns([]);
-        }
-      });
-    return () => { cancelled = true; };
-  }, [session, getTranscript, harness]);
-
-  const visible = mounted && !closing;
-  const durationByName = new Map(session.toolDurations.map((d) => [d.name, d] as const));
-
-  return (
-    <div className="fixed inset-0 z-50 flex justify-end">
-      <div
-        className="absolute inset-0 bg-black/50 transition-opacity duration-200 ease-out"
-        onClick={requestClose}
-        style={{ opacity: visible ? 1 : 0 }}
-      />
-      <div
-        className="relative flex h-full w-full flex-col overflow-hidden border-l border-bd bg-bg-subtle shadow-2xl md:max-w-2xl"
-        style={{
-          transform: visible ? "translateX(0)" : "translateX(16px)",
-          opacity: visible ? 1 : 0,
-          transition: "transform 200ms cubic-bezier(0.2, 0, 0, 1), opacity 200ms cubic-bezier(0.2, 0, 0, 1)",
-        }}
-      >
-        <div className="border-b border-bd-subtle bg-bg-subtle px-5 py-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-lg font-semibold">Session details</h2>
-                <QualityBadge value={session.dataQuality} />
-                <StatusPill session={session} />
-              </div>
-              <p className="mono mt-1 break-all text-xs text-fg-muted">{displayText(session.sessionId, redact, users)}</p>
-            </div>
-            {session.path && (
-              <a
-                href={`/collection/session?file=${encodeURIComponent(session.path)}`}
-                className="shrink-0 inline-flex items-center gap-1.5 rounded-md border border-bd px-2.5 py-1.5 text-xs text-fg-muted hover:bg-bg-elev hover:text-fg transition-colors"
-                title="Open the full transcript viewer for this session"
-              >
-                <FileText className="size-3.5" /> Full transcript
-              </a>
-            )}
-            <button type="button" onClick={requestClose} className="rounded min-h-10 min-w-10 flex items-center justify-center hover:bg-bg-elev">
-              <X className="size-5 text-fg-muted" />
-            </button>
-          </div>
-        </div>
-
-        <div className="drawer-stagger flex-1 space-y-5 overflow-y-auto p-5">
-          <section className="grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
-            <MetricCard label="Project" value={compactDisplayPath(session.project || "(unknown)", redact)} />
-            <MetricCard label="Model" value={displayText(session.model || "missing", redact, users)} source={session.metricSources.model} />
-            <MetricCard label="Duration" value={session.metricSources.duration === "missing" ? "missing" : fmtMs(session.durationMs)} source={session.metricSources.duration} />
-            <MetricCard label="Tokens" value={session.metricSources.tokens === "missing" ? "missing" : fmt(session.inputTokens + session.outputTokens)} source={session.metricSources.tokens} />
-          </section>
-
-          <DetailPanel title="Usage">
-            <div className="mb-3 grid grid-cols-2 gap-x-4 gap-y-2">
-              <TinyMetric label="Input" value={session.metricSources.tokens === "measured" ? fmt(session.inputTokens) : "missing"} />
-              <TinyMetric label="Output" value={session.metricSources.tokens === "measured" ? fmt(session.outputTokens) : "missing"} />
-              <TinyMetric label="Cache read" value={session.metricSources.tokens === "measured" ? fmt(session.cacheReadTokens) : "missing"} />
-              <TinyMetric label="Cache create" value={session.metricSources.tokens === "measured" ? fmt(session.cacheCreateTokens) : "missing"} />
-              <TinyMetric
-                label={session.metricSources.cost === "inferred" ? "Est. cost" : "Cost"}
-                value={session.metricSources.cost === "measured"
-                  ? `$${session.costUsd.toFixed(4)}`
-                  : session.metricSources.cost === "inferred"
-                    ? `~$${session.costUsd.toFixed(4)}`
-                    : "missing"}
-              />
-            </div>
-            {session.usageSegments.length > 0 ? (
-              <UsageTimeline session={session} />
-            ) : (
-              <div className="rounded border border-warn/30 bg-warn/10 px-3 py-2 text-xs text-warn">
-                Usage timeline unavailable because this trace did not report token segment data.
-              </div>
-            )}
-          </DetailPanel>
-
-          {(session.displayTitle || session.lastPromptPreview) && (
-            <section className="rounded-lg border border-bd bg-bg/45 p-4">
-              <div className="mb-2 text-sm font-medium">Session intent</div>
-              {session.displayTitle ? <div className="text-sm text-fg">{displayText(session.displayTitle, redact, users)}</div> : null}
-              {session.lastPromptPreview ? (
-                <pre className="mono mt-2 max-h-28 overflow-auto whitespace-pre-wrap text-[11px] leading-5 text-fg-muted">
-                  {displayText(session.lastPromptPreview, redact, users)}
-                </pre>
-              ) : null}
-            </section>
-          )}
-
-          <section className="rounded-lg border border-bd bg-bg/45 p-4">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <div className="text-sm font-medium">Metric provenance</div>
-              <div className="text-xs text-fg-muted">{session.lineCount} parsed lines · {fmtBytes(session.pathBytes)}</div>
-            </div>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-2 md:grid-cols-3">
-              {Object.entries(session.metricSources).map(([name, source]) => (
-                <SourceCell key={name} label={name} source={source} />
-              ))}
-            </div>
-            {session.parseWarnings.length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {session.parseWarnings.map((warning) => (
-                  <span key={warning} className="rounded border border-warn/30 bg-warn/10 px-2 py-1 text-[10px] text-warn">
-                    {displayText(warning, redact, users)}
-                  </span>
-                ))}
-              </div>
-            )}
-          </section>
-
-          <section className="grid grid-cols-1 gap-3 md:grid-cols-3">
-            <MetricGroup label="Tooling">
-              <MiniStat label="Tool calls" value={String(session.toolCalls)} icon={Wrench} />
-              <MiniStat label="Tool errors" value={String(session.toolErrors)} icon={AlertTriangle} tone={session.toolErrors ? "err" : undefined} />
-              <MiniStat label="Hook errors" value={String(session.hookErrors)} icon={ShieldAlert} tone={session.hookErrors ? "err" : undefined} />
-            </MetricGroup>
-            <MetricGroup label="Messages">
-              <MiniStat label="Thinking" value={String(session.thinkingBlocks)} icon={Sparkles} />
-              <MiniStat label="Text blocks" value={String(session.textBlocks)} icon={MessageSquareText} />
-              <MiniStat label="Attachments" value={String(session.attachmentCount)} icon={Layers} />
-            </MetricGroup>
-            <MetricGroup label="History">
-              <MiniStat label="Queue ops" value={String(session.queueOperationCount)} icon={Zap} tone={session.queueOperationCount ? "warn" : undefined} />
-              <MiniStat label="Snapshots" value={String(session.snapshotCount)} icon={FolderGit2} />
-            </MetricGroup>
-          </section>
-
-          <section className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <DetailPanel title="Execution graph">
-              <div className="grid grid-cols-2 gap-2">
-                <TinyMetric label="Root msgs" value={fmt(session.traceGraph.rootMessages)} />
-                <TinyMetric label="Side msgs" value={fmt(session.traceGraph.sidechainMessages)} />
-                <TinyMetric label="Agents" value={fmt(session.traceGraph.agentCount)} />
-                <TinyMetric label="Orphans" value={fmt(session.traceGraph.orphanMessages)} />
-              </div>
-            </DetailPanel>
-            <DetailPanel title="Modes / repo">
-              <div className="space-y-2 text-xs text-fg-muted">
-                <div className="flex justify-between gap-3"><span>Branch</span><span className="mono truncate">{displayText(session.modeSummary.gitBranch ?? "missing", redact, users)}</span></div>
-                <div className="flex justify-between gap-3"><span>Entrypoint</span><span className="mono">{displayText(session.modeSummary.entrypoint ?? "missing", redact, users)}</span></div>
-                <div className="flex flex-wrap gap-1.5">
-                  {Object.entries(session.modeSummary.permissionModes).map(([mode, count]) => (
-                    <span key={mode} className="rounded bg-bg-elev px-1.5 py-0.5 text-[10px]">{displayText(mode, redact, users)}: {displayText(count, redact, users)}</span>
-                  ))}
-                </div>
-              </div>
-            </DetailPanel>
-          </section>
-
-          <DetailPanel title="Operator queue">
-            <div className="mb-3 grid grid-cols-4 gap-2">
-              <TinyMetric label="Enq" value={fmt(session.queueSummary.enqueue)} />
-              <TinyMetric label="Deq" value={fmt(session.queueSummary.dequeue)} />
-              <TinyMetric label="Rem" value={fmt(session.queueSummary.remove)} />
-              <TinyMetric label="All" value={fmt(session.queueSummary.popAll)} />
-            </div>
-            <ListStack items={session.queueSummary.preview.map((preview, index) => ({
-              key: `${index}-${preview}`,
-              label: preview,
-            }))} redact={redact} users={users} empty="No queued prompt previews." />
-          </DetailPanel>
-
-          <DetailPanel title="Tool breakdown">
-            {session.toolSummaries.length === 0 ? (
-              <div className="text-sm text-fg-muted">No tool calls found.</div>
-            ) : (
-              <>
-                <div className="mb-3 grid grid-cols-[1fr_56px_56px_56px_56px_28px] gap-2 text-[9px] uppercase tracking-wider text-fg-dim">
-                  <span>Tool</span>
-                  <span className="text-right">calls</span>
-                  <span className="text-right">p50</span>
-                  <span className="text-right">p95</span>
-                  <span className="text-right">max</span>
-                  <span className="text-right">err</span>
-                </div>
-                <div className="space-y-1.5">
-                  {session.toolSummaries.map((tool) => {
-                    const dur = durationByName.get(tool.name);
-                    return (
-                      <div key={tool.name} className="grid grid-cols-[1fr_56px_56px_56px_56px_28px] items-center gap-2 py-1.5 text-xs">
-                        <span className="truncate mono text-[11px] text-fg" title={tool.name}>{tool.name}</span>
-                        <span className="mono tabular-nums text-right text-fg-muted">{tool.calls}</span>
-                        <span className="mono tabular-nums text-right text-fg-muted">{dur ? fmtMs(dur.p50Ms) : "—"}</span>
-                        <span className="mono tabular-nums text-right text-fg-muted">{dur ? fmtMs(dur.p95Ms) : "—"}</span>
-                        <span className="mono tabular-nums text-right text-fg-dim">{dur ? fmtMs(dur.maxMs) : "—"}</span>
-                        <span className={clsx("mono tabular-nums text-right", tool.errors > 0 ? "text-err" : "text-fg-dim")}>{tool.errors}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-          </DetailPanel>
-
-          <DetailPanel title="File / repo impact">
-            <div className="mb-3 grid grid-cols-2 gap-2 md:grid-cols-4">
-              <TinyMetric label="Touched" value={fmt(session.fileActivity.touchedFiles.length)} />
-              <TinyMetric label="Read-ish" value={fmt(session.fileActivity.readLikeOperations)} />
-              <TinyMetric label="Write-ish" value={fmt(session.fileActivity.writeLikeOperations)} />
-              <TinyMetric label="Snapshots" value={fmt(session.snapshotCount)} />
-            </div>
-            <ListStack items={session.fileActivity.touchedFiles.map((filePath) => ({
-              key: filePath,
-              label: compactDisplayPath(filePath, redact),
-            }))} redact={false} users={users} empty="No file paths inferred from tools or snapshots." />
-          </DetailPanel>
-
-          <section>
-            <div className="mb-3 flex items-center gap-2 text-sm font-medium">
-              Timeline context
-              {turns === null && <Loader2 className="size-4 animate-spin text-fg-muted" />}
-            </div>
-            {transcriptError ? (
-              <div className="rounded-lg border border-warn/30 bg-warn/10 p-4 text-sm text-warn">{displayText(transcriptError, redact, users)}</div>
-            ) : turns === null ? (
-              <LoadingSkeletonRows />
-            ) : turns.length === 0 ? (
-              <div className="rounded-lg border border-bd bg-bg/45 p-4 text-sm text-fg-muted">No warning/error timeline context found.</div>
-            ) : (
-              <div className="space-y-2">
-                {turns.map((turn, i) => (
-                  <TurnRow key={`${turn.type}-${i}`} turn={turn} redact={redact} users={users} />
-                ))}
-              </div>
-            )}
-          </section>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-const TurnRow = React.memo(function TurnRow({ turn, redact, users }: { turn: LiveTranscriptTurn; redact: boolean; users: ReadonlySet<string> }) {
-  return (
-    <div className={clsx(
-      "rounded-lg border p-3",
-      turn.severity === "error" ? "border-err/40 bg-err/10" : turn.severity === "warning" ? "border-warn/40 bg-warn/10" : "border-bd bg-bg/45"
-    )}>
-      <div className="mb-1 flex flex-wrap items-center gap-2">
-        <span className="text-[10px] uppercase tracking-wider text-fg-muted">{turn.label}</span>
-        <span className="rounded bg-bg-elev px-1.5 py-0.5 text-[10px] text-fg-dim">{turn.type}</span>
-        {turn.at ? <span className="mono text-[10px] text-fg-dim">{new Date(turn.at).toLocaleTimeString()}</span> : null}
-      </div>
-      <pre className="mono max-h-40 overflow-auto whitespace-pre-wrap text-[11px] leading-5 text-fg-muted">
-        {displayText(turn.preview, redact, users)}
-      </pre>
-    </div>
-  );
-});
-
-function UsageTimeline({ session }: { session: LiveSession }) {
-  const maxOutput = Math.max(...session.usageSegments.map((segment) => segment.cumulativeOutput), 1);
-  return (
-    <div className="space-y-2">
-      {session.usageSegments.map((segment, index) => {
-        const width = Math.max(4, Math.round((segment.cumulativeOutput / maxOutput) * 100));
-        const fastTok = segment.outTokPerSec > 50;
-        const slowTok = segment.outTokPerSec < 10 && segment.outTokPerSec > 0;
-        return (
-          <div key={`${segment.atMs}-${index}`} className="rounded border border-bd-subtle bg-bg/40 p-2">
-            <div className="mb-1 flex items-center justify-between gap-3 text-[10px] text-fg-muted">
-              <span className="mono tabular-nums">{new Date(segment.atMs).toLocaleTimeString()}</span>
-              <span className={clsx("mono tabular-nums font-medium", fastTok ? "text-ok" : slowTok ? "text-warn" : "text-fg-muted")}>
-                {fmt(segment.cumulativeOutput)} out · {segment.outTokPerSec.toFixed(1)} tok/s
-              </span>
-            </div>
-            <div className="h-2 overflow-hidden rounded bg-bg-elev">
-              <div
-                className={clsx("h-full rounded transition-[width] duration-300", fastTok ? "bg-ok" : slowTok ? "bg-warn" : "bg-accent-soft")}
-                style={{ width: `${width}%` }}
-              />
-            </div>
-            <div className="mt-1 text-[10px] text-fg-dim">
-              +{fmt(segment.deltaInput)} input · +{fmt(segment.deltaOutput)} output
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function SelectPill({ icon: Icon, value, onChange, options }: { icon: any; value: string; onChange: (value: string) => void; options: Array<[string, string]> }) {
-  return (
-    <label className="inline-flex items-center gap-2 rounded-md border border-bd bg-bg-elev px-2 py-1.5 text-xs text-fg-muted">
-      <Icon className="size-3.5" />
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="bg-transparent text-xs text-fg outline-none"
-      >
-        {options.map(([optionValue, label]) => <option key={optionValue} value={optionValue}>{label}</option>)}
-      </select>
-    </label>
-  );
-}
-
-function MetricCard({ label, value }: { label: string; value: string; source?: MetricSource }) {
-  return (
-    <div className="rounded-lg border border-bd bg-bg/45 p-3">
-      <div className="mb-1 text-[10px] uppercase tracking-wider text-fg-muted">{label}</div>
-      <div className="mono truncate text-base font-medium tabular-nums text-fg">{value}</div>
-    </div>
-  );
-}
-
-const SOURCE_BORDER: Record<MetricSource, string> = {
-  measured: "border-ok/15 bg-ok/5",
-  inferred: "border-accent/15 bg-accent/5",
-  missing: "border-warn/15 bg-warn/5",
-  malformed: "border-err/15 bg-err/5",
-};
-
-function SourceCell({ label, source }: { label: string; source: MetricSource }) {
-  return (
-    <div className={clsx("rounded border px-2 py-1.5", SOURCE_BORDER[source])}>
-      <div className="text-[9px] uppercase tracking-wider text-fg-dim">{label}</div>
-      <SourceChip label={source} source={source} />
-    </div>
-  );
-}
-
-function SourceChip({ label, source }: { label: string; source: MetricSource }) {
-  return (
-    <span className={clsx(
-      "inline-flex items-center rounded px-1.5 py-0.5 text-[10px]",
-      source === "measured" && "bg-ok/10 text-ok",
-      source === "inferred" && "bg-accent/10 text-accent-soft",
-      source === "missing" && "bg-warn/10 text-warn",
-      source === "malformed" && "bg-err/10 text-err"
-    )}>
-      {label}
-    </span>
-  );
-}
-
-function QualityBadge({ value }: { value: number }) {
-  return (
-    <span className={clsx(
-      "inline-flex w-fit items-center gap-1 rounded px-2 py-1 text-[11px] mono",
-      value >= 80 ? "bg-ok/10 text-ok" : value >= 55 ? "bg-warn/10 text-warn" : "bg-err/10 text-err"
-    )}>
-      <Gauge className="size-3" /> {Math.round(value)}%
-    </span>
-  );
-}
-
-function StatusPill({ session, stale: staleProp }: { session: LiveSession; stale?: boolean }) {
-  const stale = staleProp ?? isSessionStale(session);
-  if (session.isError || session.toolErrors > 0 || session.hookErrors > 0) {
-    return <span className="w-fit rounded bg-err/10 px-2 py-1 text-[10px] mono text-err">error</span>;
-  }
-  if (stale) return <span className="w-fit rounded bg-warn/10 px-2 py-1 text-[10px] mono text-warn">stale</span>;
-  return <span className="w-fit rounded bg-ok/10 px-2 py-1 text-[10px] mono text-ok">ok</span>;
-}
-
-function MetricGroup({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="rounded-lg border border-bd-subtle bg-bg-subtle/30 p-3 space-y-2">
-      <div className="text-[10px] uppercase tracking-wider text-fg-dim">{label}</div>
-      {children}
-    </div>
-  );
-}
-
-function Stat({ label, value, icon: Icon, tone }: { label: string; value: string; icon: any; tone?: "err" | "warn" | "ok" }) {
-  return (
-    <div className="flex items-center justify-between gap-2">
-      <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-fg-muted">
-        <Icon className="size-3" /> {label}
-      </div>
-      <div className={clsx("mono text-base font-semibold tabular-nums", tone === "err" && "text-err", tone === "warn" && "text-warn", tone === "ok" && "text-ok")}>{value}</div>
-    </div>
-  );
-}
-
-function MiniStat({ label, value, icon: Icon, tone }: { label: string; value: string; icon: any; tone?: "err" | "warn" }) {
-  return (
-    <div className="flex items-center justify-between gap-2">
-      <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-fg-muted">
-        <Icon className="size-3" /> {label}
-      </div>
-      <div className={clsx("mono text-sm font-semibold tabular-nums", tone === "err" && "text-err", tone === "warn" && "text-warn")}>{value}</div>
-    </div>
-  );
-}
-
-function LoadingSkeleton() {
-  return (
-    <div className="mx-auto max-w-7xl p-8">
-      <header className="mb-6">
-        <div className="mb-2 h-8 w-64 shimmer rounded" />
-        <div className="h-4 w-96 shimmer rounded" />
-      </header>
-      <section className="mb-6 grid grid-cols-1 gap-3 md:grid-cols-3">
-        {Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="rounded-lg border border-bd-subtle bg-bg-subtle/30 p-3 space-y-2">
-            <div className="h-3 w-20 shimmer rounded" />
-            {Array.from({ length: 3 }).map((_, j) => (
-              <div key={j} className="flex items-center justify-between gap-2">
-                <div className="h-3 w-24 shimmer rounded" />
-                <div className="h-4 w-12 shimmer rounded" />
-              </div>
-            ))}
-          </div>
-        ))}
-      </section>
-      <LoadingSkeletonRows />
-    </div>
-  );
-}
-
-function LoadingSkeletonRows() {
-  return (
-    <div className="overflow-hidden rounded-lg border border-bd bg-bg-subtle">
-      {Array.from({ length: 3 }).map((_, i) => (
-        <div key={i} className="flex items-center gap-3 border-b border-bd-subtle p-4 last:border-b-0">
-          <div className="h-4 w-4 shimmer rounded" />
-          <div className="flex-1 space-y-2">
-            <div className="h-4 w-1/3 shimmer rounded" />
-            <div className="h-3 w-1/2 shimmer rounded" />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function EmptyCard({ warnings }: { warnings: string[] }) {
-  return (
-    <div className="mx-auto max-w-7xl p-8">
-      <div className="card flex flex-col items-center p-8 text-center">
-        <Inbox className="mb-4 size-10 text-fg-muted" />
-        <h2 className="mb-2 text-lg font-medium">No live sessions found yet</h2>
-        <p className="max-w-md text-sm text-fg-muted">
-          Sessions will appear here as the selected harness&apos;s live-trace directory accumulates{" "}
-          <code className="mono text-xs">.jsonl</code> traces.
-        </p>
-        {warnings.length > 0 && (
-          <div className="mt-4 rounded border border-warn/30 bg-warn/10 px-3 py-2 text-xs text-warn">{warnings.join(" · ")}</div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ErrorCard({ message }: { message: string }) {
-  return (
-    <div className="mx-auto max-w-7xl p-8">
-      <div className="card flex flex-col items-center border-err/30 p-8 text-center">
-        <AlertCircle className="mb-4 size-10 text-err" />
-        <h2 className="mb-2 text-lg font-medium">Could not load live sessions</h2>
-        <p className="mb-4 max-w-lg break-words text-sm text-fg-muted">{redactSensitiveText(message)}</p>
-        <button
-          type="button"
-          onClick={() => window.location.reload()}
-          className="inline-flex items-center gap-2 rounded border border-bd bg-bg-elev px-3 py-1.5 text-sm hover:bg-bg-subtle"
-        >
-          <RefreshCw className="size-4" /> Retry now
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function displayText(value: unknown, redact: boolean, users: ReadonlySet<string>): string {
-  return redact ? redactNamedUsers(redactSensitiveText(value), users) : String(value ?? "");
-}
-
-function shortId(id: string): string {
-  if (id.length <= 16) return id;
-  return `${id.slice(0, 8)}...${id.slice(-5)}`;
-}
-
-function needsAttention(session: LiveSession): boolean {
-  return session.isError || session.toolErrors > 0 || session.hookErrors > 0 || session.dataQuality < 70 || session.malformedLineCount > 0;
-}
-
-function staleThresholdMs(): number {
-  return 1000 * 60 * 60 * 12;
-}
-
-// Derived from lastEventAt at render time. The server-stamped staleMs freezes
-// under the unchanged-sig poll shortcut and reused session references, so the
-// client must not read it for staleness decisions.
-function isSessionStale(session: LiveSession): boolean {
-  return Date.now() - session.lastEventAt > staleThresholdMs();
-}
-
-function qualityTone(value: number): "ok" | "warn" | "err" {
-  if (value >= 80) return "ok";
-  if (value >= 55) return "warn";
-  return "err";
-}
-
-function relativeTime(ms: number): string {
-  const delta = Date.now() - ms;
-  if (delta < 60_000) return "now";
-  if (delta < 3_600_000) return `${Math.floor(delta / 60_000)}m ago`;
-  if (delta < 86_400_000) return `${Math.floor(delta / 3_600_000)}h ago`;
-  return `${Math.floor(delta / 86_400_000)}d ago`;
-}
-
-function fmt(n: number): string {
-  if (!Number.isFinite(n)) return "—";
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return String(n);
-}
-
-function fmtBytes(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)} MB`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)} KB`;
-  return `${n} B`;
-}
-
-function fmtMs(ms: number): string {
-  if (!ms) return "—";
-  if (ms < 1000) return `${ms}ms`;
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
-  const m = Math.floor(ms / 60000);
-  const s = Math.floor((ms % 60000) / 1000);
-  return `${m}m${s}s`;
 }

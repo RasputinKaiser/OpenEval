@@ -8,6 +8,7 @@ import { getRunner } from "./runner";
 import { getAdapter } from "./adapters/registry";
 import { discoverHarnesses } from "./adapters/discover";
 import type { CaseDefinition, RunCaseRecord, RunnerKind, RunnerResult } from "./types";
+import type { HarnessAdapter } from "./adapters/types";
 
 const harnessInfoCache = new Map<string, { id: string; bin: string | null; version: string | null }>();
 
@@ -121,6 +122,7 @@ export async function executeCase(
   modelOverride?: string,
   sample: number = 0,
   harness?: string,
+  signal?: AbortSignal,
 ): Promise<RunCaseRecord> {
   const rcId = randomUUID();
   let workdir: string;
@@ -173,9 +175,12 @@ export async function executeCase(
 
   const runner = getRunner(runnerKind);
   const runnerCfg = def.runner || {};
-  const adapter = getAdapter(harness);
+  let adapter: HarnessAdapter;
   let images: string[];
   try {
+    // Inside the try so an unknown harness id lands this row at a terminal
+    // "error" instead of throwing a stranded "running" row at the caller.
+    adapter = getAdapter(harness);
     images = await resolveInputImages(def, workdir);
     if (images.length && !adapter.descriptor.imageFlag) {
       throw new Error(`Harness "${adapter.id}" does not declare a local image attachment flag`);
@@ -185,7 +190,7 @@ export async function executeCase(
     }
   } catch (e: any) {
     rec.status = "error";
-    rec.error_msg = `Vision input preparation failed: ${String(e?.message || e)}`;
+    rec.error_msg = `Case setup failed: ${String(e?.message || e)}`;
     rec.ended_at = Date.now();
     updateRunCase(rcId, { status: rec.status, ended_at: rec.ended_at, error_msg: rec.error_msg });
     appendEvent(runId, "case_finished", { case_id: def.id, seq, sample, status: rec.status }, def.id);
@@ -193,6 +198,11 @@ export async function executeCase(
   }
   const harnessInfo = await loadHarnessInfo(harness, adapter.id);
   rec.harness_info = harnessInfo;
+  // Transcript writes are serialized and their first failure retained: a
+  // transcript that could not be persisted (ENOSPC/EIO) must surface as an
+  // infrastructure error, never as a silently evidence-free pass.
+  const transcriptState: { error: string | null } = { error: null };
+  let transcriptWrites: Promise<void> = Promise.resolve();
   const ctx = {
     caseId: def.id,
     workdir,
@@ -204,8 +214,13 @@ export async function executeCase(
     extraArgs: runnerCfg.extra_args ?? [],
     images,
     harness,
+    signal,
     onEvent: (ev: any) => {
-      void fs.appendFile(transcriptPath, JSON.stringify(ev) + "\n").catch(() => {});
+      transcriptWrites = transcriptWrites
+        .then(() => fs.appendFile(transcriptPath, JSON.stringify(ev) + "\n"))
+        .catch((e: any) => {
+          if (!transcriptState.error) transcriptState.error = String(e?.message || e);
+        });
       if (ev.kind === "tool_use") appendEvent(runId, "tool_use", { case_id: def.id, sample, tool: ev.tool, id: ev.id }, def.id);
       else if (ev.kind === "tool_result") appendEvent(runId, "tool_result", { case_id: def.id, sample, id: ev.id, error: ev.isError }, def.id);
       else if (ev.kind === "message") appendEvent(runId, "assistant_message", { case_id: def.id, sample, text: (ev.message.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("").slice(0, 200)) }, def.id);
@@ -237,6 +252,10 @@ export async function executeCase(
     };
     rec.error_msg = `Runner threw: ${String(e?.stack || e)}`;
   }
+
+  // Settle all pending transcript appends before grading so a persistence
+  // failure is known deterministically, not discovered after the row closes.
+  await transcriptWrites;
 
   if (def.budget) {
     const overCost = def.budget.max_cost_usd != null && runnerResult.usage.costUsd > def.budget.max_cost_usd;
@@ -285,8 +304,17 @@ export async function executeCase(
       rec.status = "error";
       const why = graderResults.find((g) => g.infraError && !g.passed)?.detail ?? "grader infrastructure failed";
       rec.error_msg = (rec.error_msg ? rec.error_msg + " | " : "") + why.slice(0, 300);
+    } else if (transcriptState.error) {
+      // The transcript stream is case evidence. When persisting it failed
+      // (ENOSPC/EIO), a computed pass is not honestly reproducible — this is
+      // an infrastructure error, ranked below genuine agent failures (which
+      // keep "failed" above) and above a clean pass.
+      rec.status = "error";
     } else {
       rec.status = evaluation.passed ? "passed" : "failed";
+    }
+    if (transcriptState.error) {
+      rec.error_msg = (rec.error_msg ? rec.error_msg + " | " : "") + `Transcript write failed: ${transcriptState.error.slice(0, 300)}`;
     }
     if (rec.status === "error" && !rec.error_msg) {
       rec.error_msg = runnerResult.isError && runnerResult.resultText

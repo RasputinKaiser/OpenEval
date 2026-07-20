@@ -9,6 +9,10 @@ import { cachedFetch, invalidateCache } from "@/lib/cached-fetch";
 interface Props {
   value?: string;
   onChange: (harness: string | undefined) => void;
+  /** Fires on every successful discovery load (initial and re-probe) so the
+   *  parent can validate against the same data the picker shows, instead of
+   *  holding its own copy that goes stale after a re-probe. */
+  onDiscovered?: (data: { harnesses: DiscoveredHarness[]; defaultHarness: string }) => void;
 }
 
 const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
@@ -17,7 +21,7 @@ const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
   error: { label: "error", cls: "bg-err/10 text-err" },
 };
 
-export default function HarnessPicker({ value, onChange }: Props) {
+export default function HarnessPicker({ value, onChange, onDiscovered }: Props) {
   const [harnesses, setHarnesses] = useState<DiscoveredHarness[]>([]);
   const [defaultHarness, setDefaultHarness] = useState<string>("");
   const [open, setOpen] = useState(false);
@@ -32,10 +36,13 @@ export default function HarnessPicker({ value, onChange }: Props) {
       .then((d) => {
         setHarnesses(d.harnesses || []);
         setDefaultHarness(d.defaultHarness || "");
+        onDiscovered?.({ harnesses: d.harnesses || [], defaultHarness: d.defaultHarness || "" });
       })
       .finally(() => setLoading(false));
   }
 
+  // Mount-only initial probe; re-probe is user-driven via the refresh button.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { load(false); }, []);
 
   const filtered = harnesses.filter((h) => {
@@ -117,6 +124,7 @@ export default function HarnessPicker({ value, onChange }: Props) {
                   <button
                     key={h.id}
                     disabled={disabled}
+                    title={disabled ? (h.detail || "Binary not found on PATH — install it or set the env override.") : undefined}
                     onClick={() => { if (!disabled) { onChange(h.id); setOpen(false); } }}
                     className={clsx(
                       "w-full flex items-center justify-between gap-2 px-3 py-2 text-left",
@@ -134,7 +142,9 @@ export default function HarnessPicker({ value, onChange }: Props) {
                         {h.id} · {h.bin || "not on PATH"}
                         {h.version ? ` · ${h.version}` : ""}
                       </div>
-                      {disabled && h.detail && <div className="text-[10px] text-fg-dim mt-0.5">{h.detail}</div>}
+                      {h.status !== "available" && h.detail && (
+                        <div className={clsx("text-[10px] mt-0.5", h.status === "error" ? "text-err" : "text-fg-dim")}>{h.detail}</div>
+                      )}
                     </div>
                     {badge && (
                       <span className={clsx("text-[9px] uppercase tracking-wider mono px-1.5 py-0.5 rounded shrink-0", badge.cls)}>

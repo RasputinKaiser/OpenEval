@@ -95,6 +95,11 @@ Evidence date: 2026-07-16. Statuses describe the current checkout, including unc
 | US-088 | Parser-version cache invalidation | As a maintainer, I change a trace parser so that old cached interpretations are not reused under a new output contract. | Cache rows stamped with an older `PARSER_VERSION` are ignored and re-parsed; deleting the cache remains a safe full-rebuild fallback. | `lib/live-cache.ts` parser-version contract; `tests/live-cache.test.ts`; `tests/golden-parse.test.ts`. | PASS | — | — | PASS |
 | US-089 | Judge-session exclusion | As an operator, I run rubric or Timeline judging so that the judge's own CLI session does not pollute Collection usage or adoption metrics. | Sessions beginning with the judge prompt marker are dropped by supported parsers while evaluated user sessions remain searchable. | `tests/collection.test.ts` and `tests/golden-parse.test.ts` judge-marker cases; `docs/architecture.md`. | PASS | — | — | PASS |
 | US-090 | Optional PII redaction fallback | As an operator, I share a report on a machine without the optional PII model so that deterministic path and secret redaction still protects the text. | Secrets and local paths are redacted by default; the optional Rampart layer is used only when available, and absence leaves deterministic redaction intact. | `tests/redaction.test.ts` default and Rampart-unavailable cases; `docs/redaction.md`; `lib/redaction.ts`. | PASS | — | — | PASS |
+| US-091 | PLAN-UX-STABILITY U04 behavior | As an operator, I receive the stability behavior delivered by batch unit U04 so that the dashboard degrades gracefully instead of surfacing runtime faults. | Per the coordinator-held PLAN-UX-STABILITY batch plan (not an in-repo document) unit U04 — this row is bookkeeping seeded by U14 ahead of integration; authoritative wording lands with the unit's merge. | Integration evidence pending (wave merge); unit's own test file plus runtime smoke at integration. | PENDING | — | — | PENDING |
+| US-092 | PLAN-UX-STABILITY U05 behavior | As an operator, I receive the stability behavior delivered by batch unit U05 so that malformed or object-shaped data cannot crash client surfaces. | Per the coordinator-held PLAN-UX-STABILITY batch plan (not an in-repo document) unit U05 — this row is bookkeeping seeded by U14 ahead of integration; authoritative wording lands with the unit's merge. | Integration evidence pending (wave merge); unit's own test file plus runtime smoke at integration. | PENDING | — | — | PENDING |
+| US-093 | PLAN-UX-STABILITY U06 behavior | As an operator, I understand and control local storage growth so that OpenEval's on-disk footprint stays predictable (Storage documentation appended by U06). | Per the coordinator-held PLAN-UX-STABILITY batch plan (not an in-repo document) unit U06 — this row is bookkeeping seeded by U14 ahead of integration; authoritative wording lands with the unit's merge. | Integration evidence pending (wave merge); docs review plus unit's own test file at integration. | PENDING | — | — | PENDING |
+| US-094 | PLAN-UX-STABILITY U07 behavior | As an operator, I receive the stability behavior delivered by batch unit U07 so that list surfaces stay stable and correctly keyed under real session data. | Per the coordinator-held PLAN-UX-STABILITY batch plan (not an in-repo document) unit U07 — this row is bookkeeping seeded by U14 ahead of integration; authoritative wording lands with the unit's merge. | Integration evidence pending (wave merge); unit's own test file plus runtime smoke at integration. | PENDING | — | — | PENDING |
+| US-095 | PLAN-UX-STABILITY U08 behavior | As an operator, I receive the stability behavior delivered by batch unit U08 so that failed background polls degrade to a stale-data state instead of error overlays. | Per the coordinator-held PLAN-UX-STABILITY batch plan (not an in-repo document) unit U08 — this row is bookkeeping seeded by U14 ahead of integration; authoritative wording lands with the unit's merge. | Integration evidence pending (wave merge); unit's own test file plus runtime smoke at integration. | PENDING | — | — | PENDING |
 
 ## Phase log
 
@@ -171,6 +176,11 @@ Evidence date: 2026-07-16. Statuses describe the current checkout, including unc
 - Contrast remediation: replaced the run hero's fixed dark gradient with theme-aware CSS variables and strengthened run-id/model foreground contrast. Both light and dark computed-style checks now use readable theme colors.
 - Final validation: `npm test` PASS — 259 tests passed, 0 failed; `npm run typecheck` PASS; `npm run lint` PASS with zero warnings or errors; `npm run build` PASS; `npm run audit:accuracy` PASS; `bash scripts/public-upload-audit.sh` PASS; `git diff --check` PASS.
 
+### 2026-07-19 — PLAN-UX-STABILITY bookkeeping (U14)
+
+- Seeded `US-091`–`US-095` as PENDING placeholders for batch units U04–U08. Descriptions are provisional bookkeeping; the plan document owns the authoritative behavior wording, and each row flips from PENDING only on integration evidence (unit test files plus wave-merge runtime smoke).
+- Added `npm run doctor` (dev-runtime health checks), CI `node_modules` caching plus a doctor smoke step, a README Troubleshooting section, and the CHANGELOG `[Unreleased]` section for this batch.
+
 ## Summary by status
 
 | Status | Count |
@@ -178,9 +188,9 @@ Evidence date: 2026-07-16. Statuses describe the current checkout, including unc
 | PASS | 82 |
 | FIXED | 7 |
 | FAIL | 0 |
-| PENDING | 0 |
+| PENDING | 5 |
 | BLOCKED | 1 |
-| **Total** | **90** |
+| **Total** | **95** |
 
 ### Warnings and known limitations
 

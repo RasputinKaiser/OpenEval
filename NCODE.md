@@ -14,6 +14,7 @@ npm run dev                          # dashboard at :3000
 npm run build && npm start           # prod build/serve
 npm run typecheck                    # tsc --noEmit (no emitted JS in this repo)
 npm run lint                         # next lint
+npm run doctor                       # dev-runtime health: Node/.nvmrc, better-sqlite3 ABI, stale .next (--fix clears), port 3000, read-only DB quick_check, disk
 
 # Tests — Node built-in runner, no jest
 npm run test:live                    # tests/live.test.ts (live trace parsing + API)

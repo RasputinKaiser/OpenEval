@@ -2,7 +2,7 @@ import { getAdapter } from "../adapters/registry";
 import { resolveDefaultModel } from "../models";
 import { estimateCostUsd, isPlaceholderModel } from "../pricing";
 import { emit, type Runner } from "./parse";
-import { spawnHarnessProcess } from "./spawn";
+import { isCompleteResult, spawnHarnessProcess } from "./spawn";
 import type { RunnerContext, RunnerResult, TranscriptEntry } from "../types";
 
 export class HeadlessRunner implements Runner {
@@ -14,17 +14,19 @@ export class HeadlessRunner implements Runner {
     const adapter = getAdapter(ctx.harness);
     const fallbackModel = ctx.model ?? resolveDefaultModel(adapter.id).id ?? null;
 
-    const { acc, stderr, exitCode, durationMs, timedOut } = await spawnHarnessProcess(ctx, (line, accumulator) => {
+    const { acc, stderr, exitCode, durationMs, timedOut, aborted } = await spawnHarnessProcess(ctx, (line, accumulator) => {
       for (const ev of adapter.parseLine(line, accumulator)) emit(ctx, ev);
     });
 
-    if (acc.result) {
+    // A seeded partial result (init line only, endedAt null) is not completion:
+    // a harness that crashed/hung mid-case must resolve through failure().
+    if (isCompleteResult(acc.result)) {
       emit(ctx, { kind: "finished", at: Date.now(), durationMs, exitCode });
       const parsed = { ...acc.result, exitCode, durationMs, startedAt, endedAt: startedAt + durationMs } as RunnerResult;
       return normalizeParsedResult(parsed, fallbackModel);
     }
     return normalizeParsedResult(
-      failure(ctx, acc, startedAt, durationMs, exitCode, stderr, timedOut),
+      failure(ctx, acc, startedAt, durationMs, exitCode, stderr, timedOut, aborted),
       fallbackModel,
     );
   }
@@ -66,9 +68,12 @@ function failure(
   exitCode: number,
   stderr: string,
   timedOut = false,
+  aborted = false,
 ): RunnerResult {
   emit(ctx, { kind: "finished", at: Date.now(), durationMs, exitCode });
-  const msg = timedOut
+  const msg = aborted
+    ? `Runner cancelled after ${durationMs}ms (SIGKILL to the process group) without producing a result event.\nstderr:\n${stderr}`
+    : timedOut
     ? `Runner timed out after ${durationMs}ms (SIGKILL) without producing a result event.\nstderr:\n${stderr}`
     : `Runner exited without producing a result event.\nstderr:\n${stderr}`;
   return {

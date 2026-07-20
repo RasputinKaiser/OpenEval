@@ -15,7 +15,7 @@ export function SectionHeader({ icon: Icon, title, desc, right }: { icon: Lucide
   return (
     <div className="flex items-end justify-between gap-3 mb-2.5">
       <div className="flex items-center gap-2.5 min-w-0">
-        <span className="grid place-items-center size-6 rounded-md border border-bd bg-bg-elev shrink-0">
+        <span aria-hidden="true" className="grid place-items-center size-6 rounded-md border border-bd bg-bg-elev shrink-0">
           <Icon className="size-3.5 text-accent-soft" />
         </span>
         <div className="min-w-0">
@@ -62,11 +62,12 @@ export function SectionNav({ sections, summary }: { sections: Array<{ id: string
         <a
           key={s.id}
           href={`#${s.id}`}
-          aria-current={active === s.id ? "true" : undefined}
+          aria-current={active === s.id ? "location" : undefined}
           onClick={(e) => {
             e.preventDefault();
             setActive(s.id); // immediate feedback — scroll events lag (or are throttled in background tabs)
-            document.getElementById(s.id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+            const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+            document.getElementById(s.id)?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
           }}
           className={clsx(
             "rounded-full px-2.5 py-1 text-[11px] whitespace-nowrap border transition-colors",

@@ -158,6 +158,25 @@ function SelectPill({ icon: Icon, value, onChange, options }: { icon: LucideIcon
 type SessionSort = "recent" | "tokens" | "duration" | "tools";
 const LOAD_STEP = 160;
 const MAX_LIMIT = 10_000;
+const SEARCH_DEBOUNCE_MS = 400;
+const SEARCH_LIMIT = 50;
+
+/**
+ * Sticky first column for wide tables: on narrow screens the row identity
+ * stays put while the metrics scroll under it. Opaque card background so
+ * scrolled cells never show through; header cell sits above sibling headers.
+ */
+const STICKY_TH = "sticky left-0 z-[2]";
+const STICKY_TD = "sticky left-0 z-[1] bg-bg-subtle";
+
+/** Keep `?q=` in the address bar so a search survives reload/share — without a Next re-render. */
+function syncQueryUrl(query: string) {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  if (query) url.searchParams.set("q", query);
+  else url.searchParams.delete("q");
+  window.history.replaceState(null, "", url);
+}
 
 /** Full `?limit=` response — `AllSourcesResult` plus its continuation cursor. */
 type CollectionPayload = AllSourcesResult & { nextCursor?: string | null };
@@ -209,6 +228,11 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
   // initial data) — the first load-more bootstraps one via a full ?limit= fetch.
   const [nextCursor, setNextCursor] = useState<string | null | undefined>(undefined);
   const ranInitial = useRef(false);
+  // Last query actually sent — the debounce effect only fires on real changes.
+  const lastSearched = useRef(initialQuery?.trim() ?? "");
+  // Monotonic request id: responses that lost the race are dropped, so hits
+  // always match the newest query (and a cleared box can't resurrect results).
+  const searchSeq = useRef(0);
 
   // A ?q= handoff (e.g. from the dashboard search box) runs immediately.
   useEffect(() => {
@@ -219,6 +243,20 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialQuery]);
   const [searching, setSearching] = useState(false);
+
+  // Debounced search-as-you-type: no submit needed; the query is mirrored into
+  // `?q=` so a found search survives reload and can be shared. The guard is
+  // re-checked when the timer fires so a manual submit inside the debounce
+  // window doesn't double-fire the same search.
+  useEffect(() => {
+    const query = q.trim();
+    if (query === lastSearched.current) return;
+    const t = setTimeout(() => {
+      if (query !== lastSearched.current) void runSearch(query);
+    }, SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q]);
   const [indexInfo, setIndexInfo] = useState<{ indexedFiles: number; totalFiles: number } | null>(null);
   const [indexing, setIndexing] = useState(false);
 
@@ -233,20 +271,33 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
   );
   const { redact, setRedact, show } = useRedactedShow(harvestFrom);
 
-  async function runSearch(query: string) {
-    if (!query.trim()) { setHits(null); return; }
+  async function runSearch(rawQuery: string) {
+    const query = rawQuery.trim();
+    const seq = ++searchSeq.current; // also invalidates any in-flight response
+    if (!query) {
+      lastSearched.current = "";
+      syncQueryUrl("");
+      setHits(null);
+      setSearching(false);
+      return;
+    }
+    lastSearched.current = query;
+    syncQueryUrl(query);
     setSearching(true);
     try {
-      const res = await fetch(`/api/collection/search?q=${encodeURIComponent(query)}&limit=50`);
+      const res = await fetch(`/api/collection/search?q=${encodeURIComponent(query)}&limit=${SEARCH_LIMIT}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const d = await res.json();
+      if (seq !== searchSeq.current) return; // a newer search superseded this one
       setHits(d.hits);
       setIndexInfo(d.index);
       setErr(undefined);
     } catch (e) {
+      if (seq !== searchSeq.current) return;
+      lastSearched.current = ""; // failed — let the debounce retry the same query
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
-      setSearching(false);
+      if (seq === searchSeq.current) setSearching(false);
     }
   }
 
@@ -503,12 +554,16 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
           onSubmit={(e) => { e.preventDefault(); runSearch(q); }}
           className="flex items-center gap-2"
         >
-          <Search className="size-4 text-fg-dim shrink-0" />
+          {searching
+            ? <RefreshCw className="size-4 text-accent-soft shrink-0 animate-spin" aria-label="Searching" role="img" />
+            : <Search className="size-4 text-fg-dim shrink-0" />}
           <input
+            type="search"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search every session, every harness… (e.g. auth refactor)"
-            className="flex-1 bg-transparent text-sm outline-none placeholder:text-fg-dim"
+            aria-label="Search sessions"
+            className="flex-1 min-w-0 bg-transparent text-sm outline-none placeholder:text-fg-dim"
           />
           <button
             type="submit"
@@ -532,10 +587,20 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
         </form>
         {hits !== null && (
           <div className="mt-3 border-t border-bd/50 pt-2">
+            <p className="text-[11px] text-fg-dim mb-2 tabular-nums" aria-live="polite">
+              {searching
+                ? "Searching…"
+                : hits.length === 0
+                  ? "No matches"
+                  : hits.length >= SEARCH_LIMIT
+                    ? `First ${hits.length} results`
+                    : `${hits.length} result${hits.length === 1 ? "" : "s"}`}
+              {lastSearched.current ? <> for <span className="text-fg-muted">&ldquo;{lastSearched.current}&rdquo;</span></> : null}
+            </p>
             {indexInfo && indexInfo.indexedFiles < indexInfo.totalFiles && !indexing && (
               <p className="text-[11px] text-warn mb-2">Only {indexInfo.indexedFiles}/{indexInfo.totalFiles} files indexed — results may be incomplete.</p>
             )}
-            {hits.length === 0 && <p className="text-sm text-fg-dim py-2">No matches.</p>}
+            {hits.length === 0 && <p className="text-sm text-fg-dim py-2">No matches. Try a shorter or different phrase — search matches transcript text across every harness.</p>}
             <div className="space-y-1">
               {hits.map((h) => (
                 <Link
@@ -619,7 +684,7 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Model</th>
+                    <th className={STICKY_TH}>Model</th>
                     <th className="num">Sessions</th>
                     <th className="num">I/O tokens</th>
                     <th className="num">Cache reads</th>
@@ -636,8 +701,8 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
                     const modelCostEstimated = m.listedRateSessions + m.familyRateSessions + m.fallbackRateSessions > 0;
                     return (
                       <tr key={m.model}>
-                        <td className="mono text-[11px]">
-                          <div>{m.model === "unknown" ? <span className="text-fg-dim">unknown</span> : m.model}</div>
+                        <td className={clsx("mono text-[11px] max-w-[220px]", STICKY_TD)}>
+                          <div className="truncate">{m.model === "unknown" ? <span className="text-fg-dim">unknown</span> : m.model}</div>
                           <PricingEvidence model={m} />
                         </td>
                         <td className="num" title={`${fmtNumFull(m.pricedSessions)} priced · ${fmtNumFull(m.inferredModelSessions)} inferred model ids`}>{fmtNum(m.sessions)}</td>
@@ -686,7 +751,7 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Harness</th>
+                  <th className={STICKY_TH}>Harness</th>
                   <th>Status</th>
                   <th>Format</th>
                   <th className="num">Files</th>
@@ -700,7 +765,7 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
               <tbody>
                 {data.sources.map((s) => (
                   <tr key={s.id} className={clsx(s.status === "absent" && "opacity-45")}>
-                    <td>
+                    <td className={STICKY_TD}>
                       <div className="font-medium flex items-center gap-1.5">
                         {s.label}
                         {s.scanWarnings.length > 0 && (
@@ -784,7 +849,7 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Source</th>
+                  <th className={STICKY_TH}>Source</th>
                   <th>Session</th>
                   <th>Model</th>
                   <th className="num">Dur</th>
@@ -806,7 +871,7 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
                   const project = compactDisplayPath(s.project, redact);
                   return (
                     <tr key={s.path ?? `${s.sourceId}-${s.sessionId}-${i}`} className="cv-auto">
-                      <td>
+                      <td className={STICKY_TD}>
                         <span className="rounded bg-accent/10 text-accent-soft px-1.5 py-0.5 text-[10px] whitespace-nowrap">{s.sourceLabel}</span>
                         {s.archived && <span className="ml-1 rounded bg-bg-elev text-fg-dim px-1.5 py-0.5 text-[10px]" title="File pruned from disk; kept from the parse archive">archived</span>}
                       </td>

@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
-import { collectSourceSessions, scanSourceSessions, type LiveAggregate, type LiveSession } from "../live";
+import { collectSourceSessions, scanSourceSessions, type CollectedSourceFiles, type LiveAggregate, type LiveSession } from "../live";
 import { allCollectionSources, defToSpec, type CollectionSourceDef } from "./sources";
 import { discoverKnownSources, discoverUnknownCandidates, type DiscoveredSource, type UnknownCandidate } from "./discover";
 import { displayModelId, PRICING_LIST_DATE, PRICING_SOURCE } from "../pricing";
@@ -30,6 +30,14 @@ export interface CollectedSourceSummary {
   lastActivityMs: number | null;
   scanWarnings: string[];
   note?: string;
+  /**
+   * True when a scan budget expired before this source's on-disk files were
+   * all parsed: live-file metrics cover only the newest parsed subset, plus
+   * archived history already sitting in the parse cache (merging it costs no
+   * transcript reads, so it is never cut). filesFound stays the honest
+   * on-disk count. Absent/false = fully scanned.
+   */
+  scanTruncated?: boolean;
 }
 
 export interface ModelRollup {
@@ -130,6 +138,16 @@ export interface AllSourcesResult {
   pricingSource: string;
   byModel: ModelRollup[];
   byTool: ToolRollup[];
+  /**
+   * Provenance honesty for time-boxed scans: true when a scan budget cut the
+   * parse short, so totals/sessions cover only what was parsed in time.
+   * Partial results are always labeled — never silently truncated — and a
+   * partial result is never memoized as the canonical snapshot. Optional only
+   * for client-side empty placeholders; every computed result carries both.
+   */
+  partial?: boolean;
+  /** Ids of the sources whose parse the budget cut short (empty when !partial). */
+  partialSources?: string[];
 }
 
 /** Merge per-source model rollups into one cross-source list, by cost desc. */
@@ -195,7 +213,74 @@ const FULL_HISTORY = 100_000;
 /** Sessions retained in the memoized result; per-call `limit` slices down from this. */
 const SESSION_ITEM_CAP = 10_000;
 
-function computeAllSources(discovered: DiscoveredSource[], byId: Map<string, DiscoveredSource>, reparseFiles?: ReadonlySet<string>): AllSourcesResult {
+/**
+ * Scan-budget escape hatch. A first-ever cold parse of a large corpus (700+
+ * Codex rollouts, 1,100+ timeline sessions) can take tens of seconds; a
+ * budgeted caller gets whatever parsed inside the deadline plus an honest
+ * `partial: true` instead of blocking unboundedly.
+ *
+ * The mechanism piggybacks on the two-tier parse cache: files are parsed
+ * newest-first in bounded chunks (each chunk primes the cache), checking the
+ * deadline between chunks. Whatever a partial pass primed stays cached, so
+ * repeated budgeted calls make monotonic progress and eventually complete —
+ * that is the resume story. With no deadline this path is skipped entirely
+ * and the scan is byte-for-byte the unbudgeted one.
+ */
+const BUDGET_PRIME_CHUNK = 25;
+
+interface SourceParsePlan {
+  collected: CollectedSourceFiles;
+  truncated: boolean;
+  totalFiles: number;
+}
+
+function planBudgetedParse(
+  byId: Map<string, DiscoveredSource>,
+  deadlineMs: number,
+  reparseFiles?: ReadonlySet<string>,
+): Map<string, SourceParsePlan> {
+  const plan = new Map<string, SourceParsePlan>();
+  for (const def of hooks.sources()) {
+    const disc = byId.get(def.id);
+    if (!def.parseable || disc?.status !== "present" || !disc.collected) continue;
+    // Newest-first so a truncated pass covers the most recent (most relevant)
+    // sessions — the same order the display slice uses.
+    const files = [...disc.collected.files].sort((a, b) => b.mtime - a.mtime);
+    // Content-rewritten files (sentinel-dirty) are NEVER cut by the budget:
+    // the sentinel pass already advanced their baseline, so a file truncated
+    // out here would keep serving its stale cache row forever with no future
+    // dirty re-detection. Correctness outranks the deadline for these few.
+    const dirty = reparseFiles?.size ? files.filter((f) => reparseFiles.has(f.file)) : [];
+    const clean = dirty.length ? files.filter((f) => !reparseFiles!.has(f.file)) : files;
+    let cut = clean.length;
+    for (let i = 0; i < clean.length; i += BUDGET_PRIME_CHUNK) {
+      if (Date.now() >= deadlineMs) {
+        cut = i;
+        break;
+      }
+      const chunk = clean.slice(i, i + BUDGET_PRIME_CHUNK);
+      // Prime the parse caches only; output is discarded. The real scan below
+      // re-reads these as in-memory cache hits.
+      collectSourceSessions(defToSpec(def), chunk.length, {
+        preCollected: { files: chunk, scanWarnings: [] },
+        reparseFiles,
+      });
+    }
+    plan.set(def.id, {
+      collected: { files: [...dirty, ...clean.slice(0, cut)], scanWarnings: disc.collected.scanWarnings },
+      truncated: cut < clean.length,
+      totalFiles: files.length,
+    });
+  }
+  return plan;
+}
+
+function computeAllSources(
+  discovered: DiscoveredSource[],
+  byId: Map<string, DiscoveredSource>,
+  reparseFiles?: ReadonlySet<string>,
+  plan?: Map<string, SourceParsePlan>,
+): AllSourcesResult {
   const summaries: CollectedSourceSummary[] = [];
   const allSessions: CollectionSessionItem[] = [];
   const modelLists: ModelRollup[][] = [];
@@ -235,7 +320,9 @@ function computeAllSources(discovered: DiscoveredSource[], byId: Map<string, Dis
       // whole source tree for the scan.
       // Retain up to SESSION_ITEM_CAP per source (not the default 100) so the
       // memoized cross-source list can satisfy large ?limit= requests.
-      const agg: LiveAggregate = scanSourceSessions(defToSpec(def), FULL_HISTORY, { includeArchived: true, preCollected: disc?.collected, sessionRetention: SESSION_ITEM_CAP, reparseFiles });
+      // A budgeted pass substitutes its (possibly truncated) newest-first list.
+      const planned = plan?.get(def.id);
+      const agg: LiveAggregate = scanSourceSessions(defToSpec(def), FULL_HISTORY, { includeArchived: true, preCollected: planned?.collected ?? disc?.collected, sessionRetention: SESSION_ITEM_CAP, reparseFiles });
       base.archivedSessions = agg.archivedSessions;
       base.parsedSessions = agg.totalSessions;
       base.totalCostUsd = agg.totalCostUsd;
@@ -259,6 +346,13 @@ function computeAllSources(discovered: DiscoveredSource[], byId: Map<string, Dis
       toolLists.push(agg.byTool.map((t) => ({ name: t.name, calls: t.calls, errors: t.errors })));
       base.avgDataQuality = agg.avgDataQuality;
       base.scanWarnings = agg.scanWarnings;
+      if (planned?.truncated) {
+        base.scanTruncated = true;
+        base.scanWarnings = [
+          ...base.scanWarnings,
+          `scan budget exhausted: parsed ${planned.collected.files.length} of ${planned.totalFiles} on-disk session files (newest first); live totals cover only that subset, plus archived history already in the parse cache`,
+        ];
+      }
       // Whole-history flag — agg.sessions is retention-capped (SESSION_ITEM_CAP
       // here), so a `.some()` over it could miss estimated sessions past the
       // slice; totals likewise come from agg.total* scalars, never agg.sessions.
@@ -302,6 +396,8 @@ function computeAllSources(discovered: DiscoveredSource[], byId: Map<string, Dis
     pricingSource: PRICING_SOURCE,
     byModel: mergeModelRollups(modelLists),
     byTool: mergeToolRollups(toolLists),
+    partial: summaries.some((s) => s.scanTruncated),
+    partialSources: summaries.filter((s) => s.scanTruncated).map((s) => s.id),
   };
 }
 
@@ -458,7 +554,7 @@ function sentinelDirtyFiles(discovered: DiscoveredSource[]): Set<string> {
 let snapshot: CollectionSnapshot | null = null;
 let lastValidatedAt = 0;
 
-function getSnapshot(opts: { fresh?: boolean } = {}): CollectionSnapshot {
+function getSnapshot(opts: { fresh?: boolean; budgetMs?: number } = {}): CollectionSnapshot {
   const now = Date.now();
   const ttlMs = hooks.fingerprintTtlMs ?? FINGERPRINT_TTL_MS;
   if (!opts.fresh && snapshot && now - lastValidatedAt < ttlMs) return snapshot;
@@ -473,7 +569,28 @@ function getSnapshot(opts: { fresh?: boolean } = {}): CollectionSnapshot {
   // page-render case — stays stat-only.
   const dirty = statChanged || opts.fresh ? sentinelDirtyFiles(discovered) : new Set<string>();
   if (!prev || statChanged || dirty.size > 0) {
-    snapshot = computeSnapshot(discovered, fingerprint, dirty);
+    // The budget clock starts after the (cheap, mandatory) stat + sentinel
+    // passes: it bounds the expensive part, the parse.
+    const deadlineMs = opts.budgetMs != null ? Date.now() + opts.budgetMs : undefined;
+    const next = computeSnapshot(discovered, fingerprint, dirty, deadlineMs);
+    if (next.result.partial) {
+      // A partial parse is served ONLY to the budgeted request that produced
+      // it. Memoizing it would silently truncate every later caller (timeline,
+      // rollups, unbudgeted API reads); instead the memo keeps its previous
+      // state and the next call revalidates — cache priming done by this pass
+      // makes that next attempt strictly cheaper.
+      if (dirty.size > 0) {
+        // …unless this pass consumed sentinel-dirty signals: their baselines
+        // are already advanced, so the retained memo (built from the
+        // pre-rewrite parses, under an unchanged fingerprint) would otherwise
+        // be served forever. Drop it; the next call recomputes from the
+        // now-corrected cache rows.
+        snapshot = null;
+        lastValidatedAt = 0;
+      }
+      return next;
+    }
+    snapshot = next;
   } else if (opts.fresh) {
     // Explicit rescan with an unchanged corpus: the parse memo stands, but the
     // unknown-candidate walk covers dirs OUTSIDE the fingerprint — re-run it so
@@ -487,7 +604,7 @@ function getSnapshot(opts: { fresh?: boolean } = {}): CollectionSnapshot {
   return snapshot;
 }
 
-function computeSnapshot(discovered: DiscoveredSource[], fingerprint: string, reparseFiles?: ReadonlySet<string>): CollectionSnapshot {
+function computeSnapshot(discovered: DiscoveredSource[], fingerprint: string, reparseFiles?: ReadonlySet<string>, deadlineMs?: number): CollectionSnapshot {
   // Aggregate first: scanSourceSessions primes the per-file session cache, so
   // the full-history collection below re-reads no transcript bytes. The
   // collection deliberately covers every parseable def — not just "present"
@@ -495,7 +612,11 @@ function computeSnapshot(discovered: DiscoveredSource[], fingerprint: string, re
   // the parse cache and must keep feeding rollup/timeline (as they did when
   // those callers collected for themselves).
   const byId = new Map(discovered.map((d) => [d.id, d]));
-  const result = computeAllSources(discovered, byId, reparseFiles);
+  // Budgeted pass: parse newest-first in deadline-checked chunks and hand the
+  // (possibly truncated) file lists to both consumers below, so aggregate and
+  // session collection describe the same parsed subset.
+  const plan = deadlineMs != null ? planBudgetedParse(byId, deadlineMs, reparseFiles) : undefined;
+  const result = computeAllSources(discovered, byId, reparseFiles, plan);
   const sessions: CollectedSession[] = [];
   for (const def of hooks.sources()) {
     if (!def.parseable) continue;
@@ -504,7 +625,7 @@ function computeSnapshot(discovered: DiscoveredSource[], fingerprint: string, re
     // reparseFiles is threaded here as well: the scan above normally overwrites
     // the stale cache rows first, but this collection must not depend on that
     // ordering to avoid re-serving a stale parse.
-    for (const s of collectSourceSessions(defToSpec(def), FULL_HISTORY, { includeArchived: true, preCollected: byId.get(def.id)?.collected, reparseFiles })) {
+    for (const s of collectSourceSessions(defToSpec(def), FULL_HISTORY, { includeArchived: true, preCollected: plan?.get(def.id)?.collected ?? byId.get(def.id)?.collected, reparseFiles })) {
       sessions.push({ ...s, sourceId: def.id, sourceLabel: def.label });
     }
   }
@@ -517,7 +638,13 @@ function withLimit(result: AllSourcesResult, limit: number): AllSourcesResult {
   return { ...result, generatedAtMs: Date.now(), sessions: result.sessions.slice(0, limit) };
 }
 
-export function scanAllSources(limit = 200, opts: { fresh?: boolean } = {}): AllSourcesResult {
+/**
+ * `budgetMs` time-boxes the PARSE of a recompute (cache-hit serves and the
+ * stat/sentinel passes are unaffected). When the budget expires mid-parse the
+ * result carries `partial: true` + per-source `scanTruncated` flags and is not
+ * memoized; repeated budgeted calls resume from the primed cache.
+ */
+export function scanAllSources(limit = 200, opts: { fresh?: boolean; budgetMs?: number } = {}): AllSourcesResult {
   return withLimit(getSnapshot(opts).result, limit);
 }
 

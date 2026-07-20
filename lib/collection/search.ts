@@ -59,12 +59,23 @@ interface PendingFile {
   sourceId: string;
 }
 
+/**
+ * Test seam (the `_setCollectionHooksForTest` pattern): the real source
+ * registry points at fixed home-dir roots, so index/budget behavior is only
+ * testable against injected temp-dir sources.
+ */
+let sourcesHook: (() => ReturnType<typeof allCollectionSources>) | null = null;
+
+export function _setSearchSourcesForTest(fn: (() => ReturnType<typeof allCollectionSources>) | null): void {
+  sourcesHook = fn;
+}
+
 /** Files on disk that are missing from the index or changed since indexing. */
 function pendingFiles(): { pending: PendingFile[]; total: number } {
   const indexed = ftsIndexedFiles();
   const pending: PendingFile[] = [];
   let total = 0;
-  for (const def of allCollectionSources()) {
+  for (const def of (sourcesHook ?? allCollectionSources)()) {
     if (!def.parseable) continue;
     for (const f of listSourceFiles(defToSpec(def))) {
       total++;
@@ -82,16 +93,41 @@ export interface IndexProgress {
   indexed: number; // this call
   remaining: number;
   total: number; // files on disk across sources
+  /**
+   * True when this pass stopped on its time budget before finishing its batch.
+   * `remaining` stays honest either way — the client's resume loop (POST while
+   * remaining > 0) needs no special handling.
+   */
+  budgetExhausted: boolean;
 }
 
-/** One incremental index pass: (re-)index up to `max` pending files, oldest last. */
-export function indexPendingFiles(max = 25): IndexProgress {
+/**
+ * One incremental index pass: (re-)index up to `max` pending files, newest
+ * first. Each file is its own small write transaction (see ftsUpsert), so an
+ * index pass never holds the WAL writer across more than one transcript —
+ * chunking and cancellation both fall out of that granularity: `budgetMs`
+ * bounds a pass's wall time between files, a client that stops POSTing stops
+ * the rebuild, and the next pass resumes from the persisted fts_meta cursor.
+ */
+export function indexPendingFiles(max = 25, opts: { budgetMs?: number } = {}): IndexProgress {
+  const deadline = opts.budgetMs != null ? Date.now() + opts.budgetMs : null;
   const { pending, total } = pendingFiles();
   // Newest first — recent sessions become searchable soonest.
   pending.sort((a, b) => b.mtime - a.mtime);
   const batch = pending.slice(0, Math.max(1, Math.min(max, 200)));
   let indexed = 0;
+  let attempted = 0;
+  let budgetExhausted = false;
   for (const p of batch) {
+    // Deadline check AFTER the first file: a pass must always make forward
+    // progress, or a client looping on `remaining` (with the route's default
+    // budget applied) could spin forever when the pending walk alone eats the
+    // budget on a huge corpus.
+    if (deadline != null && attempted > 0 && Date.now() >= deadline) {
+      budgetExhausted = true;
+      break;
+    }
+    attempted++;
     let st: fs.Stats;
     try { st = fs.statSync(p.file); } catch { continue; }
     let text = extractSearchText(p.file);
@@ -113,7 +149,7 @@ export function indexPendingFiles(max = 25): IndexProgress {
     );
     indexed++;
   }
-  return { indexed, remaining: pending.length - batch.length, total };
+  return { indexed, remaining: pending.length - attempted, total, budgetExhausted };
 }
 
 export interface SearchResponse {

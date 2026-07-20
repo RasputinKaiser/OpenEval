@@ -16,11 +16,20 @@ import { resolveDefaultModel } from "./models";
 // source of truth — dev HMR can reset this module (and this Map) mid-run, so
 // the loop also re-checks the DB between cases and the cancel route writes
 // the DB before flagging the registry.
-const cancelRegistry = new Map<string, { cancelled: boolean }>();
+interface CancelState {
+  cancelled: boolean;
+  /** Aborting kills in-flight harness process trees / tmux sessions mid-case. */
+  controller: AbortController;
+}
+
+const cancelRegistry = new Map<string, CancelState>();
 
 export function requestRunCancel(runId: string): boolean {
   const entry = cancelRegistry.get(runId);
-  if (entry) entry.cancelled = true;
+  if (entry) {
+    entry.cancelled = true;
+    entry.controller.abort();
+  }
   return !!entry;
 }
 
@@ -67,7 +76,7 @@ export async function createAndStartRun(params: CreateRunParams): Promise<{ id: 
 }
 
 async function runLoop(runId: string, cases: CaseDefinition[], runner: RunnerKind, harness: string, parallel: number, model?: string, samples = 1) {
-  const cancelState = { cancelled: false };
+  const cancelState: CancelState = { cancelled: false, controller: new AbortController() };
   cancelRegistry.set(runId, cancelState);
   // Tool calls and grader processes can legitimately be quiet for longer than
   // the orphan threshold. A DB heartbeat survives HMR module replacement and
@@ -84,7 +93,7 @@ async function runLoop(runId: string, cases: CaseDefinition[], runner: RunnerKin
   }
 }
 
-async function runLoopBody(runId: string, cases: CaseDefinition[], runner: RunnerKind, harness: string, parallel: number, cancelState: { cancelled: boolean }, model?: string, samples = 1) {
+async function runLoopBody(runId: string, cases: CaseDefinition[], runner: RunnerKind, harness: string, parallel: number, cancelState: CancelState, model?: string, samples = 1) {
   const work: Array<{ def: CaseDefinition; seq: number; sample: number }> = [];
   let seq = 0;
   for (const def of cases) {
@@ -96,12 +105,18 @@ async function runLoopBody(runId: string, cases: CaseDefinition[], runner: Runne
   const parallelN = Math.max(1, parallel);
 
   const isCancelled = (): boolean => {
-    if (cancelState.cancelled) return true;
-    // The cancel route (or orphan sweep) may have marked the run aborted from
-    // a module instance that can't see our registry — the DB row decides.
-    try {
-      if (getRunStatus(runId) === "aborted") cancelState.cancelled = true;
-    } catch {}
+    if (!cancelState.cancelled) {
+      // The cancel route (or orphan sweep) may have marked the run aborted from
+      // a module instance that can't see our registry — the DB row decides.
+      try {
+        if (getRunStatus(runId) === "aborted") cancelState.cancelled = true;
+      } catch {}
+    }
+    // However cancellation was noticed, abort in-flight cases so their harness
+    // process trees are killed instead of running to completion unattended.
+    if (cancelState.cancelled && !cancelState.controller.signal.aborted) {
+      cancelState.controller.abort();
+    }
     return cancelState.cancelled;
   };
 
@@ -111,7 +126,7 @@ async function runLoopBody(runId: string, cases: CaseDefinition[], runner: Runne
       const item = work.shift();
       if (!item) break;
       try {
-        await executeCase(runId, item.def, runner, item.seq, model, item.sample, harness);
+        await executeCase(runId, item.def, runner, item.seq, model, item.sample, harness, cancelState.controller.signal);
       } catch (e: any) {
         // Defense in depth: executeCase records its own failures, but never let
         // one case's unexpected throw reject the pool and abort the whole run.
@@ -196,10 +211,12 @@ const ORPHAN_EVENT_AGE_MS = 10 * 60 * 1000;
 // SSE and client polls alive indefinitely. Any run with no live loop in this
 // process and no event activity for 10+ minutes gets closed out as aborted.
 // Called from GET /api/runs/[id] so stale runs self-heal when viewed.
-export function sweepOrphanRuns(): number {
+// `isRunLive` is a seam for tests; the default asks the in-process registry
+// whether a loop is still driving the run — a live run must never be flipped.
+export function sweepOrphanRuns(isRunLive: (runId: string) => boolean = (id) => cancelRegistry.has(id)): number {
   let swept = 0;
   for (const run of listRunsByStatus("running")) {
-    if (cancelRegistry.has(run.id)) continue;
+    if (isRunLive(run.id)) continue;
     const lastActivity = getLastEventAt(run.id) ?? run.created_at;
     if (Date.now() - lastActivity < ORPHAN_EVENT_AGE_MS) continue;
     const runCases = listRunCases(run.id);
@@ -236,6 +253,14 @@ export function sweepOrphanRunsIfDue(intervalMs = 60_000): number {
   return sweepOrphanRuns();
 }
 
+/**
+ * Workdir retention policy (see docs/architecture.md, "Workdir retention"):
+ * terminal runs KEEP their workdirs for evidence — the case-detail artifact
+ * endpoint reads from them — for the `keepLast` most recent runs (by workdir
+ * mtime). Older terminal-run workdirs are pruned after each finished run.
+ * The current run and any run still marked "running" are never pruned.
+ * DB rows, transcripts, and reports are never touched by this cleanup.
+ */
 async function cleanupOldWorkdirs(currentRunId: string, keepLast: number) {
   let entries: string[];
   try { entries = await fs.readdir(WORKDIRS_DIR); } catch { return; }

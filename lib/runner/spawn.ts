@@ -10,6 +10,7 @@ export interface SpawnHarnessResult {
   exitCode: number;
   durationMs: number;
   timedOut: boolean;
+  aborted: boolean;
 }
 
 /** Max bytes retained per stream, so a runaway harness can't OOM the eval. */
@@ -96,6 +97,17 @@ export function drainLineBuffer(buf: string, onLine: (line: string) => void, max
   return rest;
 }
 
+/**
+ * Adapters seed a partial `acc.result` on session-init lines (endedAt: null)
+ * so session/model survive a crash; only a terminal result/turn event stamps
+ * `endedAt`. A harness that emitted init and then crashed, hung, or was killed
+ * must take the runners' failure path — a seeded partial result is evidence,
+ * never completion, or a mid-case crash would masquerade as a clean run.
+ */
+export function isCompleteResult(result: Partial<RunnerResult> | null): result is Partial<RunnerResult> {
+  return result != null && result.endedAt != null;
+}
+
 export function emptyRunnerResult(): RunnerResult {
   return {
     exitCode: 0,
@@ -134,16 +146,25 @@ export function spawnHarnessProcess(ctx: RunnerContext, onLine: (line: string, a
   let stdoutBuf = "";
 
   let timedOut = false;
+  let aborted = false;
 
   return new Promise<SpawnHarnessResult>((resolve) => {
     const proc = spawn(bin, args, {
       cwd: ctx.workdir,
       env: { ...process.env, ...extraEnv },
       stdio: [stdin != null ? "pipe" : "ignore", "pipe", "pipe"],
-      // Group leader, so a timeout can kill agent-spawned children too.
+      // Group leader, so a timeout or cancellation can kill agent-spawned children too.
       detached: true,
     });
     const unregisterProcessGroup = registerProcessGroup(proc);
+    // Cancellation mirrors the timeout path: SIGKILL the whole process group
+    // so agent-spawned grandchildren cannot outlive an aborted case.
+    const onAbort = () => {
+      aborted = true;
+      killProcessGroup(proc);
+    };
+    if (ctx.signal?.aborted) onAbort();
+    else ctx.signal?.addEventListener("abort", onAbort, { once: true });
     if (stdin != null && proc.stdin) {
       // A child that exits before reading stdin emits EPIPE on this stream;
       // without a handler that error is unhandled and crashes the eval process.
@@ -168,10 +189,11 @@ export function spawnHarnessProcess(ctx: RunnerContext, onLine: (line: string, a
       settled = true;
       clearTimeout(timer);
       unregisterProcessGroup();
+      ctx.signal?.removeEventListener("abort", onAbort);
       if (stdoutBuf.trim()) {
         try { onLine(stdoutBuf, acc); } catch {}
       }
-      resolve({ acc, stdout, stderr, exitCode, durationMs: Date.now() - startedAt, timedOut });
+      resolve({ acc, stdout, stderr, exitCode, durationMs: Date.now() - startedAt, timedOut, aborted });
     };
     proc.on("error", () => finish(2));
     proc.on("close", (code) => finish(code ?? (acc.result?.isError ? 1 : 0)));

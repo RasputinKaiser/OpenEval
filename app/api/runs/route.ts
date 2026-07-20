@@ -1,17 +1,23 @@
 import { NextResponse } from "next/server";
 import { createAndStartRun } from "@/lib/run";
 import { listRuns } from "@/lib/db";
+import { hasAdapter, listAdapters } from "@/lib/adapters/registry";
 import type { RunnerKind } from "@/lib/types";
+import { badRequest, internalError } from "@/lib/api-http";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const runs = listRuns(10);
-  const lite = runs.map((r) => ({ id: r.id, name: r.name, status: r.status }));
-  return NextResponse.json(
-    { runs: lite },
-    { headers: { "Cache-Control": "private, max-age=10, stale-while-revalidate=30" } }
-  );
+  try {
+    const runs = listRuns(10);
+    const lite = runs.map((r) => ({ id: r.id, name: r.name, status: r.status }));
+    return NextResponse.json(
+      { runs: lite },
+      { headers: { "Cache-Control": "private, max-age=10, stale-while-revalidate=30" } }
+    );
+  } catch (error) {
+    return internalError("Failed to list runs", error);
+  }
 }
 
 export async function POST(req: Request) {
@@ -28,7 +34,14 @@ export async function POST(req: Request) {
     };
     // An explicit-but-empty selection must not fall through to "run everything".
     if (Array.isArray(body.caseIds) && filter.caseIds.length === 0) {
-      return NextResponse.json({ error: "caseIds must include at least one case id" }, { status: 400 });
+      return badRequest("caseIds must include at least one case id (omit the field entirely to run the filtered set)", { field: "caseIds" });
+    }
+    const harness = typeof body.harness === "string" && body.harness.trim() ? body.harness.trim() : undefined;
+    // An unknown harness would otherwise create a run whose every case errors
+    // at spawn time — reject it up front with the registered ids.
+    if (harness && !hasAdapter(harness)) {
+      const registered = listAdapters().map((a) => a.id).join(", ");
+      return badRequest(`Unknown harness "${harness}". Registered harnesses: ${registered}`, { field: "harness" });
     }
     const normalizedFilter = Object.fromEntries(
       Object.entries(filter).filter(([, value]) => value.length > 0)
@@ -36,7 +49,7 @@ export async function POST(req: Request) {
     const result = await createAndStartRun({
       name: typeof body.name === "string" && body.name.trim() ? body.name.trim() : undefined,
       runner: runner as RunnerKind,
-      harness: typeof body.harness === "string" && body.harness.trim() ? body.harness.trim() : undefined,
+      harness,
       parallel,
       samples,
       model: typeof body.model === "string" && body.model.trim() ? body.model.trim() : undefined,
@@ -45,7 +58,10 @@ export async function POST(req: Request) {
     return NextResponse.json(result, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return NextResponse.json({ error: message }, { status: 400 });
+    // Tag known case-selection failures so the wizard can render them inline
+    // next to the offending control instead of as a bare error.
+    const field = /no cases match/i.test(message) ? "caseIds" : undefined;
+    return badRequest(message, field ? { field } : undefined);
   }
 }
 

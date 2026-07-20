@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { hasAdapter } from "@/lib/adapters/registry";
 import { resolveJudge } from "@/lib/grader/judge";
 import { readAppSettings, saveAppSettings } from "@/lib/settings";
+import { badRequest, internalError, parseJsonBody } from "@/lib/api-http";
 
 export const dynamic = "force-dynamic";
 
@@ -14,33 +16,56 @@ function effectiveJudge() {
 }
 
 export async function GET() {
-  const settings = readAppSettings();
-  return NextResponse.json({
-    settings,
-    effectiveJudge: effectiveJudge(),
-    environmentOverrides: {
-      source: Boolean(process.env.JUDGE_HARNESS),
-      model: Boolean(process.env.JUDGE_MODEL),
-      openrouterKey: Boolean(process.env.OPENROUTER_API_KEY),
-    },
-  }, { headers: { "Cache-Control": "private, no-store" } });
+  try {
+    const settings = readAppSettings();
+    return NextResponse.json({
+      settings,
+      effectiveJudge: effectiveJudge(),
+      environmentOverrides: {
+        source: Boolean(process.env.JUDGE_HARNESS),
+        model: Boolean(process.env.JUDGE_MODEL),
+        openrouterKey: Boolean(process.env.OPENROUTER_API_KEY),
+      },
+      // Verbatim override values so Settings can show exactly what wins over the
+      // saved selection. Harness/model ids only — never key material.
+      environmentOverrideValues: {
+        judgeHarness: process.env.JUDGE_HARNESS ?? null,
+        judgeModel: process.env.JUDGE_MODEL ?? null,
+      },
+    }, { headers: { "Cache-Control": "private, no-store" } });
+  } catch (error) {
+    return internalError("Failed to read settings", error);
+  }
 }
 
-export async function PUT(req: Request) {
-  const body = await req.json().catch(() => ({} as Record<string, unknown>));
-  const judgeSource = typeof body.judgeSource === "string" ? body.judgeSource.trim() : "";
-  const judgeModel = typeof body.judgeModel === "string" ? body.judgeModel.trim() : "";
+const putBodySchema = z.object({
+  judgeSource: z.string().trim().optional().default(""),
+  judgeModel: z.string().trim().optional().default(""),
+});
 
+export async function PUT(req: Request) {
+  const body = await parseJsonBody(req, putBodySchema);
+  if (!body.ok) return body.response;
+  const { judgeSource, judgeModel } = body.data;
+
+  // Length checks stay outside the schema so the client-visible top-level
+  // `error` message stays specific (SettingsClient renders it verbatim).
   if (judgeSource.length > 120) {
-    return NextResponse.json({ error: "Judge source is too long" }, { status: 400 });
+    return badRequest("Judge source is too long", { detail: "judgeSource must be at most 120 characters." });
   }
   if (judgeModel.length > 240) {
-    return NextResponse.json({ error: "Judge model is too long" }, { status: 400 });
+    return badRequest("Judge model is too long", { detail: "judgeModel must be at most 240 characters." });
   }
   if (!validSource(judgeSource)) {
-    return NextResponse.json({ error: `Unknown judge source \"${judgeSource}\"` }, { status: 400 });
+    return badRequest(`Unknown judge source "${judgeSource}"`, {
+      hint: "Use \"\", \"openrouter\", or a registered harness id from GET /api/harnesses.",
+    });
   }
 
-  const settings = saveAppSettings({ judgeSource, judgeModel });
-  return NextResponse.json({ settings, effectiveJudge: effectiveJudge() });
+  try {
+    const settings = saveAppSettings({ judgeSource, judgeModel });
+    return NextResponse.json({ settings, effectiveJudge: effectiveJudge() });
+  } catch (error) {
+    return internalError("Failed to save settings", error);
+  }
 }

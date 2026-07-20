@@ -63,6 +63,10 @@ export async function GET(request: Request) {
     }
     const parsedPage = Number(searchParams.get("page") || PAGE_DEFAULT);
     const page = Number.isFinite(parsedPage) ? Math.max(1, Math.min(PAGE_MAX, Math.trunc(parsedPage))) : PAGE_DEFAULT;
+    // Cursor pages are deliberately NEVER budgeted (even when
+    // OPENEVAL_SCAN_BUDGET_MS is set): a partial snapshot mid-walk would slide
+    // the session window under the cursor and corrupt pagination. In practice
+    // page requests follow a full load, so this is a memo hit anyway.
     const data = scanAllSources(SNAPSHOT_LIMIT, { fresh: true });
     const key = cursor.p ?? cursor.id;
     const at = data.sessions.findIndex((s) => (s.path ?? s.sessionId) === key);
@@ -85,10 +89,21 @@ export async function GET(request: Request) {
   const parsedLimit = Number(searchParams.get("limit") || 200);
   const limit = Number.isFinite(parsedLimit) ? Math.max(1, Math.min(SNAPSHOT_LIMIT, parsedLimit)) : 200;
 
+  // Scan-budget escape hatch: ?budget_ms=N (or OPENEVAL_SCAN_BUDGET_MS) time-
+  // boxes a cold/changed-corpus parse. A budget-cut response carries
+  // `partial: true` + per-source `scanTruncated` — partial results are always
+  // labeled, never silently truncated — and repeated calls resume from cache.
+  const rawBudget = searchParams.get("budget_ms") ?? process.env.OPENEVAL_SCAN_BUDGET_MS ?? null;
+  let budgetMs: number | undefined;
+  if (rawBudget !== null && rawBudget !== "") {
+    const n = Number(rawBudget);
+    if (Number.isFinite(n) && n >= 0) budgetMs = Math.min(n, 600_000);
+  }
+
   // fresh = revalidate the corpus fingerprint NOW (skip the anti-stat-storm
   // window); it re-parses only if the fingerprint actually changed. Fetch the
   // full snapshot window so the response can carry a continuation cursor.
-  const full = scanAllSources(SNAPSHOT_LIMIT, { fresh: true });
+  const full = scanAllSources(SNAPSHOT_LIMIT, { fresh: true, budgetMs });
   const sessions = full.sessions.slice(0, limit);
   return NextResponse.json(
     {

@@ -4,6 +4,7 @@ import path from "node:path";
 import { getAdapter } from "../adapters/registry";
 import { resolveDefaultModel } from "../models";
 import { normalizeParsedResult } from "./headless";
+import { isCompleteResult } from "./spawn";
 import { emit, type Runner } from "./parse";
 import type { RunnerContext, RunnerResult, TranscriptEntry } from "../types";
 
@@ -60,6 +61,10 @@ export class TmuxRunner implements Runner {
       result: null as Partial<RunnerResult> | null,
     };
 
+    if (ctx.signal?.aborted) {
+      return normalizeParsedResult(fail(ctx, acc, startedAt, "Runner cancelled before the tmux session started"), fallbackModel);
+    }
+
     const envPrefix = Object.entries(extraEnv).map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(" ");
     const shellCmd = (envPrefix ? envPrefix + " " : "") + ncmd;
     // A very short-lived harness can finish before tmux's pane capture is
@@ -84,7 +89,14 @@ export class TmuxRunner implements Runner {
       return output.slice(0, 8 * 1024 * 1024);
     };
     const deadline = startedAt + ctx.timeoutMs;
+    let cancelled = false;
     while (Date.now() < deadline) {
+      // Cancellation: stop polling and let the kill-session below tear down
+      // the pane's process tree (tmux HUPs pane processes on session kill).
+      if (ctx.signal?.aborted) {
+        cancelled = true;
+        break;
+      }
       const capture = await readCapture();
       if (capture !== lastCapture) {
         const diff = paneCaptureDelta(lastCapture, capture);
@@ -115,11 +127,17 @@ export class TmuxRunner implements Runner {
     const exitCode = acc.result?.isError ? 1 : 0;
     emit(ctx, { kind: "finished", at: Date.now(), durationMs, exitCode });
 
-    if (acc.result) {
+    // Same rule as headless: only a terminal result event (endedAt stamped)
+    // counts as completion; an init-seeded partial result takes the fail path.
+    if (isCompleteResult(acc.result)) {
       const parsed = { ...acc.result, exitCode, durationMs, startedAt, endedAt: startedAt + durationMs } as RunnerResult;
       return normalizeParsedResult(parsed, fallbackModel);
     }
-    return normalizeParsedResult(fail(ctx, acc, startedAt, "tmux session ended without a result event"), fallbackModel);
+    // Partial pane output stays in acc (transcript/toolCalls) either way.
+    const failMsg = cancelled
+      ? "Runner cancelled: tmux session killed before a result event"
+      : "tmux session ended without a result event";
+    return normalizeParsedResult(fail(ctx, acc, startedAt, failMsg), fallbackModel);
   }
 }
 
