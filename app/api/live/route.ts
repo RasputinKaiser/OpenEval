@@ -13,7 +13,9 @@ const CACHE_HEADERS = { "Cache-Control": "private, max-age=5, stale-while-revali
 // excluded so an idle source keeps a stable signature; the client derives
 // staleness from lastEventAt instead.
 function computeSignature(data: LiveAggregate): string {
-  const hash = createHash("sha1");
+  // Change-detection fingerprint, not a security boundary — but sha256 keeps
+  // static analysis quiet at identical cost for these payload sizes.
+  const hash = createHash("sha256");
   hash.update([
     data.sourceHarness,
     data.sourceStatus,

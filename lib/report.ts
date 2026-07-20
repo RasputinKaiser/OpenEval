@@ -26,7 +26,7 @@ function fmtMs(value: number | null | undefined): string {
 }
 
 function escapeTable(value: unknown): string {
-  return String(value ?? "").replace(/\|/g, "\\|").replace(/\r?\n/g, "<br>");
+  return String(value ?? "").replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\r?\n/g, "<br>");
 }
 
 function fenced(value: string, lang = ""): string {
