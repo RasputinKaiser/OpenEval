@@ -54,7 +54,17 @@ function parseSourceSessionList(source: LiveTraceSource, limit: number, scanWarn
     files = collectLiveTraceFiles(source, scanWarnings);
   }
   files.sort((a, b) => b.mtime - a.mtime);
-  for (const f of files.slice(0, limit)) {
+  // Parse-dropped files (judge rollouts, stub sessions → null) must not consume
+  // result slots: keep consuming older files until `limit` sessions parse.
+  // Bounded at 5×limit so a source flooded with droppable files cannot force a
+  // full-tree parse; hitting the bound short is surfaced as a scan warning
+  // (2026-07-19: 323 judge rollouts filled the newest-50 slice and /live
+  // showed 0 sessions with 0 warnings).
+  const maxScan = Math.min(files.length, limit * 5);
+  let scanned = 0;
+  for (const f of files) {
+    if (sessions.length >= limit || scanned >= maxScan) break;
+    scanned++;
     // The walk already stat'd every file; reuse it for the cache key instead
     // of a second statSync per file inside summarizeWithCache.
     const stat = { mtimeMs: f.mtime, size: f.size };
@@ -72,6 +82,9 @@ function parseSourceSessionList(source: LiveTraceSource, limit: number, scanWarn
       const archivedOnDisk = source.format === "codex-sessions" && isUnderNamedRoot(f.file, source.roots, "archived_sessions");
       sessions.push(archivedOnDisk ? { ...s, archived: true } : s);
     }
+  }
+  if (sessions.length < limit && scanned >= maxScan && files.length > scanned) {
+    scanWarnings.push(`Only ${sessions.length} of the newest ${scanned} files parsed as sessions (${scanned - sessions.length} dropped, e.g. judge rollouts or stubs); ${files.length - scanned} older files were not scanned — the view may be missing older sessions`);
   }
   if (includeArchived) appendArchivedSessions(source, sessions, new Set(files.map((f) => f.file)));
   // Inferred costs are derived data, not transcript evidence. Recompute them

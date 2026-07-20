@@ -1353,3 +1353,43 @@ test("redactSensitiveText hides local usernames while preserving useful suffixes
   assert.equal(compactDisplayPath("/Users/ralto/Documents/AgentEvals", false), "/Users/ralto/Documents/AgentEvals");
   assert.equal(compactDisplayPath("/Users/ralto/.ncode", true), "~/.ncode");
 });
+
+test("scan fills the limit with real sessions past newer parse-dropped judge files", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "openeval-live-oversample-"));
+  const base = Date.parse("2026-07-15T00:00:00.000Z");
+  const writeFixture = (name: string, lines: unknown[], mtimeMs: number) => {
+    const file = path.join(dir, name);
+    fs.writeFileSync(file, lines.map((line) => JSON.stringify(line)).join("\n"), "utf8");
+    fs.utimesSync(file, mtimeMs / 1000, mtimeMs / 1000);
+  };
+  for (let i = 0; i < 4; i++) {
+    writeFixture(`real-${i}.jsonl`, [
+      { type: "user", timestamp: "2026-07-15T00:00:00.000Z", sessionId: `oversample-real-${i}`, message: { content: `do task ${i}` } },
+      { type: "assistant", timestamp: "2026-07-15T00:00:01.000Z", sessionId: `oversample-real-${i}`, message: { model: "claude-fable-5", content: [{ type: "text", text: "done" }], usage: { input_tokens: 10, output_tokens: 2 } } },
+    ], base + i * 1000);
+  }
+  // Judge rollouts are strictly NEWER than every real session, so a naive
+  // newest-N slice would be consumed entirely by files whose parse returns null.
+  for (let i = 0; i < 6; i++) {
+    writeFixture(`judge-${i}.jsonl`, [
+      { type: "user", timestamp: "2026-07-15T01:00:00.000Z", sessionId: `oversample-judge-${i}`, message: { content: `${JUDGE_PROMPT_MARKER} — grade this transcript.` } },
+    ], base + 3_600_000 + i * 1000);
+  }
+  const spec = { id: "tmp-oversample", label: "Temporary Oversample Source", roots: [dir], format: "jsonl-dir" as const, maxDepth: 1 };
+  try {
+    const filled = scanSourceSessions(spec, 3);
+    assert.equal(filled.sessions.length, 3, JSON.stringify(filled.scanWarnings));
+    assert.ok(filled.sessions.every((s) => s.sessionId.startsWith("oversample-real-")));
+    assert.equal(filled.scanWarnings.length, 0);
+
+    // limit=1 bounds the scan at 5 files — all six newest are droppable, so the
+    // bound truncates short and must say so instead of silently showing nothing.
+    const truncated = scanSourceSessions(spec, 1);
+    assert.equal(truncated.sessions.length, 0);
+    assert.equal(truncated.scanWarnings.length, 1);
+    assert.match(truncated.scanWarnings[0], /5 older files were not scanned/);
+    assert.match(truncated.scanWarnings[0], /5 dropped/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
