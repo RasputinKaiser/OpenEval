@@ -1,4 +1,5 @@
 #!/usr/bin/env tsx
+import { installProcessGuards } from '../process-guards';
 import { createAndStartRun } from '../run';
 import { selectCases } from '../cases';
 import { getRun, listRunCases } from '../db';
@@ -247,6 +248,8 @@ function exitCodeForRun(status: string | null, finalCases: ReturnType<typeof lis
   if (anyInfraError) return 2;
   return 0;
 }
+
+installProcessGuards();
 
 main().then((code) => process.exit(code)).catch((e) => {
   const json = process.argv.slice(2).includes('--json');
