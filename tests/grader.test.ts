@@ -293,6 +293,10 @@ test("exit_code grader aborts promptly when the run signal fires", async () => {
     const elapsed = Date.now() - started;
     assert.equal(r.passed, false);
     assert.ok(elapsed < 5000, `expected prompt abort, took ${elapsed}ms`);
+    // A run-cancellation kill is infra, not agent evidence: it must be marked
+    // infraError so the executor routes the case to "error", not spurious "failed".
+    assert.equal(r.infraError, true);
+    assert.match(r.detail, /cancelled/);
   });
 });
 
@@ -304,6 +308,8 @@ test("already-aborted signal short-circuits the grader without waiting the timeo
     const elapsed = Date.now() - started;
     assert.equal(r.passed, false);
     assert.ok(elapsed < 5000, `expected immediate abort, took ${elapsed}ms`);
+    assert.equal(r.infraError, true);
+    assert.match(r.detail, /cancelled/);
   });
 });
 

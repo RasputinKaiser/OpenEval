@@ -88,15 +88,22 @@ export function openRouterContent(json: unknown): string | null {
  * 429s with backoff — free-tier models are aggressively rate-limited and a
  * long queue must degrade to slower, not to failed.
  */
-export async function runOpenRouterJudge(prompt: string, model: string, timeoutMs: number): Promise<{ ok: boolean; text: string; error?: string }> {
+export async function runOpenRouterJudge(prompt: string, model: string, timeoutMs: number, signal?: AbortSignal): Promise<{ ok: boolean; text: string; error?: string }> {
   const key = process.env.OPENROUTER_API_KEY;
   if (!key) return { ok: false, text: "", error: "OPENROUTER_API_KEY not set" };
   let lastError = "";
   for (let attempt = 0; attempt < 4; attempt++) {
+    // A cancelled run must stop the judge promptly, not queue another backoff.
+    if (signal?.aborted) return { ok: false, text: "", error: "judge cancelled" };
     if (attempt > 0) await sleep(5_000 * 2 ** (attempt - 1)); // 5s, 10s, 20s
     try {
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+      const onCancel = () => ctrl.abort();
+      if (signal) {
+        if (signal.aborted) ctrl.abort();
+        else signal.addEventListener("abort", onCancel, { once: true });
+      }
       let res: Response;
       try {
         res = await fetch(OPENROUTER_URL, {
@@ -114,6 +121,7 @@ export async function runOpenRouterJudge(prompt: string, model: string, timeoutM
         });
       } finally {
         clearTimeout(timer);
+        if (signal) signal.removeEventListener("abort", onCancel);
       }
       if (res.status === 429) { lastError = "429 rate limited"; continue; }
       const json: unknown = await res.json();
@@ -140,6 +148,7 @@ export async function runJudge(opts: {
   model?: string;
   prompt: string;
   timeoutMs: number;
+  signal?: AbortSignal;
 }): Promise<JudgeResult> {
   let scratch: string | null = null;
   try {
@@ -157,6 +166,7 @@ export async function runJudge(opts: {
     model: opts.model,
     extraArgs: [],
     harness: opts.harness,
+    signal: opts.signal,
   };
   try {
     const { acc, stdout, stderr, exitCode, durationMs, timedOut } = await spawnHarnessProcess(ctx, (line, accumulator) => {
@@ -198,9 +208,10 @@ export async function runJudgeBackend(opts: {
   model?: string;
   prompt: string;
   timeoutMs: number;
+  signal?: AbortSignal;
 }): Promise<{ ok: boolean; text: string; error?: string }> {
   if (opts.harness === "openrouter") {
-    return runOpenRouterJudge(opts.prompt, opts.model ?? OPENROUTER_DEFAULT_JUDGE_MODEL, opts.timeoutMs);
+    return runOpenRouterJudge(opts.prompt, opts.model ?? OPENROUTER_DEFAULT_JUDGE_MODEL, opts.timeoutMs, opts.signal);
   }
   const res = await runJudge(opts);
   return { ok: res.ok, text: res.text, error: res.error };
