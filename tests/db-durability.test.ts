@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
+import Database from "better-sqlite3";
 
 /**
  * Durability tests for lib/db.ts (eval.db):
@@ -207,5 +208,36 @@ test("healthy DB opens without a recovery notice or moved-aside files", () => {
     assert.ok(!names.some((n) => n.includes(".corrupt-")), `no corruption artifacts on a healthy open: ${names}`);
   } finally {
     fs.rmSync(clean, { recursive: true, force: true });
+  }
+});
+
+test("runAddColumn swallows only duplicate-column, rethrows genuine failures", async () => {
+  const dbmod = await importDb();
+  const conn = new Database(":memory:");
+  try {
+    conn.exec("CREATE TABLE t (id INTEGER)");
+
+    // Fresh column: the ALTER runs and the column is added.
+    dbmod.runAddColumn(conn, "ALTER TABLE t ADD COLUMN a TEXT");
+    let cols = (conn.prepare("PRAGMA table_info(t)").all() as Array<{ name: string }>).map((c) => c.name);
+    assert.ok(cols.includes("a"), "column added on first run");
+
+    // Re-running the same ADD COLUMN races into "duplicate column name" — the
+    // one benign case. It must be swallowed so migrate() stays idempotent.
+    assert.doesNotThrow(
+      () => dbmod.runAddColumn(conn, "ALTER TABLE t ADD COLUMN a TEXT"),
+      "duplicate-column ADD must be swallowed (idempotent re-run)"
+    );
+
+    // A genuinely failing migration (here: a missing table) must NOT be
+    // swallowed — the old broad `catch {}` hid disk-full/lock/syntax failures,
+    // then later inserts referencing the absent column threw with no root cause.
+    assert.throws(
+      () => dbmod.runAddColumn(conn, "ALTER TABLE does_not_exist ADD COLUMN x TEXT"),
+      /no such table/,
+      "a non-duplicate migration error must propagate, not be swallowed"
+    );
+  } finally {
+    conn.close();
   }
 });

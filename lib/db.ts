@@ -26,7 +26,19 @@ function openDb(): Database.Database {
   const conn = new Database(DB_PATH, { timeout: 15_000 });
   try {
     conn.pragma("busy_timeout = 15000");
+    // WAL sharply lowers SQLITE_BUSY under the parallel-worker writes this DB
+    // sees. On some filesystems (network/overlay mounts) it can't be set and
+    // SQLite silently falls back to rollback-journal mode — read back the
+    // effective mode and warn rather than let the degraded mode pass unnoticed.
     try { conn.pragma("journal_mode = WAL"); } catch {}
+    const journalMode = String(conn.pragma("journal_mode", { simple: true }) ?? "").toLowerCase();
+    if (journalMode !== "wal") {
+      console.warn(
+        `[openeval] eval.db could not enable WAL journal mode (effective mode: ${journalMode || "unknown"}); ` +
+        `expect elevated SQLITE_BUSY contention under parallel runs. ` +
+        `This usually means the database lives on a filesystem that does not support WAL (e.g. a network/overlay mount).`
+      );
+    }
     conn.pragma("synchronous = NORMAL");
     conn.exec(SCHEMA);
     migrate(conn);
@@ -166,17 +178,36 @@ const MIGRATIONS: Array<{ version: number; apply: (conn: Database.Database) => v
 
 export const SCHEMA_VERSION = MIGRATIONS.reduce((max, m) => Math.max(max, m.version), 0);
 
+/**
+ * Run an additive `ADD COLUMN` migration idempotently. We presence-check the
+ * column first, but a concurrent process can add it between the check and the
+ * ALTER — so a "duplicate column name" error is the one benign race we swallow.
+ * Every other failure (disk full, database locked, SQL syntax) means the column
+ * is genuinely absent; swallowing it would let later inserts referencing that
+ * column throw at runtime with no trace of the root cause. Log and rethrow.
+ */
+export function runAddColumn(conn: Database.Database, sql: string): void {
+  try {
+    conn.exec(sql);
+  } catch (e) {
+    const msg = String((e as Error)?.message ?? e);
+    if (msg.includes("duplicate column name")) return;
+    console.error(`[openeval] eval.db migration failed: ${sql} — ${msg}`);
+    throw e;
+  }
+}
+
 function migrate(conn: Database.Database) {
   const runCols = conn.prepare("PRAGMA table_info(runs)").all() as Array<{ name: string }>;
   const runNames = new Set(runCols.map((c) => c.name));
   if (!runNames.has("manifest_json")) {
-    try { conn.exec("ALTER TABLE runs ADD COLUMN manifest_json TEXT"); } catch {}
+    runAddColumn(conn, "ALTER TABLE runs ADD COLUMN manifest_json TEXT");
   }
 
   const cols = conn.prepare("PRAGMA table_info(run_cases)").all() as Array<{ name: string }>;
   const names = new Set(cols.map((c) => c.name));
   const add = (col: string, decl: string) => {
-    if (!names.has(col)) { try { conn.exec(`ALTER TABLE run_cases ADD COLUMN ${col} ${decl}`); } catch {} }
+    if (!names.has(col)) { runAddColumn(conn, `ALTER TABLE run_cases ADD COLUMN ${col} ${decl}`); }
   };
   add("difficulty", "TEXT");
   add("budget_exceeded", "INTEGER DEFAULT 0");
