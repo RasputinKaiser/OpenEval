@@ -152,10 +152,24 @@ test("--strict still exits 0 on the current corpus (no regression)", () => {
   assert.equal(status, 0);
 });
 
-test("--strict-known-bad exits nonzero on the current corpus (13 cases lack known-bad)", () => {
-  const { status, stderr } = runCli(["--strict-known-bad"]);
-  assert.equal(status, 1);
-  assert.match(stderr, /lack a known-bad rejection script/);
+test("--strict-known-bad exits 0 on the current corpus (every case now has a known-bad)", () => {
+  // The eval-hardening units gave all cases a known-bad rejection script, so
+  // the opt-in gate is satisfied. This is the desired end state; the gate's
+  // teeth are proven hermetically below rather than by relying on a weak corpus.
+  const { status } = runCli(["--strict-known-bad"]);
+  assert.equal(status, 0);
+});
+
+test("--strict-known-bad gate flags a case that lacks a known-bad script", () => {
+  // Drives the exact condition the CLI uses to exit nonzero (c.hasKnownBad),
+  // without coupling to the live corpus's health.
+  const withKnownBad = auditCases([
+    makeCase({ id: "kb", oracle: { solve: "oracle/s.sh", known_bad: ["oracle/b.sh"] } }),
+  ]).cases[0];
+  const withoutKnownBad = auditCases([makeCase({ id: "nokb", oracle: { solve: "oracle/s.sh" } })]).cases[0];
+  assert.equal(withKnownBad.hasKnownBad, true);
+  assert.equal(withoutKnownBad.hasKnownBad, false);
+  assert.ok(withoutKnownBad.weaknesses.some((w) => /known-bad/.test(w)));
 });
 
 test("--help exits 0 and documents --strict-known-bad", () => {
