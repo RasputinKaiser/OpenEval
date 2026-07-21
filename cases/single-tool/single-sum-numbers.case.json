@@ -14,6 +14,7 @@
   ],
   "pass_threshold": 1.0,
   "oracle": {
-    "solve": "oracle/single-sum-numbers.sh"
+    "solve": "oracle/single-sum-numbers.sh",
+    "known_bad": ["oracle/single-sum-numbers-bad.sh"]
   }
 }

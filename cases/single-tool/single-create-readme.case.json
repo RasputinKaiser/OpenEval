@@ -14,6 +14,7 @@
   ],
   "pass_threshold": 1.0,
   "oracle": {
-    "solve": "oracle/single-create-readme.sh"
+    "solve": "oracle/single-create-readme.sh",
+    "known_bad": ["oracle/single-create-readme-bad.sh"]
   }
 }

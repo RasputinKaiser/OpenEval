@@ -14,6 +14,7 @@
   ],
   "pass_threshold": 1.0,
   "oracle": {
-    "solve": "oracle/single-count-errors.sh"
+    "solve": "oracle/single-count-errors.sh",
+    "known_bad": ["oracle/single-count-errors-bad.sh"]
   }
 }
