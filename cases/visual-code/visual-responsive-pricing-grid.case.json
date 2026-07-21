@@ -1,0 +1,38 @@
+{
+  "id": "visual-responsive-pricing-grid",
+  "category": "visual-code",
+  "difficulty": "medium",
+  "name": "Build a responsive pricing grid with a media query",
+  "description": "Visual-code task: produce a responsive three-tier pricing component that reflows at a mobile breakpoint. Grading stays deterministic by asserting the semantic markup plus a real CSS @media query with a max-width breakpoint that collapses the grid to a single column.",
+  "tags": ["visual-code", "web-ui", "responsive", "css", "media-query"],
+  "split": "public",
+  "prompt": "Create two files: pricing.html and pricing.css. Build a responsive pricing section for a product called \"OpenEval\". The page must include a root element with data-testid=\"pricing\", an h1 containing \"Choose your plan\", and exactly three plan cards each with data-testid=\"plan-card\" and a visible plan name from \"Free\", \"Team\", and \"Enterprise\". Lay the three cards out with CSS grid using three columns on desktop in pricing.css. Add a CSS @media query with a max-width breakpoint (max-width: 640px or narrower) that collapses the grid to a single column (grid-template-columns: 1fr). Do not use external assets, scripts, or network imports.",
+  "setup": { "type": "none" },
+  "runner": { "max_turns": 16, "timeout_seconds": 240, "permission_mode": "bypassPermissions" },
+  "budget": { "max_turns": 16, "max_cost_usd": 0.6 },
+  "visual": {
+    "kind": "web_ui",
+    "requires_vision_input": false,
+    "expected_artifacts": ["pricing.html", "pricing.css"]
+  },
+  "graders": [
+    { "type": "file_exists", "path": "pricing.html", "weight": 10 },
+    { "type": "file_exists", "path": "pricing.css", "weight": 10 },
+    { "type": "file_contains", "path": "pricing.html", "pattern": "data-testid=[\"']pricing[\"']", "weight": 10 },
+    { "type": "file_contains", "path": "pricing.html", "pattern": "Choose your plan", "weight": 10 },
+    { "type": "exit_code", "command": "node -e \"const fs=require('fs'); const html=fs.readFileSync('pricing.html','utf8'); const n=(html.match(/data-testid=['\\\"]plan-card['\\\"]/g)||[]).length; if(n!==3) process.exit(1)\"", "weight": 15 },
+    { "type": "file_contains", "path": "pricing.html", "pattern": "Free", "weight": 5 },
+    { "type": "file_contains", "path": "pricing.html", "pattern": "Team", "weight": 5 },
+    { "type": "file_contains", "path": "pricing.html", "pattern": "Enterprise", "weight": 5 },
+    { "type": "file_contains", "path": "pricing.css", "pattern": "grid-template-columns\\s*:[^;]*(1fr[^;]*){3}|repeat\\(\\s*3", "weight": 10 },
+    { "type": "file_contains", "path": "pricing.css", "pattern": "@media[^{]*max-width\\s*:\\s*(640|6[0-3][0-9]|[1-5][0-9][0-9])px", "weight": 15 },
+    { "type": "exit_code", "command": "node -e \"const fs=require('fs'); const css=fs.readFileSync('pricing.css','utf8'); const m=css.match(/@media[^{]*max-width[^{]*\\{[\\s\\S]*?grid-template-columns\\s*:\\s*1fr\\s*;?[\\s\\S]*?\\}/); if(!m) process.exit(1)\"", "weight": 10 },
+    { "type": "file_contains", "path": "pricing.html", "pattern": "https?://(?!www\\.w3\\.org/)|<script", "negate": true, "weight": 10, "forbidden": true }
+  ],
+  "pass_threshold": 0.85,
+  "oracle": {
+    "solve": "oracle/visual-responsive-pricing-grid.sh",
+    "noop_max_score": 0.1,
+    "known_bad": ["oracle/visual-responsive-pricing-grid-bad.sh"]
+  }
+}
