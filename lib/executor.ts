@@ -309,7 +309,7 @@ export async function executeCase(
     const transcriptText = transcriptToText(runnerResult);
     const graderResults = [];
     for (const spec of def.graders) {
-      const r = await runGrader(spec, { workdir, runner: runnerResult, transcriptText, fixtureSrc });
+      const r = await runGrader(spec, { workdir, runner: runnerResult, transcriptText, fixtureSrc, signal });
       graderResults.push(r);
       appendEvent(runId, "grader_result", { case_id: def.id, sample, type: (spec as any).type, passed: r.passed, detail: r.detail.slice(0, 200) }, def.id);
     }
