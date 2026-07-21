@@ -1,4 +1,5 @@
 #!/usr/bin/env tsx
+import { installProcessGuards } from '../process-guards';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -349,6 +350,8 @@ async function main(): Promise<void> {
     printError(e, json, verbose);
   }
 }
+
+installProcessGuards();
 
 main().catch((e) => {
   const json = process.argv.slice(2).includes('--json');
