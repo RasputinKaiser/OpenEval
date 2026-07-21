@@ -5,7 +5,7 @@ import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import type { CaseDefinition, RunnerContext } from "../lib/types";
+import type { CaseDefinition, RunnerContext, RunnerResult } from "../lib/types";
 
 /**
  * Runner/executor edge hardening (U07):
@@ -279,6 +279,91 @@ test("a genuine agent failure is not masked by a concurrent transcript write fai
   }
   assert.equal(rec.status, "failed", "error-vs-failed precedence: real agent evidence wins");
   assert.match(rec.error_msg ?? "", /Transcript write failed/, "the infrastructure cause is still recorded");
+});
+
+// ---- harden-executor: robustness regressions ----
+
+test("transcriptToText coerces a non-string tool_result content instead of throwing", async () => {
+  // transcriptToText is exported and grades transcripts from ANY source. The
+  // built-in stream-json parser coerces tool_result.content to a string
+  // upstream, but a descriptor/custom adapter (or an externally reconstructed
+  // transcript) can hand it a structured block. The type says `content: string`
+  // yet the unguarded `.slice()` used to throw on a non-string and turn a
+  // gradeable run into a spurious "Grader threw" error.
+  const { transcriptToText } = await import("../lib/executor");
+  const runner = {
+    transcript: [
+      { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "read", input: { path: "a" } }] },
+      { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: [{ type: "text", text: "structured" }] as unknown as string }] },
+      { role: "user", content: [{ type: "tool_result", tool_use_id: "t2", content: 42 as unknown as string }] },
+    ],
+  } as unknown as RunnerResult;
+
+  let text = "";
+  assert.doesNotThrow(() => { text = transcriptToText(runner); });
+  assert.match(text, /TOOL_USE\(read\)/);
+  assert.match(text, /structured/, "structured content is JSON-stringified into the text");
+  assert.match(text, /TOOL_RESULT\(t2\): 42/, "numeric content is coerced, not dropped");
+});
+
+test("prepareWorkdir git-clone is async and honors an AbortSignal instead of blocking uncancellably", async () => {
+  const { prepareWorkdir } = await import("../lib/executor");
+  // A real source repo to clone — proves the clone would otherwise succeed, so
+  // the rejection is the signal doing its job, not a broken repo.
+  const srcRepo = await fsp.mkdtemp(path.join(os.tmpdir(), "openeval-clone-src-"));
+  fs.writeFileSync(path.join(srcRepo, "file.txt"), "content\n");
+  execFileSync("git", ["init", "-q"], { cwd: srcRepo });
+  execFileSync("git", ["add", "-A"], { cwd: srcRepo });
+  execFileSync("git", ["-c", "user.email=eval@local", "-c", "user.name=eval", "commit", "-q", "-m", "seed"], { cwd: srcRepo });
+
+  const controller = new AbortController();
+  controller.abort();
+  const def = caseDef({ id: "edge-clone-abort", setup: { type: "git-clone", repo: srcRepo }, graders: [{ type: "manual" }] });
+  // With the old synchronous execFileSync the signal was ignored and the clone
+  // completed regardless; this must now reject as a cancelled/handled clone.
+  await assert.rejects(
+    prepareWorkdir("run-edges", def.id, def, 0, controller.signal),
+    "an aborted signal must interrupt the git clone",
+  );
+  await fsp.rm(srcRepo, { recursive: true, force: true }).catch(() => {});
+});
+
+test("an appendEvent (SQLite) throw on the runner hot path does not abort the in-flight case", async () => {
+  const { executeCase } = await import("../lib/executor");
+  const db = await import("../lib/db");
+  await ensureRun("run-edges");
+
+  // Inject the fault at the SQLite seam (better-sqlite3 handle), mirroring a
+  // transient SQLITE_BUSY/serialization error on the events insert that
+  // appendEvent runs from the onEvent hot path. Only the hot-path event kinds
+  // (bound as the 3rd param of the events INSERT) throw; the unguarded
+  // lifecycle events (case_started/case_grading/case_finished) pass through, so
+  // this test isolates the onEvent guard specifically.
+  const hotKinds = new Set(["tool_use", "tool_result", "assistant_message"]);
+  const handle = db.getDb();
+  const realPrepare = handle.prepare.bind(handle);
+  (handle as { prepare: typeof handle.prepare }).prepare = ((sql: string) => {
+    const stmt = realPrepare(sql);
+    if (typeof sql === "string" && sql.includes("INSERT INTO events")) {
+      const realRun = stmt.run.bind(stmt);
+      (stmt as { run: typeof stmt.run }).run = ((...args: unknown[]) => {
+        if (hotKinds.has(args[2] as string)) throw new Error("SQLITE_BUSY: database is locked");
+        return realRun(...(args as Parameters<typeof stmt.run>));
+      }) as typeof stmt.run;
+    }
+    return stmt;
+  }) as typeof handle.prepare;
+  let rec;
+  try {
+    const def = caseDef({
+      id: "edge-appendevent-throw",
+      graders: [{ type: "regex_match", pattern: "hello world", source: "final_text" }],
+    });
+    rec = await executeCase("run-edges", def, "headless", 21, undefined, 0, undefined);
+  } finally {
+    (handle as { prepare: typeof handle.prepare }).prepare = realPrepare;
+  }
+  assert.equal(rec.status, "passed", "a swallowed hot-path event write must not fail the case");
 });
 
 // ---- orphan sweep liveness guard ----
