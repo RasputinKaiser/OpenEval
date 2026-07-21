@@ -9,10 +9,12 @@
   "setup": { "type": "none" },
   "runner": { "max_turns": 3, "timeout_seconds": 60, "permission_mode": "bypassPermissions" },
   "graders": [
-    { "type": "regex_match", "pattern": "\\b60\\b", "source": "final_text" }
+    { "type": "regex_match", "pattern": "\\b60\\b", "source": "final_text" },
+    { "type": "regex_match", "pattern": "\\b60\\b[^0-9]*$", "source": "final_text" }
   ],
   "pass_threshold": 1.0,
   "oracle": {
-    "final_text": "60"
+    "final_text": "60",
+    "known_bad": ["oracle/reasoning-code-trace-bad.sh"]
   }
 }

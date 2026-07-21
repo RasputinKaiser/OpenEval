@@ -9,10 +9,12 @@
   "setup": { "type": "none" },
   "runner": { "max_turns": 3, "timeout_seconds": 60, "permission_mode": "bypassPermissions" },
   "graders": [
-    { "type": "regex_match", "pattern": "(?<!\\bnot\\s)\\b(?:11(?::00)?\\s*[Pp]\\.?[Mm]\\b\\.?|23:00\\b)", "source": "final_text" }
+    { "type": "regex_match", "pattern": "(?<!\\bnot\\s)\\b(?:11(?::00)?\\s*[Pp]\\.?[Mm]\\b\\.?|23:00\\b)", "source": "final_text" },
+    { "type": "regex_match", "pattern": "(?:11(?::00)?\\s*[Pp]\\.?[Mm]|23:00)\\b[).\\s]*$", "source": "final_text" }
   ],
   "pass_threshold": 1.0,
   "oracle": {
-    "final_text": "11:00pm"
+    "final_text": "11:00pm",
+    "known_bad": ["oracle/reasoning-word-problem-bad.sh"]
   }
 }
