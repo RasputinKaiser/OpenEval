@@ -278,6 +278,35 @@ test("tests_pass rejects vacuous zero-test success unless explicitly allowed", a
   });
 });
 
+test("exit_code grader aborts promptly when the run signal fires", async () => {
+  await withWorkdir(async (dir) => {
+    const controller = new AbortController();
+    const ctx = { ...ctxFor(dir), signal: controller.signal };
+    // Long-running grader with a timeout far past the abort window, so only the
+    // AbortSignal (not the 30s default or this timeout) can end it early.
+    // Without the signal plumbing the sleep runs its full duration.
+    const started = Date.now();
+    const pending = runGrader({ type: "exit_code", command: "sleep 30", timeout_ms: 60_000 }, ctx);
+    const abortTimer = setTimeout(() => controller.abort(), 100);
+    const r = await pending;
+    clearTimeout(abortTimer);
+    const elapsed = Date.now() - started;
+    assert.equal(r.passed, false);
+    assert.ok(elapsed < 5000, `expected prompt abort, took ${elapsed}ms`);
+  });
+});
+
+test("already-aborted signal short-circuits the grader without waiting the timeout", async () => {
+  await withWorkdir(async (dir) => {
+    const ctx = { ...ctxFor(dir), signal: AbortSignal.abort() };
+    const started = Date.now();
+    const r = await runGrader({ type: "exit_code", command: "sleep 30", timeout_ms: 60_000 }, ctx);
+    const elapsed = Date.now() - started;
+    assert.equal(r.passed, false);
+    assert.ok(elapsed < 5000, `expected immediate abort, took ${elapsed}ms`);
+  });
+});
+
 test("shell grader caps retained output at MAX_RETAINED_BYTES", async () => {
   await withWorkdir(async (dir) => {
     const r = await runGrader(

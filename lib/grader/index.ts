@@ -9,7 +9,7 @@ import { JUDGE_PROMPT_MARKER } from "../insights/signals";
 import { resolveWithin } from "../config";
 import type { CaseEvaluation, GraderResult, GraderSpec, RunnerResult } from "../types";
 
-function runProcess(bin: string, args: string[], spec: { cwd?: string; env?: Record<string, string>; timeout_ms?: number }): Promise<{ code: number; stdout: string; stderr: string; durationMs: number; timedOut: boolean }> {
+function runProcess(bin: string, args: string[], spec: { cwd?: string; env?: Record<string, string>; timeout_ms?: number; signal?: AbortSignal }): Promise<{ code: number; stdout: string; stderr: string; durationMs: number; timedOut: boolean }> {
   return new Promise((resolve) => {
     const start = Date.now();
     const env = { ...process.env, ...(spec.env || {}) };
@@ -23,8 +23,18 @@ function runProcess(bin: string, args: string[], spec: { cwd?: string; env?: Rec
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      if (spec.signal) spec.signal.removeEventListener("abort", onAbort);
       unregisterProcessGroup();
       resolve({ code, stdout: out, stderr: err, durationMs: Date.now() - start, timedOut: timedOutFlag });
+    };
+    // When the run is cancelled, kill the grader's process group immediately
+    // rather than letting it run out its own timeout. The 'close' handler
+    // resolves promptly once the process dies; the 1s timer is only a backstop
+    // in case the kill leaves nothing to emit 'close'.
+    const onAbort = () => {
+      timedOut = true;
+      killProcessGroup(p);
+      setTimeout(() => finish(124, true), 1000);
     };
     p.stdout.on("data", (c) => (out = appendCapped(out, c.toString())));
     p.stderr.on("data", (c) => (err = appendCapped(err, c.toString())));
@@ -37,10 +47,14 @@ function runProcess(bin: string, args: string[], spec: { cwd?: string; env?: Rec
     p.on("close", (code) => {
       finish(timedOut ? 124 : code ?? 1, timedOut);
     });
+    if (spec.signal) {
+      if (spec.signal.aborted) onAbort();
+      else spec.signal.addEventListener("abort", onAbort);
+    }
   });
 }
 
-function runShell(spec: { command: string; cwd?: string; env?: Record<string, string>; timeout_ms?: number }): Promise<{ code: number; stdout: string; stderr: string; durationMs: number; timedOut: boolean }> {
+function runShell(spec: { command: string; cwd?: string; env?: Record<string, string>; timeout_ms?: number; signal?: AbortSignal }): Promise<{ code: number; stdout: string; stderr: string; durationMs: number; timedOut: boolean }> {
   return runProcess("bash", ["-lc", spec.command], spec);
 }
 
@@ -104,13 +118,13 @@ function escapedEvidencePath(spec: GraderSpec, relative: string, durationMs: num
 
 export async function runGrader(
   spec: GraderSpec,
-  ctx: { workdir: string; runner: RunnerResult; transcriptText: string; fixtureSrc?: string }
+  ctx: { workdir: string; runner: RunnerResult; transcriptText: string; fixtureSrc?: string; signal?: AbortSignal }
 ): Promise<GraderResult> {
   const start = Date.now();
   const dur = () => Date.now() - start;
 
   if (spec.type === "exit_code" || spec.type === "tests_pass") {
-    const res = await runShell({ command: spec.command, cwd: spec.cwd ? path.resolve(ctx.workdir, spec.cwd) : ctx.workdir, env: spec.env, timeout_ms: spec.timeout_ms });
+    const res = await runShell({ command: spec.command, cwd: spec.cwd ? path.resolve(ctx.workdir, spec.cwd) : ctx.workdir, env: spec.env, timeout_ms: spec.timeout_ms, signal: ctx.signal });
     if (res.timedOut) {
       return fail(spec, `timeout after ${res.durationMs}ms`, dur(), `${res.stdout}\n${res.stderr}`.slice(0, 2000));
     }
@@ -267,9 +281,9 @@ export async function runGrader(
     // diffing HEAD keeps staged agent work visible — then fall back to a plain
     // worktree diff when HEAD does not exist (no commits yet).
     const pathArgs = spec.pathFilter ? ["--", spec.pathFilter] : [];
-    let res = await runProcess("git", ["diff", "HEAD", "--no-color", ...pathArgs], { cwd: ctx.workdir, timeout_ms: 10_000 });
+    let res = await runProcess("git", ["diff", "HEAD", "--no-color", ...pathArgs], { cwd: ctx.workdir, timeout_ms: 10_000, signal: ctx.signal });
     if (res.code !== 0) {
-      res = await runProcess("git", ["diff", "--no-color", ...pathArgs], { cwd: ctx.workdir, timeout_ms: 10_000 });
+      res = await runProcess("git", ["diff", "--no-color", ...pathArgs], { cwd: ctx.workdir, timeout_ms: 10_000, signal: ctx.signal });
     }
     const diff = res.stdout;
     try {
