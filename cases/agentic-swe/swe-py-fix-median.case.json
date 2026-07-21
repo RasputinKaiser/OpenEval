@@ -1,0 +1,55 @@
+{
+  "id": "swe-py-fix-median",
+  "difficulty": "medium",
+  "category": "agentic-swe",
+  "name": "Fix Python median for even-length lists",
+  "description": "A Python median() helper returns the wrong value for even-length inputs: it yields the upper-middle element instead of averaging the two middle elements. Fix the implementation so the pytest suite passes.",
+  "tags": [
+    "bugfix",
+    "python",
+    "pytest",
+    "tests"
+  ],
+  "prompt": "stats.py implements median(nums) but it is wrong for even-length lists: median([1, 2, 3, 4]) should be 2.5 (the average of 2 and 3), not 3. Fix the implementation so it returns the true statistical median for both odd- and even-length inputs. Run `python3 -m pytest -q` to verify all tests pass. Do not modify test_stats.py.",
+  "setup": {
+    "type": "fixture",
+    "fixture": "py-median-stats",
+    "init_git": true
+  },
+  "runner": {
+    "max_turns": 18,
+    "timeout_seconds": 240,
+    "permission_mode": "bypassPermissions"
+  },
+  "graders": [
+    {
+      "type": "tests_pass",
+      "command": "python3 -m pytest -q",
+      "timeout_ms": 30000
+    },
+    {
+      "type": "exit_code",
+      "command": "python3 -c \"from stats import median; assert median([1,2,3])==2; assert median([1,2,3,4])==2.5; assert median([7,1,3,5])==4.0; assert median([5])==5\""
+    },
+    {
+      "type": "file_contains",
+      "path": "stats.py",
+      "pattern": "% 2|- 1|& 1"
+    },
+    {
+      "type": "files_unchanged",
+      "paths": [
+        "test_stats.py"
+      ],
+      "forbidden": true
+    }
+  ],
+  "pass_threshold": 1,
+  "oracle": {
+    "solve": "oracle/swe-py-fix-median.sh",
+    "known_bad": [
+      "oracle/swe-py-fix-median-bad.sh"
+    ],
+    "noop_max_score": 0.25
+  }
+}
