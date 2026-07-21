@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { appendCapped, drainLineBuffer } from "../lib/runner/spawn";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { appendCapped, drainLineBuffer, spawnHarnessProcess } from "../lib/runner/spawn";
 import { normalizeParsedResult } from "../lib/runner/headless";
 import { paneCaptureDelta } from "../lib/runner/tmux";
 import { parseCodexLine } from "../lib/adapters/codex";
@@ -163,6 +166,79 @@ test("runner normalization uses the requested model instead of a synthetic senti
   assert.equal(result.model, "gpt-5.5");
   assert.equal(result.usage.costSource, "inferred");
   assert.equal(result.usage.costUsd, estimateCostUsd("gpt-5.5", { input: 100, output: 10, cacheRead: 0, cacheCreate: 0 }));
+});
+
+// ---- spawnHarnessProcess subprocess lifecycle ----
+
+function makeExecutable(dir: string, name: string, body: string): string {
+  const file = path.join(dir, name);
+  fs.writeFileSync(file, body, { mode: 0o755 });
+  fs.chmodSync(file, 0o755);
+  return file;
+}
+
+function ncodeCtx(dir: string, timeoutMs: number) {
+  return {
+    caseId: "spawn-regression",
+    workdir: dir,
+    prompt: "noop",
+    maxTurns: 1,
+    timeoutMs,
+    permissionMode: "default" as const,
+    extraArgs: [] as string[],
+    harness: "ncode",
+  };
+}
+
+test("spawnHarnessProcess does not crash when onLine throws on every line", async () => {
+  // Regression: an uncaught throw from onLine (adapter.parseLine → onEvent →
+  // synchronous SQLite appendEvent, e.g. SQLITE_BUSY) inside the stdout 'data'
+  // handler would abort the whole eval process and kill all parallel workers.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "openeval-spawn-"));
+  const prevBin = process.env.NCODE_BIN;
+  try {
+    process.env.NCODE_BIN = makeExecutable(
+      dir,
+      "fake-ncode.sh",
+      "#!/bin/sh\nprintf '{\"type\":\"a\"}\\n'\nprintf 'second line\\n'\nexit 0\n",
+    );
+    let calls = 0;
+    const result = await spawnHarnessProcess(ncodeCtx(dir, 10_000), () => {
+      calls += 1;
+      throw new Error("appendEvent blew up (SQLITE_BUSY)");
+    });
+    assert.ok(calls > 0, "onLine should have been invoked");
+    assert.equal(result.timedOut, false);
+    assert.equal(result.aborted, false);
+    assert.equal(result.exitCode, 0);
+  } finally {
+    if (prevBin === undefined) delete process.env.NCODE_BIN;
+    else process.env.NCODE_BIN = prevBin;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("spawnHarnessProcess escalates to SIGKILL and resolves a SIGTERM-ignoring child on timeout", async () => {
+  // Regression: killProcessGroup used to send SIGKILL only; a child that traps
+  // SIGTERM still dies, but the run must escalate and resolve rather than hang.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "openeval-spawn-"));
+  const prevBin = process.env.NCODE_BIN;
+  try {
+    process.env.NCODE_BIN = makeExecutable(
+      dir,
+      "stubborn-ncode.sh",
+      "#!/bin/sh\ntrap '' TERM\nwhile true; do sleep 0.2; done\n",
+    );
+    const start = Date.now();
+    const result = await spawnHarnessProcess(ncodeCtx(dir, 300), () => {});
+    assert.equal(result.timedOut, true);
+    // Resolves after the timeout + SIGTERM→SIGKILL grace, but well before hanging.
+    assert.ok(Date.now() - start < 20_000, "kill path must resolve promptly");
+  } finally {
+    if (prevBin === undefined) delete process.env.NCODE_BIN;
+    else process.env.NCODE_BIN = prevBin;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("paneCaptureDelta avoids reparsing an unchanged final tmux snapshot", () => {
