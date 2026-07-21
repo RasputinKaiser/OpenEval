@@ -2,7 +2,26 @@
 import { auditCases, evidenceLabel } from "../accuracy";
 import { loadCases } from "../cases";
 
+const HELP = `Usage: tsx lib/cli/accuracy.ts [options]
+
+Audits the case corpus for grader-accuracy weaknesses (missing oracle, no
+known-bad rejection, no deterministic backstop, no-op-passable graders, weak
+regex-only backstops behind an LLM judge, missing oracle scripts on disk).
+
+Options:
+  --strict            Exit nonzero if any case lacks an oracle or a
+                      deterministic/trace grader. (unchanged)
+  --strict-known-bad  Additionally exit nonzero if any case lacks a known-bad
+                      rejection script. Opt-in; leaves --strict untouched.
+  -h, --help          Show this help.`;
+
 async function main() {
+  const argv = process.argv.slice(2);
+  if (argv.includes("-h") || argv.includes("--help")) {
+    console.log(HELP);
+    return;
+  }
+
   const cases = await loadCases();
   const audit = auditCases(cases);
 
@@ -26,7 +45,16 @@ async function main() {
   }
 
   const hardFailures = weak.filter((c) => !c.hasOracle || c.tiers.deterministic + c.tiers.trace === 0);
-  if (process.argv.includes("--strict") && hardFailures.length) process.exit(1);
+  if (argv.includes("--strict") && hardFailures.length) process.exit(1);
+
+  // Opt-in: promote the "no known-bad rejection" weakness to a hard failure.
+  // Independent of --strict so existing --strict behavior is unchanged.
+  const knownBadFailures = audit.cases.filter((c) => !c.hasKnownBad);
+  if (argv.includes("--strict-known-bad") && knownBadFailures.length) {
+    console.error(`\n--strict-known-bad: ${knownBadFailures.length} case(s) lack a known-bad rejection script:`);
+    for (const c of knownBadFailures) console.error(`  - ${c.id}`);
+    process.exit(1);
+  }
 }
 
 main().catch((e) => {

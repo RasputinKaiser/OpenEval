@@ -1,4 +1,18 @@
+import fs from "node:fs";
+import path from "node:path";
+import { CASES_DIR } from "./config";
 import type { CaseDefinition, EvidenceTier, GraderSpec } from "./types";
+
+/**
+ * Options for filesystem-aware audit checks. Injectable so unit tests can point
+ * at a synthetic corpus / resolver without touching the real cases directory.
+ */
+export interface AuditOptions {
+  /** Directory that oracle script paths (`oracle/foo.sh`) resolve against, per category. Defaults to {@link CASES_DIR}. */
+  casesDir?: string;
+  /** Existence predicate for a resolved absolute path. Defaults to {@link fs.existsSync}. */
+  fileExists?: (absPath: string) => boolean;
+}
 
 export interface CaseAccuracyAudit {
   id: string;
@@ -70,8 +84,30 @@ export function evidenceLabel(tier: EvidenceTier): string {
   }
 }
 
-export function auditCases(cases: CaseDefinition[]): AccuracyAudit {
-  const rows = cases.map((c) => auditCase(c));
+/**
+ * True when a do-nothing ("no-op") agent — empty final text, no file changes,
+ * no tool calls — would still PASS this grader. Such graders provide no signal
+ * that the agent actually solved the task; a case whose deterministic graders
+ * are all no-op-passing can score high on an empty run unless `noop_max_score`
+ * catches it during selftest.
+ */
+function noopPassesGrader(spec: GraderSpec): boolean {
+  switch (spec.type) {
+    case "files_unchanged":
+      return true;
+    case "file_exists":
+    case "file_contains":
+    case "regex_match":
+    case "git_diff_contains":
+    case "step":
+      return spec.negate === true;
+    default:
+      return false;
+  }
+}
+
+export function auditCases(cases: CaseDefinition[], opts?: AuditOptions): AccuracyAudit {
+  const rows = cases.map((c) => auditCase(c, opts));
   const tierTotals = { ...EMPTY_TIERS };
   for (const row of rows) {
     for (const [tier, count] of Object.entries(row.tiers) as Array<[EvidenceTier, number]>) {
@@ -91,7 +127,10 @@ export function auditCases(cases: CaseDefinition[]): AccuracyAudit {
   };
 }
 
-function auditCase(c: CaseDefinition): CaseAccuracyAudit {
+export function auditCase(c: CaseDefinition, opts?: AuditOptions): CaseAccuracyAudit {
+  const casesDir = opts?.casesDir ?? CASES_DIR;
+  const fileExists = opts?.fileExists ?? fs.existsSync;
+
   const tiers = { ...EMPTY_TIERS };
   for (const grader of c.graders) tiers[graderEvidenceTier(grader)]++;
   if (c.visual?.expected_artifacts?.length) tiers.visual++;
@@ -106,6 +145,38 @@ function auditCase(c: CaseDefinition): CaseAccuracyAudit {
   if (!hasDeterministic) weaknesses.push("no deterministic or trace grader");
   if (tiers.llm_judge > 0 && tiers.deterministic === 0) weaknesses.push("LLM judge without deterministic backstop");
   if (c.visual?.requires_vision_input && !c.visual.expected_artifacts?.length) weaknesses.push("vision-input task has no visual artifact contract");
+
+  // Oracle-file existence: `solve` / `known_bad` are script paths resolved as
+  // <casesDir>/<category>/<path> (mirrors selftest.ts). A declared-but-missing
+  // script silently disables selftest coverage, so flag it as a real weakness.
+  const oracleScripts: string[] = [];
+  if (c.oracle?.solve) oracleScripts.push(c.oracle.solve);
+  for (const kb of c.oracle?.known_bad ?? []) oracleScripts.push(kb);
+  for (const rel of oracleScripts) {
+    const abs = path.join(casesDir, c.category, rel);
+    if (!fileExists(abs)) weaknesses.push(`oracle script missing on disk: ${rel}`);
+  }
+
+  // No-op baseline: if every deterministic grader passes on a do-nothing run and
+  // there is no `noop_max_score` guard, an empty submission could score high and
+  // go undetected. Reported (not a hard failure).
+  const deterministicGraders = c.graders.filter((g) => graderEvidenceTier(g) === "deterministic");
+  const hasNoopGuard = typeof c.oracle?.noop_max_score === "number";
+  if (deterministicGraders.length > 0 && deterministicGraders.every(noopPassesGrader) && !hasNoopGuard) {
+    weaknesses.push("deterministic graders all pass on a no-op run; no oracle.noop_max_score guard");
+  }
+
+  // Weak backstop: an LLM-judge case satisfies "has a deterministic backstop"
+  // (rule above) even if that backstop is only broad regex_match graders, which
+  // can rubber-stamp any output. Flag when regex_match is the sole deterministic
+  // teeth behind a rubric_llm grader.
+  if (
+    tiers.llm_judge > 0 &&
+    deterministicGraders.length > 0 &&
+    deterministicGraders.every((g) => g.type === "regex_match")
+  ) {
+    weaknesses.push("rubric_llm backstop is only regex_match graders (weak deterministic teeth)");
+  }
 
   return {
     id: c.id,
