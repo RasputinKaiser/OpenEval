@@ -141,3 +141,79 @@ test("cancel seam: an aborted run row is visible through the DB check the loop u
   db.updateRunStatus(runId, "aborted", Date.now(), null);
   assert.equal(db.getRun(runId)?.status, "aborted");
 });
+
+// --- run.ts hardening: fire-and-forget manifest + fatal-catch resilience ---
+
+test("writeRunManifestIfLive writes the manifest while the run is still running", async () => {
+  const { writeRunManifestIfLive } = await import("../lib/run");
+  const db = await import("../lib/db");
+  const runId = "manifest-live-run";
+  db.insertRun(runRecord(runId, "running", Date.now()));
+  writeRunManifestIfLive(runId, { probed: true });
+  assert.deepEqual(db.getRun(runId)?.manifest, { probed: true });
+  db.updateRunStatus(runId, "aborted", Date.now(), null);
+});
+
+test("writeRunManifestIfLive no-ops once the run row is terminal (late manifest can't clobber)", async () => {
+  const { writeRunManifestIfLive } = await import("../lib/run");
+  const db = await import("../lib/db");
+  const runId = "manifest-late-run";
+  // Run already finished/aborted while collectRunManifest was still probing.
+  db.insertRun(runRecord(runId, "completed", Date.now()));
+  writeRunManifestIfLive(runId, { late: true });
+  assert.equal(db.getRun(runId)?.manifest, undefined, "a late manifest write must not land on a terminal run");
+});
+
+// Regression: the top-level runLoop(...).catch invokes updateRunStatus, which
+// can itself throw (DB error). Before the fix that throw escaped the .catch of
+// a fire-and-forget promise as an unhandled rejection. finalizeFailedRun must
+// contain it. We induce a real DB error by renaming the `runs` table aside
+// (updateRunStatus then fails to prepare) while the events table stays intact,
+// and always restore it.
+test("finalizeFailedRun contains a throwing updateRunStatus and still records run_fatal", async () => {
+  const { finalizeFailedRun } = await import("../lib/run");
+  const db = await import("../lib/db");
+  const runId = "fatal-sync-run";
+  db.insertRun(runRecord(runId, "running", Date.now()));
+  const raw = db.getDb();
+
+  let threw = false;
+  raw.exec("ALTER TABLE runs RENAME TO runs_bak_fatal_sync");
+  try {
+    finalizeFailedRun(runId, new Error("loop blew up"));
+  } catch {
+    threw = true; // without the try/catch around updateRunStatus this is reached
+  } finally {
+    raw.exec("ALTER TABLE runs_bak_fatal_sync RENAME TO runs");
+  }
+
+  assert.equal(threw, false, "finalizeFailedRun must swallow a throwing updateRunStatus");
+  const kinds = db.listEvents(runId).map((e) => e.kind);
+  assert.ok(kinds.includes("run_fatal"), "run_fatal event is recorded even when the status write fails");
+  db.updateRunStatus(runId, "failed", Date.now(), null);
+});
+
+test("a rejected runLoop whose status write throws produces no unhandled rejection", async () => {
+  const { finalizeFailedRun } = await import("../lib/run");
+  const db = await import("../lib/db");
+  const runId = "fatal-async-run";
+  db.insertRun(runRecord(runId, "running", Date.now()));
+  const raw = db.getDb();
+
+  const seen: unknown[] = [];
+  const onUnhandled = (reason: unknown) => seen.push(reason);
+  process.on("unhandledRejection", onUnhandled);
+  raw.exec("ALTER TABLE runs RENAME TO runs_bak_fatal_async");
+  try {
+    // Exact production shape: a fire-and-forget promise whose .catch runs the
+    // finalizer, which internally hits a throwing updateRunStatus.
+    void Promise.reject(new Error("loop blew up")).catch((e) => finalizeFailedRun(runId, e));
+    await new Promise((r) => setTimeout(r, 25));
+  } finally {
+    raw.exec("ALTER TABLE runs_bak_fatal_async RENAME TO runs");
+    process.removeListener("unhandledRejection", onUnhandled);
+  }
+
+  assert.deepEqual(seen, [], "no unhandled rejection escaped the fatal-run finalizer");
+  db.updateRunStatus(runId, "failed", Date.now(), null);
+});

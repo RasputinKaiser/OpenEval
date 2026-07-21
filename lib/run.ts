@@ -62,17 +62,58 @@ export async function createAndStartRun(params: CreateRunParams): Promise<{ id: 
     summary: null,
   };
   insertRun(run);
+  // Fire-and-forget: the manifest is best-effort metadata, but a late-resolving
+  // write must not swallow its failure silently, nor land against a run row that
+  // has already gone terminal (the loop finished / was aborted while
+  // collectRunManifest was still probing). writeRunManifestIfLive guards both.
   void collectRunManifest(harness, model, { harnessWasDefault: !params.harness, modelWasDefault: !params.model, modelDefaultSource: resolvedDefault.source })
-    .then((m) => updateRunManifest(id, m))
-    .catch(() => {});
+    .then((m) => writeRunManifestIfLive(id, m))
+    .catch((e) => {
+      console.error(`[run ${id}] manifest collection/update failed:`, e?.stack || e);
+    });
   appendEvent(id, "run_started", { case_count: cases.length, samples, runner: params.runner, harness, model }, undefined);
 
-  void runLoop(id, cases, params.runner, harness, params.parallel, model, samples).catch((e) => {
-    appendEvent(id, "run_fatal", { error: String(e?.stack || e) }, undefined);
-    updateRunStatus(id, "failed", Date.now(), null);
-  });
+  void runLoop(id, cases, params.runner, harness, params.parallel, model, samples).catch((e) => finalizeFailedRun(id, e));
 
   return { id, caseCount: cases.length * samples };
+}
+
+/**
+ * Best-effort manifest write that no-ops once the run row is terminal. A late
+ * `collectRunManifest` resolution must not clobber (or race a teardown of) a run
+ * that already completed/aborted/failed while the harness probes were in flight.
+ * Exported for the run-lifecycle regression tests.
+ */
+export function writeRunManifestIfLive(id: string, manifest: unknown): void {
+  let status: string | undefined;
+  try {
+    status = getRunStatus(id) ?? undefined;
+  } catch {
+    status = undefined;
+  }
+  if (status && status !== "running") return; // run already torn down — no-op
+  updateRunManifest(id, manifest);
+}
+
+/**
+ * Top-level handler for a rejected `runLoop`. `updateRunStatus` can itself throw
+ * (e.g. a DB error) — and because this runs inside the `.catch` of a fire-and-
+ * forget promise, a throw here escapes as an unhandled rejection that can crash
+ * the dev server. Contain the status write in its own try/catch so the failure
+ * is logged, not fatal. Exported for the run-lifecycle regression tests.
+ */
+export function finalizeFailedRun(id: string, e: unknown): void {
+  const err = e as { stack?: string } | undefined;
+  try {
+    appendEvent(id, "run_fatal", { error: String(err?.stack || e) }, undefined);
+  } catch (evtErr) {
+    console.error(`[run ${id}] failed to append run_fatal event:`, (evtErr as { stack?: string })?.stack || evtErr);
+  }
+  try {
+    updateRunStatus(id, "failed", Date.now(), null);
+  } catch (statusErr) {
+    console.error(`[run ${id}] failed to mark run failed after fatal error:`, (statusErr as { stack?: string })?.stack || statusErr);
+  }
 }
 
 async function runLoop(runId: string, cases: CaseDefinition[], runner: RunnerKind, harness: string, parallel: number, model?: string, samples = 1) {
