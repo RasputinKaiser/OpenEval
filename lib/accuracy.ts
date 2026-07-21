@@ -1,6 +1,3 @@
-import fs from "node:fs";
-import path from "node:path";
-import { CASES_DIR } from "./config";
 import type { CaseDefinition, EvidenceTier, GraderSpec } from "./types";
 
 /**
@@ -8,9 +5,9 @@ import type { CaseDefinition, EvidenceTier, GraderSpec } from "./types";
  * at a synthetic corpus / resolver without touching the real cases directory.
  */
 export interface AuditOptions {
-  /** Directory that oracle script paths (`oracle/foo.sh`) resolve against, per category. Defaults to {@link CASES_DIR}. */
+  /** Directory that oracle script paths (`oracle/foo.sh`) resolve against, per category. Server callers pass CASES_DIR. */
   casesDir?: string;
-  /** Existence predicate for a resolved absolute path. Defaults to {@link fs.existsSync}. */
+  /** Existence predicate for a resolved absolute path (e.g. `fs.existsSync`). When omitted (or `casesDir` omitted), the on-disk oracle-script check is skipped — this keeps `lib/accuracy.ts` free of `node:fs` so client components can import it. */
   fileExists?: (absPath: string) => boolean;
 }
 
@@ -128,8 +125,8 @@ export function auditCases(cases: CaseDefinition[], opts?: AuditOptions): Accura
 }
 
 export function auditCase(c: CaseDefinition, opts?: AuditOptions): CaseAccuracyAudit {
-  const casesDir = opts?.casesDir ?? CASES_DIR;
-  const fileExists = opts?.fileExists ?? fs.existsSync;
+  const casesDir = opts?.casesDir;
+  const fileExists = opts?.fileExists;
 
   const tiers = { ...EMPTY_TIERS };
   for (const grader of c.graders) tiers[graderEvidenceTier(grader)]++;
@@ -149,12 +146,17 @@ export function auditCase(c: CaseDefinition, opts?: AuditOptions): CaseAccuracyA
   // Oracle-file existence: `solve` / `known_bad` are script paths resolved as
   // <casesDir>/<category>/<path> (mirrors selftest.ts). A declared-but-missing
   // script silently disables selftest coverage, so flag it as a real weakness.
-  const oracleScripts: string[] = [];
-  if (c.oracle?.solve) oracleScripts.push(c.oracle.solve);
-  for (const kb of c.oracle?.known_bad ?? []) oracleScripts.push(kb);
-  for (const rel of oracleScripts) {
-    const abs = path.join(casesDir, c.category, rel);
-    if (!fileExists(abs)) weaknesses.push(`oracle script missing on disk: ${rel}`);
+  // Only runs when a caller injects a filesystem predicate + casesDir — this
+  // module must stay free of node:fs/node:path so client components can import
+  // evidenceLabel/types without poisoning the browser bundle.
+  if (fileExists) {
+    const base = casesDir !== undefined ? `${casesDir}/${c.category}` : c.category;
+    const oracleScripts: string[] = [];
+    if (c.oracle?.solve) oracleScripts.push(c.oracle.solve);
+    for (const kb of c.oracle?.known_bad ?? []) oracleScripts.push(kb);
+    for (const rel of oracleScripts) {
+      if (!fileExists(`${base}/${rel}`)) weaknesses.push(`oracle script missing on disk: ${rel}`);
+    }
   }
 
   // No-op baseline: if every deterministic grader passes on a do-nothing run and

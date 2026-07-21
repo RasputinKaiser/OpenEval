@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { auditCase, auditCases } from "../lib/accuracy";
@@ -140,7 +141,7 @@ function runCli(args: string[]): { status: number; stdout: string; stderr: strin
 
 test("current corpus has no dangling oracle scripts", async () => {
   const cases = await loadCases();
-  const audit = auditCases(cases);
+  const audit = auditCases(cases, { casesDir: path.join(REPO_ROOT, "cases"), fileExists: (p) => fs.existsSync(p) });
   const dangling = audit.cases.flatMap((c) =>
     c.weaknesses.filter((w) => w.startsWith("oracle script missing on disk")).map((w) => `${c.id}: ${w}`),
   );

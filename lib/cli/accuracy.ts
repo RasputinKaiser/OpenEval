@@ -1,6 +1,8 @@
 #!/usr/bin/env tsx
+import fs from "node:fs";
 import { auditCases, evidenceLabel } from "../accuracy";
 import { loadCases } from "../cases";
+import { CASES_DIR } from "../config";
 
 const HELP = `Usage: tsx lib/cli/accuracy.ts [options]
 
@@ -23,7 +25,9 @@ async function main() {
   }
 
   const cases = await loadCases();
-  const audit = auditCases(cases);
+  // Server-side: inject the fs predicate so the on-disk oracle-script check runs
+  // (lib/accuracy.ts stays node:fs-free for the client bundle).
+  const audit = auditCases(cases, { casesDir: CASES_DIR, fileExists: (p) => fs.existsSync(p) });
 
   console.log(`Accuracy audit: ${audit.totalCases} cases`);
   console.log(`  oracle coverage: ${audit.oracleCases}/${audit.totalCases}`);
