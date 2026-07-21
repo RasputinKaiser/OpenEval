@@ -13,7 +13,9 @@ export const BUILTIN_DESCRIPTORS: HarnessDescriptorInput[] = [
     binEnvVar: "CLAUDE_BIN",
     wellKnownPaths: ["~/.local/bin/claude", "~/.claude/local/claude"],
     parser: "claude-stream-json",
-    argTemplate: ["-p", "--output-format", "stream-json", "--input-format", "text"],
+    // `-p` (--print) with `--output-format stream-json` requires `--verbose`,
+    // otherwise the CLI aborts before producing any output.
+    argTemplate: ["-p", "--output-format", "stream-json", "--input-format", "text", "--verbose"],
     permissionFlag: "--permission-mode",
     workdirFlag: "--add-dir",
     modelFlag: "--model",
@@ -73,7 +75,9 @@ export const BUILTIN_DESCRIPTORS: HarnessDescriptorInput[] = [
     binEnvVar: "NCODE_BIN",
     wellKnownPaths: ["~/.local/bin/ncode", "~/.ncode/bin/ncode"],
     parser: "claude-stream-json",
-    argTemplate: ["-p", "--output-format", "stream-json", "--input-format", "text"],
+    // `-p` (--print) with `--output-format stream-json` requires `--verbose`,
+    // otherwise the CLI aborts before producing any output.
+    argTemplate: ["-p", "--output-format", "stream-json", "--input-format", "text", "--verbose"],
     extraEnv: { NCODE_DISABLE_NONESSENTIAL_TRAFFIC: "1" },
     permissionFlag: "--permission-mode",
     workdirFlag: "--add-dir",
