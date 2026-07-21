@@ -29,24 +29,34 @@ async function loadHarnessInfo(harness: string | undefined, adapterId: string): 
   }
 }
 
-export async function prepareWorkdir(runId: string, caseId: string, def: CaseDefinition, sample: number): Promise<{ dir: string; fixtureSrc?: string }> {
+// git clone/init run through async execFile with a hard timeout and the run's
+// AbortSignal. Synchronous exec here would block the whole event loop — a
+// stalled network clone would freeze every parallel worker, the SSE heartbeat,
+// and the dashboard, and could not be cancelled.
+const GIT_CLONE_TIMEOUT_MS = 120_000;
+const GIT_INIT_TIMEOUT_MS = 30_000;
+
+export async function prepareWorkdir(runId: string, caseId: string, def: CaseDefinition, sample: number, signal?: AbortSignal): Promise<{ dir: string; fixtureSrc?: string }> {
   const dir = path.join(WORKDIRS_DIR, runId, `${caseId}__s${sample}`);
   await fs.mkdir(dir, { recursive: true });
   const setup = def.setup;
   let fixtureSrc: string | undefined;
   if (!setup || setup.type === "none") return { dir };
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const execFileAsync = promisify(execFile);
   if (setup.type === "fixture" && setup.fixture) {
     fixtureSrc = path.resolve(FIXTURES_DIR, setup.fixture);
     await copyDir(fixtureSrc, dir);
   } else if (setup.type === "git-clone" && setup.repo) {
-    const { execFileSync } = await import("node:child_process");
     // execFile (no shell) so a crafted case-descriptor repo value can't inject shell commands.
-    execFileSync("git", ["clone", "--depth", "1", "--", setup.repo, "."], { cwd: dir, stdio: "pipe" });
+    await execFileAsync("git", ["clone", "--depth", "1", "--", setup.repo, "."], { cwd: dir, timeout: GIT_CLONE_TIMEOUT_MS, signal });
   }
   if (setup.init_git) {
-    const { execSync } = await import("node:child_process");
     try {
-      execSync("git init -q && git add -A && git -c user.email=eval@local -c user.name=eval commit -q -m baseline", { cwd: dir, stdio: "pipe" });
+      await execFileAsync("git", ["init", "-q"], { cwd: dir, timeout: GIT_INIT_TIMEOUT_MS, signal });
+      await execFileAsync("git", ["add", "-A"], { cwd: dir, timeout: GIT_INIT_TIMEOUT_MS, signal });
+      await execFileAsync("git", ["-c", "user.email=eval@local", "-c", "user.name=eval", "commit", "-q", "-m", "baseline"], { cwd: dir, timeout: GIT_INIT_TIMEOUT_MS, signal });
     } catch {}
   }
   return { dir, fixtureSrc };
@@ -97,7 +107,16 @@ async function resolveInputImages(def: CaseDefinition, workdir: string): Promise
   return images;
 }
 
-function transcriptToText(r: RunnerResult): string {
+function safeJsonStringify(v: unknown): string {
+  try {
+    const s = JSON.stringify(v);
+    return typeof s === "string" ? s : String(v);
+  } catch {
+    return String(v);
+  }
+}
+
+export function transcriptToText(r: RunnerResult): string {
   const lines: string[] = [];
   for (const m of r.transcript) {
     if (m.role === "assistant") {
@@ -107,7 +126,13 @@ function transcriptToText(r: RunnerResult): string {
       }
     } else if (m.role === "user") {
       for (const b of m.content) {
-        if (b.type === "tool_result") lines.push(`TOOL_RESULT(${b.tool_use_id}): ${b.content.slice(0, 2000)}`);
+        if (b.type === "tool_result") {
+          // b.content is typed as string, but a real harness can emit a
+          // structured content block (array/object). Coerce so a non-string
+          // never throws and turns a gradeable run into a spurious error.
+          const raw = typeof b.content === "string" ? b.content : safeJsonStringify(b.content);
+          lines.push(`TOOL_RESULT(${b.tool_use_id}): ${raw.slice(0, 2000)}`);
+        }
       }
     }
   }
@@ -128,7 +153,7 @@ export async function executeCase(
   let workdir: string;
   let fixtureSrc: string | undefined;
   try {
-    ({ dir: workdir, fixtureSrc } = await prepareWorkdir(runId, def.id, def, sample));
+    ({ dir: workdir, fixtureSrc } = await prepareWorkdir(runId, def.id, def, sample, signal));
   } catch (e: any) {
     // Workdir prep (fixture copy / git clone) failed. Record this case as
     // errored so it still counts in the summary and one bad case cannot abort
@@ -221,9 +246,17 @@ export async function executeCase(
         .catch((e: any) => {
           if (!transcriptState.error) transcriptState.error = String(e?.message || e);
         });
-      if (ev.kind === "tool_use") appendEvent(runId, "tool_use", { case_id: def.id, sample, tool: ev.tool, id: ev.id }, def.id);
-      else if (ev.kind === "tool_result") appendEvent(runId, "tool_result", { case_id: def.id, sample, id: ev.id, error: ev.isError }, def.id);
-      else if (ev.kind === "message") appendEvent(runId, "assistant_message", { case_id: def.id, sample, text: (ev.message.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("").slice(0, 200)) }, def.id);
+      // appendEvent is a synchronous SQLite write on the runner's hot path. A
+      // transient SQLITE_BUSY/serialization throw here must not escape and abort
+      // the in-flight case (the sibling transcript append above is guarded too).
+      try {
+        if (ev.kind === "tool_use") appendEvent(runId, "tool_use", { case_id: def.id, sample, tool: ev.tool, id: ev.id }, def.id);
+        else if (ev.kind === "tool_result") appendEvent(runId, "tool_result", { case_id: def.id, sample, id: ev.id, error: ev.isError }, def.id);
+        else if (ev.kind === "message") appendEvent(runId, "assistant_message", { case_id: def.id, sample, text: (ev.message.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("").slice(0, 200)) }, def.id);
+      } catch {
+        // Live-feed events are best-effort telemetry; grading reads from the
+        // settled transcript, not this stream. Swallow, never rethrow.
+      }
     },
   };
 
