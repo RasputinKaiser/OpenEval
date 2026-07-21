@@ -3,14 +3,13 @@
   "difficulty": "medium",
   "category": "agentic-swe",
   "name": "Fix Python median for even-length lists",
-  "description": "A Python median() helper returns the wrong value for even-length inputs: it yields the upper-middle element instead of averaging the two middle elements. Fix the implementation so the pytest suite passes.",
+  "description": "A Python median() helper returns the wrong value for even-length inputs: it yields the upper-middle element instead of averaging the two middle elements. Fix the implementation so the stdlib test suite passes.",
   "tags": [
     "bugfix",
     "python",
-    "pytest",
     "tests"
   ],
-  "prompt": "stats.py implements median(nums) but it is wrong for even-length lists: median([1, 2, 3, 4]) should be 2.5 (the average of 2 and 3), not 3. Fix the implementation so it returns the true statistical median for both odd- and even-length inputs. Run `python3 -m pytest -q` to verify all tests pass. Do not modify test_stats.py.",
+  "prompt": "stats.py implements median(nums) but it is wrong for even-length lists: median([1, 2, 3, 4]) should be 2.5 (the average of 2 and 3), not 3. Fix the implementation so it returns the true statistical median for both odd- and even-length inputs. Run `python3 test_stats.py` to verify all tests pass. Do not modify test_stats.py.",
   "setup": {
     "type": "fixture",
     "fixture": "py-median-stats",
@@ -24,7 +23,7 @@
   "graders": [
     {
       "type": "tests_pass",
-      "command": "python3 -m pytest -q",
+      "command": "python3 test_stats.py",
       "timeout_ms": 30000
     },
     {
