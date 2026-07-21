@@ -177,6 +177,12 @@ function scanResolvedSource(source: LiveTraceSource, limit: number, includeArchi
 
 function collectLiveTraceFiles(source: LiveTraceSource, scanWarnings: string[]): Array<{ file: string; project: string; mtime: number; size: number }> {
   const files: Array<{ file: string; project: string; mtime: number; size: number }> = [];
+  // One visited-realpath set for the whole source walk, shared across roots and
+  // recursion. Guards against filesystem cycles (bind mounts / hardlinked dirs
+  // where isDirectory() is true and the real path repeats within maxDepth) and
+  // overlapping roots (a root that is a symlink to, or a subdirectory of,
+  // another root) both walking the same physical directory twice.
+  const visited = new Set<string>();
   for (const root of source.roots) {
     if (source.format === "claude-projects") {
       let projectDirs: string[] = [];
@@ -205,9 +211,9 @@ function collectLiveTraceFiles(source: LiveTraceSource, scanWarnings: string[]):
       }
     } else if (source.format === "hermes-json") {
       // Hermes sessions are single-JSON files; skip its request_dump_* payload logs.
-      collectJsonlRecursive(root, source.maxDepth, files, root, (name) => name.startsWith("session_") && name.endsWith(".json"));
+      collectJsonlRecursive(root, source.maxDepth, files, root, (name) => name.startsWith("session_") && name.endsWith(".json"), visited);
     } else {
-      collectJsonlRecursive(root, source.maxDepth, files, root);
+      collectJsonlRecursive(root, source.maxDepth, files, root, undefined, visited);
     }
   }
   return files;
@@ -219,8 +225,23 @@ function collectJsonlRecursive(
   files: Array<{ file: string; project: string; mtime: number; size: number }>,
   root: string,
   matches: (name: string) => boolean = (name) => name.endsWith(".jsonl"),
+  visited: Set<string> = new Set<string>(),
 ): void {
   if (depth < 0) return;
+  // Canonicalize before descending so each physical directory is walked once,
+  // even if reached via a filesystem cycle or an overlapping/symlinked root.
+  // realpathSync resolves symlinks (a symlinked ROOT is followed here, unlike
+  // symlinked child entries, which readdir reports as non-directories); fall
+  // back to the resolved lexical path if it can't be canonicalized so a
+  // still-listable dir is not silently skipped.
+  let real: string;
+  try {
+    real = fs.realpathSync(dir);
+  } catch {
+    real = path.resolve(dir);
+  }
+  if (visited.has(real)) return;
+  visited.add(real);
   let entries: fs.Dirent[] = [];
   try {
     entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -230,7 +251,7 @@ function collectJsonlRecursive(
   for (const ent of entries) {
     const full = path.join(dir, ent.name);
     if (ent.isDirectory()) {
-      collectJsonlRecursive(full, depth - 1, files, root, matches);
+      collectJsonlRecursive(full, depth - 1, files, root, matches, visited);
       continue;
     }
     if (!ent.isFile() || !matches(ent.name)) continue;

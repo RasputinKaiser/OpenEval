@@ -17,9 +17,17 @@ const HERMES_MAX_BYTES = 32 * 1024 * 1024; // whole-file JSON parse; real sessio
 export function summarizeHermesSessionFile(file: string, projectDir: string, mtime: number, stat?: KnownFileStat, forceReparse?: boolean): LiveSession | null {
   return summarizeWithCache(file, projectDir, mtime, (f, lines, bytes, pd, mt) => {
     if (bytes > HERMES_MAX_BYTES) return null;
-    let raw = "";
-    for (const line of lines) raw += line + "\n";
-    const records = hermesJsonToRecords(raw);
+    // Consume the streaming line reader into an array and join ONCE rather than
+    // `raw += line + "\n"` per line: the old accumulator allocated a fresh
+    // string (and a cons-string node) on every line, re-materializing the whole
+    // file incrementally and defeating the bounded-chunk reader. A Hermes
+    // session is a single JSON document, so JSON.parse still needs the full text
+    // in one string — but the array/join builds that string in a single pass
+    // instead of O(lines) intermediate concatenations. Dropping the per-line
+    // trailing "\n" is inert: JSON.parse ignores trailing/leading whitespace.
+    const chunks: string[] = [];
+    for (const line of lines) chunks.push(line);
+    const records = hermesJsonToRecords(chunks.join("\n"));
     if (records.length === 0) return null;
     return parseLiveSession(f, records, bytes, pd, mt, undefined, undefined, false);
   }, stat, forceReparse);
