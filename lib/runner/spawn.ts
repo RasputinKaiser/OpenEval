@@ -16,14 +16,35 @@ export interface SpawnHarnessResult {
 /** Max bytes retained per stream, so a runaway harness can't OOM the eval. */
 export const MAX_RETAINED_BYTES = 8 * 1024 * 1024;
 
-/** Kill a detached child and every process it spawned. */
-export function killProcessGroup(proc: ChildProcess): void {
-  try {
-    if (proc.pid) process.kill(-proc.pid, "SIGKILL");
-    else proc.kill("SIGKILL");
-  } catch {
-    try { proc.kill("SIGKILL"); } catch {}
-  }
+/**
+ * How long after a kill to force-resolve the spawn promise if 'close' never
+ * fires. Kept above killProcessGroup's SIGTERM→SIGKILL grace (2s) so a process
+ * that would exit on the escalation still gets the chance to close naturally.
+ */
+export const FORCE_RESOLVE_AFTER_KILL_MS = 3000;
+
+/**
+ * Kill a detached child and every process it spawned. Escalates: a graceful
+ * SIGTERM first, then SIGKILL after `graceMs` if the process is still alive, so
+ * well-behaved harnesses can flush and exit cleanly while stuck ones are still
+ * force-killed. Safe to call when the process is already gone.
+ */
+export function killProcessGroup(proc: ChildProcess, graceMs = 2000): void {
+  const signalGroup = (signal: NodeJS.Signals) => {
+    try {
+      if (proc.pid) process.kill(-proc.pid, signal);
+      else proc.kill(signal);
+    } catch {
+      try { proc.kill(signal); } catch {}
+    }
+  };
+  signalGroup("SIGTERM");
+  const escalation = setTimeout(() => {
+    // Only escalate if the process has not already exited.
+    if (proc.exitCode == null && proc.signalCode == null) signalGroup("SIGKILL");
+  }, graceMs);
+  // Don't let the grace timer keep the event loop (or a test) alive.
+  escalation.unref?.();
 }
 
 // Detached children need an explicit parent-exit cleanup path. Keep the
@@ -157,11 +178,24 @@ export function spawnHarnessProcess(ctx: RunnerContext, onLine: (line: string, a
       detached: true,
     });
     const unregisterProcessGroup = registerProcessGroup(proc);
-    // Cancellation mirrors the timeout path: SIGKILL the whole process group
+
+    let settled = false;
+    let killForceTimer: ReturnType<typeof setTimeout> | null = null;
+    // Belt-and-suspenders: after a kill, 'close' normally resolves the promise,
+    // but if it is delayed or never fires (stuck grandchild holding the pipe,
+    // lost SIGCHLD) the runner would hang forever. Force-resolve as timed-out.
+    const scheduleForceResolve = () => {
+      if (killForceTimer || settled) return;
+      killForceTimer = setTimeout(() => finish(124), FORCE_RESOLVE_AFTER_KILL_MS);
+      killForceTimer.unref?.();
+    };
+
+    // Cancellation mirrors the timeout path: kill the whole process group
     // so agent-spawned grandchildren cannot outlive an aborted case.
     const onAbort = () => {
       aborted = true;
       killProcessGroup(proc);
+      scheduleForceResolve();
     };
     if (ctx.signal?.aborted) onAbort();
     else ctx.signal?.addEventListener("abort", onAbort, { once: true });
@@ -174,20 +208,27 @@ export function spawnHarnessProcess(ctx: RunnerContext, onLine: (line: string, a
     const timer = setTimeout(() => {
       timedOut = true;
       killProcessGroup(proc);
+      scheduleForceResolve();
     }, ctx.timeoutMs);
 
     proc.stdout?.on("data", (chunk: Buffer) => {
       const text = chunk.toString();
       stdout = appendCapped(stdout, text);
-      stdoutBuf = drainLineBuffer(stdoutBuf + text, (line) => onLine(line, acc));
+      // A throw from onLine (adapter.parseLine → onEvent → synchronous SQLite
+      // appendEvent, which can raise SQLITE_BUSY) would otherwise escape this
+      // 'data' handler uncaught and abort the whole process, killing every
+      // parallel worker. Swallow per-line like the flush path below does.
+      stdoutBuf = drainLineBuffer(stdoutBuf + text, (line) => {
+        try { onLine(line, acc); } catch {}
+      });
     });
     proc.stderr?.on("data", (c: Buffer) => { stderr = appendCapped(stderr, c.toString()); });
 
-    let settled = false;
     const finish = (exitCode: number) => {
       if (settled) return; // 'error' and 'close' can both fire; flush only once
       settled = true;
       clearTimeout(timer);
+      if (killForceTimer) clearTimeout(killForceTimer);
       unregisterProcessGroup();
       ctx.signal?.removeEventListener("abort", onAbort);
       if (stdoutBuf.trim()) {
