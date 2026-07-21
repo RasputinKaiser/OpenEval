@@ -1,0 +1,64 @@
+{
+  "id": "swe-trace-test-first",
+  "difficulty": "medium",
+  "category": "agentic-swe",
+  "name": "Fix rangeSum test-first",
+  "description": "rangeSum(n) should return the sum of 1..n but its loop bound is exclusive, so n is never added. The agent must reproduce the failure by running the tests BEFORE touching the source, fix the loop bound, then re-run the tests to confirm. This case exercises the trace/step evidence tier: `step` graders assert the tool-call ORDER (run tests before editing) in addition to the deterministic fix graders.",
+  "tags": [
+    "bugfix",
+    "node",
+    "tests",
+    "trace",
+    "test-first"
+  ],
+  "prompt": "There is a bug in src/range.js: rangeSum(n) should return 1+2+...+n but it currently drops the final term (e.g. rangeSum(5) returns 10 instead of 15). Work test-first: FIRST run `npm test` to watch the failing tests, THEN fix the loop bound in src/range.js, THEN run `npm test` again to confirm every test passes. Do not modify the test file or package.json.",
+  "setup": {
+    "type": "fixture",
+    "fixture": "range-sum-repo",
+    "init_git": true
+  },
+  "runner": {
+    "max_turns": 18,
+    "timeout_seconds": 240,
+    "permission_mode": "bypassPermissions"
+  },
+  "graders": [
+    {
+      "type": "tests_pass",
+      "command": "npm test",
+      "timeout_ms": 30000
+    },
+    {
+      "type": "exit_code",
+      "command": "node -e \"const {rangeSum}=require('./src/range'); if(rangeSum(10)!==55||rangeSum(100)!==5050) process.exit(1)\""
+    },
+    {
+      "type": "files_unchanged",
+      "paths": [
+        "src/range.test.js",
+        "package.json"
+      ],
+      "forbidden": true
+    },
+    {
+      "type": "step",
+      "tool": "Bash",
+      "input_includes": "test",
+      "before_tool": "Edit"
+    },
+    {
+      "type": "step",
+      "tool": "Bash",
+      "input_includes": "test",
+      "min_count": 2
+    }
+  ],
+  "pass_threshold": 0.5,
+  "oracle": {
+    "solve": "oracle/swe-trace-test-first.sh",
+    "noop_max_score": 0.25,
+    "known_bad": [
+      "oracle/swe-trace-test-first-hardcode-bad.sh"
+    ]
+  }
+}
