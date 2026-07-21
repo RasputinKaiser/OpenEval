@@ -1,0 +1,5 @@
+{
+  "name": "range-sum-repo",
+  "version": "1.0.0",
+  "scripts": { "test": "node --test src/range.test.js" }
+}
