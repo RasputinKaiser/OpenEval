@@ -9,11 +9,12 @@
   "setup": { "type": "none" },
   "runner": { "max_turns": 3, "timeout_seconds": 60, "permission_mode": "bypassPermissions" },
   "graders": [
-    { "type": "regex_match", "pattern": "itself", "source": "final_text" },
-    { "type": "regex_match", "pattern": "function|method|calls?|itself|subproblem", "source": "final_text" }
+    { "type": "regex_match", "pattern": "\\b(?:functions?|methods?|procedures?|routines?|subroutines?)\\b", "source": "final_text" },
+    { "type": "regex_match", "pattern": "\\b(?:call|calls|calling|invoke|invokes|invoking|reference|references)\\b[^.!?\\n]*\\bitself\\b", "source": "final_text" }
   ],
   "pass_threshold": 1.0,
   "oracle": {
-    "final_text": "Recursion is when a function calls itself to solve smaller subproblems."
+    "final_text": "Recursion is when a function calls itself to solve smaller subproblems.",
+    "known_bad": ["oracle/reasoning-recursion-bad.sh"]
   }
 }
