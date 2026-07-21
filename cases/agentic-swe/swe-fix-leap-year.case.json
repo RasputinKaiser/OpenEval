@@ -46,6 +46,9 @@
   "pass_threshold": 1,
   "oracle": {
     "solve": "oracle/swe-fix-leap-year.sh",
-    "noop_max_score": 0.25
+    "noop_max_score": 0.25,
+    "known_bad": [
+      "oracle/swe-fix-leap-year-bad.sh"
+    ]
   }
 }

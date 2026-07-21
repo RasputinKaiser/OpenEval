@@ -47,6 +47,9 @@
   "pass_threshold": 1,
   "oracle": {
     "solve": "oracle/swe-cjs-to-esm.sh",
-    "noop_max_score": 0.25
+    "noop_max_score": 0.25,
+    "known_bad": [
+      "oracle/swe-cjs-to-esm-bad.sh"
+    ]
   }
 }

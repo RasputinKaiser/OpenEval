@@ -42,6 +42,9 @@
   "pass_threshold": 1,
   "oracle": {
     "solve": "oracle/swe-add-rectangle.sh",
-    "noop_max_score": 0.34
+    "noop_max_score": 0.34,
+    "known_bad": [
+      "oracle/swe-add-rectangle-bad.sh"
+    ]
   }
 }
