@@ -1,0 +1,40 @@
+{
+  "id": "visual-sortable-results-table",
+  "category": "visual-code",
+  "difficulty": "hard",
+  "name": "Build a client-side sortable results table",
+  "description": "Visual-code task: produce a static, self-contained HTML page with a semantic data table whose columns sort on header click via inline JavaScript. Grading stays deterministic by asserting the table markup, sortable header affordances, aria-sort state, and a click-driven sort handler in the produced artifact.",
+  "tags": ["visual-code", "web-ui", "table", "sorting", "interactive"],
+  "split": "public",
+  "prompt": "Create a single self-contained file named results-table.html (inline <style> and <script> only, no external assets or network imports). Build a sortable results table for OpenEval cases. Requirements: a root element with data-testid=\"results-table\", an h1 containing \"Case Results\", and a <table> with a <thead> whose header cells (<th>) carry data-sort-key attributes for the columns \"case\", \"score\", and \"status\". Each sortable <th> must have a scope=\"col\" attribute and an aria-sort attribute (initially \"none\"). Include a <tbody> with at least three <tr> data rows. Add inline JavaScript that attaches a click handler to the header cells which sorts the tbody rows by the clicked column and updates aria-sort to \"ascending\" or \"descending\". Do not create any other files.",
+  "setup": { "type": "none" },
+  "runner": { "max_turns": 18, "timeout_seconds": 240, "permission_mode": "bypassPermissions" },
+  "budget": { "max_turns": 18, "max_cost_usd": 0.75 },
+  "visual": {
+    "kind": "web_ui",
+    "requires_vision_input": false,
+    "expected_artifacts": ["results-table.html"]
+  },
+  "graders": [
+    { "type": "file_exists", "path": "results-table.html", "weight": 10 },
+    { "type": "file_contains", "path": "results-table.html", "pattern": "data-testid=[\"']results-table[\"']", "weight": 10 },
+    { "type": "file_contains", "path": "results-table.html", "pattern": "Case Results", "weight": 10 },
+    { "type": "file_contains", "path": "results-table.html", "pattern": "<thead\\b", "weight": 5 },
+    { "type": "file_contains", "path": "results-table.html", "pattern": "<tbody\\b", "weight": 5 },
+    { "type": "file_contains", "path": "results-table.html", "pattern": "data-sort-key=[\"']case[\"']", "weight": 5 },
+    { "type": "file_contains", "path": "results-table.html", "pattern": "data-sort-key=[\"']score[\"']", "weight": 5 },
+    { "type": "file_contains", "path": "results-table.html", "pattern": "data-sort-key=[\"']status[\"']", "weight": 5 },
+    { "type": "file_contains", "path": "results-table.html", "pattern": "scope=[\"']col[\"']", "weight": 10 },
+    { "type": "file_contains", "path": "results-table.html", "pattern": "aria-sort=[\"'](none|ascending|descending)[\"']", "weight": 10 },
+    { "type": "exit_code", "command": "node -e \"const fs=require('fs'); const h=fs.readFileSync('results-table.html','utf8'); const rows=(h.match(/<tr\\b/g)||[]).length; if(rows<4) process.exit(1)\"", "weight": 10 },
+    { "type": "file_contains", "path": "results-table.html", "pattern": "addEventListener\\s*\\(\\s*[\"']click[\"']|onclick", "weight": 10 },
+    { "type": "file_contains", "path": "results-table.html", "pattern": "aria-sort", "weight": 5 },
+    { "type": "file_contains", "path": "results-table.html", "pattern": "https?://(?!www\\.w3\\.org/)|src=[\"']http", "negate": true, "weight": 5, "forbidden": true }
+  ],
+  "pass_threshold": 0.85,
+  "oracle": {
+    "solve": "oracle/visual-sortable-results-table.sh",
+    "noop_max_score": 0.1,
+    "known_bad": ["oracle/visual-sortable-results-table-bad.sh"]
+  }
+}

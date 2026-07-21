@@ -1,0 +1,34 @@
+{
+  "id": "visual-mermaid-pipeline-diagram",
+  "category": "visual-code",
+  "difficulty": "medium",
+  "name": "Author a Mermaid pipeline flowchart",
+  "description": "Visual-code task for blind-but-design-capable models: express the OpenEval execution pipeline as a Mermaid flowchart. Grading stays deterministic by asserting the required nodes and directed edges exist in the produced diagram source.",
+  "tags": ["visual-code", "mermaid", "diagram", "flowchart"],
+  "split": "public",
+  "prompt": "Create a file named pipeline.mmd containing a single Mermaid flowchart. Start it with a `flowchart TD` (or `graph TD`) header. Model the OpenEval execution pipeline with these labeled nodes: SelectCases, RunLoop, Executor, Grade, Persist. Connect them as a directed chain using `-->` edges so the flow reads SelectCases --> RunLoop --> Executor --> Grade --> Persist. Add one additional edge from Grade back to Persist labeled with a rejection path (for example `Grade -->|known-bad| Persist`). Do not create any other files.",
+  "setup": { "type": "none" },
+  "runner": { "max_turns": 10, "timeout_seconds": 180, "permission_mode": "bypassPermissions" },
+  "budget": { "max_turns": 10, "max_cost_usd": 0.5 },
+  "visual": {
+    "kind": "web_ui",
+    "requires_vision_input": false,
+    "expected_artifacts": ["pipeline.mmd"]
+  },
+  "graders": [
+    { "type": "file_exists", "path": "pipeline.mmd", "weight": 10 },
+    { "type": "file_contains", "path": "pipeline.mmd", "pattern": "(flowchart|graph)\\s+(TD|TB|LR|RL|BT)", "weight": 15 },
+    { "type": "file_contains", "path": "pipeline.mmd", "pattern": "SelectCases\\s*-->\\s*RunLoop", "weight": 15 },
+    { "type": "file_contains", "path": "pipeline.mmd", "pattern": "RunLoop\\s*-->\\s*Executor", "weight": 15 },
+    { "type": "file_contains", "path": "pipeline.mmd", "pattern": "Executor\\s*-->\\s*Grade", "weight": 15 },
+    { "type": "file_contains", "path": "pipeline.mmd", "pattern": "Grade\\s*-->\\s*Persist", "weight": 15 },
+    { "type": "file_contains", "path": "pipeline.mmd", "pattern": "Grade\\s*-->\\|[^|]+\\|\\s*Persist", "weight": 10 },
+    { "type": "file_exists", "path": "index.html", "negate": true, "weight": 5, "forbidden": true }
+  ],
+  "pass_threshold": 0.85,
+  "oracle": {
+    "solve": "oracle/visual-mermaid-pipeline-diagram.sh",
+    "noop_max_score": 0.1,
+    "known_bad": ["oracle/visual-mermaid-pipeline-diagram-bad.sh"]
+  }
+}
