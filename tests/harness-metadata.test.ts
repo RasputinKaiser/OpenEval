@@ -108,6 +108,33 @@ test("image attachments become repeated descriptor flag pairs", () => {
   ]);
 });
 
+test("claude-code and ncode pass --verbose so stream-json output is not rejected", () => {
+  // The Claude/NCode CLIs abort with
+  // `--print, --output-format=stream-json requires --verbose` unless --verbose
+  // is present. Both the harness-under-test and judge paths build via this
+  // descriptor, so the flag must be baked into the argTemplate.
+  for (const id of ["claude-code", "ncode"]) {
+    const raw = BUILTIN_DESCRIPTORS.find((descriptor) => descriptor.id === id)!;
+    const { descriptor, issues } = validateDescriptor(raw, `test:${id}-verbose-command`);
+    assert.deepEqual(issues, []);
+    const command = buildDescriptorCommand(descriptor!, {
+      caseId: "verbose-case",
+      workdir: "/tmp/workdir",
+      prompt: "solve the task",
+      maxTurns: 5,
+      timeoutMs: 1000,
+      permissionMode: "default",
+      model: "haiku",
+      extraArgs: [],
+      images: [],
+    });
+    assert.ok(command.args.includes("--verbose"), `${id} args must include --verbose`);
+    assert.ok(command.args.includes("-p"), `${id} args must include -p`);
+    assert.ok(command.args.includes("--output-format"), `${id} args must include --output-format`);
+    assert.ok(command.args.includes("stream-json"), `${id} args must include stream-json`);
+  }
+});
+
 test("harness probing verifies version and help without running a model", async () => {
   const version = await runProbe(process.execPath, ["--version"]);
   const help = await runProbe(process.execPath, ["--help"]);
