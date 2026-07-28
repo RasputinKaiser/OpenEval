@@ -189,12 +189,8 @@ function CaseRow({
   const caseTrust = summarizeCaseTrust(c);
   return (
     <div
-      role="button"
-      tabIndex={0}
-      onClick={onSelect}
-      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onSelect(); }}
       className={clsx(
-        "group w-full text-left py-2.5 flex items-center gap-3 transition-colors cursor-pointer",
+        "group w-full flex items-center gap-3 transition-colors",
         selected ? "bg-accent/10" : "hover:bg-bg-elev"
       )}
     >
@@ -210,45 +206,51 @@ function CaseRow({
         type="checkbox"
         checked={checked}
         onChange={onToggleCheck}
-        onClick={(e) => e.stopPropagation()}
+        aria-label={`Select ${c.case_name} for re-run`}
         className="accent-accent shrink-0 size-3"
       />
-      <span className="text-[10px] text-fg-dim mono w-6 shrink-0">{String(index + 1).padStart(2, "0")}</span>
-      <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 items-center gap-2">
-          <div className="truncate text-sm">{c.case_name}</div>
-          {c.case_def?.visual?.expected_artifacts?.length ? (
-            <span className="inline-flex shrink-0 items-center gap-1 rounded bg-accent-soft/10 px-1.5 py-0.5 text-[10px] text-accent-soft">
-              <Palette className="size-3" /> preview
-            </span>
-          ) : null}
+      <button
+        type="button"
+        onClick={onSelect}
+        aria-label={`Select ${c.case_name}`}
+        className="min-w-0 flex-1 text-left py-2.5 flex items-center gap-3 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-soft/40"
+      >
+        <span className="text-[10px] text-fg-dim mono w-6 shrink-0">{String(index + 1).padStart(2, "0")}</span>
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="truncate text-sm">{c.case_name}</div>
+            {c.case_def?.visual?.expected_artifacts?.length ? (
+              <span className="inline-flex shrink-0 items-center gap-1 rounded bg-accent-soft/10 px-1.5 py-0.5 text-[10px] text-accent-soft">
+                <Palette className="size-3" /> preview
+              </span>
+            ) : null}
+          </div>
+          <div className="text-[10px] text-fg-dim mono mt-0.5 flex items-center gap-1.5">
+            <span className="px-1 rounded bg-bg-elev">{c.category}</span>
+            {runner && <span>· turns {runner.numTurns} · {runner.toolCalls.length} tools</span>}
+          </div>
         </div>
-        <div className="text-[10px] text-fg-dim mono mt-0.5 flex items-center gap-1.5">
-          <span className="px-1 rounded bg-bg-elev">{c.category}</span>
-          {runner && <span>· turns {runner.numTurns} · {runner.toolCalls.length} tools</span>}
-        </div>
-      </div>
+        {runner && (
+          <div className="hidden md:flex flex-col items-end text-[10px] mono text-fg-dim gap-0.5 mr-1">
+            <span>{tokPerSec} tok/s</span>
+            <span>{cost}</span>
+          </div>
+        )}
+        <span className={clsx(
+          "hidden sm:inline-flex shrink-0 items-center rounded border px-1.5 py-0.5 text-[10px] mono",
+          caseTrust.score >= 80 ? "border-ok/30 bg-ok/10 text-ok" : caseTrust.score >= 60 ? "border-warn/30 bg-warn/10 text-warn" : "border-err/30 bg-err/10 text-err"
+        )}>
+          {caseTrust.score}
+        </span>
+        <StatusBadge status={c.status} size="xs" />
+      </button>
       <Link
         href={rerunHref}
-        onClick={(e) => e.stopPropagation()}
         aria-label={`Re-run ${c.case_name}`}
         className="shrink-0 inline-flex min-h-8 items-center gap-1 rounded px-1.5 text-[10px] text-accent-soft opacity-60 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft/40 transition-opacity hover:underline"
       >
         <PlayCircle className="size-3.5" /> Re-run
       </Link>
-      {runner && (
-        <div className="hidden md:flex flex-col items-end text-[10px] mono text-fg-dim gap-0.5 mr-1">
-          <span>{tokPerSec} tok/s</span>
-          <span>{cost}</span>
-        </div>
-      )}
-      <span className={clsx(
-        "hidden sm:inline-flex shrink-0 items-center rounded border px-1.5 py-0.5 text-[10px] mono",
-        caseTrust.score >= 80 ? "border-ok/30 bg-ok/10 text-ok" : caseTrust.score >= 60 ? "border-warn/30 bg-warn/10 text-warn" : "border-err/30 bg-err/10 text-err"
-      )}>
-        {caseTrust.score}
-      </span>
-      <StatusBadge status={c.status} size="xs" />
     </div>
   );
 }

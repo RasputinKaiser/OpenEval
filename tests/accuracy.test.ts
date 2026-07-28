@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { auditCase, auditCases } from "../lib/accuracy";
+import { auditCase, auditCases, hasStrictAccuracyFailure } from "../lib/accuracy";
 import { loadCases } from "../lib/cases";
 import { REPO_ROOT } from "../lib/config";
 import type { CaseDefinition, GraderSpec } from "../lib/types";
@@ -32,6 +32,7 @@ test("oracle-file existence: fires on a dangling solve script", () => {
     row.weaknesses.some((w) => w.startsWith("oracle script missing on disk: oracle/does-not-exist.sh")),
     `expected missing-script weakness, got: ${JSON.stringify(row.weaknesses)}`,
   );
+  assert.equal(hasStrictAccuracyFailure(row), true);
 });
 
 test("oracle-file existence: fires on a dangling known_bad script but not the present solve", () => {
@@ -56,6 +57,7 @@ test("oracle-file existence: silent when all referenced scripts resolve", () => 
     row.weaknesses.filter((w) => w.startsWith("oracle script missing on disk")).length,
     0,
   );
+  assert.equal(hasStrictAccuracyFailure(row), false);
 });
 
 test("no-op baseline heuristic: fires when all deterministic graders no-op-pass and no guard", () => {

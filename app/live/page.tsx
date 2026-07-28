@@ -1,6 +1,6 @@
 import path from "node:path";
 import LiveClient from "@/components/LiveClient";
-import { defaultLiveLimitForHarness, scanLiveSessions, isPathInLiveSource, liveTraceFormatForHarness, getErroringTurns, type LiveAggregate, type TranscriptResult } from "@/lib/live";
+import { defaultLiveLimitForHarness, projectLiveAggregate, readLiveSessionDetail, scanLiveSessions, isPathInLiveSource, liveTraceFormatForHarness, getErroringTurns, type LiveAggregateList, type LiveSessionDetailResult, type TranscriptResult } from "@/lib/live";
 
 export const dynamic = "force-dynamic";
 
@@ -19,16 +19,28 @@ async function getSessionTranscript(filePath: string, harness?: string): Promise
   }
 }
 
+async function getSessionDetail(filePath: string, harness?: string): Promise<LiveSessionDetailResult> {
+  "use server";
+  const normalized = path.resolve(filePath);
+  if (!isPathInLiveSource(normalized, harness)) return { error: "Invalid session path" };
+  try {
+    const session = readLiveSessionDetail(normalized, harness);
+    return session ? { session } : { error: "Session detail is unavailable (the source file may have been pruned)." };
+  } catch (e) {
+    return { error: `Failed to parse session detail: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+
 export default async function LivePage(props: { searchParams?: Promise<{ harness?: string; limit?: string }> }) {
   const searchParams = await props.searchParams;
-  let data: LiveAggregate;
+  let data: LiveAggregateList;
   let error: string | undefined;
   const harness = searchParams?.harness || undefined;
   const parsedLimit = Number(searchParams?.limit || defaultLiveLimitForHarness(harness));
   const limit = Number.isFinite(parsedLimit) ? Math.max(1, Math.min(1000, parsedLimit)) : defaultLiveLimitForHarness(harness);
 
   try {
-    data = scanLiveSessions(limit, harness);
+    data = projectLiveAggregate(scanLiveSessions(limit, harness));
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
     data = {
@@ -70,6 +82,16 @@ export default async function LivePage(props: { searchParams?: Promise<{ harness
       sessionsWithMalformedLines: 0,
       staleSessions: 0,
       avgDataQuality: 0,
+      scanCoverage: {
+        requestedLimit: limit,
+        discoveredFiles: 0,
+        scannedFiles: 0,
+        parsedFiles: 0,
+        droppedFiles: 0,
+        unscannedFiles: 0,
+        archivedSessionsAdded: 0,
+        truncated: false,
+      },
       scanWarnings: [],
       byModel: [],
       byTool: [],
@@ -82,5 +104,5 @@ export default async function LivePage(props: { searchParams?: Promise<{ harness
     };
   }
 
-  return <LiveClient initialData={data} error={error} getTranscript={getSessionTranscript} scannedAt={Date.now()} />;
+  return <LiveClient initialData={data} error={error} getTranscript={getSessionTranscript} getSessionDetail={getSessionDetail} scannedAt={Date.now()} />;
 }

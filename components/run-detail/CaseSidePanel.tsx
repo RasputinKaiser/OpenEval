@@ -115,7 +115,10 @@ export default function CaseSidePanel({
             </span>
           }
         >
-          <EvidenceGroupSummary results={grader.results} visualContract={!!rc.case_def.visual} />
+          <EvidenceGroupSummary
+            results={grader.results}
+            expectedArtifacts={rc.case_def.visual?.expected_artifacts ?? []}
+          />
           <div className="divide-y divide-bd-subtle">
             {grader.results.map((g, i) => (
               <GraderRow key={i} g={g} />
@@ -209,13 +212,18 @@ function CaseTrustPanel({ trust, rc }: { trust: CaseTrustSummary; rc: RunCaseRec
           <TrustChip ok={trust.hasKnownBad} label="known-bad" />
           <TrustChip ok={trust.hasProofBackstop} label="proof" />
           <TrustChip ok={trust.hasBudget} label="budget" />
-          {rc.case_def.visual ? <TrustChip ok={trust.hasVisualContract} label="visual" /> : null}
+          {rc.case_def.visual ? <TrustChip ok={trust.hasVisualContract} label="artifact contract" /> : null}
         </div>
       </div>
       <div className="grid gap-2 p-3 sm:grid-cols-3">
         <MiniProof label="Deterministic" value={`${trust.evidence.deterministic.passed}/${trust.evidence.deterministic.total}`} icon={BadgeCheck} ok={trust.evidence.deterministic.total > 0} />
         <MiniProof label="Trace" value={`${trust.evidence.trace.passed}/${trust.evidence.trace.total}`} icon={Boxes} ok={trust.evidence.trace.total > 0} />
-        <MiniProof label="Visual" value={trust.hasVisualContract ? "contracted" : "none"} icon={Eye} ok={trust.hasVisualContract} />
+        <MiniProof
+          label="Artifact contract"
+          value={rc.case_def.visual?.expected_artifacts?.length ? `${rc.case_def.visual.expected_artifacts.length} expected` : "none"}
+          icon={Eye}
+          ok={trust.hasVisualContract}
+        />
       </div>
       {trust.weaknesses.length ? (
         <div className="border-t border-bd-subtle px-4 py-3">

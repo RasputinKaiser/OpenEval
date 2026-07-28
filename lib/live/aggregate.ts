@@ -1,5 +1,5 @@
 import { displayModelId, rateForModelInfo } from "../pricing";
-import type { LiveAggregate, LiveQueueSummary, LiveSession, LiveTraceSource, LiveUsageSummary } from "./types";
+import type { LiveAggregate, LiveQueueSummary, LiveScanCoverage, LiveSession, LiveTraceSource, LiveUsageSummary } from "./types";
 import { resolveLiveSource } from "./sources";
 import { attributedModelUsage, increment, metricMissing, modelUsageCosts, modelUsageVolume, topEntries } from "./util";
 
@@ -31,7 +31,22 @@ function emptyUsageSummary(): LiveUsageSummary {
  */
 const DEFAULT_SESSION_RETENTION = 100;
 
-export function aggregate(sessions: LiveSession[], scanWarnings: string[] = [], source: LiveTraceSource = resolveLiveSource(), sessionRetention: number = DEFAULT_SESSION_RETENTION): LiveAggregate {
+export function aggregate(
+  sessions: LiveSession[],
+  scanWarnings: string[] = [],
+  source: LiveTraceSource = resolveLiveSource(),
+  sessionRetention: number = DEFAULT_SESSION_RETENTION,
+  scanCoverage: LiveScanCoverage = {
+    requestedLimit: sessions.length,
+    discoveredFiles: sessions.length,
+    scannedFiles: sessions.length,
+    parsedFiles: sessions.length,
+    droppedFiles: 0,
+    unscannedFiles: 0,
+    archivedSessionsAdded: 0,
+    truncated: false,
+  },
+): LiveAggregate {
   const byModelMap = new Map<string, {
     model: string;
     sessions: number;
@@ -243,6 +258,7 @@ export function aggregate(sessions: LiveSession[], scanWarnings: string[] = [], 
     sessionsWithMalformedLines,
     staleSessions,
     avgDataQuality: sessions.length ? totalQuality / sessions.length : 0,
+    scanCoverage,
     scanWarnings,
     byModel,
     byTool: topEntries(toolCallsByName, 10).map(({ key, count }) => ({

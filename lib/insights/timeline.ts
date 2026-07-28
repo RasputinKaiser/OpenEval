@@ -201,14 +201,21 @@ export interface MetricAgg {
 
 const MIN_JUDGED_FOR_MEDIAN = 5;
 
-type OutcomePool = "judged" | "heuristic";
+export type OutcomePool = "judged" | "signal";
 
-function aggregate(points: SessionPoint[]): { agg: MetricAgg; outcomePool: OutcomePool } {
+function aggregate(points: SessionPoint[]): {
+  agg: MetricAgg;
+  outcomePool: OutcomePool;
+  outcomeSampleSize: number;
+  signalCount: number;
+  judgedCount: number;
+} {
   // Judged verdicts are strictly better signal than the heuristic — once a
   // window has enough of them, the heuristic scores only add noise.
   const judged = points.filter((p) => p.outcomeProvenance === "judged");
+  const withSignal = points.filter((p) => p.outcomeHasSignal);
   const useJudged = judged.length >= MIN_JUDGED_FOR_MEDIAN;
-  const outcomePool = useJudged ? judged : points.filter((p) => p.outcomeHasSignal);
+  const outcomePool = useJudged ? judged : withSignal;
   const agg: MetricAgg = {
     outcome: median(outcomePool.map((p) => p.outcome)),
     toolErrorRate: median(points.map((p) => p.toolErrorRate)),
@@ -217,7 +224,13 @@ function aggregate(points: SessionPoint[]): { agg: MetricAgg; outcomePool: Outco
     subagentRate: points.length ? points.filter((p) => p.subagentSpawns > 0).length / points.length : 0,
     durationMin: median(points.map((p) => p.durationMin)),
   };
-  return { agg, outcomePool: useJudged ? "judged" : "heuristic" };
+  return {
+    agg,
+    outcomePool: useJudged ? "judged" : "signal",
+    outcomeSampleSize: outcomePool.length,
+    signalCount: withSignal.length,
+    judgedCount: judged.length,
+  };
 }
 
 export interface MarkerImpact {
@@ -227,6 +240,16 @@ export interface MarkerImpact {
   /** LLM-judged sessions per side; when ≥5 on a side, its outcome median uses judged verdicts only. */
   judgedBefore: number;
   judgedAfter: number;
+  /** Sessions with any usable outcome signal in each full comparison window. */
+  signalBefore: number;
+  signalAfter: number;
+  /** Actual denominator used by each outcome median after judged-pool selection. */
+  outcomeNBefore: number;
+  outcomeNAfter: number;
+  outcomePoolBefore: OutcomePool;
+  outcomePoolAfter: OutcomePool;
+  /** False when either side has no outcome evidence; the numeric placeholder must not be shown as a measured delta. */
+  outcomeComparable: boolean;
   before: MetricAgg;
   after: MetricAgg;
   deltas: MetricAgg;
@@ -255,8 +278,11 @@ export function markerImpact(points: SessionPoint[], marker: Marker, window = 20
     before = points.filter((p) => p.at < marker.firstSeenAt).slice(-window);
     after = points.filter((p) => p.at >= marker.firstSeenAt).slice(0, window);
   }
-  const { agg: a, outcomePool: poolBefore } = aggregate(before);
-  const { agg: b, outcomePool: poolAfter } = aggregate(after);
+  const beforeSummary = aggregate(before);
+  const afterSummary = aggregate(after);
+  const { agg: a, outcomePool: poolBefore } = beforeSummary;
+  const { agg: b, outcomePool: poolAfter } = afterSummary;
+  const outcomeComparable = beforeSummary.outcomeSampleSize > 0 && afterSummary.outcomeSampleSize > 0;
   const deltas: MetricAgg = {
     outcome: b.outcome - a.outcome,
     toolErrorRate: b.toolErrorRate - a.toolErrorRate,
@@ -277,14 +303,33 @@ export function markerImpact(points: SessionPoint[], marker: Marker, window = 20
   if (poolBefore !== poolAfter) {
     confounds.push(`outcome medians mix ${poolAfter} (after) with ${poolBefore} (before) scores`);
   }
-  const lowConfidence = before.length < minSamples || after.length < minSamples;
-  if (lowConfidence) confounds.push(`thin sample (${before.length} before / ${after.length} after)`);
+  if (!outcomeComparable) {
+    confounds.push(
+      `outcome unavailable (${beforeSummary.outcomeSampleSize} before / ${afterSummary.outcomeSampleSize} after usable scores)`,
+    );
+  }
+  const thinWindow = before.length < minSamples || after.length < minSamples;
+  const thinOutcome = beforeSummary.outcomeSampleSize < minSamples || afterSummary.outcomeSampleSize < minSamples;
+  const lowConfidence = thinWindow || thinOutcome;
+  if (thinWindow) confounds.push(`thin window (${before.length} before / ${after.length} after sessions)`);
+  if (!thinWindow && thinOutcome && outcomeComparable) {
+    confounds.push(
+      `thin outcome evidence (${beforeSummary.outcomeSampleSize} before / ${afterSummary.outcomeSampleSize} after usable scores)`,
+    );
+  }
   return {
     marker,
     nBefore: before.length,
     nAfter: after.length,
-    judgedBefore: before.filter((p) => p.outcomeProvenance === "judged").length,
-    judgedAfter: after.filter((p) => p.outcomeProvenance === "judged").length,
+    judgedBefore: beforeSummary.judgedCount,
+    judgedAfter: afterSummary.judgedCount,
+    signalBefore: beforeSummary.signalCount,
+    signalAfter: afterSummary.signalCount,
+    outcomeNBefore: beforeSummary.outcomeSampleSize,
+    outcomeNAfter: afterSummary.outcomeSampleSize,
+    outcomePoolBefore: poolBefore,
+    outcomePoolAfter: poolAfter,
+    outcomeComparable,
     before: a,
     after: b,
     deltas,

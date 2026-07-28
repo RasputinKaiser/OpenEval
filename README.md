@@ -15,7 +15,7 @@ https://github.com/user-attachments/assets/97375fda-e019-451b-b15b-8d914792f0c7
 
 The 29.5-second v0.1.1 launch film shows the real OpenEval dashboard: live sessions, collection history, repeatable runs, comparisons, coverage, telemetry, and accuracy audits.
 
-[Download the full-resolution MP4](https://github.com/RasputinKaiser/OpenEval/releases/download/v0.1.1/openeval-launch-v0.1.1.mp4) · [Open the v0.1.1 release](https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.1) · [What's new in v0.1.2](https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.2)
+[Download the full-resolution MP4](https://github.com/RasputinKaiser/OpenEval/releases/download/v0.1.1/openeval-launch-v0.1.1.mp4) · [Open the v0.1.1 media release](https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.1) · [Latest release: v0.1.3](https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.3)
 
 ### Build Credits
 
@@ -24,16 +24,28 @@ The 29.5-second v0.1.1 launch film shows the real OpenEval dashboard: live sessi
 - **Production stack:** Codex, ImageGen, TouchDesigner, HyperFrames, GSAP, CDP Recorder, and FFmpeg.
 - **Acknowledgment:** huge thanks to [@KingBootoshi](https://x.com/KingBootoshi) from [righttointelligence.org](https://righttointelligence.org).
 
+## What's New in v0.1.3
+
+OpenEval v0.1.3 makes large local transcript collections faster to inspect and much harder to misread:
+
+- **93.5% smaller Live list payload:** the measured 100-session response fell from 2.65 MB to 171 KB, while full trace, tool, queue, file, and usage detail remains available on demand.
+- **Exact source inventory:** Gemini discovery now counts verified `~/.gemini/tmp/**/logs.json` artifacts instead of unrelated configuration JSON; same-machine known-source discovery improved from 60 ms to 26 ms median.
+- **Visible data fidelity:** Collection separates parseable and detect-only files and reports measured, inferred, missing, malformed, stale, archived, and incomplete evidence explicitly.
+- **Honest populations:** Live shows discovered, scanned, parsed, dropped, and unscanned files; Timeline distinguishes signal, judged, heuristic, and no-signal sessions and displays the actual outcome denominator.
+- **Stronger proof UX:** artifact byte receipts, visual-contract boundaries, strict accuracy gates, accessible case rows and session drawers, and resilient loading/error states make evidence easier to audit.
+
+[Read the v0.1.3 release notes](https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.3) · [Compare v0.1.2...v0.1.3](https://github.com/RasputinKaiser/OpenEval/compare/v0.1.2...v0.1.3)
+
 ## Highlights
 
 - **Descriptor-first harnesses:** bundled `ncode`, Claude Code, and Codex harnesses plus user harnesses under `harnesses/` are all validated JSON descriptors.
 - **Fast at scale:** a fingerprint-validated scan cache and a single shared full-history parse keep warm Collection/home loads near-instant at 1,000+ sessions, and Live polls send bytes, not megabytes, when nothing changed.
 - **Weighted graders:** combine shell checks, file assertions, transcript regexes, JSON path checks, trace-shape checks, git diff checks, and optional LLM rubric judges.
 - **Run dashboard:** browse recent runs, pass rates, token and cost summaries, case outcomes, and per-case trace detail.
-- **Live trace view:** inspect recent local CLI sessions with measured/inferred/missing/malformed provenance for usage, cost, model, duration, tool calls, and trace structure.
-- **Collection:** every harness's sessions on the machine — full-history totals, weekly usage rollups, top projects, OpenRouter-based cost estimates (always tilde-marked), and a permanent archive so sessions survive harness log pruning.
+- **Live trace view:** inspect recent local CLI sessions with measured/inferred/missing/malformed provenance for usage, cost, model, duration, tool calls, and trace structure; discovered/scanned/parsed counts keep the latest-session slice explicit.
+- **Collection:** every harness's sessions on the machine — full-history totals, parseable versus detect-only inventory, session-evidence fidelity, weekly usage rollups, top projects, OpenRouter-based cost estimates (always tilde-marked), and a permanent archive so sessions survive harness log pruning.
 - **Full-text search:** an FTS5 index over every transcript's conversational text; one search box across Claude Code, Codex, ncode, and any other parseable source, with a read-only transcript viewer for every hit.
-- **Timeline & Impact:** adoption markers (skills, MCP servers, subagents, models), before/after impact deltas with confound flags, automatic change-point detection, and opt-in LLM-judge outcome refinement (OpenRouter or a local CLI; verdicts persist and upgrade the heuristic scores).
+- **Timeline & Impact:** adoption markers (skills, MCP servers, subagents, models), before/after impact deltas with explicit outcome denominators and confound flags, automatic change-point detection, and opt-in LLM-judge outcome refinement (OpenRouter or a local CLI; verdicts persist and upgrade the heuristic scores).
 - **Accuracy audits:** review whether cases have deterministic proof, known-bad rejection, oracle coverage, and rubric backstops.
 - **Local-first storage:** run history, workdirs, transcripts, SQLite WAL files, and personal stats live under `data/`, which is ignored by Git.
 - **Fixture-based repeatability:** each case can copy a tiny repository from `fixtures/`, initialize git, run the harness, and grade the changed workdir.
@@ -102,7 +114,7 @@ The dashboard currently exposes these primary routes:
 | `selftest` | `tsx lib/cli/selftest.ts` | Validate DB access, cases, harness descriptors/parsers, no-op baselines, known-bad rejection, and oracles. |
 | `judge:windows` | `tsx scripts/judge-windows.ts` | Timeline helper: judge sessions inside adoption-marker windows. |
 | `audit:accuracy` | `tsx lib/cli/accuracy.ts` | Audit case proof strength, oracle coverage, known-bad coverage, and evidence tiers. |
-| `audit:accuracy:strict` | `tsx lib/cli/accuracy.ts --strict` | Accuracy audit that fails on warnings. |
+| `audit:accuracy:strict` | `tsx lib/cli/accuracy.ts --strict --strict-known-bad` | Release gate for malformed cases, dangling oracle scripts, deterministic/trace gaps, and missing known-bad fixtures. |
 | `report` | `tsx lib/cli/report.ts` | Generate a Markdown run report or portable bundle (`--bundle`, `--redact`); every run also records a reproducibility manifest. |
 
 The `test*` scripts set `OPENEVAL_DATA_ROOT=.test-data` so test runs never touch your real `data/` history.

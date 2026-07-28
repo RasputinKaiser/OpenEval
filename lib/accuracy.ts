@@ -38,6 +38,14 @@ export interface AccuracyAudit {
   cases: CaseAccuracyAudit[];
 }
 
+export function hasStrictAccuracyFailure(row: CaseAccuracyAudit): boolean {
+  return (
+    !row.hasOracle ||
+    row.tiers.deterministic + row.tiers.trace === 0 ||
+    row.weaknesses.some((weakness) => weakness.startsWith("oracle script missing on disk:"))
+  );
+}
+
 const EMPTY_TIERS: Record<EvidenceTier, number> = {
   deterministic: 0,
   trace: 0,
@@ -188,7 +196,7 @@ export function auditCase(c: CaseDefinition, opts?: AuditOptions): CaseAccuracyA
     hasOracle,
     hasKnownBad,
     hasBudget: !!c.budget,
-    hasVisualContract: !!c.visual,
+    hasVisualContract: !!c.visual?.expected_artifacts?.length,
     requiresVisionInput: !!c.visual?.requires_vision_input,
     graderCount: c.graders.length,
     tiers,

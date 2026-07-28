@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import {
   AlertTriangle,
@@ -18,7 +18,8 @@ import {
   Zap,
 } from "lucide-react";
 import { compactDisplayPath } from "@/lib/redaction";
-import type { LiveSession, LiveTranscriptTurn, MetricSource, TranscriptResult } from "@/lib/live";
+import { useFocusTrap } from "@/lib/use-focus-trap";
+import type { LiveSession, LiveSessionDetailResult, LiveSessionListItem, LiveTranscriptTurn, MetricSource, TranscriptResult } from "@/lib/live";
 import { collectionTranscriptHref, displayText, fmt, fmtBytes, fmtMs } from "./live-shared";
 import { ListStack, LoadingSkeletonRows, MetricGroup, QualityBadge, SourceChip, StatusPill, TinyMetric } from "./LivePrimitives";
 
@@ -123,8 +124,53 @@ function isEditableTarget(target: EventTarget | null): boolean {
   return tag === "input" || tag === "textarea" || tag === "select" || target.isContentEditable;
 }
 
+function listSessionPlaceholder(session: LiveSessionListItem): LiveSession {
+  return {
+    ...session,
+    lastPromptPreview: null,
+    modelUsage: [],
+    usageSegments: [],
+    toolSummaries: [],
+    toolDurations: [],
+    queueSummary: { enqueue: 0, dequeue: 0, remove: 0, popAll: 0, preview: [] },
+    fileActivity: { touchedFiles: [], readLikeOperations: 0, writeLikeOperations: 0 },
+    modeSummary: { permissionModes: {}, gitBranch: session.modeSummary.gitBranch, entrypoint: null },
+    staleMs: 0,
+    skillsUsed: [],
+    mcpServersUsed: [],
+    subagentSpawns: 0,
+    cliVersion: null,
+    outcomeSignals: { userPositive: 0, userNegative: 0, rephrases: 0, errorTail: false, testsPassedTail: false, reworkFiles: 0 },
+  };
+}
+
+function DetailFetchState({ status, error, onRetry }: { status: "loading" | "error" | "unavailable"; error?: string | null; onRetry: () => void }) {
+  if (status === "loading") {
+    return (
+      <div role="status" aria-live="polite" className="rounded-lg border border-bd bg-bg/45 p-5 text-sm text-fg-muted">
+        <div className="flex items-center gap-2"><Loader2 className="size-4 animate-spin" /> Loading full session detail…</div>
+        <div className="mt-2 text-xs text-fg-dim">The list stays lightweight; trace, tool, usage, and file details load only for this drawer.</div>
+      </div>
+    );
+  }
+  return (
+    <div role="alert" className="rounded-lg border border-warn/30 bg-warn/10 p-5 text-sm text-warn">
+      <div>{error ?? "Full session detail is unavailable."}</div>
+      {status === "error" && (
+        <button type="button" onClick={onRetry} className="mt-3 inline-flex items-center gap-2 rounded border border-warn/40 px-3 py-1.5 text-xs hover:bg-warn/10">
+          <RefreshCwIcon /> Retry detail
+        </button>
+      )}
+    </div>
+  );
+}
+
+function RefreshCwIcon() {
+  return <span aria-hidden="true">↻</span>;
+}
+
 export function SessionDrawer({
-  session,
+  session: listSession,
   redact,
   users,
   onClose,
@@ -132,9 +178,10 @@ export function SessionDrawer({
   hasPrev,
   hasNext,
   getTranscript,
+  getSessionDetail,
   harness,
 }: {
-  session: LiveSession;
+  session: LiveSessionListItem;
   redact: boolean;
   users: ReadonlySet<string>;
   onClose: () => void;
@@ -143,12 +190,58 @@ export function SessionDrawer({
   hasPrev?: boolean;
   hasNext?: boolean;
   getTranscript?: (filePath: string, harness?: string) => Promise<TranscriptResult>;
+  getSessionDetail?: (filePath: string, harness?: string) => Promise<LiveSessionDetailResult>;
   harness: string;
 }) {
   const [turns, setTurns] = useState<LiveTranscriptTurn[] | null>(null);
   const [transcriptError, setTranscriptError] = useState<string | null>(null);
+  const [detailSession, setDetailSession] = useState<LiveSession | null>(null);
+  const [detailStatus, setDetailStatus] = useState<"loading" | "ready" | "error" | "unavailable">("loading");
+  const [detailError, setDetailError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const [closing, setClosing] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const detailRequestRef = useRef(0);
+  useFocusTrap(dialogRef, true);
+  const detailsReady = detailStatus === "ready" && detailSession?.path === listSession.path;
+  const session = detailsReady && detailSession ? detailSession : listSessionPlaceholder(listSession);
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = previousOverflow; };
+  }, []);
+
+  const loadDetail = useCallback(async () => {
+    const requestId = ++detailRequestRef.current;
+    const requestedPath = listSession.path;
+    setDetailSession(null);
+    setDetailError(null);
+    if (!requestedPath || !getSessionDetail) {
+      setDetailStatus("unavailable");
+      setDetailError(!requestedPath ? "Full session detail is unavailable because this row has no source path." : "Full session detail loader is unavailable.");
+      return;
+    }
+    setDetailStatus("loading");
+    try {
+      const result = await getSessionDetail(requestedPath, harness);
+      if (requestId !== detailRequestRef.current) return;
+      if (result.session) {
+        setDetailSession(result.session);
+        setDetailStatus("ready");
+      } else {
+        setDetailStatus("error");
+        setDetailError(result.error ?? "Full session detail is unavailable.");
+      }
+    } catch (e) {
+      if (requestId !== detailRequestRef.current) return;
+      setDetailStatus("error");
+      setDetailError(e instanceof Error ? e.message : String(e));
+    }
+  }, [getSessionDetail, harness, listSession.path]);
+
+  useEffect(() => { void loadDetail(); }, [loadDetail]);
+
   const onCloseRef = useRef(onClose);
   useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
   const onNavigateRef = useRef(onNavigate);
@@ -194,15 +287,15 @@ export function SessionDrawer({
 
   useEffect(() => {
     let cancelled = false;
-    if (!getTranscript || !session.path) {
-      loadedPathRef.current = session.path ?? null;
+    if (!getTranscript || !listSession.path) {
+      loadedPathRef.current = listSession.path ?? null;
       if (!cancelled) setTurns([]);
       return;
     }
-    if (loadedPathRef.current !== session.path) setTurns(null);
+    if (loadedPathRef.current !== listSession.path) setTurns(null);
     setTranscriptError(null);
-    const requestedPath = session.path;
-    getTranscript(session.path, harness)
+    const requestedPath = listSession.path;
+    getTranscript(listSession.path, harness)
       .then((res) => {
         if (cancelled) return;
         loadedPathRef.current = requestedPath;
@@ -221,7 +314,7 @@ export function SessionDrawer({
         }
       });
     return () => { cancelled = true; };
-  }, [session, getTranscript, harness]);
+  }, [listSession.path, getTranscript, harness]);
 
   const visible = mounted && !closing;
   const durationByName = new Map(session.toolDurations.map((d) => [d.name, d] as const));
@@ -235,6 +328,7 @@ export function SessionDrawer({
         style={{ opacity: visible ? 1 : 0 }}
       />
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label="Session details"
@@ -286,7 +380,7 @@ export function SessionDrawer({
                 <FileText className="size-3.5" /> Full transcript
               </a>
             )}
-            <button type="button" onClick={requestClose} aria-label="Close session details" className="rounded min-h-10 min-w-10 flex items-center justify-center hover:bg-bg-elev">
+            <button type="button" data-autofocus onClick={requestClose} aria-label="Close session details" className="rounded min-h-10 min-w-10 flex items-center justify-center hover:bg-bg-elev">
               <X className="size-5 text-fg-muted" />
             </button>
           </div>
@@ -300,6 +394,7 @@ export function SessionDrawer({
             <MetricCard label="Tokens" value={session.metricSources.tokens === "missing" ? "missing" : fmt(session.inputTokens + session.outputTokens)} source={session.metricSources.tokens} />
           </section>
 
+          {detailsReady ? <>
           <DetailPanel title="Usage">
             <div className="mb-3 grid grid-cols-2 gap-x-4 gap-y-2">
               <TinyMetric label="Input" value={session.metricSources.tokens === "measured" ? fmt(session.inputTokens) : "missing"} />
@@ -473,6 +568,11 @@ export function SessionDrawer({
               </div>
             )}
           </section>
+          </> : <DetailFetchState
+            status={detailStatus === "unavailable" ? "unavailable" : detailStatus === "error" ? "error" : "loading"}
+            error={detailError ? displayText(detailError, redact, users) : detailError}
+            onRetry={() => { void loadDetail(); }}
+          />}
         </div>
       </div>
     </div>

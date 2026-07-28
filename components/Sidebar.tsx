@@ -7,6 +7,7 @@ import { Activity, FileText, GitCompareArrows, LayoutDashboard, Radio, Plus, Shi
 import clsx from "clsx";
 import ThemeToggle from "./ThemeToggle";
 import { cachedFetch } from "@/lib/cached-fetch";
+import packageMetadata from "@/package.json";
 
 interface NavItem { href: string; label: string; icon: typeof Activity }
 interface NavSection { label: string | null; items: NavItem[] }
@@ -141,7 +142,7 @@ export default function Sidebar() {
         ))}
       </nav>
       <div className="hidden border-t border-bd p-3 md:flex md:items-center md:justify-between">
-        {!collapsed && <div className="text-[10px] text-fg-dim mono">v0.1.0</div>}
+        {!collapsed && <div className="text-[10px] text-fg-dim mono">v{packageMetadata.version}</div>}
         <div className="flex items-center gap-1">
           <ThemeToggle collapsed={collapsed} />
           <button

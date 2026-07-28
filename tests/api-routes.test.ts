@@ -274,7 +274,19 @@ test("GET artifact serves files only from the case workdir", async () => {
     { params: Promise.resolve({ id: run.id, caseId: "case-1" }) },
   );
   assert.equal(ok.status, 200);
-  assert.equal((await ok.json()).content, "safe result");
+  const artifact = await ok.json();
+  assert.equal(artifact.content, "safe result");
+  assert.equal(artifact.bytes, Buffer.byteLength("safe result"));
+  assert.equal(artifact.sha256, "59aa1e19bf892c8a2106ac56a3e0cf7e969b3bc037cd5ce821b177caa7c0f4b1");
+  assert.equal(typeof artifact.modifiedAtMs, "number");
+  assert.match(ok.headers.get("etag") ?? "", /^"[a-f0-9]{64}"$/);
+  const notModified = await artifactRoute.GET(
+    new NextRequest(`http://localhost:3000/api/runs/${run.id}/case/case-1/artifact?path=result.txt`, {
+      headers: { "if-none-match": ok.headers.get("etag") ?? "" },
+    }),
+    { params: Promise.resolve({ id: run.id, caseId: "case-1" }) },
+  );
+  assert.equal(notModified.status, 304);
   const escaped = await artifactRoute.GET(
     new NextRequest(`http://localhost:3000/api/runs/${run.id}/case/case-1/artifact?path=../outside.txt`),
     { params: Promise.resolve({ id: run.id, caseId: "case-1" }) },

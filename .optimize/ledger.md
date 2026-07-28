@@ -88,3 +88,105 @@ speed (89.7MB/s page-cache-warm), warm 26-50ms/90 files, hot 4-7ms.
   to bank the P1-P5 wins as a user-visible number, then take backlog #1
   (request-scoped sharing) with equiv-scan as the gate. Machine-load flag applies
   to every wall-clock number.
+
+## Run 5 — 2026-07-27 (UX+runtime+proof, 612efd6, dirty tree, estimator heuristic-chars/4, 10k tok ≈ 60s)
+Focus: reduce default-page payload and repeated discovery work while making
+loading, failure, evidence, and artifact states explicit instead of optimistic.
+- Applied: lean Live list projection + lazy session detail. The same 100 real
+  session objects serialized at 2,649,849 bytes before projection; the observed
+  `GET /api/live?limit=100` response is 171,020 bytes (−93.5%). List rows retain
+  summary metrics and at most 24 usage-rate points; tool/file/timeline detail is
+  fetched only when the drawer opens. The stable Hermes signature-only poll is
+  71 bytes. Drawer loading/error/retry, stale-request guards, focus containment,
+  focus restoration, and body-scroll locking were browser-verified.
+- Applied: cache unknown transcript-source discovery for 30 seconds, keyed by
+  the configured known roots. Known-source fingerprints and content sentinels
+  still revalidate on every fresh scan. The deterministic performance contract
+  proves warm scans do no repeated unknown-root discovery and do only bounded
+  head/tail sentinel reads. Warm `GET /api/collection?limit=80` samples were
+  0.547/0.208/0.156/0.201/0.172s (median 0.201s); this is a route receipt, not a
+  strict before/after percentage because process load and cache state differed.
+- Applied: proof honesty sweep. Visual coverage now uses visual cases as its
+  denominator (the old formula could display 300–400%); persisted evidence tiers
+  cannot elevate the tier beyond the current grader contract; expected artifacts
+  are labelled as contracts rather than observed proof. Artifact responses add
+  byte count, SHA-256, modified time, ETag, and 304 support, and the UI states
+  plainly that byte receipt does not automatically verify visual quality.
+  Dashboard collection/timeline failures are distinct from empty data, Accuracy
+  uses strict case loading, and CI now runs the strict known-bad audit.
+- Applied: interaction feedback and accessibility. Case selection is a native
+  button sibling to checkbox/re-run controls; Timeline reports fresh/loading/
+  stale/error states, retains its last good report, exposes retry/judge errors,
+  prevents overlapping polls, and stops after terminal/no-op responses. The
+  sidebar version now comes from package metadata, eliminating the observed
+  v0.1.0 vs package 0.1.2 drift.
+- Probes before: types 11.074s, test 11.910s, lint 3.492s, bench 2.820s.
+  Final: types 2.983s; test median 11.488s (10.142/11.488/13.023); lint 3.351s;
+  bench median 3.364s (3.237/3.364/3.800), recheck 3.447s. The optimizer's
+  cross-process bench delta looked like a 19–22% regression, but an immediate
+  isolated same-machine baseline/current comparison contradicted it: baseline
+  claude 479/851/517ms and codex 308/468/333ms; current claude 416/385/395ms and
+  codex 283/338/287ms. Rejected the wall-time regression as machine-load noise.
+- Gates: 519 tests, typecheck, lint, strict accuracy (24/24 oracle + known-bad),
+  selftest (49 pass, 6 LLM skips), public-upload audit, doctor, production build,
+  and Chrome checks across dashboard/Live/Timeline/Accuracy/run detail, desktop
+  dark/light, and narrow viewport. Browser console errors: none.
+- Next run: request-scope the repeated full-history aggregate pass, then profile
+  the remaining aggregation micro-passes. Preserve the payload and discovery
+  contracts as regression gates.
+
+## Run 6 — 2026-07-27 (data+runtime+proof, 612efd6, dirty tree, estimator heuristic-chars/4, 10k tok ≈ 60s)
+Focus: correct source inventory, expose denominator/provenance boundaries, and
+accept only measured performance changes.
+- Applied: exact detect-only inventory. Gemini previously walked both
+  `~/.gemini/tmp` and all of `~/.gemini` for every JSON/JSONL file, counting
+  browser profiles, IDE/config data, and tool environments as 707 session files.
+  It now detects only per-project `logs.json` under `~/.gemini/tmp`: 707 → 1.
+  Same-machine `discoverKnownSources()` samples changed from
+  94/59/57/65/56/60/88ms (median 60ms) to 39/39/30/23/22/26/24ms
+  (median 26ms, −57%). Global inventory changed 3,022 → 2,318 during the run;
+  the net is −704 because two unrelated live files appeared, while Gemini's
+  source-specific correction is exactly −706. Exact-name/suffix detection and
+  max-depth/cap truncation reasons are regression-tested.
+- Applied: Collection data fidelity. The final live rescan separates 2,193
+  parseable files from 127 detect-only files and 1,390 parsed sessions. It now
+  exposes 1,085 measured-usage sessions, 46 missing-model sessions, 305
+  missing-token sessions, 1,069 inferred-cost sessions, and malformed/stale
+  counts. Parse-budget partials and bounded detect-only inventory lower bounds
+  have separate visible warnings; no invalid file/session coverage ratio is
+  manufactured.
+- Applied: population and outcome denominators. Final
+  `/api/live?harness=codex&limit=50` reports 1,705 discovered files, 50
+  scanned/parsed, 0 dropped, and 1,655
+  unscanned; every usage/quality total is labeled as that latest slice.
+  Timeline reports exact counts (1,390 total; 982 signal; 325 judged; 657
+  heuristic signal; 408 no signal). Adoption rows now distinguish the complete
+  before/after windows from the actual judged/signal samples used by medians and
+  suppress an outcome delta when either side has no usable evidence.
+- Applied after independent proof review: Collection now propagates the parser's
+  own hard scan-cap receipt into `partial`/`partialSources`, even when no request
+  budget was set, so a safety cap cannot silently look complete. Detect-only
+  depth/cap probes are tri-state: small unrelated subtrees are proven complete,
+  while a match, unreadable subtree, or exhausted evidence budget remains
+  conservatively partial. Both edge paths have fixtures; the 102-test focused
+  data suite, full suite, typecheck, lint, production build, public-upload audit,
+  and a second read-only judge pass are green.
+- Rejected: fusing the Collection aggregate and full-history collection pass.
+  A controlled 1,200-session warm-cache benchmark kept output shape identical
+  but moved median 65.43ms → 69.64ms. The change was reverted; no speculative
+  optimization was shipped. The earlier backlog claim of three independent
+  page passes was also stale: current pages already share the snapshot.
+- Probes before → final: types 3.259s → 2.019s; full test median 10.957s →
+  9.103s; lint 3.227s → 3.455s (noise-sized +7.1%); live bench 3.501s →
+  2.838s. Discovery has the causal A/B above; cross-process probe deltas are
+  health receipts, not attributed speedups.
+- Gates: 525 tests (the measured full suite passed three times, plus a final
+  explicit run), focused 90-test data/collection/live/timeline suite, typecheck,
+  lint, diff check, and production build. Chrome QA passed on Collection, Live,
+  and Timeline in dark/light and 1,418px/390px layouts with no page-level
+  horizontal overflow or console errors. Dev server restored on port 3000.
+  Auxiliary SIPS homebase verification returned `source_not_found` because this
+  is not a homebase package and lacks its two validator scripts; that result is
+  not counted as a green gate or as an OpenEval failure.
+  The post-review hard-cap regression was followed by another complete
+  `npm test` pass and the 102-test focused suite above.

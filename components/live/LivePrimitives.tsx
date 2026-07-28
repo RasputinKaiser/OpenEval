@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import clsx from "clsx";
 import { AlertCircle, AlertTriangle, Gauge, Inbox, RefreshCw } from "lucide-react";
 import { redactSensitiveText } from "@/lib/redaction";
-import type { LiveSession, MetricSource } from "@/lib/live";
+import type { LiveSessionListItem, MetricSource } from "@/lib/live";
 import { displayText, isSessionStale } from "./live-shared";
 
 export function TinyMetric({ label, value }: { label: string; value: string }) {
@@ -76,7 +76,7 @@ export function QualityBadge({ value }: { value: number }) {
   );
 }
 
-export function StatusPill({ session, stale: staleProp }: { session: LiveSession; stale?: boolean }) {
+export function StatusPill({ session, stale: staleProp }: { session: LiveSessionListItem; stale?: boolean }) {
   const stale = staleProp ?? isSessionStale(session);
   if (session.isError || session.toolErrors > 0 || session.hookErrors > 0) {
     return <span className="w-fit rounded bg-err/10 px-2 py-1 text-[10px] mono text-err">error</span>;

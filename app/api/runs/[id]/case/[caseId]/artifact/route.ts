@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "node:fs";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import { getRunCaseByCaseId } from "@/lib/db";
 import { resolveWithin } from "@/lib/config";
@@ -43,12 +44,25 @@ export async function GET(
     if (!realRelative || realRelative.startsWith("..") || path.isAbsolute(realRelative)) {
       return badRequest("Invalid path", { detail: "Artifact paths must stay inside the case workdir." });
     }
-    const content = fs.readFileSync(realArtifact, "utf8");
+    const bytes = fs.readFileSync(realArtifact);
+    const content = bytes.toString("utf8");
+    const sha256 = createHash("sha256").update(bytes).digest("hex");
+    const modifiedAtMs = fs.statSync(realArtifact).mtimeMs;
+    const etag = `"${sha256}"`;
     const isTerminal = isTerminalCaseStatus(rc.status);
     const headers = isTerminal
-      ? { "Cache-Control": "private, max-age=300, stale-while-revalidate=600" }
-      : { "Cache-Control": "no-cache" };
-    return NextResponse.json({ path: artifactPath, content }, { headers });
+      ? { "Cache-Control": "private, max-age=300, stale-while-revalidate=600", ETag: etag }
+      : { "Cache-Control": "no-cache", ETag: etag };
+    if (req.headers.get("if-none-match") === etag) {
+      return new NextResponse(null, { status: 304, headers });
+    }
+    return NextResponse.json({
+      path: artifactPath,
+      content,
+      bytes: bytes.byteLength,
+      sha256,
+      modifiedAtMs,
+    }, { headers });
   } catch {
     return notFound("Artifact not found. Run the case or oracle solve script first.");
   }

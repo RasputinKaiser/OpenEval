@@ -25,6 +25,8 @@ export interface CollectionSourceDef {
   parseable: boolean;
   /** File extensions to count for detect-only sources (parseable === false). */
   detectExts?: string[];
+  /** Exact basenames to count for detect-only sources (parseable === false). */
+  detectNames?: string[];
   note?: string;
 }
 
@@ -109,11 +111,11 @@ export const KNOWN_COLLECTION_SOURCES: CollectionSourceDef[] = [
   {
     id: "gemini-cli",
     label: "Gemini CLI",
-    roots: ["~/.gemini/tmp", "~/.gemini"],
+    roots: ["~/.gemini/tmp"],
     format: "jsonl-dir",
     parseable: false,
-    detectExts: [".json", ".jsonl"],
-    note: "Gemini CLI checkpoints/logs.",
+    detectNames: ["logs.json"],
+    note: "Gemini CLI per-project logs.json inventory under ~/.gemini/tmp.",
   },
   {
     id: "continue",

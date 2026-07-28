@@ -17,9 +17,15 @@ export default async function CollectionPage({ searchParams }: { searchParams?: 
       sources: [], unknown: [], sessions: [], presentSources: 0, totalFiles: 0,
       totalParsedSessions: 0, totalArchivedSessions: 0, totalCostUsd: 0, anyEstimatedCost: false, totalInputTokens: 0, totalOutputTokens: 0,
       totalCacheReadTokens: 0, totalCacheCreateTokens: 0, totalToolCalls: 0,
+      totalMeasuredUsageSessions: 0, totalMeasuredDurationSessions: 0,
+      totalMissingModelSessions: 0, totalInferredModelSessions: 0,
+      totalMissingTokenSessions: 0, totalInferredCostSessions: 0,
+      totalMalformedLineSessions: 0, totalStaleSessions: 0,
+      totalParseableFiles: 0, totalDetectOnlyFiles: 0,
+      inventoryPartial: false, inventoryPartialSources: [],
       totalPricedSessions: 0, totalMeasuredCostSessions: 0, totalListedRateSessions: 0,
       totalFamilyRateSessions: 0, totalFallbackRateSessions: 0,
-      pricingListDate: "", pricingSource: "", byModel: [], byTool: [],
+      pricingListDate: "", pricingSource: "", byModel: [], byTool: [], partial: false, partialSources: [],
     };
   }
   let rollup: RollupReport | undefined;

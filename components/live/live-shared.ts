@@ -1,4 +1,4 @@
-import type { LiveAggregate, LiveSession } from "../../lib/live";
+import type { LiveAggregate, LiveAggregateList, LiveSessionListItem } from "../../lib/live";
 import { redactNamedUsers, redactSensitiveText } from "../../lib/redaction";
 
 export type FilterMode = "all" | "attention" | "stale" | "missing";
@@ -56,7 +56,7 @@ export function applyLiveViewState(params: URLSearchParams, state: LiveViewState
   else params.set("q", q);
 }
 
-export function sessionKey(session: LiveSession): string {
+export function sessionKey(session: LiveSessionListItem): string {
   return session.path ?? `${session.sessionId}\u0000${session.project}`;
 }
 
@@ -66,7 +66,7 @@ export function sessionKey(session: LiveSession): string {
 // a full payload means the server's signature already judged the content
 // changed, and second-guessing it here with a narrower field list would risk
 // silently discarding real updates.
-export function mergeAggregate(prev: LiveAggregate | null, next: LiveAggregate): LiveAggregate {
+export function mergeAggregate<T extends LiveAggregate | LiveAggregateList>(prev: T | null, next: T): T {
   if (!prev || prev.sessions.length === 0) return next;
   const prevByKey = new Map(prev.sessions.map((session) => [sessionKey(session), session]));
   const sessions = next.sessions.map((session) => {
@@ -85,15 +85,15 @@ export function mergeAggregate(prev: LiveAggregate | null, next: LiveAggregate):
     }
     return session;
   });
-  return { ...next, sessions };
+  return { ...next, sessions } as T;
 }
 
 /** Filter + sort the session list for display. Pure so the view logic is testable. */
 export function selectVisibleSessions(
-  sessions: readonly LiveSession[],
+  sessions: readonly LiveSessionListItem[],
   view: LiveViewState,
   now: number = Date.now()
-): LiveSession[] {
+): LiveSessionListItem[] {
   const q = view.search.trim().toLowerCase();
   const filtered = sessions.filter((session) => {
     if (view.filter === "attention" && !needsAttention(session)) return false;
@@ -121,7 +121,7 @@ export function shortId(id: string): string {
   return `${id.slice(0, 8)}...${id.slice(-5)}`;
 }
 
-export function needsAttention(session: LiveSession): boolean {
+export function needsAttention(session: LiveSessionListItem): boolean {
   return session.isError || session.toolErrors > 0 || session.hookErrors > 0 || session.dataQuality < 70 || session.malformedLineCount > 0;
 }
 
@@ -132,7 +132,7 @@ export function staleThresholdMs(): number {
 // Derived from lastEventAt at render time. The server-stamped staleMs freezes
 // under the unchanged-sig poll shortcut and reused session references, so the
 // client must not read it for staleness decisions.
-export function isSessionStale(session: LiveSession, now: number = Date.now()): boolean {
+export function isSessionStale(session: LiveSessionListItem, now: number = Date.now()): boolean {
   return now - session.lastEventAt > staleThresholdMs();
 }
 
@@ -173,7 +173,7 @@ export function fmtMs(ms: number): string {
 }
 
 /** Collection transcript-viewer link for a session, when its transcript file is known. */
-export function collectionTranscriptHref(session: LiveSession): string | null {
+export function collectionTranscriptHref(session: LiveSessionListItem): string | null {
   if (!session.path) return null;
   return `/collection/session?file=${encodeURIComponent(session.path)}`;
 }

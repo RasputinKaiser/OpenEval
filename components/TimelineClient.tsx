@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import clsx from "clsx";
-import { Activity, TrendingUp, TrendingDown, AlertTriangle, ArrowLeft, Gavel, Scale, LineChart, GitCompareArrows, Zap, CalendarPlus, Filter } from "lucide-react";
+import { Activity, TrendingUp, TrendingDown, AlertTriangle, ArrowLeft, Gavel, Scale, LineChart, GitCompareArrows, Zap, CalendarPlus, Filter, CheckCircle2, Loader2, RefreshCw } from "lucide-react";
 import PageHeader from "./PageHeader";
 import { KIND_COLOR, KIND_ICON, KIND_LABEL } from "./markerKinds";
 import { SectionHeader, SectionNav } from "./Section";
@@ -12,6 +12,7 @@ import { fmtDate, fmtPct as pct, fmtSigned as signed } from "@/lib/format";
 import type { TimelineReport } from "@/lib/insights/collect";
 import type { MarkerKind } from "@/lib/insights/timeline";
 import type { JudgeJobStatus } from "@/lib/insights/judge";
+import { shouldPollJudgeStatus, timelinePollError, timelineRefreshPhase } from "@/lib/timeline-poll-state";
 
 
 const MARKER_KINDS: MarkerKind[] = ["skill", "mcp", "subagent", "model"];
@@ -64,9 +65,16 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
   const [data, setData] = useState(initialData);
   const [judging, setJudging] = useState(false);
   const [judgeMsg, setJudgeMsg] = useState<string | null>(null);
-  const [err, setErr] = useState(error);
+  const [err, setErr] = useState<string | undefined>();
   const [job, setJob] = useState<JudgeJobStatus | null>(null);
+  const [timelineLoaded, setTimelineLoaded] = useState(!error);
+  const [timelineLoading, setTimelineLoading] = useState(false);
+  const [timelineStale, setTimelineStale] = useState(Boolean(error));
+  const [timelineError, setTimelineError] = useState<string | null>(error ?? null);
+  const [jobStatusError, setJobStatusError] = useState<string | null>(null);
+  const [timelineUpdatedAt, setTimelineUpdatedAt] = useState<number | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollInFlightRef = useRef(false);
   // Marker-kind filter, mirrored into `?kind=` so a filtered view survives
   // reload/share. Read on mount (not in the initializer) to keep SSR and the
   // first client render identical.
@@ -97,44 +105,90 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
   const trend = data.overall.trend;
   const TrendIcon = trend >= 0 ? TrendingUp : TrendingDown;
 
-  const refreshData = useCallback(async () => {
-    const fresh = await fetch("/api/collection/timeline");
-    if (fresh.ok) setData(await fresh.json());
+  const refreshData = useCallback(async (): Promise<boolean> => {
+    setTimelineLoading(true);
+    setTimelineError(null);
+    try {
+      const fresh = await fetch("/api/collection/timeline");
+      if (!fresh.ok) throw new Error(`HTTP ${fresh.status}`);
+      setData(await fresh.json());
+      setTimelineLoaded(true);
+      setTimelineStale(false);
+      setTimelineUpdatedAt(Date.now());
+      return true;
+    } catch (e) {
+      setTimelineError(timelinePollError(e));
+      setTimelineStale(true);
+      return false;
+    } finally {
+      setTimelineLoading(false);
+    }
   }, []);
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
   }, []);
 
+  const pollJudgeStatus = useCallback(async () => {
+    if (pollInFlightRef.current) return;
+    pollInFlightRef.current = true;
+    try {
+      const res = await fetch("/api/collection/timeline/judge");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const s: JudgeJobStatus = await res.json();
+      setJob(s);
+      setJobStatusError(null);
+      if (!shouldPollJudgeStatus(s)) {
+        stopPolling();
+        await refreshData();
+      } else {
+        setTimelineStale(true);
+      }
+    } catch (e) {
+      stopPolling();
+      setJobStatusError(`Judge status unavailable: ${timelinePollError(e)}`);
+      setTimelineStale(true);
+    } finally {
+      pollInFlightRef.current = false;
+    }
+  }, [refreshData, stopPolling]);
+
   const startPolling = useCallback(() => {
     stopPolling();
-    pollRef.current = setInterval(async () => {
-      try {
-        const res = await fetch("/api/collection/timeline/judge");
-        if (!res.ok) return;
-        const s: JudgeJobStatus = await res.json();
-        setJob(s);
-        if (!s.running) {
-          stopPolling();
-          await refreshData();
-        }
-      } catch {}
-    }, 4000);
-  }, [refreshData, stopPolling]);
+    setJobStatusError(null);
+    setTimelineStale(true);
+    pollRef.current = setInterval(() => { void pollJudgeStatus(); }, 4000);
+  }, [pollJudgeStatus, stopPolling]);
+
+  const loadJobStatus = useCallback(async () => {
+    try {
+      const res = await fetch("/api/collection/timeline/judge");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const s: JudgeJobStatus = await res.json();
+      setJobStatusError(null);
+      if (s.startedAt) setJob(s);
+      if (shouldPollJudgeStatus(s)) startPolling();
+      else stopPolling();
+    } catch (e) {
+      stopPolling();
+      setJobStatusError(`Judge status unavailable: ${timelinePollError(e)}`);
+      setTimelineStale(true);
+    }
+  }, [startPolling, stopPolling]);
 
   // A background job may already be running from an earlier visit — pick it up.
   useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch("/api/collection/timeline/judge");
-        if (!res.ok) return;
-        const s: JudgeJobStatus = await res.json();
-        if (s.startedAt) setJob(s);
-        if (s.running) startPolling();
-      } catch {}
-    })();
+    void loadJobStatus();
     return stopPolling;
-  }, [startPolling, stopPolling]);
+  }, [loadJobStatus, stopPolling]);
+
+  const retryTimeline = useCallback(async () => {
+    const wasRunning = job?.running === true;
+    const refreshed = await refreshData();
+    if (wasRunning) startPolling();
+    else await loadJobStatus();
+    if (refreshed && !wasRunning) setJobStatusError(null);
+  }, [job?.running, loadJobStatus, refreshData, startPolling]);
 
   async function judgeAllWindows() {
     try {
@@ -146,7 +200,9 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const r = await res.json();
       setJob(r.status);
-      if (r.started) startPolling();
+      setJobStatusError(null);
+      setTimelineStale(Boolean(r.status.running));
+      if (r.started && shouldPollJudgeStatus(r.status)) startPolling();
       else if (!r.status.running) setJudgeMsg("Every marker-window session is already judged.");
       setErr(undefined);
     } catch (e) {
@@ -172,14 +228,22 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
             ? "Every sampled session is already judged."
             : `No verdicts returned (${r.failed} failed via ${r.judge}).${r.lastError ? ` Last error: ${r.lastError}` : ""}`,
       );
-      await refreshData();
-      setErr(undefined);
+      const refreshed = await refreshData();
+      if (refreshed) setErr(undefined);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
       setJudging(false);
     }
   }
+
+  const timelinePhase = timelineRefreshPhase({
+    hasData: timelineLoaded,
+    loading: timelineLoading,
+    stale: timelineStale || shouldPollJudgeStatus(job),
+    error: timelineError ?? jobStatusError,
+  });
+  const timelineStatusError = timelineError ?? jobStatusError;
 
   return (
     <div className="p-4 md:p-6 max-w-6xl mx-auto">
@@ -220,6 +284,38 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
         ]}
         summary={`${data.totalSessions} sessions · ${pct(data.signalCoverage)} signal`}
       />
+
+      <div
+        className={clsx(
+          "mb-4 rounded-lg border p-3 flex items-center gap-2 text-sm",
+          timelinePhase === "fresh" && "border-ok/30 bg-ok/5 text-ok",
+          timelinePhase === "loading" && "border-accent/30 bg-accent/5 text-accent-soft",
+          timelinePhase === "stale" && "border-warn/40 bg-warn/10 text-warn",
+          timelinePhase === "error" && "border-err/40 bg-err/10 text-err",
+        )}
+        role={timelinePhase === "error" ? "alert" : "status"}
+        aria-live="polite"
+      >
+        {timelinePhase === "fresh" && <CheckCircle2 className="size-4 shrink-0" />}
+        {timelinePhase === "loading" && <Loader2 className="size-4 shrink-0 animate-spin" />}
+        {(timelinePhase === "stale" || timelinePhase === "error") && <AlertTriangle className="size-4 shrink-0" />}
+        <span className="min-w-0 flex-1">
+          {timelinePhase === "fresh" && <>Timeline evidence fresh{timelineUpdatedAt ? ` · updated ${new Date(timelineUpdatedAt).toLocaleTimeString()}` : " · loaded from the server"}.</>}
+          {timelinePhase === "loading" && <>Refreshing timeline evidence… The current report remains visible until the refresh completes.</>}
+          {timelinePhase === "stale" && <>Timeline evidence may be stale while judge-window results finish. The current report remains visible.</>}
+          {timelinePhase === "error" && <><span className="font-medium">{timelineError ? "Timeline evidence refresh failed." : "Judge-window status unavailable."}</span> <span className="text-fg-muted">{timelineStatusError ?? "The current report may be stale."}</span></>}
+        </span>
+        {timelinePhase !== "fresh" && (
+          <button
+            type="button"
+            onClick={() => { void retryTimeline(); }}
+            disabled={timelineLoading}
+            className="inline-flex items-center gap-1.5 rounded-md border border-current/30 px-2 py-1 text-xs hover:bg-bg-elev transition-colors disabled:opacity-50 shrink-0"
+          >
+            <RefreshCw className={clsx("size-3.5", timelineLoading && "animate-spin")} /> Retry
+          </button>
+        )}
+      </div>
 
       {err && <div className="card p-3 mb-4 text-sm text-err flex items-center gap-2"><AlertTriangle className="size-4" /> {err}</div>}
       {judgeMsg && <div className="card p-3 mb-4 text-sm text-fg-muted flex items-center gap-2"><Gavel className="size-4 text-accent-soft" /> {judgeMsg}</div>}
@@ -280,12 +376,16 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
           <div className="text-[10px] uppercase tracking-wider text-fg-muted">Signal coverage</div>
           <div className="text-lg mono font-semibold tabular-nums mt-0.5">{pct(data.signalCoverage)}</div>
           <div className="text-[11px] text-fg-dim">
-            had an inferable outcome
-            {data.judgedCoverage > 0 && <span className="text-accent-soft"> · {pct(data.judgedCoverage)} LLM-judged</span>}
+            <span className="mono tabular-nums">{data.signalSessions ?? Math.round(data.signalCoverage * data.totalSessions)}</span> with evidence
+            {(data.judgedSessions ?? 0) > 0 && (
+              <span className="text-accent-soft">
+                {" "}· <span className="mono tabular-nums">{data.judgedSessions}</span> LLM-judged
+              </span>
+            )}
           </div>
           <div
             className="mt-1.5 h-[5px] rounded-full bg-bg-elev overflow-hidden flex"
-            title={`${pct(data.judgedCoverage)} LLM-judged · ${pct(Math.max(0, data.signalCoverage - data.judgedCoverage))} heuristic signal · ${pct(Math.max(0, 1 - data.signalCoverage))} no signal`}
+            title={`${data.judgedSessions ?? Math.round(data.judgedCoverage * data.totalSessions)} LLM-judged · ${data.heuristicSignalSessions ?? Math.round(Math.max(0, data.signalCoverage - data.judgedCoverage) * data.totalSessions)} heuristic signal · ${data.noSignalSessions ?? Math.round(Math.max(0, 1 - data.signalCoverage) * data.totalSessions)} no signal`}
           >
             <div style={{ width: `${data.judgedCoverage * 100}%`, background: "var(--color-accent)" }} />
             <div style={{ width: `${Math.max(0, data.signalCoverage - data.judgedCoverage) * 100}%`, background: "color-mix(in srgb, var(--color-accent) 35%, transparent)" }} />
@@ -370,7 +470,10 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
                 <tr><td colSpan={6} className="px-3 py-6 text-center text-fg-dim text-sm">No measured {kindFilter === "all" ? "" : `${KIND_LABEL[kindFilter as MarkerKind]} `}adoptions match the current marker filter.</td></tr>
               )}
               {(() => {
-                const maxDelta = Math.max(...visibleImpacts.map((x) => Math.abs(x.deltas.outcome)), 1e-9);
+                const maxDelta = Math.max(
+                  ...visibleImpacts.filter((x) => x.outcomeComparable !== false).map((x) => Math.abs(x.deltas.outcome)),
+                  1e-9,
+                );
                 return visibleImpacts.map((im) => {
                 const Icon = KIND_ICON[im.marker.kind];
                 return (
@@ -381,7 +484,13 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
                         <span className="font-medium truncate max-w-[160px] md:max-w-[240px]">{im.marker.name}</span>
                       </div>
                       <div className="text-[10px] text-fg-dim mono">
-                        {KIND_LABEL[im.marker.kind]} · {fmtDate(im.marker.firstSeenAt)} · n={im.nBefore}/{im.nAfter}
+                        {KIND_LABEL[im.marker.kind]} · {fmtDate(im.marker.firstSeenAt)} · windows {im.nBefore}/{im.nAfter}
+                        {" · outcome "}
+                        <span
+                          title={`Outcome medians use ${im.outcomePoolBefore ?? "signal"} scores before and ${im.outcomePoolAfter ?? "signal"} scores after`}
+                        >
+                          n={im.outcomeNBefore ?? im.signalBefore ?? im.nBefore}/{im.outcomeNAfter ?? im.signalAfter ?? im.nAfter}
+                        </span>
                         {(im.judgedBefore > 0 || im.judgedAfter > 0) && (
                           <span
                             className={clsx(im.judgedBefore >= 5 && im.judgedAfter >= 5 ? "text-accent-soft" : "text-fg-dim")}
@@ -392,7 +501,11 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
                         )}
                       </div>
                     </td>
-                    <td className="num"><DeltaBar value={im.deltas.outcome} max={maxDelta} /></td>
+                    <td className="num">
+                      {im.outcomeComparable === false
+                        ? <span className="text-fg-dim" title="No usable outcome evidence on one side">—</span>
+                        : <DeltaBar value={im.deltas.outcome} max={maxDelta} />}
+                    </td>
                     <td className="num"><Delta value={im.deltas.toolErrorRate} lowerIsBetter fmt={(v) => signed(v * 100, 0) + "%"} /></td>
                     <td className="num"><Delta value={im.deltas.costUsd} lowerIsBetter fmt={(v) => "$" + v.toFixed(2)} /></td>
                     <td className="num"><Delta value={im.deltas.toolCallsPerTurn} lowerIsBetter fmt={(v) => signed(v, 1)} /></td>

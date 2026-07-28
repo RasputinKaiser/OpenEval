@@ -154,6 +154,26 @@ test("warm rescan with zero changed files does no full-file re-reads", () => {
   }
 });
 
+test("fresh rescans reuse the bounded unknown-source discovery result", () => {
+  const dir = makeCorpus("openeval-perf-unknown-");
+  const def: CollectionSourceDef = { id: "perf-unknown", label: "Perf Unknown", roots: [dir], format: "jsonl-dir", parseable: true };
+  writeSessionFile(dir, "u1", "2026-06-18T09:00:00.000Z");
+  let unknownWalks = 0;
+  _setCollectionHooksForTest({
+    ...hooksFor(def),
+    unknown: () => {
+      unknownWalks++;
+      return [];
+    },
+    unknownTtlMs: 60_000,
+  });
+
+  scanAllSources(10);
+  scanAllSources(10, { fresh: true });
+  scanAllSources(10, { fresh: true });
+  assert.equal(unknownWalks, 1, "fresh corpus validation must not repeat the expensive home-directory walk inside its TTL");
+});
+
 const budgetDir = makeCorpus("openeval-perf-budget-");
 const budgetDef: CollectionSourceDef = { id: "perf-budget", label: "Perf Budget", roots: [budgetDir], format: "jsonl-dir", parseable: true };
 

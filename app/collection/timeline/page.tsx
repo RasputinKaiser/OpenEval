@@ -12,7 +12,8 @@ export default async function TimelinePage() {
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
     data = {
-      totalSessions: 0, signalCoverage: 0, judgedCoverage: 0, dateStart: null, dateEnd: null,
+      totalSessions: 0, signalSessions: 0, judgedSessions: 0, heuristicSignalSessions: 0, noSignalSessions: 0,
+      signalCoverage: 0, judgedCoverage: 0, dateStart: null, dateEnd: null,
       overall: { firstHalfOutcome: 0, secondHalfOutcome: 0, trend: 0 },
       markers: [], impacts: [], changePoints: [], outcomeSeries: [],
     };
