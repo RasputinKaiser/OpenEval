@@ -6,7 +6,7 @@ import clsx from "clsx";
 import { AlertTriangle, FileText, FolderGit2, ShieldAlert, ShieldCheck, Wrench } from "lucide-react";
 import { compactDisplayPath } from "@/lib/redaction";
 import { Sparkline } from "@/components/Sparkline";
-import type { LiveSession } from "@/lib/live";
+import type { LiveSessionListItem } from "@/lib/live";
 import {
   collectionTranscriptHref,
   displayText,
@@ -22,7 +22,7 @@ import { QualityBadge, SourceChip, StatusPill } from "./LivePrimitives";
 
 const ROW_GRID = "md:grid-cols-[minmax(220px,1.7fr)_90px_100px_100px_90px_100px]";
 
-export const SessionRow = React.memo(function SessionRow({ session, stale, redact, users, onSelect }: { session: LiveSession; stale: boolean; redact: boolean; users: ReadonlySet<string>; onSelect: (s: LiveSession) => void }) {
+export const SessionRow = React.memo(function SessionRow({ session, stale, redact, users, onSelect }: { session: LiveSessionListItem; stale: boolean; redact: boolean; users: ReadonlySet<string>; onSelect: (s: LiveSessionListItem) => void }) {
   const attention = needsAttention(session);
   const edgeColor = session.isError || session.toolErrors > 0 ? "bg-err" : session.hookErrors > 0 ? "bg-warn" : attention ? "bg-warn/50" : stale ? "bg-fg-dim" : "bg-ok/40";
   const transcriptHref = collectionTranscriptHref(session);
@@ -73,8 +73,8 @@ export const SessionRow = React.memo(function SessionRow({ session, stale, redac
           )}>
             {session.metricSources.tokens === "measured" ? `${fmt(session.totalTokens)} tok` : "usage missing"}
           </span>
-          {session.usageSegments.length > 1 && (
-            <Sparkline data={session.usageSegments.map((s) => s.outTokPerSec)} width={36} height={14} color="#a78bff" />
+          {(session.usageRates?.length ?? 0) > 1 && (
+            <Sparkline data={session.usageRates ?? []} width={36} height={14} color="#a78bff" />
           )}
           {session.parseWarnings.slice(0, 2).map((warning) => (
             <span key={warning} className="rounded bg-warn/10 px-1.5 py-0.5 text-warn">{displayText(warning, redact, users)}</span>
@@ -123,11 +123,11 @@ export function SessionTable({
   onSelect,
   controls,
 }: {
-  sessions: LiveSession[];
+  sessions: LiveSessionListItem[];
   totalCount: number;
   redact: boolean;
   users: ReadonlySet<string>;
-  onSelect: (s: LiveSession) => void;
+  onSelect: (s: LiveSessionListItem) => void;
   controls: ReactNode;
 }) {
   return (

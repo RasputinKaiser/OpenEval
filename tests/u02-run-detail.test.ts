@@ -5,6 +5,7 @@ import {
   clampScore,
   confidenceGrade,
   evidenceTierForSpec,
+  hasVisualArtifactContract,
   summarizeCaseTrust,
   summarizeEvidence,
   summarizeRunConfidence,
@@ -53,17 +54,17 @@ test("evidenceTierForSpec maps spec types to tiers", () => {
   assert.equal(evidenceTierForSpec({ type: "file_contains", path: "a", pattern: "b" }), "deterministic");
 });
 
-test("summarizeEvidence counts per tier and honors explicit evidenceTier", () => {
+test("summarizeEvidence derives tiers from the proof spec and rejects stale elevation metadata", () => {
   const counts = summarizeEvidence([
     graderResult({ spec: { type: "exit_code", command: "true" } }),
     graderResult({ spec: { type: "exit_code", command: "false" }, passed: false }),
     graderResult({ spec: { type: "step" } }),
-    // explicit evidenceTier wins over spec-derived tier
+    // Persisted metadata cannot elevate a deterministic check to visual proof.
     graderResult({ spec: { type: "exit_code", command: "x" }, evidenceTier: "visual" }),
   ]);
-  assert.deepEqual(counts.deterministic, { passed: 1, total: 2 });
+  assert.deepEqual(counts.deterministic, { passed: 2, total: 3 });
   assert.deepEqual(counts.trace, { passed: 1, total: 1 });
-  assert.deepEqual(counts.visual, { passed: 1, total: 1 });
+  assert.deepEqual(counts.visual, { passed: 0, total: 0 });
   assert.deepEqual(counts.llm_judge, { passed: 0, total: 0 });
 });
 
@@ -111,6 +112,31 @@ test("summarizeCaseTrust flags LLM judge without deterministic backstop", () => 
   });
   const trust = summarizeCaseTrust(rc);
   assert.ok(trust.weaknesses.includes("LLM judge lacks backstop"));
+});
+
+test("visual contracts require at least one expected artifact", () => {
+  const declaredOnly = makeCase({}, { visual: { kind: "svg" } });
+  const withArtifact = makeCase({}, { visual: { kind: "svg", expected_artifacts: ["result.svg"] } });
+  assert.equal(hasVisualArtifactContract(declaredOnly.case_def), false);
+  assert.equal(summarizeCaseTrust(declaredOnly).hasVisualContract, false);
+  assert.ok(summarizeCaseTrust(declaredOnly).weaknesses.includes("visual has no artifacts"));
+  assert.equal(hasVisualArtifactContract(withArtifact.case_def), true);
+  assert.equal(summarizeCaseTrust(withArtifact).hasVisualContract, true);
+  assert.ok(!summarizeCaseTrust(withArtifact).weaknesses.includes("visual has no artifacts"));
+});
+
+test("visual coverage counts only visual cases and never exceeds 100%", () => {
+  const ordinary = Array.from({ length: 3 }, (_, i) => makeCase({ id: `plain-${i}`, case_id: `plain-${i}` }));
+  const missing = makeCase(
+    { id: "visual-missing", case_id: "visual-missing" },
+    { visual: { kind: "svg" } },
+  );
+  const contracted = makeCase(
+    { id: "visual-contracted", case_id: "visual-contracted" },
+    { visual: { kind: "svg", expected_artifacts: ["result.svg"] } },
+  );
+  assert.equal(summarizeRunConfidence([...ordinary, missing]).visualCoverage, 0);
+  assert.equal(summarizeRunConfidence([...ordinary, contracted]).visualCoverage, 100);
 });
 
 test("summarizeRunConfidence aggregates coverage and caps topWeaknesses at 5", () => {

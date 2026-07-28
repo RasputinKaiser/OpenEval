@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { getCachedSessionRows, listCachedFilesUnder, PARSER_VERSION } from "../live-cache";
 import { estimateCostUsd } from "../pricing";
-import type { CollectedSourceFiles, CollectionSourceSpec, LiveAggregate, LiveSession, LiveTraceSource } from "./types";
+import type { CollectedSourceFiles, CollectionSourceSpec, LiveAggregate, LiveAggregateList, LiveScanCoverage, LiveSession, LiveSessionListItem, LiveTraceSource } from "./types";
 import { resolveLiveSource, specToSource } from "./sources";
 import { summarizeCodexSessionFile, summarizeHermesSessionFile, summarizeLiveSessionFile } from "./summarize";
 import { aggregate } from "./aggregate";
@@ -42,9 +42,118 @@ export function scanLiveSessions(limit = 200, harness?: string): LiveAggregate {
   return scanResolvedSource(resolveLiveSource(harness), limit);
 }
 
-function parseSourceSessionList(source: LiveTraceSource, limit: number, scanWarnings: string[], includeArchived = false, preCollected?: CollectedSourceFiles, reparseFiles?: ReadonlySet<string>): LiveSession[] {
+const LIST_USAGE_RATE_SAMPLES = 24;
+
+/**
+ * Project a parsed session down to the fields the list/table and signature
+ * need. Drawer-only arrays are intentionally not copied into this object.
+ */
+export function projectLiveSession(session: LiveSession): LiveSessionListItem {
+  const { usageSegments, modelUsage: _modelUsage, lastPromptPreview: _lastPromptPreview, toolSummaries: _toolSummaries, toolDurations: _toolDurations, queueSummary: _queueSummary, fileActivity: _fileActivity, skillsUsed: _skillsUsed, mcpServersUsed: _mcpServersUsed, subagentSpawns: _subagentSpawns, cliVersion: _cliVersion, outcomeSignals: _outcomeSignals, staleMs: _staleMs, ...scalarFields } = session;
+  const usageRates = usageSegments.length === 0
+    ? []
+    : usageSegments.length <= LIST_USAGE_RATE_SAMPLES
+      ? usageSegments.map((segment) => segment.outTokPerSec)
+      : Array.from({ length: LIST_USAGE_RATE_SAMPLES }, (_, index) => {
+          const sourceIndex = Math.round(index * (usageSegments.length - 1) / (LIST_USAGE_RATE_SAMPLES - 1));
+          return usageSegments[sourceIndex]?.outTokPerSec ?? 0;
+        });
+  return {
+    ...scalarFields,
+    traceGraph: { ...session.traceGraph },
+    modeSummary: { gitBranch: session.modeSummary.gitBranch },
+    usageRates,
+  };
+}
+
+/** Return an aggregate with lean session rows for SSR/API transport. */
+export function projectLiveAggregate(data: LiveAggregate): LiveAggregateList {
+  return { ...data, sessions: data.sessions.map(projectLiveSession) };
+}
+
+function projectDirForDetail(source: LiveTraceSource, file: string): string {
+  for (const root of source.roots) {
+    const rel = path.relative(path.resolve(root), file);
+    if (rel === "" || rel.startsWith("..") || path.isAbsolute(rel)) continue;
+    if (source.format === "claude-projects") return rel.split(path.sep)[0] || path.basename(path.dirname(file));
+    return path.dirname(rel) || path.basename(root);
+  }
+  return path.basename(path.dirname(file));
+}
+
+export interface ResolvedLiveSessionFile {
+  file: string;
+  project: string;
+  mtime: number;
+  size: number;
+  source: LiveTraceSource;
+}
+
+/**
+ * Resolve a client-returned session path through the server's current source
+ * inventory. The requested string is used only as an equality key; every
+ * filesystem operation receives the path and stat produced by the trusted
+ * descriptor-root walk. This also rejects symlinks because the collector
+ * admits regular directory entries only.
+ */
+export function resolveLiveSessionFile(filePath: string, harness?: string): ResolvedLiveSessionFile | null {
+  const source = resolveLiveSource(harness);
+  if (source.status !== "available") return null;
+  const requested = path.resolve(filePath);
+  const expectedExtension = source.format === "hermes-json" ? ".json" : ".jsonl";
+  if (!requested.endsWith(expectedExtension)) return null;
+  const match = collectLiveTraceFiles(source, []).find((candidate) => path.resolve(candidate.file) === requested);
+  return match ? { ...match, source } : null;
+}
+
+/**
+ * Parse one complete session on demand for the drawer. The source/path check is
+ * deliberately repeated against the current server-side inventory rather than
+ * trusting the client-returned absolute path.
+ */
+export function readLiveSessionDetail(filePath: string, harness?: string): LiveSession | null {
+  const resolved = resolveLiveSessionFile(filePath, harness);
+  if (!resolved) return null;
+  const { file, mtime, size, source } = resolved;
+  const projectDir = projectDirForDetail(source, file);
+  const stat = { mtimeMs: mtime, size };
+  const session = source.format === "codex-sessions"
+    ? summarizeCodexSessionFile(file, projectDir, mtime, stat)
+    : source.format === "hermes-json"
+      ? summarizeHermesSessionFile(file, projectDir, mtime, stat)
+      : summarizeLiveSessionFile(file, projectDir, mtime, {
+          fields: source.fields,
+          inferredModel: source.inferredModel,
+          decodeProject: source.format !== "jsonl-dir",
+          stat,
+        });
+  return session ? refreshInferredSessionCost(session) : null;
+}
+
+function parseSourceSessionList(
+  source: LiveTraceSource,
+  limit: number,
+  scanWarnings: string[],
+  includeArchived = false,
+  preCollected?: CollectedSourceFiles,
+  reparseFiles?: ReadonlySet<string>,
+): { sessions: LiveSession[]; coverage: LiveScanCoverage } {
   const sessions: LiveSession[] = [];
-  if (source.status !== "available") return sessions;
+  if (source.status !== "available") {
+    return {
+      sessions,
+      coverage: {
+        requestedLimit: limit,
+        discoveredFiles: 0,
+        scannedFiles: 0,
+        parsedFiles: 0,
+        droppedFiles: 0,
+        unscannedFiles: 0,
+        archivedSessionsAdded: 0,
+        truncated: false,
+      },
+    };
+  }
   let files: Array<{ file: string; project: string; mtime: number; size: number }>;
   if (preCollected) {
     // Copy before sorting — the caller may share the collected list.
@@ -86,11 +195,23 @@ function parseSourceSessionList(source: LiveTraceSource, limit: number, scanWarn
   if (sessions.length < limit && scanned >= maxScan && files.length > scanned) {
     scanWarnings.push(`Only ${sessions.length} of the newest ${scanned} files parsed as sessions (${scanned - sessions.length} dropped, e.g. judge rollouts or stubs); ${files.length - scanned} older files were not scanned — the view may be missing older sessions`);
   }
+  const parsedFiles = sessions.length;
+  const beforeArchive = sessions.length;
   if (includeArchived) appendArchivedSessions(source, sessions, new Set(files.map((f) => f.file)));
+  const coverage: LiveScanCoverage = {
+    requestedLimit: limit,
+    discoveredFiles: files.length,
+    scannedFiles: scanned,
+    parsedFiles,
+    droppedFiles: scanned - parsedFiles,
+    unscannedFiles: files.length - scanned,
+    archivedSessionsAdded: sessions.length - beforeArchive,
+    truncated: files.length > scanned,
+  };
   // Inferred costs are derived data, not transcript evidence. Recompute them
   // from current list rates on every scan so persistent/archive cache rows do
   // not freeze stale pricing forever.
-  return sessions.map(refreshInferredSessionCost);
+  return { sessions: sessions.map(refreshInferredSessionCost), coverage };
 }
 
 function refreshInferredSessionCost(session: LiveSession): LiveSession {
@@ -165,14 +286,14 @@ function appendArchivedSessions(source: LiveTraceSource, sessions: LiveSession[]
  * Pass `preCollected` (e.g. discovery's walk) to skip re-walking the tree.
  */
 export function collectSourceSessions(spec: CollectionSourceSpec, limit = 100_000, opts: { includeArchived?: boolean; preCollected?: CollectedSourceFiles; reparseFiles?: ReadonlySet<string> } = {}): LiveSession[] {
-  return parseSourceSessionList(specToSource(spec), limit, [], opts.includeArchived ?? false, opts.preCollected, opts.reparseFiles);
+  return parseSourceSessionList(specToSource(spec), limit, [], opts.includeArchived ?? false, opts.preCollected, opts.reparseFiles).sessions;
 }
 
 function scanResolvedSource(source: LiveTraceSource, limit: number, includeArchived = false, preCollected?: CollectedSourceFiles, sessionRetention?: number, reparseFiles?: ReadonlySet<string>): LiveAggregate {
   const scanWarnings: string[] = [];
   if (source.status !== "available" && source.message) scanWarnings.push(source.message);
-  const sessions = parseSourceSessionList(source, limit, scanWarnings, includeArchived, preCollected, reparseFiles);
-  return aggregate(sessions, scanWarnings, source, sessionRetention);
+  const { sessions, coverage } = parseSourceSessionList(source, limit, scanWarnings, includeArchived, preCollected, reparseFiles);
+  return aggregate(sessions, scanWarnings, source, sessionRetention, coverage);
 }
 
 function collectLiveTraceFiles(source: LiveTraceSource, scanWarnings: string[]): Array<{ file: string; project: string; mtime: number; size: number }> {

@@ -9,6 +9,10 @@ import { detectChangePoints, type ChangePoint } from "./changepoints";
 
 export interface TimelineReport {
   totalSessions: number;
+  signalSessions: number;
+  judgedSessions: number;
+  heuristicSignalSessions: number;
+  noSignalSessions: number;
   signalCoverage: number; // fraction of sessions with any outcome signal
   judgedCoverage: number; // fraction of sessions with an LLM-judged outcome
   dateStart: number | null;
@@ -84,12 +88,23 @@ export function buildTimeline(sessionsIn?: TimelineSession[]): TimelineReport {
     .filter((m) => m.kind !== "model" && m.sessionCount >= 3)
     .map((m) => markerImpact(points, m, 20, 5))
     .filter((im) => im.nBefore + im.nAfter >= 6)
-    .sort((a, b) => b.deltas.outcome - a.deltas.outcome);
+    .sort((a, b) => {
+      if (a.outcomeComparable !== b.outcomeComparable) return a.outcomeComparable ? -1 : 1;
+      return b.deltas.outcome - a.deltas.outcome;
+    });
+
+  const judgedSessions = points.filter((p) => p.outcomeProvenance === "judged").length;
+  const heuristicSignalSessions = withSignal.length - judgedSessions;
+  const noSignalSessions = points.length - withSignal.length;
 
   return {
     totalSessions: points.length,
+    signalSessions: withSignal.length,
+    judgedSessions,
+    heuristicSignalSessions,
+    noSignalSessions,
     signalCoverage: points.length ? withSignal.length / points.length : 0,
-    judgedCoverage: points.length ? points.filter((p) => p.outcomeProvenance === "judged").length / points.length : 0,
+    judgedCoverage: points.length ? judgedSessions / points.length : 0,
     dateStart: points[0]?.at ?? null,
     dateEnd: points[points.length - 1]?.at ?? null,
     overall: { firstHalfOutcome, secondHalfOutcome, trend: secondHalfOutcome - firstHalfOutcome },

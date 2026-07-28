@@ -98,6 +98,11 @@ test("sidebar nav is labelled and marks the current page", () => {
   assert.match(src, /<nav aria-label="Primary"/);
   assert.match(src, /aria-current=\{active \? "page" : undefined\}/);
   assert.match(src, /sr-only/, "collapsed sidebar must keep labels for AT");
+  assert.match(
+    src,
+    /packageMetadata\.version/,
+    "sidebar version must come from package metadata instead of a stale literal"
+  );
 });
 
 test("toasts announce politely and expose variant as text", () => {

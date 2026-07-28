@@ -6,6 +6,7 @@ import clsx from "clsx";
 import {
   Boxes, RefreshCw, HelpCircle, AlertTriangle, Activity, Search, DatabaseZap,
   Layers, Coins, Hammer, TrendingUp, CalendarClock, Cpu, Wrench, HardDrive, History,
+  ShieldCheck,
   ArrowDownWideNarrow, Filter, ChevronDown,
   type LucideIcon,
 } from "lucide-react";
@@ -425,6 +426,7 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
 
   const sections = useMemo(() => [
     { id: "overview", label: "Overview" },
+    { id: "fidelity", label: "Fidelity" },
     ...(hasWeekly ? [{ id: "usage", label: "Usage" }] : []),
     ...(hasHeatmap ? [{ id: "rhythm", label: "Rhythm" }] : []),
     ...(hasModels ? [{ id: "models", label: "Models" }] : []),
@@ -440,6 +442,26 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
   const toolErrPct = data.totalToolCalls > 0 ? (toolErrTotal / data.totalToolCalls) * 100 : 0;
   const pricingCoverage = data.totalParsedSessions > 0 ? data.totalPricedSessions / data.totalParsedSessions : 0;
   const tilde = data.anyEstimatedCost ? "~" : "";
+
+  // These fields were added after the first Collection payload shipped. Keep
+  // the UI useful during a hot reload or when a client has an older payload;
+  // file inventory and parsed-session provenance remain separate by design.
+  const parseableFiles = data.totalParseableFiles ?? data.sources.reduce((n, s) => n + (s.parseable ? s.filesFound : 0), 0);
+  const detectOnlyFiles = data.totalDetectOnlyFiles ?? data.sources.reduce((n, s) => n + (!s.parseable ? s.filesFound : 0), 0);
+  const measuredUsageSessions = data.totalMeasuredUsageSessions ?? data.sources.reduce((n, s) => n + (s.sessionsWithMeasuredUsage ?? 0), 0);
+  const measuredDurationSessions = data.totalMeasuredDurationSessions ?? data.sources.reduce((n, s) => n + (s.sessionsWithMeasuredDuration ?? 0), 0);
+  const missingModelSessions = data.totalMissingModelSessions ?? data.sources.reduce((n, s) => n + (s.sessionsWithMissingModel ?? 0), 0);
+  const inferredModelSessions = data.totalInferredModelSessions ?? data.sources.reduce((n, s) => n + (s.sessionsWithInferredModel ?? 0), 0);
+  const missingTokenSessions = data.totalMissingTokenSessions ?? data.sources.reduce((n, s) => n + (s.sessionsWithMissingTokens ?? 0), 0);
+  const inferredCostSessions = data.totalInferredCostSessions ?? data.sources.reduce((n, s) => n + (s.sessionsWithInferredCost ?? 0), 0);
+  const malformedLineSessions = data.totalMalformedLineSessions ?? data.sources.reduce((n, s) => n + (s.sessionsWithMalformedLines ?? 0), 0);
+  const staleSessions = data.totalStaleSessions ?? data.sources.reduce((n, s) => n + (s.staleSessions ?? 0), 0);
+  const partialSourceLabels = (data.partialSources ?? [])
+    .map((id) => data.sources.find((s) => s.id === id)?.label ?? id)
+    .join(", ");
+  const inventoryPartialSourceLabels = (data.inventoryPartialSources ?? [])
+    .map((id) => data.sources.find((s) => s.id === id)?.label ?? id)
+    .join(", ");
 
   let busiest: { d: number; h: number; v: number } | null = null;
   for (let d = 0; d < hm.length; d++) {
@@ -497,6 +519,33 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
         </div>
       )}
 
+      {data.partial && (
+        <div className="mb-4 rounded-lg border border-warn/50 bg-warn/10 p-3 flex items-start gap-2.5" role="alert">
+          <AlertTriangle className="size-4 text-warn shrink-0 mt-0.5" />
+          <div className="min-w-0">
+            <div className="text-sm font-medium text-warn">Scan budget expired — values are incomplete</div>
+            <div className="text-[12px] text-fg-muted mt-0.5">
+              The newest parsed files and cached archived history are shown; older on-disk files were not parsed in this scan.
+              {partialSourceLabels ? <> Affected: {partialSourceLabels}.</> : null} Use Rescan to continue.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {data.inventoryPartial && (
+        <div className="mb-4 rounded-lg border border-warn/40 bg-warn/10 p-3 flex items-start gap-2.5" role="status">
+          <AlertTriangle className="size-4 text-warn shrink-0 mt-0.5" />
+          <div className="min-w-0">
+            <div className="text-sm font-medium text-warn">Detect-only file inventory is a lower bound</div>
+            <div className="text-[12px] text-fg-muted mt-0.5">
+              A bounded discovery walk reached its depth or file cap
+              {inventoryPartialSourceLabels ? <> for {inventoryPartialSourceLabels}</> : null}.
+              Parsed-session totals are unaffected; only detect-only file counts may be incomplete.
+            </div>
+          </div>
+        </div>
+      )}
+
       <section id="overview" className="scroll-mt-16 mb-6">
         <div className="stagger-grid grid grid-cols-1 md:grid-cols-3 gap-3">
           <StatGroup icon={Layers} label="Inventory">
@@ -546,6 +595,79 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
               sub={busiest && busiest.v > 0 ? `${fmtNum(busiest.v)} sessions` : undefined}
             />
           </StatGroup>
+        </div>
+      </section>
+
+      <section id="fidelity" className="scroll-mt-16 mb-6">
+        <SectionHeader
+          icon={ShieldCheck}
+          title="Data fidelity"
+          desc="Provenance of parsed sessions and parser support for files found on disk"
+          right={`${fmtNum(parseableFiles)} parseable · ${fmtNum(detectOnlyFiles)} detect-only`}
+        />
+        <div className="card overflow-hidden">
+          <div className="grid grid-cols-2 sm:grid-cols-3 divide-x divide-y divide-bd-subtle">
+            <StatCell
+              label="Measured tokens"
+              value={data.totalParsedSessions > 0 ? `${fmtNum(measuredUsageSessions)}/${fmtNum(data.totalParsedSessions)}` : "—"}
+              title={`${fmtNumFull(measuredUsageSessions)} of ${fmtNumFull(data.totalParsedSessions)} parsed sessions carry measured token usage; missing-token sessions: ${fmtNumFull(missingTokenSessions)}.`}
+              sub={missingTokenSessions > 0 ? `${fmtNum(missingTokenSessions)} missing` : "all parsed sessions"}
+            />
+            <StatCell
+              label="Measured duration"
+              value={data.totalParsedSessions > 0 ? `${fmtNum(measuredDurationSessions)}/${fmtNum(data.totalParsedSessions)}` : "—"}
+              title={`${fmtNumFull(measuredDurationSessions)} of ${fmtNumFull(data.totalParsedSessions)} parsed sessions carry measured duration evidence.`}
+              sub="session evidence"
+            />
+            <StatCell
+              label="Model missing"
+              value={fmtNum(missingModelSessions)}
+              tone={missingModelSessions > 0 ? "text-warn" : undefined}
+              title={`${fmtNumFull(missingModelSessions)} parsed sessions have no model identity in their trace.`}
+              sub={inferredModelSessions > 0 ? `${fmtNum(inferredModelSessions)} inferred` : "none missing"}
+            />
+            <StatCell
+              label="Cost inferred"
+              value={fmtNum(inferredCostSessions)}
+              title={`${fmtNumFull(inferredCostSessions)} parsed sessions use token/rate evidence rather than a recorded cost; ${fmtNumFull(data.totalMeasuredCostSessions)} have measured cost.`}
+              sub={`${fmtNum(data.totalMeasuredCostSessions)} measured`}
+            />
+            <StatCell
+              label="Malformed sessions"
+              value={fmtNum(malformedLineSessions)}
+              tone={malformedLineSessions > 0 ? "text-warn" : undefined}
+              title={`${fmtNumFull(malformedLineSessions)} parsed sessions skipped one or more malformed lines.`}
+              sub="parse health"
+            />
+            <StatCell
+              label="Stale sessions"
+              value={fmtNum(staleSessions)}
+              tone={staleSessions > 0 ? "text-warn" : undefined}
+              title={`${fmtNumFull(staleSessions)} parsed sessions are older than the stale threshold used by the live parser.`}
+              sub="freshness signal"
+            />
+            <StatCell
+              label="Parseable files"
+              value={fmtNum(parseableFiles)}
+              title={`${fmtNumFull(parseableFiles)} on-disk files belong to sources with a parser. This is an inventory count, not session coverage.`}
+              sub="on disk"
+            />
+            <StatCell
+              label="Detect-only files"
+              value={fmtNum(detectOnlyFiles)}
+              title={`${fmtNumFull(detectOnlyFiles)} on-disk files are detected but not parsed because their source format has no parser yet.`}
+              sub="metrics unavailable"
+            />
+            <StatCell
+              label="Avg quality"
+              value={data.totalParsedSessions > 0 ? `${Math.round(data.sources.reduce((n, s) => n + (s.avgDataQuality * s.parsedSessions), 0) / Math.max(1, data.totalParsedSessions))}%` : "—"}
+              title="Average data-quality score is weighted over parsed sessions; detect-only files are excluded."
+              sub="parsed sessions only"
+            />
+          </div>
+          <p className="px-3 py-2 border-t border-bd-subtle text-[10px] text-fg-dim">
+            Measured and inferred counts describe parsed sessions (including archived cache rows). Parseable and detect-only counts describe different on-disk file classes; they are intentionally not combined into a coverage ratio.
+          </p>
         </div>
       </section>
 
@@ -763,16 +885,23 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
                 </tr>
               </thead>
               <tbody>
-                {data.sources.map((s) => (
+                {data.sources.map((s) => {
+                  const scanWarnings = s.scanWarnings ?? [];
+                  const parsed = s.parsedSessions;
+                  const sourceFidelityTitle = s.parseable
+                    ? `${fmtNumFull(s.sessionsWithMeasuredUsage ?? 0)}/${fmtNumFull(parsed)} measured tokens · ${fmtNumFull(s.sessionsWithMeasuredDuration ?? 0)}/${fmtNumFull(parsed)} measured duration · ${fmtNumFull(s.sessionsWithMissingModel ?? 0)} missing model · ${fmtNumFull(s.sessionsWithInferredModel ?? 0)} inferred model · ${fmtNumFull(s.sessionsWithMissingTokens ?? 0)} missing tokens · ${fmtNumFull(s.sessionsWithInferredCost ?? 0)} inferred cost · ${fmtNumFull(s.sessionsWithMalformedLines ?? 0)} malformed sessions`
+                    : `${fmtNumFull(s.filesFound)} detect-only files; this source is inventoried but not parsed into session metrics.${s.note ? ` ${s.note}` : ""}`;
+                  return (
                   <tr key={s.id} className={clsx(s.status === "absent" && "opacity-45")}>
                     <td className={STICKY_TD}>
                       <div className="font-medium flex items-center gap-1.5">
                         {s.label}
-                        {s.scanWarnings.length > 0 && (
+                        {scanWarnings.length > 0 && (
                           <AlertTriangle className="size-3 text-warn shrink-0" aria-label="Scan warnings" role="img" />
                         )}
                       </div>
                       {!s.parseable && <div className="text-[10px] text-fg-dim flex items-center gap-1"><HelpCircle className="size-3" /> detect-only{s.note ? ` — ${s.note}` : ""}</div>}
+                      {s.parseable && parsed > 0 && <div className="text-[10px] text-fg-dim truncate" title={sourceFidelityTitle}>{fmtNum(s.sessionsWithMeasuredUsage ?? 0)}/{fmtNum(parsed)} measured tokens · {fmtNum(s.sessionsWithInferredCost ?? 0)} inferred cost</div>}
                     </td>
                     <td><StatusPill status={s.status} /></td>
                     <td className="mono text-[11px] text-fg-muted">{s.format}</td>
@@ -784,13 +913,14 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
                     <td className="num text-fg-muted" title={s.parseable && s.totalCostUsd ? `${fmtUsdFull(s.totalCostUsd)} API-equivalent estimate · ${fmtNumFull(s.pricedSessions)}/${fmtNumFull(s.parsedSessions)} sessions priced · not actual spend` : undefined}>{s.parseable && s.totalCostUsd ? (s.costEstimated ? "~" : "") + fmtUsd(s.totalCostUsd) : "—"}</td>
                     <td
                       className={clsx("num", s.parseable && s.parsedSessions > 0 && s.avgDataQuality < 50 ? "text-warn" : "text-fg-dim")}
-                      title={s.parseable && s.parsedSessions > 0 ? `Average data quality 0–100 — model/token/timing provenance and parse health${s.scanWarnings.length ? `\n${s.scanWarnings.join("\n")}` : ""}` : undefined}
+                      title={s.parseable && s.parsedSessions > 0 ? `Average data quality 0–100 — ${sourceFidelityTitle}${scanWarnings.length ? `\n${scanWarnings.join("\n")}` : ""}` : sourceFidelityTitle}
                     >
                       {s.parseable && s.parsedSessions > 0 ? Math.round(s.avgDataQuality) : "—"}
                     </td>
                     <td className="num text-fg-dim">{fmtRel(s.lastActivityMs, data.generatedAtMs)}</td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

@@ -7,7 +7,7 @@ import PageHeader from "./PageHeader";
 import { SectionHeader, SectionNav } from "./Section";
 import { RedactToggle } from "./RedactToggle";
 import { useRedactedShow } from "@/lib/use-redaction";
-import type { LiveAggregate, LiveSession, TranscriptResult } from "@/lib/live";
+import type { LiveAggregateList, LiveSessionDetailResult, LiveSessionListItem, TranscriptResult } from "@/lib/live";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import {
   applyLiveViewState,
@@ -29,28 +29,29 @@ import { SessionTable } from "./live/SessionTable";
 import { SessionDrawer } from "./live/SessionDrawer";
 
 type LiveClientProps = {
-  initialData?: LiveAggregate | null;
+  initialData?: LiveAggregateList | null;
   error?: string;
   getTranscript?: (filePath: string, harness?: string) => Promise<TranscriptResult>;
+  getSessionDetail?: (filePath: string, harness?: string) => Promise<LiveSessionDetailResult>;
   /** Server timestamp of the RSC scan; lets the client skip the redundant mount poll. */
   scannedAt?: number;
 };
 
 type LivePollResponse =
-  | (LiveAggregate & { sig?: string; generatedAt?: number })
+  | (LiveAggregateList & { sig?: string; generatedAt?: number })
   | { unchanged: true; sig: string; generatedAt: number };
 
 const HARNESS_STORAGE_KEY = "openeval.live.harness";
 const POLL_VISIBLE_MS = 10000;
 const POLL_HIDDEN_MS = 30000;
 
-export default function LiveClient({ initialData, error: initialError, getTranscript, scannedAt }: LiveClientProps) {
-  const [data, setData] = useState<LiveAggregate | null>(initialData ?? null);
+export default function LiveClient({ initialData, error: initialError, getTranscript, getSessionDetail, scannedAt }: LiveClientProps) {
+  const [data, setData] = useState<LiveAggregateList | null>(initialData ?? null);
   const [error, setError] = useState<string | undefined>(initialError);
   const [loading, setLoading] = useState(!initialData && !initialError);
   const [updatedAt, setUpdatedAt] = useState<number | null>(initialData && !initialError ? scannedAt ?? null : null);
-  const [selected, setSelected] = useState<LiveSession | null>(null);
-  const handleSelectSession = useCallback((s: LiveSession) => setSelected(s), []);
+  const [selected, setSelected] = useState<LiveSessionListItem | null>(null);
+  const handleSelectSession = useCallback((s: LiveSessionListItem) => setSelected(s), []);
   const [selectedHarness, setSelectedHarness] = useState(initialData?.sourceHarness ?? "");
   // Per-instance harvest — no module state, so nothing leaks across SSR
   // requests or component instances.
@@ -143,7 +144,7 @@ export default function LiveClient({ initialData, error: initialError, getTransc
             lastSigRef.current = d.sig;
             setError(undefined);
           } else {
-            const next = d as LiveAggregate & { sig?: string };
+            const next = d as LiveAggregateList & { sig?: string };
             lastSigRef.current = next.sig ?? "";
             setData((prev) => mergeAggregate(prev, next));
             // Any parsed 200 means polling recovered — clearing must not be
@@ -226,6 +227,18 @@ export default function LiveClient({ initialData, error: initialError, getTransc
   const modelEvidenceLabel = data.sessionsWithMissingModel ? "Unknown model" : "Inferred model";
   const modelEvidenceValue = data.sessionsWithMissingModel ? data.sessionsWithMissingModel : data.sessionsWithInferredModel;
   const modelEvidenceTone = data.sessionsWithMissingModel ? "warn" : undefined;
+  // Compatibility fallback for a stale client bundle during local HMR. Fresh
+  // server payloads always include the explicit scan-population boundary.
+  const scanCoverage = data.scanCoverage ?? {
+    requestedLimit: data.totalSessions,
+    discoveredFiles: data.totalSessions,
+    scannedFiles: data.totalSessions,
+    parsedFiles: data.totalSessions,
+    droppedFiles: 0,
+    unscannedFiles: 0,
+    archivedSessionsAdded: 0,
+    truncated: false,
+  };
 
   return (
     <div className="mx-auto max-w-7xl p-4 md:p-6">
@@ -266,7 +279,7 @@ export default function LiveClient({ initialData, error: initialError, getTransc
           { id: "sessions", label: "Sessions" },
           { id: "intelligence", label: "Intelligence" },
         ]}
-        summary={`${data.totalSessions} sessions · ${Math.round(data.avgDataQuality)}% quality`}
+        summary={`${data.totalSessions} parsed slice · ${scanCoverage.scannedFiles}/${scanCoverage.discoveredFiles} files scanned`}
       />
 
       {data.sourceStatus !== "available" && (
@@ -281,6 +294,18 @@ export default function LiveClient({ initialData, error: initialError, getTransc
         </div>
       )}
 
+      {scanCoverage.truncated && (
+        <div role="status" className="mb-4 rounded-lg border border-accent/30 bg-accent/5 p-3 text-sm text-fg-muted">
+          <span className="font-medium text-fg">Latest-slice boundary:</span>{" "}
+          scanned <span className="mono tabular-nums">{scanCoverage.scannedFiles}</span> of{" "}
+          <span className="mono tabular-nums">{scanCoverage.discoveredFiles}</span> discovered files and parsed{" "}
+          <span className="mono tabular-nums">{scanCoverage.parsedFiles}</span> sessions
+          {scanCoverage.droppedFiles > 0 && <> ({scanCoverage.droppedFiles} non-session files dropped)</>}.
+          {" "}<span className="mono tabular-nums">{scanCoverage.unscannedFiles}</span> older files were not scanned;
+          all usage and quality totals below describe this parsed slice.
+        </div>
+      )}
+
       <LiveUsageStrip data={data} />
 
       <section id="quality" className="scroll-mt-16 mb-6">
@@ -292,7 +317,9 @@ export default function LiveClient({ initialData, error: initialError, getTransc
         />
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         <MetricGroup label="Population">
-          <Stat label="Sessions" value={String(data.totalSessions)} icon={Activity} />
+          <Stat label="Parsed slice" value={String(data.totalSessions)} icon={Activity} />
+          <Stat label="Files scanned" value={`${scanCoverage.scannedFiles}/${scanCoverage.discoveredFiles}`} icon={FolderGit2} />
+          <Stat label="Dropped" value={String(scanCoverage.droppedFiles)} icon={Layers} tone={scanCoverage.droppedFiles ? "warn" : undefined} />
           <Stat label="Measured dur" value={`${data.sessionsWithMeasuredDuration}/${data.totalSessions}`} icon={Timer} />
         </MetricGroup>
         <MetricGroup label="Quality">
@@ -349,6 +376,7 @@ export default function LiveClient({ initialData, error: initialError, getTransc
           hasPrev={selectedIndex > 0}
           hasNext={selectedIndex !== -1 && selectedIndex < visibleSessions.length - 1}
           getTranscript={getTranscript}
+          getSessionDetail={getSessionDetail}
           harness={data.sourceHarness}
         />
       )}

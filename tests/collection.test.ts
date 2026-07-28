@@ -367,7 +367,7 @@ function memoTestHooks(def: CollectionSourceDef, ttlMs: number, unknownDirs: str
   const unknown = () => unknownDirs.map((dir) => ({
     dir, displayDir: dir, sampleFile: path.join(dir, "s.jsonl"), fileCount: 1, reason: "test",
   }));
-  return { discover, sources: () => [def], unknown, fingerprintTtlMs: ttlMs };
+  return { discover, sources: () => [def], unknown, fingerprintTtlMs: ttlMs, unknownTtlMs: 0 };
 }
 
 test("scanAllSources memo serves cached parse while the corpus fingerprint is unchanged", () => {

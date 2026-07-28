@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { defaultLiveLimitForHarness, scanLiveSessions, type LiveAggregate } from "@/lib/live";
+import { defaultLiveLimitForHarness, projectLiveAggregate, scanLiveSessions, type LiveAggregate } from "@/lib/live";
 import { clampInt, internalError, parseQuery, queryNumber } from "@/lib/api-http";
 
 export const dynamic = "force-dynamic";
@@ -28,6 +28,11 @@ function computeSignature(data: LiveAggregate): string {
     data.usageSummary.totalCostUsd,
     data.avgDataQuality,
     data.archivedSessions,
+    data.scanCoverage.discoveredFiles,
+    data.scanCoverage.scannedFiles,
+    data.scanCoverage.parsedFiles,
+    data.scanCoverage.droppedFiles,
+    data.scanCoverage.unscannedFiles,
     data.scanWarnings.join("\u0000"),
   ].join("|"));
   for (const s of data.sessions) {
@@ -57,7 +62,7 @@ export async function GET(request: Request) {
       // aggregate (up to 200 sessions of tool/usage/trace detail per poll).
       return NextResponse.json({ unchanged: true, sig, generatedAt: Date.now() }, { headers: CACHE_HEADERS });
     }
-    return NextResponse.json({ ...data, sig, generatedAt: Date.now() }, { headers: CACHE_HEADERS });
+    return NextResponse.json({ ...projectLiveAggregate(data), sig, generatedAt: Date.now() }, { headers: CACHE_HEADERS });
   } catch (error) {
     return internalError("Failed to scan live sessions", error);
   }

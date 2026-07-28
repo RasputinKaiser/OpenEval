@@ -12,6 +12,7 @@ import {
   redactSensitiveText,
   scanLiveSessions,
   scanSourceSessions,
+  readLiveSessionDetail,
   summarizeCodexSessionFile,
   summarizeLiveSessionFile,
 } from "../lib/live";
@@ -1044,6 +1045,11 @@ test("live API serves seeded descriptor sessions with exact content and rejects 
   // Costs 0.25 + 0.5 sum exactly in binary floating point.
   fs.writeFileSync(path.join(root, "session-a.jsonl"), sessionLine("api-session-a", 100, 25, 0.25), "utf8");
   fs.writeFileSync(path.join(root, "session-b.jsonl"), sessionLine("api-session-b", 40, 10, 0.5), "utf8");
+  const outsideRoot = fs.mkdtempSync(path.join(os.tmpdir(), "openeval-live-api-outside-"));
+  const outsideFile = path.join(outsideRoot, "outside.jsonl");
+  const escapedPath = path.join(root, "escaped.jsonl");
+  fs.writeFileSync(outsideFile, sessionLine("escaped-session", 1, 1, 0), "utf8");
+  fs.symlinkSync(outsideFile, escapedPath);
   fs.writeFileSync(descPath, JSON.stringify({
     id: sourceId,
     label: "Temporary API Source",
@@ -1076,6 +1082,15 @@ test("live API serves seeded descriptor sessions with exact content and rejects 
       ["api-session-a", "api-session-b"],
     );
     assert.ok(data.sessions.every((s: { model: string | null }) => s.model === "api-model"));
+    for (const session of data.sessions as Array<Record<string, unknown>>) {
+      for (const heavy of ["lastPromptPreview", "modelUsage", "usageSegments", "toolSummaries", "toolDurations", "queueSummary", "fileActivity", "outcomeSignals"]) {
+        assert.equal(heavy in session, false, `${heavy} should be lazy drawer detail`);
+      }
+    }
+    const detail = readLiveSessionDetail(String((data.sessions[0] as { path?: string }).path), sourceId);
+    assert.ok(detail, "an in-source row path can hydrate full drawer detail");
+    assert.ok(Array.isArray(detail?.usageSegments));
+    assert.equal(readLiveSessionDetail(escapedPath, sourceId), null, "a symlink inside the source cannot escape to another file");
     assert.equal(data.usageSummary.totalInputTokens, 140);
     assert.equal(data.usageSummary.totalOutputTokens, 35);
     assert.equal(data.usageSummary.totalTokens, 175);
@@ -1103,6 +1118,7 @@ test("live API serves seeded descriptor sessions with exact content and rejects 
   } finally {
     fs.rmSync(descPath, { force: true });
     fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(outsideRoot, { recursive: true, force: true });
   }
 });
 
@@ -1381,6 +1397,16 @@ test("scan fills the limit with real sessions past newer parse-dropped judge fil
     assert.equal(filled.sessions.length, 3, JSON.stringify(filled.scanWarnings));
     assert.ok(filled.sessions.every((s) => s.sessionId.startsWith("oversample-real-")));
     assert.equal(filled.scanWarnings.length, 0);
+    assert.deepEqual(filled.scanCoverage, {
+      requestedLimit: 3,
+      discoveredFiles: 10,
+      scannedFiles: 9,
+      parsedFiles: 3,
+      droppedFiles: 6,
+      unscannedFiles: 1,
+      archivedSessionsAdded: 0,
+      truncated: true,
+    });
 
     // limit=1 bounds the scan at 5 files — all six newest are droppable, so the
     // bound truncates short and must say so instead of silently showing nothing.
@@ -1389,6 +1415,16 @@ test("scan fills the limit with real sessions past newer parse-dropped judge fil
     assert.equal(truncated.scanWarnings.length, 1);
     assert.match(truncated.scanWarnings[0], /5 older files were not scanned/);
     assert.match(truncated.scanWarnings[0], /5 dropped/);
+    assert.deepEqual(truncated.scanCoverage, {
+      requestedLimit: 1,
+      discoveredFiles: 10,
+      scannedFiles: 5,
+      parsedFiles: 0,
+      droppedFiles: 5,
+      unscannedFiles: 5,
+      archivedSessionsAdded: 0,
+      truncated: true,
+    });
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

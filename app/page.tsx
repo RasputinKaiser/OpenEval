@@ -2,8 +2,7 @@ import Link from "next/link";
 import clsx from "clsx";
 import { countRuns, listRuns } from "@/lib/db";
 import { loadCases } from "@/lib/cases";
-import { collectAllSessions, scanAllSources, type AllSourcesResult } from "@/lib/collection/aggregate";
-import { buildTimeline, type TimelineReport } from "@/lib/insights/collect";
+import { loadDashboardObservation } from "@/lib/dashboard-observation";
 import StatusBadge from "@/components/StatusBadge";
 import HarnessBadge from "@/components/HarnessBadge";
 import RecentSessions from "@/components/RecentSessions";
@@ -13,7 +12,7 @@ import { Sparkline } from "@/components/Sparkline";
 import { fmtNum, fmtNumFull, fmtUsd, fmtUsdFull, fmtDuration, fmtSigned, fmtPct } from "@/lib/format";
 import { presentSummaryCost } from "@/lib/cost-display";
 import {
-  Activity, ArrowRight, BarChart3, Boxes, Cpu, DollarSign, FileText, Gavel, Radio, Search, Timer, TrendingDown, TrendingUp,
+  Activity, AlertTriangle, ArrowRight, BarChart3, Boxes, Cpu, DollarSign, FileText, Gavel, Radio, RefreshCw, Search, Timer, TrendingDown, TrendingUp,
 } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -37,13 +36,9 @@ export default async function Page() {
     : null;
 
   // The dashboard unifies both halves of the product: eval runs (Evaluate) and
-  // real-session analytics (Observe). Either half failing must not blank the page.
-  let collection: AllSourcesResult | null = null;
-  let timeline: TimelineReport | null = null;
-  try { collection = scanAllSources(12); } catch {}
-  // Same fingerprint-memoized snapshot as scanAllSources — the timeline no
-  // longer re-parses the full history on every dashboard render.
-  try { timeline = buildTimeline(collectAllSessions()); } catch {}
+  // real-session analytics (Observe). Either half failing must not blank the
+  // page — but it must remain visibly unavailable rather than looking empty.
+  const { collection, timeline, collectionError, timelineError } = loadDashboardObservation();
 
   const byCat = cases.reduce<Record<string, number>>((a, c) => { a[c.category] = (a[c.category] || 0) + 1; return a; }, {});
   const recentSessions = collection?.sessions.slice(0, 6) ?? [];
@@ -78,6 +73,33 @@ export default async function Page() {
         </div>
       </header>
 
+      {(collectionError || timelineError) && (
+        <section
+          className="mb-6 rounded-lg border border-warn/35 bg-warn/10 p-4"
+          role="alert"
+          aria-labelledby="dashboard-observation-warning"
+        >
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warn" />
+            <div className="min-w-0 flex-1">
+              <h2 id="dashboard-observation-warning" className="text-sm font-medium text-warn">
+                Session evidence is temporarily unavailable
+              </h2>
+              <p className="mt-1 text-xs leading-5 text-fg-muted">
+                Evaluation runs are still available. Metrics marked unavailable below are not zeroes and are not evidence that no history exists.
+              </p>
+              <div className="mt-2 space-y-1 text-[11px] text-fg-dim">
+                {collectionError && <div><span className="text-warn">Collection scan:</span> {collectionError}</div>}
+                {timelineError && <div><span className="text-warn">Timeline analysis:</span> {timelineError}</div>}
+              </div>
+              <Link href="/" className="mt-3 inline-flex items-center gap-1.5 text-xs text-accent-soft hover:underline">
+                <RefreshCw className="size-3" /> Retry dashboard evidence
+              </Link>
+            </div>
+          </div>
+        </section>
+      )}
+
       {firstRun ? (
         <FirstRunGuide />
       ) : (
@@ -87,7 +109,11 @@ export default async function Page() {
           icon={Boxes}
           label="Sessions collected"
           value={collection ? fmtNum(collection.totalParsedSessions) : "—"}
-          sub={collection && collection.totalArchivedSessions > 0 ? `incl. ${fmtNum(collection.totalArchivedSessions)} archived` : `${collection?.presentSources ?? 0} sources`}
+          sub={collection
+            ? collection.totalArchivedSessions > 0
+              ? `incl. ${fmtNum(collection.totalArchivedSessions)} archived`
+              : `${collection.presentSources} sources`
+            : collectionError ? "scan unavailable" : "not scanned"}
           href="/collection"
         />
         <Stat
@@ -103,14 +129,16 @@ export default async function Page() {
           label="Outcome trend"
           value={timeline ? fmtSigned(trend) : "—"}
           tone={trend > 0 ? "ok" : trend < 0 ? "err" : undefined}
-          sub={timeline ? `${timeline.overall.firstHalfOutcome.toFixed(2)} → ${timeline.overall.secondHalfOutcome.toFixed(2)}` : undefined}
+          sub={timeline
+            ? `${timeline.overall.firstHalfOutcome.toFixed(2)} → ${timeline.overall.secondHalfOutcome.toFixed(2)}`
+            : timelineError ? "analysis unavailable" : undefined}
           href="/collection/timeline"
         />
         <Stat
           icon={Gavel}
           label="LLM-judged"
           value={timeline ? fmtPct(timeline.judgedCoverage) : "—"}
-          sub={timeline ? `signal ${fmtPct(timeline.signalCoverage)}` : undefined}
+          sub={timeline ? `signal ${fmtPct(timeline.signalCoverage)}` : timelineError ? "coverage unavailable" : undefined}
           href="/collection/timeline"
         />
         <Stat icon={Activity} label="Eval runs" value={String(totalRuns)} sub={summary ? `last: ${(summary.passRate * 100).toFixed(0)}% pass` : "none yet"} href="/runs" />
@@ -135,7 +163,17 @@ export default async function Page() {
               Timeline <ArrowRight className="size-3" />
             </Link>
           </div>
-          {timeline && timeline.outcomeSeries.length > 1 ? (
+          {timelineError ? (
+            <div className="rounded-md border border-warn/25 bg-warn/5 p-4 text-sm">
+              <div className="font-medium text-warn">Timeline analysis unavailable</div>
+              <div className="mt-1 text-xs leading-5 text-fg-muted">
+                The last known outcome is not being shown as current evidence. Retry the dashboard or open Timeline for diagnostics.
+              </div>
+              <Link href="/collection/timeline" className="mt-3 inline-flex items-center gap-1 text-xs text-accent-soft hover:underline">
+                Open Timeline <ArrowRight className="size-3" />
+              </Link>
+            </div>
+          ) : timeline && timeline.outcomeSeries.length > 1 ? (
             <>
               <div className="mb-3">
                 <Sparkline data={timeline.outcomeSeries.map((p) => p.value)} width={280} height={44} responsive />
@@ -160,7 +198,7 @@ export default async function Page() {
               )}
             </>
           ) : (
-            <div className="text-center py-10 text-sm text-fg-dim">Not enough session history yet.</div>
+            <div className="text-center py-10 text-sm text-fg-dim">Not enough verified session history yet.</div>
           )}
         </section>
       </div>

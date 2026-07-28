@@ -150,6 +150,67 @@ export interface LiveSession {
   outcomeSignals: OutcomeSignals;
 }
 
+/**
+ * The session shape sent to the Live list and its polling API.
+ *
+ * The parser/cache keep the complete LiveSession for Collection and
+ * longitudinal analytics, but a list row does not need prompt previews,
+ * per-turn usage, tool/file/queue breakdowns, or outcome markers. Keeping a
+ * separate public projection prevents those drawer-only arrays from being
+ * serialized for every row while retaining everything the filters, table, and
+ * API signature use.
+ */
+export type LiveSessionListItem = Pick<LiveSession,
+  | "sessionId"
+  | "displayTitle"
+  | "project"
+  | "model"
+  | "startedAt"
+  | "lastEventAt"
+  | "durationMs"
+  | "inputTokens"
+  | "outputTokens"
+  | "cacheReadTokens"
+  | "cacheCreateTokens"
+  | "totalTokens"
+  | "costUsd"
+  | "toolCalls"
+  | "toolErrors"
+  | "numTurns"
+  | "stopReason"
+  | "isError"
+  | "pathBytes"
+  | "lineCount"
+  | "malformedLineCount"
+  | "thinkingBlocks"
+  | "textBlocks"
+  | "attachmentCount"
+  | "queueOperationCount"
+  | "snapshotCount"
+  | "hookErrors"
+  | "messageCount"
+  | "userType"
+  | "dataQuality"
+  | "metricSources"
+  | "parseWarnings"
+  | "toolErrorRate"
+  | "toolCallsPerTurn"
+  | "textAvailability"
+> & {
+  /** Only the graph counters shown in the list row; detail has the rest. */
+  traceGraph: Pick<LiveTraceGraph, "rootMessages" | "sidechainMessages" | "agentCount" | "orphanMessages">;
+  /** Only the branch marker shown in the list row; detail has permissions/entrypoint. */
+  modeSummary: Pick<LiveModeSummary, "gitBranch">;
+  /** Bounded output-rate samples used by the row sparkline. */
+  usageRates?: number[];
+  path?: string;
+  archived?: boolean;
+};
+
+export type LiveAggregateList = Omit<LiveAggregate, "sessions"> & {
+  sessions: LiveSessionListItem[];
+};
+
 export interface OutcomeSignals {
   userPositive: number;
   userNegative: number;
@@ -157,6 +218,21 @@ export interface OutcomeSignals {
   errorTail: boolean;
   testsPassedTail: boolean;
   reworkFiles: number;
+}
+
+/**
+ * Exact population boundary for a live scan. Aggregate totals describe the
+ * parsed slice, not every transcript file present on disk.
+ */
+export interface LiveScanCoverage {
+  requestedLimit: number;
+  discoveredFiles: number;
+  scannedFiles: number;
+  parsedFiles: number;
+  droppedFiles: number;
+  unscannedFiles: number;
+  archivedSessionsAdded: number;
+  truncated: boolean;
 }
 
 export interface LiveAggregate {
@@ -182,6 +258,7 @@ export interface LiveAggregate {
   sessionsWithMalformedLines: number;
   staleSessions: number;
   avgDataQuality: number;
+  scanCoverage: LiveScanCoverage;
   scanWarnings: string[];
   byModel: Array<{
     model: string;
@@ -226,6 +303,11 @@ export interface LiveTranscriptTurn {
 
 export interface TranscriptResult {
   turns: LiveTranscriptTurn[];
+  error?: string;
+}
+
+export interface LiveSessionDetailResult {
+  session?: LiveSession;
   error?: string;
 }
 

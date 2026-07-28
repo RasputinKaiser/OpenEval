@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import type { LiveAggregate, LiveSession } from "../lib/live";
 import {
   applyLiveViewState,
@@ -13,6 +15,7 @@ import {
   shortId,
   staleThresholdMs,
 } from "../components/live/live-shared";
+import { projectLiveSession, readLiveSessionDetail } from "../lib/live";
 
 function makeSession(overrides: Partial<LiveSession> = {}): LiveSession {
   return {
@@ -211,4 +214,49 @@ test("shortId truncates long ids only", () => {
   assert.equal(shortId("short-id"), "short-id");
   const long = "abcdefgh-1234-5678-9012-abcdefghijkl";
   assert.equal(shortId(long), "abcdefgh...hijkl");
+});
+
+test("live list projection keeps row/filter/signature fields but omits drawer-only payloads", () => {
+  const full = makeSession({
+    path: "/source/session.jsonl",
+    lastPromptPreview: "a prompt that belongs in the drawer",
+    modelUsage: [{ model: "test-model", inputTokens: 4, outputTokens: 2, cacheReadTokens: 0, cacheCreateTokens: 0, toolCalls: 1, toolErrors: 0 }],
+    usageSegments: Array.from({ length: 100 }, (_, i) => ({ atMs: i, cumulativeInput: i, cumulativeOutput: i, deltaInput: 1, deltaOutput: 1, outTokPerSec: i })),
+    toolSummaries: [{ name: "shell", calls: 1, errors: 0 }],
+    toolDurations: [{ name: "shell", count: 1, p50Ms: 1, p95Ms: 1, maxMs: 1, errors: 0 }],
+    queueSummary: { enqueue: 1, dequeue: 1, remove: 0, popAll: 0, preview: ["queued prompt"] },
+    fileActivity: { touchedFiles: ["/source/file.ts"], readLikeOperations: 1, writeLikeOperations: 1 },
+  });
+  const list = projectLiveSession(full);
+  assert.equal(list.sessionId, full.sessionId);
+  assert.equal(list.path, full.path);
+  assert.equal(list.lineCount, full.lineCount);
+  assert.equal(list.pathBytes, full.pathBytes);
+  assert.equal(list.toolCalls, full.toolCalls);
+  assert.equal(list.traceGraph.sidechainMessages, full.traceGraph.sidechainMessages);
+  assert.equal(list.modeSummary.gitBranch, full.modeSummary.gitBranch);
+  assert.equal(list.usageRates?.length, 24, "row sparkline is bounded");
+  for (const heavy of ["lastPromptPreview", "modelUsage", "usageSegments", "toolSummaries", "toolDurations", "queueSummary", "fileActivity", "outcomeSignals"]) {
+    assert.equal(heavy in list, false, `${heavy} must load only in the drawer`);
+  }
+  assert.ok(Buffer.byteLength(JSON.stringify(list)) < Buffer.byteLength(JSON.stringify(full)) / 2);
+});
+
+test("full detail loader rejects paths outside the selected live source", () => {
+  const outside = path.join(fs.mkdtempSync(path.join(process.cwd(), ".tmp-live-detail-")), "session.jsonl");
+  try {
+    fs.writeFileSync(outside, "{}", "utf8");
+    assert.equal(readLiveSessionDetail(outside, "codex"), null);
+  } finally {
+    fs.rmSync(path.dirname(outside), { recursive: true, force: true });
+  }
+});
+
+test("session drawer source contains focus trap, focus restore, scroll lock, and retry semantics", () => {
+  const source = fs.readFileSync(path.join(process.cwd(), "components/live/SessionDrawer.tsx"), "utf8");
+  assert.match(source, /useFocusTrap\(dialogRef, true\)/);
+  assert.match(source, /data-autofocus/);
+  assert.match(source, /document\.body\.style\.overflow = "hidden"/);
+  assert.match(source, /Retry detail/);
+  assert.match(source, /ArrowDown|ArrowRight/);
 });

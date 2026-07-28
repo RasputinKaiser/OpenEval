@@ -5,7 +5,7 @@ import clsx from "clsx";
 import { BarChart3, FileText, GitBranch, GitFork, Wrench, Zap } from "lucide-react";
 import { SectionHeader } from "../Section";
 import { compactDisplayPath } from "@/lib/redaction";
-import type { LiveAggregate } from "@/lib/live";
+import type { LiveAggregateList } from "@/lib/live";
 import { fmt } from "./live-shared";
 import { ListStack, QualityBadge, TinyMetric } from "./LivePrimitives";
 
@@ -22,7 +22,7 @@ function PanelHeader({ icon: Icon, title, subtitle }: { icon: any; title: string
 
 // The parent re-renders on every poll tick (updatedAt); these panels only
 // depend on `data`, so memo lets the unchanged-reference case skip them.
-export const ModelPanel = React.memo(function ModelPanel({ data }: { data: LiveAggregate }) {
+export const ModelPanel = React.memo(function ModelPanel({ data }: { data: LiveAggregateList }) {
   return (
     <section className="card overflow-hidden">
       <div className="border-b border-bd-subtle px-4 py-3">
@@ -67,7 +67,7 @@ export const ModelPanel = React.memo(function ModelPanel({ data }: { data: LiveA
   );
 });
 
-export const TraceIntelligencePanels = React.memo(function TraceIntelligencePanels({ data, redact, users }: { data: LiveAggregate; redact: boolean; users: ReadonlySet<string> }) {
+export const TraceIntelligencePanels = React.memo(function TraceIntelligencePanels({ data, redact, users }: { data: LiveAggregateList; redact: boolean; users: ReadonlySet<string> }) {
   const queueTotal = data.queueTotals.enqueue + data.queueTotals.dequeue + data.queueTotals.remove + data.queueTotals.popAll;
   return (
     <section id="intelligence" className="scroll-mt-16 mb-4">

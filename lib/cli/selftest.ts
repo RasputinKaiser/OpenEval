@@ -3,7 +3,7 @@ import { installProcessGuards } from '../process-guards';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
-import { loadCases } from '../cases';
+import { loadCasesStrict } from '../cases';
 import { prepareWorkdir } from '../executor';
 import { runGrader, evaluate } from '../grader';
 import { getDb } from '../db';
@@ -85,7 +85,9 @@ async function runChecks(json: boolean, verbose: boolean, withLlmJudge: boolean)
     record('db openable', 'fail', errorMessage(e));
   }
 
-  const cases = await loadCases();
+  // Fail closed: malformed case files must not silently disappear from the
+  // self-test denominator.
+  const cases = await loadCasesStrict();
   if (cases.length === 0) {
     record('cases loaded', 'fail', 'loadCases returned no cases');
   } else {

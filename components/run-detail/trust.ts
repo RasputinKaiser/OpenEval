@@ -40,8 +40,9 @@ export function summarizeRunConfidence(cases: RunCaseRecord[]): RunConfidenceSum
   const provenCaseCount = trusts.filter((t) => t.hasProofBackstop).length;
   const knownBadCaseCount = trusts.filter((t) => t.hasKnownBad).length;
   const oracleCaseCount = trusts.filter((t) => t.hasOracle).length;
-  const visualCaseCount = cases.filter((c) => c.case_def.visual).length;
-  const visualContractCount = trusts.filter((t) => t.hasVisualContract).length;
+  const visualCases = cases.filter((c) => c.case_def.visual);
+  const visualCaseCount = visualCases.length;
+  const visualContractCount = visualCases.filter((c) => hasVisualArtifactContract(c.case_def)).length;
   const weakCaseCount = trusts.filter((t) => t.weaknesses.length > 0).length;
   const passRatio = cases.length ? cases.filter((c) => c.status === "passed").length / cases.length : 0;
   const deterministicCoverage = Math.round((provenCaseCount / totalCases) * 100);
@@ -87,7 +88,8 @@ export function summarizeCaseTrust(rc: RunCaseRecord): CaseTrustSummary {
   const hasOracle = !!(rc.case_def.oracle?.solve || rc.case_def.oracle?.final_text);
   const hasKnownBad = !!rc.case_def.oracle?.known_bad?.length;
   const hasBudget = !!rc.case_def.budget;
-  const hasVisualContract = !rc.case_def.visual || !!rc.case_def.visual.expected_artifacts?.length;
+  const hasVisualContract = hasVisualArtifactContract(rc.case_def);
+  const visualContractSatisfied = !rc.case_def.visual || hasVisualContract;
   const hasProofBackstop = evidence.deterministic.total + evidence.trace.total > 0;
   const weaknesses: string[] = [];
 
@@ -105,7 +107,7 @@ export function summarizeCaseTrust(rc: RunCaseRecord): CaseTrustSummary {
     (hasOracle ? 15 : 0) +
     (hasKnownBad ? 15 : 0) +
     (hasBudget ? 8 : 0) +
-    (hasVisualContract ? 7 : 0);
+    (visualContractSatisfied ? 7 : 0);
   const score = clampScore(allGraderRatio * 35 + deterministicRatio * 20 + metadataScore - Math.max(0, weaknesses.length - 1) * 5);
 
   return {
@@ -130,11 +132,18 @@ export function summarizeEvidence(results: GraderResult[]): EvidenceCounts {
     manual: { passed: 0, total: 0 },
   };
   for (const result of results) {
-    const tier = result.evidenceTier ?? evidenceTierForSpec(result.spec);
+    // The grader spec is the authoritative proof contract. Persisted tier
+    // metadata is useful display data, but must not elevate a deterministic
+    // check into visual/trace evidence if old or corrupted.
+    const tier = evidenceTierForSpec(result.spec);
     counts[tier].total += 1;
     if (result.passed) counts[tier].passed += 1;
   }
   return counts;
+}
+
+export function hasVisualArtifactContract(caseDef: RunCaseRecord["case_def"]) {
+  return !!caseDef.visual?.expected_artifacts?.length;
 }
 
 export function evidenceTierForSpec(spec: GraderSpec): EvidenceTier {

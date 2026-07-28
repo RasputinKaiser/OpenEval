@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { scoreOutcome } from "../lib/insights/outcome";
 import { toPoints, detectMarkers, metricSeries, markerImpact } from "../lib/insights/timeline";
+import { buildTimeline } from "../lib/insights/collect";
 import type { LiveSession, OutcomeSignals } from "../lib/live";
 import type { StoredJudgment } from "../lib/live-cache";
 
@@ -99,7 +100,7 @@ function poolMixPoints(judgments?: Map<string, StoredJudgment>) {
   return { pts, marker };
 }
 
-test("markerImpact: both sides heuristic → no pool-mix confound", () => {
+test("markerImpact: both sides use available signal → no pool-mix confound", () => {
   const { pts, marker } = poolMixPoints();
   const impact = markerImpact(pts, marker, 10, 3);
   assert.equal(impact.judgedBefore, 0);
@@ -107,13 +108,13 @@ test("markerImpact: both sides heuristic → no pool-mix confound", () => {
   assert.ok(!impact.confounds.some((c) => POOL_MIX.test(c)));
 });
 
-test("markerImpact flags judged-vs-heuristic pool asymmetry as a confound", () => {
+test("markerImpact flags judged-vs-signal pool asymmetry as a confound", () => {
   const { pts, marker } = poolMixPoints(judgmentsFor(["7", "8", "9", "10", "11", "12"].map((v) => `/t/${v}.jsonl`), 0.9));
   const impact = markerImpact(pts, marker, 10, 3);
   assert.equal(impact.judgedBefore, 0);
   assert.equal(impact.judgedAfter, 6);
   assert.ok(impact.confounds.some((c) => POOL_MIX.test(c)));
-  assert.ok(impact.confounds.some((c) => c.includes("judged (after)") && c.includes("heuristic (before)")));
+  assert.ok(impact.confounds.some((c) => c.includes("judged (after)") && c.includes("signal (before)")));
 });
 
 test("markerImpact: both sides judged → no pool-mix confound", () => {
@@ -132,5 +133,39 @@ test("markerImpact flags thin samples as low confidence", () => {
   const marker = detectMarkers(pts).find((m) => m.name === "rare")!;
   const impact = markerImpact(pts, marker, 20, 5);
   assert.equal(impact.lowConfidence, true);
-  assert.ok(impact.confounds.some((c) => /thin sample/.test(c)));
+  assert.ok(impact.confounds.some((c) => /thin window/.test(c)));
+});
+
+test("markerImpact distinguishes full windows from the outcome denominator", () => {
+  const pts = toPoints([
+    ...[1, 2, 3, 4, 5, 6].map((startedAt) => session({ startedAt })),
+    ...[7, 8, 9, 10, 11, 12].map((startedAt) => session({
+      startedAt,
+      skillsUsed: ["signal-after"],
+      outcomeSignals: { userPositive: 1 } as OutcomeSignals,
+    })),
+  ]);
+  const marker = detectMarkers(pts).find((m) => m.name === "signal-after")!;
+  const impact = markerImpact(pts, marker, 10, 3);
+
+  assert.deepEqual([impact.nBefore, impact.nAfter], [6, 6]);
+  assert.deepEqual([impact.signalBefore, impact.signalAfter], [0, 6]);
+  assert.deepEqual([impact.outcomeNBefore, impact.outcomeNAfter], [0, 6]);
+  assert.equal(impact.outcomeComparable, false);
+  assert.ok(impact.confounds.some((c) => /outcome unavailable/.test(c)));
+});
+
+test("buildTimeline exposes exact signal, judged, heuristic, and no-signal counts", () => {
+  const report = buildTimeline([
+    session({ startedAt: 1 }),
+    session({ startedAt: 2, outcomeSignals: { userPositive: 1 } as OutcomeSignals }),
+    session({ startedAt: 3, outcomeSignals: { userNegative: 1 } as OutcomeSignals }),
+  ]);
+
+  assert.equal(report.totalSessions, 3);
+  assert.equal(report.signalSessions, 2);
+  assert.equal(report.judgedSessions, 0);
+  assert.equal(report.heuristicSignalSessions, 2);
+  assert.equal(report.noSignalSessions, 1);
+  assert.equal(report.signalCoverage, 2 / 3);
 });

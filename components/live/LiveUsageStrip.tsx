@@ -3,13 +3,13 @@
 import React from "react";
 import clsx from "clsx";
 import { Cpu } from "lucide-react";
-import type { LiveAggregate } from "@/lib/live";
+import type { LiveAggregateList } from "@/lib/live";
 import { fmt } from "./live-shared";
 import { MetricGroup, TinyMetric } from "./LivePrimitives";
 
 // The parent re-renders on every poll tick (updatedAt); this strip only
 // depends on `data`, so memo lets the unchanged-reference case skip it.
-export const LiveUsageStrip = React.memo(function LiveUsageStrip({ data }: { data: LiveAggregate }) {
+export const LiveUsageStrip = React.memo(function LiveUsageStrip({ data }: { data: LiveAggregateList }) {
   const usage = data.usageSummary;
   const tokenMeasured = usage.sessionsWithMeasuredUsage;
   const costPriced = usage.sessionsWithPricedUsage;
@@ -23,7 +23,8 @@ export const LiveUsageStrip = React.memo(function LiveUsageStrip({ data }: { dat
             <Cpu className="size-4 text-fg-muted" /> Usage
           </div>
           <div className="mt-1 text-xs text-fg-muted">
-            Tokens and cost are shown only when the selected trace source reports them.
+            Tokens and cost are shown only when the selected trace source reports them
+            {data.scanCoverage?.truncated ? "; totals cover the parsed latest-session slice shown above" : ""}.
           </div>
         </div>
         <div className={clsx(

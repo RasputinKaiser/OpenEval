@@ -9,12 +9,12 @@ import { summarizeEvidence } from "./trust";
 
 /** Evidence-tier grouping cards + per-grader result rows with diff view. */
 
-export function EvidenceGroupSummary({ results, visualContract }: { results: GraderResult[]; visualContract: boolean }) {
+export function EvidenceGroupSummary({ results, expectedArtifacts }: { results: GraderResult[]; expectedArtifacts: string[] }) {
   const grouped = summarizeEvidence(results);
   const rawCards: Array<{ tier: EvidenceTier; label: string; icon: LucideIcon; passed: number; total: number }> = [
     { tier: "deterministic", label: "Deterministic", icon: SearchCheck, passed: grouped.deterministic.passed, total: grouped.deterministic.total },
     { tier: "trace", label: "Trace", icon: Boxes, passed: grouped.trace.passed, total: grouped.trace.total },
-    { tier: "visual", label: "Visual", icon: Eye, passed: visualContract ? 1 : 0, total: visualContract ? 1 : 0 },
+    { tier: "visual", label: "Visual grader", icon: Eye, passed: grouped.visual.passed, total: grouped.visual.total },
     { tier: "llm_judge", label: "LLM judge", icon: Scale, passed: grouped.llm_judge.passed, total: grouped.llm_judge.total },
     { tier: "manual", label: "Manual", icon: Fingerprint, passed: grouped.manual.passed, total: grouped.manual.total },
   ];
@@ -22,6 +22,16 @@ export function EvidenceGroupSummary({ results, visualContract }: { results: Gra
 
   return (
     <div className="grid gap-2 border-b border-bd-subtle p-3 sm:grid-cols-2 xl:grid-cols-3">
+      {expectedArtifacts.length > 0 ? (
+        <div className="rounded border border-bd-subtle bg-bg/50 p-2">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-fg-muted">
+              <Eye className="size-3" /> Artifact contract
+            </div>
+            <span className="mono text-xs text-fg-muted">{expectedArtifacts.length} expected</span>
+          </div>
+        </div>
+      ) : null}
       {cards.map((card) => {
         const passed = card.total > 0 && card.passed === card.total;
         const Icon = card.icon;

@@ -2,7 +2,17 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { collectSourceFiles, type CollectedSourceFiles } from "../live";
-import { allCollectionSources, defToSpec } from "./sources";
+import { allCollectionSources, defToSpec, type CollectionSourceDef } from "./sources";
+
+export type DiscoveryTruncationReason = "max-depth" | "cap";
+
+export interface DetectedFileCount {
+  count: number;
+  lastActivityMs: number | null;
+  sample: string | null;
+  /** Reasons are empty when the bounded walk inspected the complete tree. */
+  truncationReasons: DiscoveryTruncationReason[];
+}
 
 export interface DiscoveredSource {
   id: string;
@@ -15,6 +25,10 @@ export interface DiscoveredSource {
   lastActivityMs: number | null;
   status: "present" | "empty" | "absent";
   note?: string;
+  /** True when a detect-only source's bounded file walk was incomplete. */
+  scanTruncated?: boolean;
+  /** Why the detect-only walk was incomplete, when scanTruncated is true. */
+  scanTruncationReasons?: DiscoveryTruncationReason[];
   /** The walk behind sessionCount/lastActivityMs, reusable by the scan itself. */
   collected?: CollectedSourceFiles;
 }
@@ -45,42 +59,117 @@ const NOISE_DIRS = new Set([
   "logs", "tmp_cache", ".cache", "Code Cache", "GPUCache",
 ]);
 
-/** Cheap recursive count of files with the given extensions, bounded. */
-function countFilesByExt(root: string, exts: string[], maxDepth = 4, cap = 5000): { count: number; lastMs: number | null; sample: string | null } {
+/**
+ * Cheap recursive count of detected files, bounded by depth and file count.
+ * Detection can use both suffixes and exact basenames: broad extensions are
+ * useful for sources such as JSONL directories, while exact names avoid
+ * treating unrelated JSON (for example Gemini settings) as sessions.
+ */
+export function countDetectedFiles(
+  root: string,
+  options: { exts?: string[]; names?: string[]; maxDepth?: number; cap?: number } = {},
+): DetectedFileCount {
+  const exts = options.exts ?? [];
+  const names = new Set(options.names ?? []);
+  const maxDepth = options.maxDepth ?? 4;
+  const cap = options.cap ?? 5000;
   let count = 0;
-  let lastMs: number | null = null;
+  let lastActivityMs: number | null = null;
   let sample: string | null = null;
+  const truncationReasons = new Set<DiscoveryTruncationReason>();
+  const matches = (name: string) => names.has(name) || exts.some((e) => name.endsWith(e));
+  // Probe pruned subtrees with a shared budget. A proven empty subtree is
+  // complete; a match or an exhausted/unreadable probe remains conservatively
+  // incomplete so the inventory can never claim coverage it did not prove.
+  const EVIDENCE_ENTRY_CAP = 2048;
+  let evidenceEntries = 0;
+  type Evidence = "match" | "complete" | "unknown";
+  const hasDetectedFileBelow = (dir: string): Evidence => {
+    if (names.size === 0 && exts.length === 0) return "complete";
+    if (evidenceEntries >= EVIDENCE_ENTRY_CAP) return "unknown";
+    let entries: fs.Dirent[];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return "unknown"; }
+    let sawUnknown = false;
+    for (const ent of entries) {
+      if (evidenceEntries >= EVIDENCE_ENTRY_CAP) return "unknown";
+      evidenceEntries++;
+      if (ent.isFile() && matches(ent.name)) return "match";
+      if (ent.isDirectory() && !NOISE_DIRS.has(ent.name)) {
+        const nested = hasDetectedFileBelow(path.join(dir, ent.name));
+        if (nested === "match") return "match";
+        if (nested === "unknown") sawUnknown = true;
+      }
+    }
+    return sawUnknown ? "unknown" : "complete";
+  };
+
+  // Once the cap is reached, an exactly exhausted corpus stays complete only
+  // when the bounded evidence pass proves no matching remainder.
+  const hasPotentialRemainder = (dir: string, entries: fs.Dirent[], start: number): Evidence => {
+    let sawUnknown = false;
+    for (let i = start; i < entries.length; i++) {
+      const ent = entries[i];
+      if (ent.isFile() && matches(ent.name)) return "match";
+      if (ent.isDirectory() && !NOISE_DIRS.has(ent.name)) {
+        const nested = hasDetectedFileBelow(path.join(dir, ent.name));
+        if (nested === "match") return "match";
+        if (nested === "unknown") sawUnknown = true;
+      }
+    }
+    return sawUnknown ? "unknown" : "complete";
+  };
+
   const walk = (dir: string, depth: number) => {
-    if (depth < 0 || count >= cap) return;
+    if (depth < 0) {
+      if (hasDetectedFileBelow(dir) !== "complete") truncationReasons.add("max-depth");
+      return;
+    }
     let entries: fs.Dirent[];
     try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
-    for (const ent of entries) {
-      if (count >= cap) return;
+    for (let i = 0; i < entries.length; i++) {
+      const ent = entries[i];
+      if (count >= cap) {
+        if (hasPotentialRemainder(dir, entries, i) !== "complete") truncationReasons.add("cap");
+        return;
+      }
       if (ent.isDirectory()) {
         if (NOISE_DIRS.has(ent.name)) continue;
+        if (depth === 0) {
+          if (hasDetectedFileBelow(path.join(dir, ent.name)) !== "complete") truncationReasons.add("max-depth");
+          continue;
+        }
         walk(path.join(dir, ent.name), depth - 1);
-      } else if (ent.isFile() && exts.some((e) => ent.name.endsWith(e))) {
+      } else if (ent.isFile() && matches(ent.name)) {
         const full = path.join(dir, ent.name);
         count++;
         if (!sample) sample = full;
         try {
           const m = fs.statSync(full).mtimeMs;
-          if (lastMs == null || m > lastMs) lastMs = m;
+          if (lastActivityMs == null || m > lastActivityMs) lastActivityMs = m;
         } catch {}
       }
     }
   };
   walk(root, maxDepth);
-  return { count, lastMs, sample };
+  return { count, lastActivityMs, sample, truncationReasons: [...truncationReasons] };
 }
 
-export function discoverKnownSources(): DiscoveredSource[] {
+/** Backward-compatible suffix-only wrapper for callers that used the old helper shape. */
+export function countFilesByExt(root: string, exts: string[], maxDepth = 4, cap = 5000): DetectedFileCount {
+  return countDetectedFiles(root, { exts, maxDepth, cap });
+}
+
+export function discoverKnownSources(
+  sourceDefs: CollectionSourceDef[] = allCollectionSources(),
+  options: { maxDepth?: number; cap?: number } = {},
+): DiscoveredSource[] {
   const out: DiscoveredSource[] = [];
-  for (const def of allCollectionSources()) {
+  for (const def of sourceDefs) {
     const roots = def.roots.map(expandHome);
     const presentRoots: string[] = [];
     let sessionCount = 0;
     let lastActivityMs: number | null = null;
+    const scanTruncationReasons = new Set<DiscoveryTruncationReason>();
 
     let collected: CollectedSourceFiles | undefined;
     if (def.parseable) {
@@ -93,24 +182,42 @@ export function discoverKnownSources(): DiscoveredSource[] {
         try { if (fs.existsSync(r)) presentRoots.push(r); } catch {}
       }
     } else {
-      const exts = def.detectExts ?? [".json", ".jsonl"];
+      // Sources with exact-name detection must opt into suffixes explicitly;
+      // otherwise the historical JSON/JSONL fallback would defeat the narrow
+      // inventory (notably Gemini's per-project logs.json files).
+      const exts = def.detectExts ?? (def.detectNames ? [] : [".json", ".jsonl"]);
       for (const r of roots) {
         let exists = false;
         try { exists = fs.existsSync(r); } catch {}
         if (!exists) continue;
         presentRoots.push(r);
-        const { count, lastMs } = countFilesByExt(r, exts);
-        sessionCount += count;
-        if (lastMs != null && (lastActivityMs == null || lastMs > lastActivityMs)) lastActivityMs = lastMs;
+        const detected = countDetectedFiles(r, {
+          exts,
+          names: def.detectNames,
+          maxDepth: options.maxDepth,
+          cap: options.cap,
+        });
+        sessionCount += detected.count;
+        if (detected.lastActivityMs != null && (lastActivityMs == null || detected.lastActivityMs > lastActivityMs)) {
+          lastActivityMs = detected.lastActivityMs;
+        }
+        for (const reason of detected.truncationReasons) scanTruncationReasons.add(reason);
       }
     }
 
     const status: DiscoveredSource["status"] =
       presentRoots.length === 0 ? "absent" : sessionCount === 0 ? "empty" : "present";
 
+    const truncation = scanTruncationReasons.size > 0
+      ? {
+        scanTruncated: true as const,
+        scanTruncationReasons: [...scanTruncationReasons],
+      }
+      : {};
     out.push({
       id: def.id, label: def.label, format: def.format, parseable: def.parseable,
       roots, presentRoots, sessionCount, lastActivityMs, status, note: def.note, collected,
+      ...truncation,
     });
   }
   return out;
