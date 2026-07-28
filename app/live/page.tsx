@@ -1,19 +1,14 @@
-import path from "node:path";
 import LiveClient from "@/components/LiveClient";
-import { defaultLiveLimitForHarness, projectLiveAggregate, readLiveSessionDetail, scanLiveSessions, isPathInLiveSource, liveTraceFormatForHarness, getErroringTurns, type LiveAggregateList, type LiveSessionDetailResult, type TranscriptResult } from "@/lib/live";
+import { defaultLiveLimitForHarness, projectLiveAggregate, readLiveSessionDetail, resolveLiveSessionFile, scanLiveSessions, getErroringTurns, type LiveAggregateList, type LiveSessionDetailResult, type TranscriptResult } from "@/lib/live";
 
 export const dynamic = "force-dynamic";
 
 async function getSessionTranscript(filePath: string, harness?: string): Promise<TranscriptResult> {
   "use server";
-  const normalized = path.resolve(filePath);
-  const format = liveTraceFormatForHarness(harness);
-  const supportedExtension = normalized.endsWith(".jsonl") || (format === "hermes-json" && normalized.endsWith(".json"));
-  if (!supportedExtension || !isPathInLiveSource(normalized, harness)) {
-    return { turns: [], error: "Invalid session path" };
-  }
+  const resolved = resolveLiveSessionFile(filePath, harness);
+  if (!resolved) return { turns: [], error: "Invalid session path" };
   try {
-    return getErroringTurns(normalized, format);
+    return getErroringTurns(resolved.file, resolved.source.format);
   } catch (e) {
     return { turns: [], error: `Failed to parse session transcript: ${e instanceof Error ? e.message : String(e)}` };
   }
@@ -21,10 +16,8 @@ async function getSessionTranscript(filePath: string, harness?: string): Promise
 
 async function getSessionDetail(filePath: string, harness?: string): Promise<LiveSessionDetailResult> {
   "use server";
-  const normalized = path.resolve(filePath);
-  if (!isPathInLiveSource(normalized, harness)) return { error: "Invalid session path" };
   try {
-    const session = readLiveSessionDetail(normalized, harness);
+    const session = readLiveSessionDetail(filePath, harness);
     return session ? { session } : { error: "Session detail is unavailable (the source file may have been pruned)." };
   } catch (e) {
     return { error: `Failed to parse session detail: ${e instanceof Error ? e.message : String(e)}` };

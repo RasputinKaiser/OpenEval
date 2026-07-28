@@ -47,5 +47,6 @@ export {
   collectSourceSessions,
   projectLiveSession,
   projectLiveAggregate,
+  resolveLiveSessionFile,
   readLiveSessionDetail,
 } from "./live/scan";

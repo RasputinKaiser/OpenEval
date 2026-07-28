@@ -3,7 +3,7 @@ import path from "node:path";
 import { getCachedSessionRows, listCachedFilesUnder, PARSER_VERSION } from "../live-cache";
 import { estimateCostUsd } from "../pricing";
 import type { CollectedSourceFiles, CollectionSourceSpec, LiveAggregate, LiveAggregateList, LiveScanCoverage, LiveSession, LiveSessionListItem, LiveTraceSource } from "./types";
-import { isPathInLiveSource, resolveLiveSource, specToSource } from "./sources";
+import { resolveLiveSource, specToSource } from "./sources";
 import { summarizeCodexSessionFile, summarizeHermesSessionFile, summarizeLiveSessionFile } from "./summarize";
 import { aggregate } from "./aggregate";
 import { attributedModelUsage, estimateModelUsageCost } from "./util";
@@ -81,34 +81,51 @@ function projectDirForDetail(source: LiveTraceSource, file: string): string {
   return path.basename(path.dirname(file));
 }
 
+export interface ResolvedLiveSessionFile {
+  file: string;
+  project: string;
+  mtime: number;
+  size: number;
+  source: LiveTraceSource;
+}
+
 /**
- * Parse one complete session on demand for the drawer. The source/path check is
- * deliberately repeated here (rather than trusting a client-provided path),
- * and the parser is never invoked for a path outside the selected live roots.
+ * Resolve a client-returned session path through the server's current source
+ * inventory. The requested string is used only as an equality key; every
+ * filesystem operation receives the path and stat produced by the trusted
+ * descriptor-root walk. This also rejects symlinks because the collector
+ * admits regular directory entries only.
  */
-export function readLiveSessionDetail(filePath: string, harness?: string): LiveSession | null {
+export function resolveLiveSessionFile(filePath: string, harness?: string): ResolvedLiveSessionFile | null {
   const source = resolveLiveSource(harness);
   if (source.status !== "available") return null;
-  const normalized = path.resolve(filePath);
+  const requested = path.resolve(filePath);
   const expectedExtension = source.format === "hermes-json" ? ".json" : ".jsonl";
-  if (!normalized.endsWith(expectedExtension) || !isPathInLiveSource(normalized, harness)) return null;
-  let stat: fs.Stats;
-  try {
-    stat = fs.statSync(normalized);
-    if (!stat.isFile()) return null;
-  } catch {
-    return null;
-  }
-  const projectDir = projectDirForDetail(source, normalized);
+  if (!requested.endsWith(expectedExtension)) return null;
+  const match = collectLiveTraceFiles(source, []).find((candidate) => path.resolve(candidate.file) === requested);
+  return match ? { ...match, source } : null;
+}
+
+/**
+ * Parse one complete session on demand for the drawer. The source/path check is
+ * deliberately repeated against the current server-side inventory rather than
+ * trusting the client-returned absolute path.
+ */
+export function readLiveSessionDetail(filePath: string, harness?: string): LiveSession | null {
+  const resolved = resolveLiveSessionFile(filePath, harness);
+  if (!resolved) return null;
+  const { file, mtime, size, source } = resolved;
+  const projectDir = projectDirForDetail(source, file);
+  const stat = { mtimeMs: mtime, size };
   const session = source.format === "codex-sessions"
-    ? summarizeCodexSessionFile(normalized, projectDir, stat.mtimeMs, { mtimeMs: stat.mtimeMs, size: stat.size })
+    ? summarizeCodexSessionFile(file, projectDir, mtime, stat)
     : source.format === "hermes-json"
-      ? summarizeHermesSessionFile(normalized, projectDir, stat.mtimeMs, { mtimeMs: stat.mtimeMs, size: stat.size })
-      : summarizeLiveSessionFile(normalized, projectDir, stat.mtimeMs, {
+      ? summarizeHermesSessionFile(file, projectDir, mtime, stat)
+      : summarizeLiveSessionFile(file, projectDir, mtime, {
           fields: source.fields,
           inferredModel: source.inferredModel,
           decodeProject: source.format !== "jsonl-dir",
-          stat: { mtimeMs: stat.mtimeMs, size: stat.size },
+          stat,
         });
   return session ? refreshInferredSessionCost(session) : null;
 }

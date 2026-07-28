@@ -1045,6 +1045,11 @@ test("live API serves seeded descriptor sessions with exact content and rejects 
   // Costs 0.25 + 0.5 sum exactly in binary floating point.
   fs.writeFileSync(path.join(root, "session-a.jsonl"), sessionLine("api-session-a", 100, 25, 0.25), "utf8");
   fs.writeFileSync(path.join(root, "session-b.jsonl"), sessionLine("api-session-b", 40, 10, 0.5), "utf8");
+  const outsideRoot = fs.mkdtempSync(path.join(os.tmpdir(), "openeval-live-api-outside-"));
+  const outsideFile = path.join(outsideRoot, "outside.jsonl");
+  const escapedPath = path.join(root, "escaped.jsonl");
+  fs.writeFileSync(outsideFile, sessionLine("escaped-session", 1, 1, 0), "utf8");
+  fs.symlinkSync(outsideFile, escapedPath);
   fs.writeFileSync(descPath, JSON.stringify({
     id: sourceId,
     label: "Temporary API Source",
@@ -1085,6 +1090,7 @@ test("live API serves seeded descriptor sessions with exact content and rejects 
     const detail = readLiveSessionDetail(String((data.sessions[0] as { path?: string }).path), sourceId);
     assert.ok(detail, "an in-source row path can hydrate full drawer detail");
     assert.ok(Array.isArray(detail?.usageSegments));
+    assert.equal(readLiveSessionDetail(escapedPath, sourceId), null, "a symlink inside the source cannot escape to another file");
     assert.equal(data.usageSummary.totalInputTokens, 140);
     assert.equal(data.usageSummary.totalOutputTokens, 35);
     assert.equal(data.usageSummary.totalTokens, 175);
@@ -1112,6 +1118,7 @@ test("live API serves seeded descriptor sessions with exact content and rejects 
   } finally {
     fs.rmSync(descPath, { force: true });
     fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(outsideRoot, { recursive: true, force: true });
   }
 });
 

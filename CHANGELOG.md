@@ -31,6 +31,7 @@ Data-fidelity, proof-UX, accessibility, and measured performance release.
 - Evidence tiers are derived from the grader specification so stale persisted metadata cannot elevate proof strength.
 - Accuracy and self-test gates now fail closed on malformed case files; strict accuracy also catches dangling oracle scripts and missing known-bad fixtures.
 - Gemini CLI discovery counts only its verified `~/.gemini/tmp/**/logs.json` artifacts instead of treating unrelated JSON under `~/.gemini` as sessions; bounded detect-only scans visibly report depth/cap truncation.
+- Live drawer and transcript requests resolve client-returned paths through the current server-owned source inventory, rejecting out-of-source and symlink-escape paths before parsing.
 - `package-lock.json` now matches the package version.
 
 ### CI
