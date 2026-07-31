@@ -7,6 +7,7 @@ import { collectSourceFiles, scanSourceSessions } from "../lib/live";
 import { _setCollectionHooksForTest, scanAllSources } from "../lib/collection/aggregate";
 import { defToSpec, type CollectionSourceDef } from "../lib/collection/sources";
 import type { DiscoveredSource } from "../lib/collection/discover";
+import { JUDGE_PROMPT_MARKER } from "../lib/insights/signals";
 
 const cleanupDirs: string[] = [];
 after(() => {
@@ -157,4 +158,72 @@ test("Collection marks a hard parser scan cap partial even without a budget trun
   assert.equal(hardCap?.scanTruncated, true);
   assert.match(hardCap?.scanWarnings.find((warning) => warning.includes("scan cap reached")) ?? "", /scan cap reached/);
   assert.equal(result.totalParsedSessions, 1);
+});
+
+test("Collection surfaces dropped-file coverage caveats without calling them budget truncation", () => {
+  const dir = fixtureDir("openeval-fidelity-dropped-file-");
+  writeJsonl(dir, "valid.jsonl", [
+    { type: "system", sessionId: "valid", cwd: "/tmp/fidelity", timestamp: "2026-07-21T11:00:00.000Z" },
+    { type: "assistant", message: { content: [{ type: "text", text: "valid" }] }, timestamp: "2026-07-21T11:00:01.000Z" },
+  ]);
+  writeJsonl(dir, "unsupported.jsonl", [
+    { type: "user", message: { role: "user", content: `${JUDGE_PROMPT_MARKER} dropped instrumentation` } },
+    { type: "assistant", message: { content: [{ type: "text", text: "{\"score\":0}" }] } },
+  ]);
+  const def = source("dropped-file", "Dropped file", dir);
+  const collected = collectSourceFiles(defToSpec(def));
+  const discovered: DiscoveredSource[] = [{
+    id: def.id, label: def.label, format: def.format, parseable: true, roots: def.roots,
+    presentRoots: def.roots, sessionCount: collected.files.length, lastActivityMs: collected.files[0]?.mtime ?? null,
+    status: "present", collected,
+  }];
+  _setCollectionHooksForTest({
+    discover: () => discovered,
+    sources: () => [def],
+    unknown: () => [],
+    fingerprintTtlMs: 0,
+    unknownTtlMs: 0,
+  });
+  const result = scanAllSources(20, { fresh: true });
+  assert.equal(result.partial, false);
+  assert.equal(result.coveragePartial, true);
+  assert.deepEqual(result.coveragePartialSources, ["dropped-file"]);
+  assert.equal(result.totalParsedSessions, 1);
+});
+
+test("Collection retains archived sessions when a parseable source becomes empty", () => {
+  const dir = fixtureDir("openeval-fidelity-pruned-source-");
+  const file = writeJsonl(dir, "archived.jsonl", [
+    { type: "system", sessionId: "retained-archive", cwd: "/tmp/fidelity", model: "gpt-4.1", timestamp: "2026-07-22T10:00:00.000Z" },
+    { type: "assistant", message: { model: "gpt-4.1", content: [{ type: "text", text: "retained" }] }, timestamp: "2026-07-22T10:00:01.000Z" },
+    { type: "result", usage: { input_tokens: 4, output_tokens: 2 }, duration_ms: 1_000, timestamp: "2026-07-22T10:00:02.000Z" },
+  ]);
+  const def = source("pruned", "Pruned source", dir);
+
+  // Prime the durable parse archive, then simulate normal source pruning.
+  assert.equal(scanSourceSessions(defToSpec(def), 50, { includeArchived: true }).totalSessions, 1);
+  fs.rmSync(file);
+  const collected = collectSourceFiles(defToSpec(def));
+  const discovered: DiscoveredSource[] = [{
+    id: def.id, label: def.label, format: def.format, parseable: true, roots: def.roots,
+    presentRoots: def.roots, sessionCount: 0, lastActivityMs: null, status: "empty", collected,
+  }];
+
+  _setCollectionHooksForTest({
+    discover: () => discovered,
+    sources: () => [def],
+    unknown: () => [],
+    fingerprintTtlMs: 0,
+    unknownTtlMs: 0,
+  });
+  try {
+    const result = scanAllSources(20, { fresh: true });
+    assert.equal(result.sources[0]?.status, "empty", "physical source status stays truthful");
+    assert.equal(result.totalParsedSessions, 1);
+    assert.equal(result.totalArchivedSessions, 1);
+    assert.equal(result.sessions[0]?.sessionId, "retained-archive");
+    assert.equal(result.sessions[0]?.archived, true);
+  } finally {
+    _setCollectionHooksForTest(null);
+  }
 });

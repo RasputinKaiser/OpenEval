@@ -22,7 +22,13 @@ export async function GET(request: Request) {
         availableCount: available.length,
         descriptorIssues: getAllDescriptorIssues(),
       },
-      { headers: { "Cache-Control": "private, max-age=30, stale-while-revalidate=120" } }
+      {
+        headers: {
+          "Cache-Control": query.data.refresh
+            ? "private, no-store"
+            : "private, max-age=30, stale-while-revalidate=120",
+        },
+      }
     );
   } catch (error) {
     return internalError("Failed to discover harnesses", error);

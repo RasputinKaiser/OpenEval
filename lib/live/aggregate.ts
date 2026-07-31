@@ -1,5 +1,6 @@
 import { displayModelId, rateForModelInfo } from "../pricing";
 import type { LiveAggregate, LiveQueueSummary, LiveScanCoverage, LiveSession, LiveTraceSource, LiveUsageSummary } from "./types";
+import { countSessionWarnings, emptyParseWarningCounts } from "./warning-taxonomy";
 import { resolveLiveSource } from "./sources";
 import { attributedModelUsage, increment, metricMissing, modelUsageCosts, modelUsageVolume, topEntries } from "./util";
 
@@ -13,6 +14,7 @@ function emptyUsageSummary(): LiveUsageSummary {
     totalCostUsd: 0,
     sessionsWithMeasuredUsage: 0,
     sessionsWithMeasuredCost: 0,
+    sessionsWithCostEvidence: 0,
     sessionsWithPricedUsage: 0,
     sessionsWithListedRate: 0,
     sessionsWithFamilyRate: 0,
@@ -45,6 +47,7 @@ export function aggregate(
     unscannedFiles: 0,
     archivedSessionsAdded: 0,
     truncated: false,
+    partial: false,
   },
 ): LiveAggregate {
   const byModelMap = new Map<string, {
@@ -88,11 +91,15 @@ export function aggregate(
   let outputTokPerSecCount = 0;
   let sessionsWithMeasuredUsage = 0;
   let sessionsWithMeasuredCost = 0;
+  let sessionsWithCostEvidence = 0;
   let sessionsWithPricedUsage = 0;
   let sessionsWithListedRate = 0;
   let sessionsWithFamilyRate = 0;
   let sessionsWithFallbackRate = 0;
   let sessionsWithMeasuredDuration = 0;
+  let sessionsWithInferredDuration = 0;
+  let subagentSessions = 0;
+  let sessionsWithMeasuredModel = 0;
   let sessionsWithMissingModel = 0;
   let sessionsWithInferredModel = 0;
   let sessionsWithMissingTokens = 0;
@@ -100,6 +107,7 @@ export function aggregate(
   let archivedSessions = 0;
   let sessionsWithMalformedLines = 0;
   let staleSessions = 0;
+  const parseWarningCounts = emptyParseWarningCounts();
   // rateForModelInfo is a pure lookup over a static catalog; memoize per
   // aggregate() call so large session lists don't redo alias/family resolution
   // thousands of times. Deliberately per-call, not module-global: if the
@@ -134,7 +142,11 @@ export function aggregate(
     if (s.metricSources.tokens === "missing") sessionsWithMissingTokens++;
     if (s.metricSources.cost === "measured") sessionsWithMeasuredCost++;
     if (s.metricSources.cost === "inferred") sessionsWithInferredCost++;
+    if (s.metricSources.cost === "measured" || s.metricSources.cost === "inferred") sessionsWithCostEvidence++;
     if (s.metricSources.duration === "measured") sessionsWithMeasuredDuration++;
+    if (s.metricSources.duration === "inferred") sessionsWithInferredDuration++;
+    if (s.isSubagent) subagentSessions++;
+    if (s.metricSources.model === "measured") sessionsWithMeasuredModel++;
     if (s.metricSources.model === "missing") sessionsWithMissingModel++;
     if (s.metricSources.model === "inferred") sessionsWithInferredModel++;
     if (s.costUsd > 0) sessionsWithPricedUsage++;
@@ -146,6 +158,7 @@ export function aggregate(
     }
     if (s.archived) archivedSessions++;
     if (s.malformedLineCount > 0) sessionsWithMalformedLines++;
+    countSessionWarnings(parseWarningCounts, s.parseWarnings);
     if (s.staleMs > 1000 * 60 * 60 * 12) staleSessions++;
     if (s.modeSummary.gitBranch) increment(branchSessions, s.modeSummary.gitBranch);
     queueTotals.enqueue += s.queueSummary.enqueue;
@@ -181,7 +194,10 @@ export function aggregate(
       if (metricMissing(s.metricSources.tokens)) cur.missingTokens++;
       if (metricMissing(s.metricSources.cost) || (s.metricSources.cost === "inferred" && rowCost === 0 && modelUsageVolume(row) > 0)) cur.missingCost++;
       if (rowCost > 0) cur.pricedSessions++;
-      if (s.metricSources.cost === "measured" && rowCost > 0) {
+      // A measured $0 is still a recorded cost. Do not turn a valid free run
+      // into an unavailable model-row provenance marker merely because its
+      // numeric value is zero.
+      if (s.metricSources.cost === "measured") {
         if (modelRows.length > 1) cur.allocatedCostSessions++;
         else cur.measuredCostSessions++;
       }
@@ -216,7 +232,7 @@ export function aggregate(
     familyRateSessions: m.familyRateSessions,
     fallbackRateSessions: m.fallbackRateSessions,
     inferredModelSessions: m.inferredModelSessions,
-  })).sort((a, b) => b.errors - a.errors || a.avgDataQuality - b.avgDataQuality);
+  })).sort((a, b) => b.errors - a.errors || a.avgDataQuality - b.avgDataQuality || a.model.localeCompare(b.model));
 
   const usageSummary = emptyUsageSummary();
   usageSummary.totalInputTokens = totalInputTokens;
@@ -227,12 +243,13 @@ export function aggregate(
   usageSummary.totalCostUsd = totalCostUsd;
   usageSummary.sessionsWithMeasuredUsage = sessionsWithMeasuredUsage;
   usageSummary.sessionsWithMeasuredCost = sessionsWithMeasuredCost;
+  usageSummary.sessionsWithCostEvidence = sessionsWithCostEvidence;
   usageSummary.sessionsWithPricedUsage = sessionsWithPricedUsage;
   usageSummary.sessionsWithListedRate = sessionsWithListedRate;
   usageSummary.sessionsWithFamilyRate = sessionsWithFamilyRate;
   usageSummary.sessionsWithFallbackRate = sessionsWithFallbackRate;
   usageSummary.tokenCoverage = sessions.length ? usageSummary.sessionsWithMeasuredUsage / sessions.length : 0;
-  usageSummary.costCoverage = sessions.length ? usageSummary.sessionsWithPricedUsage / sessions.length : 0;
+  usageSummary.costCoverage = sessions.length ? usageSummary.sessionsWithCostEvidence / sessions.length : 0;
   usageSummary.avgOutputTokPerSec = outputTokPerSecCount ? outputTokPerSecTotal / outputTokPerSecCount : 0;
 
   return {
@@ -250,6 +267,9 @@ export function aggregate(
     totalToolCalls,
     totalToolErrors,
     sessionsWithMeasuredDuration,
+    sessionsWithInferredDuration,
+    subagentSessions,
+    sessionsWithMeasuredModel,
     sessionsWithMissingModel,
     sessionsWithInferredModel,
     sessionsWithMissingTokens,
@@ -260,6 +280,7 @@ export function aggregate(
     avgDataQuality: sessions.length ? totalQuality / sessions.length : 0,
     scanCoverage,
     scanWarnings,
+    parseWarningCounts,
     byModel,
     byTool: topEntries(toolCallsByName, 10).map(({ key, count }) => ({
       name: key,

@@ -6,14 +6,30 @@ function forbidden(reason: string): NextResponse {
   return NextResponse.json({ error: reason }, { status: 403 });
 }
 
+function normalizeHost(rawHost: string | null): string | null {
+  if (!rawHost || /[\s/@?#]/.test(rawHost)) return null;
+  try {
+    const parsed = new URL(`http://${rawHost}`);
+    if (parsed.username || parsed.password || parsed.pathname !== "/" || parsed.search || parsed.hash) return null;
+    return parsed.host.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+function hostName(rawHost: string | null): string | null {
+  const host = normalizeHost(rawHost);
+  if (!host) return null;
+  try { return new URL(`http://${host}`).hostname.toLowerCase(); } catch { return null; }
+}
+
 function allowedHost(rawHost: string | null): boolean {
-  if (!rawHost) return false;
-  let hostname = "";
-  try { hostname = new URL(`http://${rawHost}`).hostname.toLowerCase(); } catch { return false; }
+  const hostname = hostName(rawHost);
+  if (!hostname) return false;
   const configured = (process.env.OPENEVAL_ALLOWED_HOSTS ?? "")
     .split(",")
-    .map((host) => host.trim().toLowerCase())
-    .filter(Boolean);
+    .map((host) => hostName(host.trim()))
+    .filter((host): host is string => Boolean(host));
   return hostname === "localhost" || hostname.endsWith(".localhost")
     || hostname === "127.0.0.1" || hostname === "[::1]"
     || configured.includes(hostname);
@@ -34,20 +50,24 @@ export function middleware(req: NextRequest) {
     if (secFetchSite !== "same-origin" && secFetchSite !== "none") {
       return forbidden("cross-site request rejected");
     }
-    return NextResponse.next();
   }
 
-  // Fall back to Origin/Host comparison. Requests with neither header
-  // (curl, server-side callers) pass.
+  // Validate Origin whenever it is present, even when Sec-Fetch-Site says
+  // "none". The latter is a useful browser signal, but it is not proof that
+  // an accompanying Origin belongs to this local app.
   const origin = req.headers.get("origin");
   if (origin) {
     let originHost: string | null = null;
     try {
-      originHost = new URL(origin).host;
+      const parsed = new URL(origin);
+      if (parsed.username || parsed.password || parsed.pathname !== "/" || parsed.search || parsed.hash) {
+        return forbidden("cross-origin request rejected");
+      }
+      originHost = normalizeHost(parsed.host);
     } catch {
       originHost = null;
     }
-    if (!originHost || originHost !== req.headers.get("host")) {
+    if (!originHost || originHost !== normalizeHost(req.headers.get("host"))) {
       return forbidden("cross-origin request rejected");
     }
   }

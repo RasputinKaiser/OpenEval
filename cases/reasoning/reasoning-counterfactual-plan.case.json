@@ -5,7 +5,7 @@
   "name": "Produce a 3-step remediation plan",
   "description": "Agent gets a failing deployment scenario and must emit a numbered 3-step remediation plan. Backstop regex checks for three numbered steps.",
   "tags": ["planning", "counterfactual"],
-  "prompt": "A CI deployment failed because a new service failed health checks after launch. The service depends on a Postgres database and an external payment API. The previous production version was healthy. Produce a concise 3-step remediation plan to restore service quickly and safely.",
+  "prompt": "A CI deployment failed because a new service failed health checks after launch. The service depends on a Postgres database and an external payment API. The previous production version was healthy. Produce a concise 3-step remediation plan to restore service quickly and safely. Give the numbered plan in your final answer, and also write the same three steps to remediation-plan.txt as plain text. Do not create any other files.",
   "setup": { "type": "none" },
   "runner": { "max_turns": 5, "timeout_seconds": 180, "permission_mode": "bypassPermissions" },
   "budget": { "max_cost_usd": 0.5 },
@@ -18,7 +18,8 @@
     { "type": "rubric_llm", "rubric": "The plan must have exactly three clearly numbered steps, must start by rolling back to the last known-good version, then diagnose logs/metrics, then apply a fix safely. Score 0-1 for ordering and correctness.", "min_score": 0.7 },
     { "type": "regex_match", "pattern": "^[\\s*#>-]*(?:[Ss]tep\\s+)?1[.):]", "source": "final_text" },
     { "type": "regex_match", "pattern": "^[\\s*#>-]*(?:[Ss]tep\\s+)?2[.):]", "source": "final_text" },
-    { "type": "regex_match", "pattern": "^[\\s*#>-]*(?:[Ss]tep\\s+)?3[.):]", "source": "final_text" }
+    { "type": "regex_match", "pattern": "^[\\s*#>-]*(?:[Ss]tep\\s+)?3[.):]", "source": "final_text" },
+    { "type": "file_contains", "path": "remediation-plan.txt", "pattern": "^1[.):][\\s\\S]*[Rr]oll\\s*[Bb]ack[\\s\\S]*2[.):][\\s\\S]*logs[\\s\\S]*metrics[\\s\\S]*3[.):][\\s\\S]*(?:staging|health checks)", "weight": 1 }
   ],
   "pass_threshold": 1
 }

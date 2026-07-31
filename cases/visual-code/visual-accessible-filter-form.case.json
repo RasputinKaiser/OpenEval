@@ -1,0 +1,86 @@
+{
+  "id": "visual-accessible-filter-form",
+  "difficulty": "medium",
+  "category": "visual-code",
+  "name": "Repair an accessible filter interaction",
+  "description": "Repair a small static results page so filtering works through semantic form submission and remains inspectable in a bounded runtime receipt.",
+  "tags": [
+    "visual-code",
+    "web-ui",
+    "accessibility",
+    "keyboard",
+    "interaction",
+    "artifact-contract"
+  ],
+  "prompt": "Repair `index.html` into an accessible benchmark-run filter page. Keep the supplied result rows, give the form an explicit accessible name, associate the Status label with the select, use a real submit button, and make the inline submit handler hide nonmatching rows while exposing the empty state when there are no matches. The interaction must work without pointer-only `onclick` handlers. Keep the document self-contained with no network resources. Run `npm test`; the fixture test simulates the submit path and checks the accessible markup. Then write `evidence/render.json` for the exact `index.html` bytes at 720x480@1 with no console errors or horizontal overflow. The receipt is deterministic runtime-contract evidence, not a screenshot or pixel-quality verdict. Do not modify `verify.test.mjs` or `package.json`.",
+  "setup": {
+    "type": "fixture",
+    "fixture": "accessible-filter-form"
+  },
+  "runner": {
+    "max_turns": 20,
+    "timeout_seconds": 240,
+    "permission_mode": "bypassPermissions"
+  },
+  "benchmark": {
+    "intent": "Whether an agent can repair an accessible interaction so keyboard-submit behavior and semantic markup agree with a deterministic interaction contract.",
+    "deliverable": "A self-contained index.html with working submit filtering and a matching fixed-viewport render receipt.",
+    "evidence": ["deterministic", "artifact"],
+    "usage": "low"
+  },
+  "visual": {
+    "kind": "web_ui",
+    "expected_artifacts": ["index.html", "evidence/render.json"]
+  },
+  "graders": [
+    {
+      "type": "tests_pass",
+      "command": "npm test",
+      "timeout_ms": 30000,
+      "min_passed": 3
+    },
+    {
+      "type": "render_evidence",
+      "artifact_path": "index.html",
+      "receipt_path": "evidence/render.json",
+      "artifact_kind": "html",
+      "viewport": {"width": 720, "height": 480, "device_scale_factor": 1},
+      "selectors": [
+        {"selector": "[data-testid=\"filter-form\"]", "min_count": 1, "visible": true},
+        {"selector": "[data-testid=\"result-list\"]", "min_count": 1, "visible": true},
+        {"selector": "[data-testid=\"empty-state\"]", "min_count": 1, "visible": false}
+      ]
+    },
+    {
+      "type": "file_contains",
+      "path": "index.html",
+      "pattern": "aria-label=\"Filter benchmark runs\""
+    },
+    {
+      "type": "file_contains",
+      "path": "index.html",
+      "pattern": "<label for=\"status\">Status</label>"
+    },
+    {
+      "type": "file_contains",
+      "path": "index.html",
+      "pattern": "addEventListener\\('submit'"
+    },
+    {
+      "type": "file_contains",
+      "path": "index.html",
+      "pattern": "aria-live=\"polite\""
+    },
+    {
+      "type": "files_unchanged",
+      "paths": ["verify.test.mjs", "package.json"],
+      "forbidden": true
+    }
+  ],
+  "pass_threshold": 1,
+  "oracle": {
+    "solve": "oracle/visual-accessible-filter-form.sh",
+    "noop_max_score": 0.2,
+    "known_bad": ["oracle/visual-accessible-filter-form-bad.sh"]
+  }
+}

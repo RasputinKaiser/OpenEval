@@ -29,6 +29,41 @@ export function fmtUsdFull(n: number): string {
   return Number.isFinite(n) ? "$" + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—";
 }
 
+/** Explicit date/time presentation for client-only updates after hydration. */
+export const DISPLAY_LOCALE = "en-US";
+export const DISPLAY_TIME_ZONE = "UTC";
+
+const DATE_TIME_FORMATTER = new Intl.DateTimeFormat(DISPLAY_LOCALE, {
+  timeZone: DISPLAY_TIME_ZONE,
+  year: "numeric",
+  month: "short",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+});
+
+const TIME_FORMATTER = new Intl.DateTimeFormat(DISPLAY_LOCALE, {
+  timeZone: DISPLAY_TIME_ZONE,
+  hour: "numeric",
+  minute: "2-digit",
+  second: "2-digit",
+});
+
+/** Stable absolute fallback safe to use in server-rendered markup. */
+export function fmtStableDateTime(ms: number | null | undefined): string {
+  return typeof ms === "number" && Number.isFinite(ms) ? new Date(ms).toISOString() : "—";
+}
+
+/** Human-readable date/time with an explicit locale and timezone. */
+export function fmtDateTime(ms: number | null | undefined): string {
+  return typeof ms === "number" && Number.isFinite(ms) ? DATE_TIME_FORMATTER.format(new Date(ms)) : "—";
+}
+
+/** Human-readable time with an explicit locale and timezone. */
+export function fmtTime(ms: number | null | undefined): string {
+  return typeof ms === "number" && Number.isFinite(ms) ? TIME_FORMATTER.format(new Date(ms)) : "—";
+}
+
 export function fmtRel(ms: number | null | undefined, nowMs = Date.now()): string {
   if (!ms) return "—";
   const diff = nowMs - ms;

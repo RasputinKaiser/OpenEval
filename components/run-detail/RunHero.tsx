@@ -9,6 +9,7 @@ export interface StatusCounts {
   passed: number;
   failed: number;
   error: number;
+  skipped: number;
   running: number;
   pending: number;
 }
@@ -45,7 +46,7 @@ export default function RunHero({
   onExportCsv: () => void;
   onExportJson: () => void;
 }) {
-  const completed = counts.passed + counts.failed + counts.error;
+  const completed = counts.passed + counts.failed + counts.error + counts.skipped;
   return (
     <section className="run-hero mb-4 overflow-hidden rounded-lg border border-bd">
       <div className="stagger-grid grid gap-4 p-4 xl:grid-cols-[1fr_360px] xl:items-end">

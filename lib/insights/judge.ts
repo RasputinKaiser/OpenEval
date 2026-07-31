@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { randomUUID } from "node:crypto";
 import {
   extractJudgeJson,
   resolveJudge,
@@ -11,6 +12,14 @@ import {
   loadJudgeFailures,
   recordJudgeFailure,
   clearJudgeFailure,
+  loadJudgeJob,
+  claimJudgeJob,
+  heartbeatJudgeJob,
+  updateJudgeJobProgress,
+  finishJudgeJob,
+  interruptJudgeJob,
+  JUDGE_JOB_LEASE_MS,
+  type StoredJudgeJob,
 } from "../live-cache";
 import { JUDGE_PROMPT_MARKER } from "./signals";
 import type { SessionPoint, Marker } from "./timeline";
@@ -58,6 +67,18 @@ export interface JudgeDigest {
 }
 
 const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n) + "…" : s);
+
+/** Keep durable verdict explanations small; raw transcripts stay on disk. */
+export const JUDGE_REASON_MAX_CHARS = 240;
+
+export function normalizeJudgeReasons(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value
+      .filter((reason): reason is string => typeof reason === "string")
+      .slice(0, 4)
+      .map((reason) => clip(reason, JUDGE_REASON_MAX_CHARS))
+    : [];
+}
 
 /**
  * First index in `points` (sorted ascending by `at`) whose `at` is >= t.
@@ -111,19 +132,19 @@ export function extractJudgeDigest(file: string): JudgeDigest {
   try {
     for (const message of readConversationMessages(file)) {
       if (message.role === "user") {
-        if (firstUser == null) firstUser = message.text;
+        if (firstUser == null) firstUser = clip(message.text, 600);
         else keepRecentUser(message.text);
       } else {
-        lastAssistant = message.text;
+        lastAssistant = clip(message.text, 400);
       }
     }
   } catch {
     // Unreadable file → empty digest; caller skips it.
   }
   return {
-    firstUser: firstUser ? clip(firstUser, 600) : null,
+    firstUser,
     laterUsers: users,
-    lastAssistant: lastAssistant ? clip(lastAssistant, 400) : null,
+    lastAssistant,
   };
 }
 
@@ -236,9 +257,7 @@ async function judgeOne(p: SessionPoint, harness: string, model: string | undefi
       recordJudgeFailure(p.path, err);
       return err;
     }
-    const reasons = Array.isArray(parsed!.reasons)
-      ? (parsed!.reasons as unknown[]).filter((r): r is string => typeof r === "string").slice(0, 4)
-      : [];
+    const reasons = normalizeJudgeReasons(parsed!.reasons);
     let mtimeMs = 0;
     try { mtimeMs = fs.statSync(p.path).mtimeMs; } catch {}
     saveJudgment({
@@ -298,6 +317,8 @@ export async function judgePoints(points: SessionPoint[], markers: Marker[], opt
 // ---------- Background judge-all job ----------
 
 export interface JudgeJobStatus {
+  /** Durable lifecycle state; `idle` means no job row exists yet. */
+  state: StoredJudgeJob["state"] | "idle";
   running: boolean;
   total: number; // sessions queued for this job
   done: number;
@@ -306,17 +327,76 @@ export interface JudgeJobStatus {
   judge: string;
   startedAt: number | null;
   finishedAt: number | null;
+  /** Last durable lease heartbeat, exposed so clients can distinguish work from a frozen poll. */
+  heartbeatAt: number | null;
+  /** Absolute lease expiry estimate; null when no worker owns the job. */
+  leaseExpiresAt: number | null;
   lastError: string | null;
 }
 
-/** Singleton per server process — one long judging job at a time. */
-let job: JudgeJobStatus = {
-  running: false, total: 0, done: 0, judged: 0, failed: 0,
-  judge: "", startedAt: null, finishedAt: null, lastError: null,
-};
+/** Changes on every module evaluation, so HMR cannot report a detached loop as healthy. */
+const MODULE_OWNER_TOKEN = randomUUID();
 
+function ownerLeaseHealthy(record: StoredJudgeJob, now = Date.now()): boolean {
+  if (record.state !== "running" || !record.leaseId || record.heartbeatAt == null) return false;
+  if (now - record.heartbeatAt > JUDGE_JOB_LEASE_MS) return false;
+  // A new HMR module in the same process gets a new owner token. Its old loop
+  // may still exist, but it no longer owns the durable lease and cannot write.
+  if (record.ownerPid === process.pid) return record.leaseId === `${process.pid}:${MODULE_OWNER_TOKEN}`;
+  // For a different process, a fresh heartbeat plus a live PID is the only
+  // honest evidence available; a process death immediately invalidates it.
+  if (record.ownerPid == null || !Number.isInteger(record.ownerPid) || record.ownerPid <= 0) return false;
+  try {
+    process.kill(record.ownerPid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function statusFromRecord(record: StoredJudgeJob | null): JudgeJobStatus {
+  if (!record) {
+    return {
+      state: "idle",
+      running: false,
+      total: 0,
+      done: 0,
+      judged: 0,
+      failed: 0,
+      judge: "",
+      startedAt: null,
+      finishedAt: null,
+      heartbeatAt: null,
+      leaseExpiresAt: null,
+      lastError: null,
+    };
+  }
+  const heartbeatAt = record.state === "running" ? record.heartbeatAt : null;
+  return {
+    state: record.state,
+    running: record.state === "running" && ownerLeaseHealthy(record),
+    total: record.total,
+    done: record.done,
+    judged: record.judged,
+    failed: record.failed,
+    judge: record.judge,
+    startedAt: record.startedAt,
+    finishedAt: record.finishedAt,
+    heartbeatAt,
+    leaseExpiresAt: heartbeatAt == null ? null : heartbeatAt + JUDGE_JOB_LEASE_MS,
+    lastError: record.lastError,
+  };
+}
+
+/** Read durable truth; stale leases are marked interrupted before returning. */
 export function judgeJobStatus(): JudgeJobStatus {
-  return { ...job };
+  const record = loadJudgeJob();
+  if (record?.state === "running" && !ownerLeaseHealthy(record)) {
+    const message = record.lastError || "judge-all interrupted: lease expired or owner process exited";
+    if (record.leaseId) interruptJudgeJob(record.leaseId, message);
+    return statusFromRecord(loadJudgeJob() ?? { ...record, state: "interrupted", lastError: message, finishedAt: Date.now(), leaseId: null, ownerPid: null, heartbeatAt: null });
+  }
+  return statusFromRecord(record);
 }
 
 /** Every unjudged session inside a qualifying marker's before/after window. */
@@ -376,27 +456,66 @@ export async function judgeAllWindows(
 }
 
 export function startJudgeAll(points: SessionPoint[], markers: Marker[], opts: { cap?: number; timeoutMs?: number } = {}): { started: boolean; status: JudgeJobStatus } {
-  if (job.running) return { started: false, status: judgeJobStatus() };
-  const sample = markerWindowSample(points, markers, judgeSkipSet()).slice(0, Math.min(opts.cap ?? 500, 1000));
-  job = {
-    running: sample.length > 0,
+  const prior = loadJudgeJob();
+  if (prior?.state === "running" && ownerLeaseHealthy(prior)) {
+    return { started: false, status: statusFromRecord(prior) };
+  }
+
+  const skip = judgeSkipSet();
+  const current = markerWindowSample(points, markers, skip);
+  const byPath = new Map(points.flatMap((p) => p.path ? [[p.path, p] as const] : []));
+  // An interrupted pass keeps its exact queue. Rehydrate those points first,
+  // then append any newly eligible marker-window points; persisted verdicts and
+  // permanent failures still decide what is actually retryable.
+  const resumed: SessionPoint[] = [];
+  const seen = new Set<string>();
+  if (prior?.state === "interrupted" || (prior?.state === "running" && !ownerLeaseHealthy(prior))) {
+    for (const file of prior.queue) {
+      const p = byPath.get(file);
+      if (p && !skip.has(file) && !seen.has(file)) { seen.add(file); resumed.push(p); }
+    }
+  }
+  for (const p of current) {
+    if (p.path && !seen.has(p.path)) { seen.add(p.path); resumed.push(p); }
+  }
+  const sample = resumed.slice(0, Math.min(opts.cap ?? 500, 1000));
+  const { judgeName } = resolveJudge();
+  const now = Date.now();
+  const leaseId = `${process.pid}:${MODULE_OWNER_TOKEN}`;
+  const hasWork = sample.length > 0;
+  const next: StoredJudgeJob = {
+    state: hasWork ? "running" : "finished",
     total: sample.length,
-    done: 0, judged: 0, failed: 0,
-    judge: resolveJudge().judgeName,
-    startedAt: Date.now(),
-    finishedAt: sample.length === 0 ? Date.now() : null,
-    lastError: null,
+    done: 0,
+    judged: 0,
+    failed: 0,
+    judge: judgeName,
+    startedAt: now,
+    finishedAt: hasWork ? null : now,
+    lastError: prior?.state === "running" || prior?.state === "interrupted"
+      ? "previous judge-all lease was interrupted; resumed unfinished sessions"
+      : null,
+    queue: sample.flatMap((p) => p.path ? [p.path] : []),
+    leaseId: hasWork ? leaseId : null,
+    ownerPid: hasWork ? process.pid : null,
+    heartbeatAt: hasWork ? now : null,
   };
-  if (sample.length > 0) {
+  const takeoverLeaseId = prior?.state === "running" && !ownerLeaseHealthy(prior) ? prior.leaseId : undefined;
+  if (!claimJudgeJob(next, { takeoverLeaseId })) {
+    return { started: false, status: judgeJobStatus() };
+  }
+  if (hasWork) {
+    const heartbeat = setInterval(() => { heartbeatJudgeJob(leaseId); }, Math.min(5_000, Math.max(1_000, Math.floor(JUDGE_JOB_LEASE_MS / 3))));
+    heartbeat.unref?.();
     void runJudgeQueue(sample, 3, opts.timeoutMs ?? 90_000, (ok, error) => {
-      job.done++;
-      if (ok) job.judged++;
-      else { job.failed++; job.lastError = error; }
-      if (job.done >= job.total) { job.running = false; job.finishedAt = Date.now(); }
-    }).catch(() => {
-      job.running = false;
-      job.finishedAt = Date.now();
+      updateJudgeJobProgress(leaseId, { ok, error });
+    }).then(() => {
+      finishJudgeJob(leaseId);
+    }).catch((error) => {
+      interruptJudgeJob(leaseId, error instanceof Error ? error.message : String(error));
+    }).finally(() => {
+      clearInterval(heartbeat);
     });
   }
-  return { started: sample.length > 0, status: judgeJobStatus() };
+  return { started: hasWork, status: judgeJobStatus() };
 }

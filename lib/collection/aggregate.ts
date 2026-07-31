@@ -4,6 +4,11 @@ import { collectSourceSessions, scanSourceSessions, type CollectedSourceFiles, t
 import { allCollectionSources, defToSpec, type CollectionSourceDef } from "./sources";
 import { discoverKnownSources, discoverUnknownCandidates, type DiscoveredSource, type UnknownCandidate } from "./discover";
 import { displayModelId, PRICING_LIST_DATE, PRICING_SOURCE } from "../pricing";
+import {
+  emptyParseWarningCounts,
+  mergeParseWarningCounts,
+  type ParseWarningCounts,
+} from "../live/warning-taxonomy";
 
 export interface CollectedSourceSummary {
   id: string;
@@ -24,12 +29,17 @@ export interface CollectedSourceSummary {
   /** Provenance counters over parsed sessions; archived rows are included. */
   sessionsWithMeasuredUsage?: number;
   sessionsWithMeasuredDuration?: number;
+  sessionsWithInferredDuration?: number;
+  subagentSessions?: number;
+  sessionsWithMeasuredModel?: number;
   sessionsWithMissingModel?: number;
   sessionsWithInferredModel?: number;
   sessionsWithMissingTokens?: number;
   sessionsWithInferredCost?: number;
   sessionsWithMalformedLines?: number;
   staleSessions?: number;
+  /** Actionable parser-warning categories; source metadata is excluded. */
+  parseWarningCounts?: ParseWarningCounts;
   pricedSessions: number;
   measuredCostSessions: number;
   listedRateSessions: number;
@@ -42,6 +52,8 @@ export interface CollectedSourceSummary {
   /** Detect-only inventory is a lower bound because its bounded walk hit depth/cap. */
   inventoryTruncated?: boolean;
   inventoryTruncationReasons?: string[];
+  /** Parsed population carries an incomplete/unsupported-file caveat. */
+  coveragePartial?: boolean;
   /**
    * True when a scan budget or parser safety cap stopped before this source's
    * on-disk files were all parsed: live-file metrics cover only the newest
@@ -85,6 +97,9 @@ export interface ToolRollup {
  */
 export interface CollectionSessionItem {
   sessionId: string;
+  isSubagent?: boolean;
+  parentSessionId?: string | null;
+  agentLabel?: string | null;
   sourceId: string;
   sourceLabel: string;
   displayTitle: string | null;
@@ -103,9 +118,24 @@ export interface CollectionSessionItem {
   dataQuality: number;
 }
 
+/**
+ * Stable collection-row identity. Session ids are only source-local in
+ * practice, and archived rows may no longer have a usable path; qualifying
+ * the transcript identity with its source prevents cross-harness collisions
+ * in pagination, React keys, and client-side continuation dedupe.
+ */
+export function collectionSessionIdentity(
+  session: Pick<CollectionSessionItem, "sourceId" | "sessionId" | "path">,
+): string {
+  return `${session.sourceId}\u0000${session.path ?? session.sessionId}`;
+}
+
 export function toCollectionSessionItem(s: LiveSession, sourceId: string, sourceLabel: string): CollectionSessionItem {
   return {
     sessionId: s.sessionId,
+    isSubagent: s.isSubagent,
+    parentSessionId: s.parentSessionId,
+    agentLabel: s.agentLabel,
     sourceId,
     sourceLabel,
     displayTitle: s.displayTitle,
@@ -128,6 +158,10 @@ export function toCollectionSessionItem(s: LiveSession, sourceId: string, source
 export interface AllSourcesResult {
   /** Stable reference time used by server and client for deterministic relative labels. */
   generatedAtMs: number;
+  /** Request-path snapshot state; optional for compatibility with older payloads. */
+  stale?: boolean;
+  refreshing?: boolean;
+  refreshError?: string;
   sources: CollectedSourceSummary[];
   unknown: UnknownCandidate[];
   sessions: CollectionSessionItem[];
@@ -145,18 +179,26 @@ export interface AllSourcesResult {
   /** Parsed-session provenance counters, distinct from on-disk file inventory. */
   totalMeasuredUsageSessions?: number;
   totalMeasuredDurationSessions?: number;
+  totalInferredDurationSessions?: number;
+  totalSubagentSessions?: number;
+  totalMeasuredModelSessions?: number;
   totalMissingModelSessions?: number;
   totalInferredModelSessions?: number;
   totalMissingTokenSessions?: number;
   totalInferredCostSessions?: number;
   totalMalformedLineSessions?: number;
   totalStaleSessions?: number;
+  /** Actionable parser-warning sessions across every parsed source. */
+  parseWarningCounts?: ParseWarningCounts;
   /** On-disk files split by parser support; these are not session coverage ratios. */
   totalParseableFiles?: number;
   totalDetectOnlyFiles?: number;
   /** True when at least one detect-only inventory count is only a lower bound. */
   inventoryPartial?: boolean;
   inventoryPartialSources?: string[];
+  /** Parsed-source caveats are distinct from a caller time-budget partial scan. */
+  coveragePartial?: boolean;
+  coveragePartialSources?: string[];
   totalPricedSessions: number;
   totalMeasuredCostSessions: number;
   totalListedRateSessions: number;
@@ -334,12 +376,16 @@ function computeAllSources(
       totalToolCalls: 0,
       sessionsWithMeasuredUsage: 0,
       sessionsWithMeasuredDuration: 0,
+      sessionsWithInferredDuration: 0,
+      subagentSessions: 0,
+      sessionsWithMeasuredModel: 0,
       sessionsWithMissingModel: 0,
       sessionsWithInferredModel: 0,
       sessionsWithMissingTokens: 0,
       sessionsWithInferredCost: 0,
       sessionsWithMalformedLines: 0,
       staleSessions: 0,
+      parseWarningCounts: emptyParseWarningCounts(),
       pricedSessions: 0,
       measuredCostSessions: 0,
       listedRateSessions: 0,
@@ -355,7 +401,11 @@ function computeAllSources(
       inventoryTruncationReasons: disc?.scanTruncationReasons,
     };
 
-    if (def.parseable && base.status === "present") {
+    if (def.parseable) {
+      // A source can be physically empty or absent while its parse archive
+      // still contains sessions whose files were pruned. Always ask parseable
+      // sources for their on-disk + archived view; the physical status above
+      // remains truthful and separate from longitudinal retention.
       // Reuse discovery's walk (files + warnings) instead of re-walking the
       // whole source tree for the scan.
       // Retain up to SESSION_ITEM_CAP per source (not the default 100) so the
@@ -374,6 +424,9 @@ function computeAllSources(
       base.totalToolCalls = agg.totalToolCalls;
       base.sessionsWithMeasuredUsage = agg.usageSummary.sessionsWithMeasuredUsage;
       base.sessionsWithMeasuredDuration = agg.sessionsWithMeasuredDuration;
+      base.sessionsWithInferredDuration = agg.sessionsWithInferredDuration;
+      base.subagentSessions = agg.subagentSessions;
+      base.sessionsWithMeasuredModel = agg.sessionsWithMeasuredModel;
       base.sessionsWithMissingModel = agg.sessionsWithMissingModel;
       base.sessionsWithInferredModel = agg.sessionsWithInferredModel;
       base.sessionsWithMissingTokens = agg.sessionsWithMissingTokens;
@@ -395,6 +448,7 @@ function computeAllSources(
       toolLists.push(agg.byTool.map((t) => ({ name: t.name, calls: t.calls, errors: t.errors })));
       base.avgDataQuality = agg.avgDataQuality;
       base.scanWarnings = agg.scanWarnings;
+      if (agg.scanCoverage?.partial) base.coveragePartial = true;
       if (planned?.truncated) {
         base.scanTruncated = true;
         base.scanWarnings = [
@@ -410,6 +464,7 @@ function computeAllSources(
         ];
       }
       base.costEstimated = agg.sessionsWithInferredCost > 0;
+      base.parseWarningCounts = agg.parseWarningCounts;
       for (const s of agg.sessions) {
         allSessions.push(toCollectionSessionItem(s, def.id, def.label));
       }
@@ -417,7 +472,13 @@ function computeAllSources(
     summaries.push(base);
   }
 
-  allSessions.sort((a, b) => b.lastEventAt - a.lastEventAt);
+  allSessions.sort((a, b) => {
+    const byTime = b.lastEventAt - a.lastEventAt;
+    if (byTime !== 0) return byTime;
+    const aKey = collectionSessionIdentity(a);
+    const bKey = collectionSessionIdentity(b);
+    return aKey < bKey ? -1 : aKey > bKey ? 1 : 0;
+  });
   const sessions = allSessions.slice(0, SESSION_ITEM_CAP);
 
   // Unknown candidates: exclude every known root from the heuristic scan.
@@ -442,16 +503,22 @@ function computeAllSources(
       totalToolCalls: summaries.reduce((a, s) => a + s.totalToolCalls, 0),
       totalMeasuredUsageSessions: summaries.reduce((a, s) => a + (s.sessionsWithMeasuredUsage ?? 0), 0),
       totalMeasuredDurationSessions: summaries.reduce((a, s) => a + (s.sessionsWithMeasuredDuration ?? 0), 0),
+      totalInferredDurationSessions: summaries.reduce((a, s) => a + (s.sessionsWithInferredDuration ?? 0), 0),
+      totalSubagentSessions: summaries.reduce((a, s) => a + (s.subagentSessions ?? 0), 0),
+      totalMeasuredModelSessions: summaries.reduce((a, s) => a + (s.sessionsWithMeasuredModel ?? 0), 0),
       totalMissingModelSessions: summaries.reduce((a, s) => a + (s.sessionsWithMissingModel ?? 0), 0),
       totalInferredModelSessions: summaries.reduce((a, s) => a + (s.sessionsWithInferredModel ?? 0), 0),
       totalMissingTokenSessions: summaries.reduce((a, s) => a + (s.sessionsWithMissingTokens ?? 0), 0),
       totalInferredCostSessions: summaries.reduce((a, s) => a + (s.sessionsWithInferredCost ?? 0), 0),
       totalMalformedLineSessions: summaries.reduce((a, s) => a + (s.sessionsWithMalformedLines ?? 0), 0),
       totalStaleSessions: summaries.reduce((a, s) => a + (s.staleSessions ?? 0), 0),
+      parseWarningCounts: mergeParseWarningCounts(summaries.map((s) => s.parseWarningCounts ?? emptyParseWarningCounts())),
       totalParseableFiles: summaries.reduce((a, s) => a + (s.parseable ? s.filesFound : 0), 0),
       totalDetectOnlyFiles: summaries.reduce((a, s) => a + (!s.parseable ? s.filesFound : 0), 0),
       inventoryPartial: summaries.some((s) => s.inventoryTruncated),
       inventoryPartialSources: summaries.filter((s) => s.inventoryTruncated).map((s) => s.id),
+      coveragePartial: summaries.some((s) => s.coveragePartial),
+      coveragePartialSources: summaries.filter((s) => s.coveragePartial).map((s) => s.id),
       totalPricedSessions: summaries.reduce((a, s) => a + s.pricedSessions, 0),
       totalMeasuredCostSessions: summaries.reduce((a, s) => a + s.measuredCostSessions, 0),
       totalListedRateSessions: summaries.reduce((a, s) => a + s.listedRateSessions, 0),
@@ -721,9 +788,11 @@ function computeSnapshot(discovered: DiscoveredSource[], fingerprint: string, re
 }
 
 function withLimit(result: AllSourcesResult, limit: number): AllSourcesResult {
-  // Restamp the reference time on every serve: the memo can outlive the old
-  // 5s TTL by minutes, and relative "x ago" labels must not freeze with it.
-  return { ...result, generatedAtMs: Date.now(), sessions: result.sessions.slice(0, limit) };
+  // Preserve the generation time of the computed snapshot. Restamping here
+  // would make a stale last-good value look freshly generated to request-path
+  // callers; clients can compare this timestamp with wall-clock time and the
+  // snapshot service adds explicit stale/refreshing metadata.
+  return { ...result, sessions: result.sessions.slice(0, limit) };
 }
 
 /**
@@ -734,6 +803,22 @@ function withLimit(result: AllSourcesResult, limit: number): AllSourcesResult {
  */
 export function scanAllSources(limit = 200, opts: { fresh?: boolean; budgetMs?: number } = {}): AllSourcesResult {
   return withLimit(getSnapshot(opts).result, limit);
+}
+
+/**
+ * Return aggregate and full-history sessions from one corpus snapshot. This
+ * prevents a file change between two fresh validations from pairing aggregate
+ * totals from one fingerprint with timeline/rollup sessions from another.
+ */
+export function scanAllSourcesSnapshot(
+  limit = 200,
+  opts: { fresh?: boolean; budgetMs?: number } = {},
+): { aggregate: AllSourcesResult; sessions: CollectedSession[] } {
+  const current = getSnapshot(opts);
+  return {
+    aggregate: withLimit(current.result, limit),
+    sessions: [...current.sessions],
+  };
 }
 
 /**

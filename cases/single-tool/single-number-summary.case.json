@@ -1,0 +1,98 @@
+{
+  "id": "single-number-summary",
+  "category": "single-tool",
+  "difficulty": "medium",
+  "name": "Build a trustworthy numeric summary",
+  "description": "Read a small newline-delimited dataset, compute its core statistics, and emit a strict JSON artifact without changing the source files. The exact median catches a tempting upper-middle mistake.",
+  "tags": [
+    "structured-data",
+    "json",
+    "cli",
+    "statistics"
+  ],
+  "benchmark": {
+    "intent": "Whether an agent can inspect structured input, compute several statistics correctly, and preserve a machine-readable output contract.",
+    "deliverable": "number-summary.json with count, sum, min, max, and median as JSON numbers.",
+    "evidence": [
+      "deterministic",
+      "artifact"
+    ],
+    "usage": "low"
+  },
+  "prompt": "Read numbers.txt in the current directory and create number-summary.json. The JSON object must contain exactly these five numeric keys in this order: count, sum, min, max, median. For the supplied data, compute the values rather than guessing: count the entries, sum them, find the minimum and maximum, and use the middle value after sorting numerically as the median. Preserve numbers as JSON numbers, not strings. Do not modify numbers.txt or log.txt and do not create any other files.",
+  "setup": {
+    "type": "fixture",
+    "fixture": "inputs",
+    "init_git": true
+  },
+  "runner": {
+    "max_turns": 10,
+    "timeout_seconds": 150,
+    "permission_mode": "bypassPermissions"
+  },
+  "budget": {
+    "max_turns": 10,
+    "max_cost_usd": 0.35
+  },
+  "graders": [
+    {
+      "type": "file_eq",
+      "path": "number-summary.json",
+      "expected": "{\n  \"count\": 9,\n  \"sum\": 297,\n  \"min\": 4,\n  \"max\": 88,\n  \"median\": 23\n}",
+      "trim": true,
+      "weight": 50
+    },
+    {
+      "type": "json_path",
+      "path": "number-summary.json",
+      "jsonpath": "count",
+      "equals": 9,
+      "weight": 8
+    },
+    {
+      "type": "json_path",
+      "path": "number-summary.json",
+      "jsonpath": "sum",
+      "equals": 297,
+      "weight": 8
+    },
+    {
+      "type": "json_path",
+      "path": "number-summary.json",
+      "jsonpath": "min",
+      "equals": 4,
+      "weight": 6
+    },
+    {
+      "type": "json_path",
+      "path": "number-summary.json",
+      "jsonpath": "max",
+      "equals": 88,
+      "weight": 6
+    },
+    {
+      "type": "json_path",
+      "path": "number-summary.json",
+      "jsonpath": "median",
+      "equals": 23,
+      "weight": 12
+    },
+    {
+      "type": "files_unchanged",
+      "paths": [
+        "numbers.txt",
+        "log.txt"
+      ],
+      "forbidden": true,
+      "weight": 10
+    }
+  ],
+  "pass_threshold": 1,
+  "oracle": {
+    "solve": "oracle/single-number-summary.sh",
+    "noop_max_score": 0.1,
+    "known_bad": [
+      "oracle/single-number-summary-bad.sh"
+    ]
+  }
+}

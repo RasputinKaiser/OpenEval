@@ -15,6 +15,27 @@ const CAT_ACCENT: Record<string, string> = {
   "visual-code": "bg-blue-500",
 };
 
+const CATEGORY_LABELS: Record<string, string> = {
+  "agentic-swe": "Agentic SWE",
+  "single-tool": "Single tool",
+  reasoning: "Reasoning",
+  "visual-code": "Creative lab",
+};
+
+function visualKindLabel(kind: string): string {
+  return ({
+    svg: "SVG",
+    threejs: "3D scene",
+    web_ui: "HTML/CSS UI",
+    app_ui: "App UI",
+    screenshot: "Screenshot",
+    canvas: "Canvas",
+    data: "Data story",
+    diagram: "Diagram",
+    text: "Text / Markdown",
+  } as Record<string, string>)[kind] ?? kind;
+}
+
 export default function CasesClient({ cases, activeCategory }: { cases: CaseDefinition[]; activeCategory?: string }) {
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebouncedValue(query, 200);
@@ -47,6 +68,7 @@ export default function CasesClient({ cases, activeCategory }: { cases: CaseDefi
             ref={searchRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            aria-label="Search cases"
             placeholder="Search cases by name, id, tag…"
             className="w-full pl-9 pr-9 py-2 text-sm bg-bg border border-bd rounded-md focus:outline-none focus:border-accent placeholder:text-fg-dim"
           />
@@ -69,7 +91,7 @@ export default function CasesClient({ cases, activeCategory }: { cases: CaseDefi
         {Object.entries(grouped).map(([cat, list]) => (
           <section key={cat}>
             <div className="flex items-baseline gap-2 mb-3">
-              <h2 className="text-sm font-medium uppercase tracking-wider text-fg-muted">{cat}</h2>
+              <h2 className="text-sm font-medium uppercase tracking-wider text-fg-muted">{CATEGORY_LABELS[cat] ?? cat}</h2>
               <span className="text-[11px] text-fg-dim mono">{list.length}</span>
             </div>
             <div className="stagger-grid grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -93,6 +115,15 @@ export default function CasesClient({ cases, activeCategory }: { cases: CaseDefi
                     </div>
                   </div>
                   {c.description && <p className="text-[11px] text-fg-muted mt-2 line-clamp-2">{c.description}</p>}
+                  {c.benchmark?.intent && <p className="text-[10px] text-accent-soft mt-2 line-clamp-2">Measures: {c.benchmark.intent}</p>}
+                  {(c.visual || c.benchmark?.deliverable) && (
+                    <p className="text-[10px] text-fg-dim mt-2 line-clamp-2">
+                      {c.visual && <>Output: {visualKindLabel(c.visual.kind)}</>}
+                      {c.visual && c.benchmark?.deliverable && <span> · </span>}
+                      {c.benchmark?.deliverable && <>Deliverable: {c.benchmark.deliverable}</>}
+                    </p>
+                  )}
+                  {c.benchmark?.evidence && <p className="text-[10px] text-fg-dim mt-1">Evidence: {c.benchmark.evidence.join(" · ")}</p>}
                   {c.tags && c.tags.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-1">
                       {c.tags.map((t) => <span key={t} className="text-[10px] text-fg-dim mono">#{t}</span>)}

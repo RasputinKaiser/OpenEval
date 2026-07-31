@@ -1,0 +1,25 @@
+{
+  "id": "visual-data-story-card",
+  "category": "visual-code",
+  "difficulty": "medium",
+  "name": "Tell an outcome story with data",
+  "description": "Turn a small evaluation dataset into a readable, narrative data card with hierarchy, comparison, and accessible labels.",
+  "tags": ["visual-code", "data", "storytelling", "web-ui", "accessibility"],
+  "prompt": "Create a single self-contained file named outcome-story.html. Build a polished dark data-story card titled exactly \"OpenEval Outcome Story\". Tell a clear before/after story using visible labeled metrics for Pass rate, Median latency, API equivalent, and Known-bad rejection; include at least four data bars with numeric values, a short sentence explaining the change, an accessible chart label, and a legend. Use semantic HTML and inline CSS only. Do not use JavaScript, SVG, canvas, external assets, network requests, external stylesheets, or other files. The benchmark rewards readable information hierarchy and honest labels, not merely the presence of four numbers.",
+  "benchmark": {"intent": "Whether the agent can translate a small evaluation dataset into an honest, legible visual narrative with hierarchy and accessible evidence.", "deliverable": "outcome-story.html", "evidence": ["deterministic", "artifact", "judge"], "usage": "medium"},
+  "setup": {"type": "none"},
+  "budget": {"max_turns": 16, "max_cost_usd": 0.7},
+  "visual": {"kind": "data", "expected_artifacts": ["outcome-story.html"]},
+  "graders": [
+    {"type": "file_exists", "path": "outcome-story.html", "weight": 8},
+    {"type": "file_contains", "path": "outcome-story.html", "pattern": "<h1\\b[^>]*>OpenEval Outcome Story</h1>", "weight": 10},
+    {"type": "file_contains", "path": "outcome-story.html", "pattern": "Pass rate|Median latency|API equivalent|Known-bad rejection", "weight": 18},
+    {"type": "exit_code", "command": "node -e \"const s=require('fs').readFileSync('outcome-story.html','utf8'); if((s.match(/data-bar=/g)||[]).length<4) process.exit(1); if((s.match(/data-metric=/g)||[]).length<4) process.exit(1)\"", "weight": 18},
+    {"type": "file_contains", "path": "outcome-story.html", "pattern": "aria-label=|aria-labelledby=", "weight": 10},
+    {"type": "file_contains", "path": "outcome-story.html", "pattern": "grid-template-columns|display\\s*:\\s*grid", "weight": 10},
+    {"type": "file_contains", "path": "outcome-story.html", "pattern": "<script\\b|<svg\\b|<canvas\\b|https?://|<link\\b|@import\\b|url\\(", "negate": true, "weight": 8, "forbidden": true},
+    {"type": "rubric_llm", "judge_harness": "codex", "judge_model": "gpt-5.6-luna", "rubric": "Assess the source artifact as a data-story design. Reward an obvious reading order, labels that distinguish units and direction of change, meaningful comparison rather than decorative numbers, and accessible chart/legend semantics. Do not infer pixel quality beyond the source evidence.", "artifact_paths": ["outcome-story.html"], "min_score": 0.72, "weight": 18}
+  ],
+  "pass_threshold": 0.82,
+  "oracle": {"solve": "oracle/visual-data-story-card.sh", "known_bad": ["oracle/visual-data-story-card-bad.sh"]}
+}

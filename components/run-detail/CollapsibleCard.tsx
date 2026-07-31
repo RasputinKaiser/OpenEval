@@ -33,14 +33,15 @@ export default function CollapsibleCard({
           type="button"
           onClick={onToggle}
           aria-expanded={!collapsed}
-          className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-xs font-medium hover:text-fg"
+          aria-controls={id ? `${id}-content` : undefined}
+          className="flex min-h-10 min-w-0 flex-1 items-center gap-1.5 text-left text-xs font-medium hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
         >
           <ChevronRight className={clsx("size-3 shrink-0 text-fg-dim transition-transform", !collapsed && "rotate-90")} />
           <span className="min-w-0 truncate">{title}</span>
         </button>
         {right}
       </div>
-      {!collapsed && children}
+      {!collapsed && <div id={id ? `${id}-content` : undefined}>{children}</div>}
     </div>
   );
 }

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import clsx from "clsx";
 import { useFocusTrap } from "@/lib/use-focus-trap";
-import { Search, ArrowRight, Activity, Radio, FileText, Plus, Trophy, GitCompareArrows, Plug, ShieldCheck, LayoutDashboard, Boxes, TrendingUp, Settings } from "lucide-react";
+import { Search, ArrowRight, Activity, Radio, FileText, Plus, Trophy, GitCompareArrows, Plug, ShieldCheck, LayoutDashboard, Boxes, TrendingUp, Settings, X } from "lucide-react";
 
 interface CommandItem {
   id: string;
@@ -14,8 +14,22 @@ interface CommandItem {
   icon: any;
   href?: string;
   action?: () => void;
-  group: "Navigation" | "Actions" | "Runs" | "Cases";
+  group: "Navigation" | "Actions" | "Runs" | "Cases" | "Sessions";
   keywords?: string;
+}
+
+export interface PaletteRun {
+  id: string;
+  name: string;
+  status?: string;
+}
+
+export interface PaletteCase {
+  id: string;
+  name: string;
+  category: string;
+  description?: string;
+  tags?: string[];
 }
 
 const NAV_ITEMS: CommandItem[] = [
@@ -48,7 +62,7 @@ function fuzzyScore(query: string, text: string, keywords?: string): number {
   return qi === q.length ? 40 : 0;
 }
 
-export default function CommandPalette({ runs }: { runs: Array<{ id: string; name: string }> }) {
+export default function CommandPalette({ runs, cases = [] }: { runs: PaletteRun[]; cases?: PaletteCase[] }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [selectedIdx, setSelectedIdx] = useState(0);
@@ -72,7 +86,14 @@ export default function CommandPalette({ runs }: { runs: Array<{ id: string; nam
       }
     }
     window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
+    function openFromShell() {
+      setOpen(true);
+    }
+    window.addEventListener("openeval:open-palette", openFromShell);
+    return () => {
+      window.removeEventListener("keydown", handler);
+      window.removeEventListener("openeval:open-palette", openFromShell);
+    };
   }, [open]);
 
   useEffect(() => {
@@ -89,26 +110,48 @@ export default function CommandPalette({ runs }: { runs: Array<{ id: string; nam
     document.getElementById(`palette-option-${selectedIdx}`)?.scrollIntoView({ block: "nearest" });
   }, [open, selectedIdx]);
 
-  void runs;
   const items = useMemo(() => {
-    // (flat, score-sorted; display order is derived below)
+    // Keep the shell index bounded: runs come from the API's recent slice and
+    // cases are projected to searchable metadata by SidebarNavClient. Session
+    // text is intentionally delegated to Collection's full-text route below;
+    // this palette never receives transcript rows or snippets.
     const runItems: CommandItem[] = runs.slice(0, 10).map((r) => ({
       id: `run-${r.id}`,
       label: r.name,
-      hint: r.id,
+      hint: r.status ? `${r.status} · recent` : `${r.id} · recent`,
       icon: Activity,
       href: `/runs/${r.id}`,
       group: "Runs" as const,
       keywords: r.id,
     }));
-    const all = [...NAV_ITEMS, ...runItems];
+    const caseItems: CommandItem[] = cases.slice(0, 80).map((c) => ({
+      id: `case-${c.id}`,
+      label: c.name,
+      hint: c.category,
+      icon: FileText,
+      href: `/runs/new?caseIds=${encodeURIComponent(c.id)}`,
+      group: "Cases" as const,
+      keywords: [c.id, c.category, c.description, ...(c.tags ?? [])].filter(Boolean).join(" "),
+    }));
+    const sessionSearch = query.trim().length >= 2
+      ? [{
+        id: "session-search",
+        label: `Search all session evidence for “${query.trim()}”`,
+        hint: "Collection · full text",
+        icon: Search,
+        href: `/collection?q=${encodeURIComponent(query.trim())}`,
+        group: "Sessions" as const,
+        keywords: `${query} session evidence collection full text`,
+      } satisfies CommandItem]
+      : [];
+    const all = [...NAV_ITEMS, ...runItems, ...caseItems, ...sessionSearch];
     if (!query.trim()) return all;
     return all
       .map((item) => ({ item, score: fuzzyScore(query, item.label, item.keywords) }))
       .filter(({ score }) => score > 0)
       .sort((a, b) => b.score - a.score)
       .map(({ item }) => item);
-  }, [query, runs]);
+  }, [cases, query, runs]);
 
   // Group for display, then flatten back so the keyboard index, the rendered
   // option ids, and aria-activedescendant all agree on ONE order. Using the
@@ -123,6 +166,10 @@ export default function CommandPalette({ runs }: { runs: Array<{ id: string; nam
     return { grouped, ordered: Object.values(grouped).flat() };
   }, [items]);
 
+  const highlightedIdx = ordered.length > 0
+    ? Math.min(Math.max(selectedIdx, 0), ordered.length - 1)
+    : 0;
+
   useEffect(() => {
     setSelectedIdx(0);
   }, [query]);
@@ -130,9 +177,10 @@ export default function CommandPalette({ runs }: { runs: Array<{ id: string; nam
   useEffect(() => {
     function handler(e: KeyboardEvent) {
       if (!open) return;
+      if (ordered.length === 0) return;
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        setSelectedIdx((i) => Math.min(i + 1, ordered.length - 1));
+        setSelectedIdx((i) => Math.min(i + 1, Math.max(ordered.length - 1, 0)));
       }
       if (e.key === "ArrowUp") {
         e.preventDefault();
@@ -140,7 +188,7 @@ export default function CommandPalette({ runs }: { runs: Array<{ id: string; nam
       }
       if (e.key === "Enter") {
         e.preventDefault();
-        const item = ordered[selectedIdx];
+        const item = ordered[highlightedIdx];
         if (item?.href) router.push(item.href);
         if (item?.action) item.action();
         setOpen(false);
@@ -148,7 +196,7 @@ export default function CommandPalette({ runs }: { runs: Array<{ id: string; nam
     }
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [open, ordered, selectedIdx, router]);
+  }, [highlightedIdx, open, ordered, router]);
 
   if (!open) return null;
   let runningIdx = 0;
@@ -160,9 +208,10 @@ export default function CommandPalette({ runs }: { runs: Array<{ id: string; nam
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-label="Command palette"
+        aria-labelledby="command-palette-title"
         className="relative w-full max-w-xl mx-4 rounded-lg border border-bd bg-bg-subtle shadow-2xl overflow-hidden anim-menu-enter"
       >
+        <h2 id="command-palette-title" className="sr-only">Command palette</h2>
         <div className="flex items-center gap-3 border-b border-bd-subtle px-4 py-3">
           <Search aria-hidden="true" className="size-4 text-fg-muted shrink-0" />
           <input
@@ -170,16 +219,24 @@ export default function CommandPalette({ runs }: { runs: Array<{ id: string; nam
             data-autofocus
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search commands, runs, pages…"
+            placeholder="Search pages, recent runs, cases, or session evidence…"
             aria-label="Search commands"
             role="combobox"
             aria-expanded="true"
             aria-controls="palette-listbox"
             aria-autocomplete="list"
-            aria-activedescendant={ordered.length > 0 ? `palette-option-${selectedIdx}` : undefined}
+            aria-activedescendant={ordered.length > 0 ? `palette-option-${highlightedIdx}` : undefined}
             className="flex-1 bg-transparent text-sm outline-none placeholder:text-fg-dim"
           />
           <kbd aria-hidden="true" className="text-[10px] text-fg-dim rounded bg-bg-elev px-1.5 py-0.5">ESC</kbd>
+          <button
+            type="button"
+            onClick={() => { setOpen(false); setQuery(""); }}
+            aria-label="Close command palette"
+            className="flex size-8 shrink-0 items-center justify-center rounded-md text-fg-muted hover:bg-bg-elev hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            <X aria-hidden="true" className="size-4" />
+          </button>
         </div>
         <div aria-live="polite" className="sr-only">
           {ordered.length === 0 ? `No results for ${query}` : `${ordered.length} result${ordered.length === 1 ? "" : "s"}`}
@@ -190,7 +247,7 @@ export default function CommandPalette({ runs }: { runs: Array<{ id: string; nam
               <div id={`palette-group-${group}`} role="presentation" className="px-4 py-1 text-[9px] uppercase tracking-wider text-fg-dim">{group}</div>
               {groupItems.map((item) => {
                 const idx = runningIdx++;
-                const active = idx === selectedIdx;
+                const active = idx === highlightedIdx;
                 const Icon = item.icon;
                 return (
                   <Link
@@ -202,7 +259,7 @@ export default function CommandPalette({ runs }: { runs: Array<{ id: string; nam
                     href={item.href ?? "#"}
                     onClick={() => setOpen(false)}
                     className={clsx(
-                      "flex items-center gap-3 px-4 py-2 text-sm transition-colors",
+                      "flex items-center gap-3 px-4 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent",
                       active ? "bg-accent/10 text-accent-soft ring-1 ring-inset ring-accent/60" : "text-fg hover:bg-bg-elev"
                     )}
                     onMouseEnter={() => setSelectedIdx(idx)}
@@ -219,6 +276,9 @@ export default function CommandPalette({ runs }: { runs: Array<{ id: string; nam
           {ordered.length === 0 && (
             <div className="px-4 py-8 text-center text-sm text-fg-muted">No results for &ldquo;{query}&rdquo;</div>
           )}
+        </div>
+        <div className="border-t border-bd-subtle px-4 py-2 text-[10px] leading-4 text-fg-dim">
+          Pages: all routes · Runs: latest 10 · Cases: metadata index · Sessions: full-text search opens Collection
         </div>
       </div>
     </div>

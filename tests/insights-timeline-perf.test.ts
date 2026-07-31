@@ -77,7 +77,7 @@ test("markerImpact matches the filter-based reference on a randomized corpus", (
     after: points.filter((p) => p.at >= firstSeenAt).slice(0, window),
   });
   for (const marker of detectMarkers(pts)) {
-    for (const window of [0, 1, 5, 20]) {
+    for (const window of [1, 5, 20]) {
       const impact = markerImpact(pts, marker, window, 3);
       const ref = reference(pts, marker.firstSeenAt, window);
       assert.equal(impact.nBefore, ref.before.length, `${marker.name} w=${window} before`);
@@ -89,6 +89,10 @@ test("markerImpact matches the filter-based reference on a randomized corpus", (
       );
     }
   }
+  const invalidImpact = markerImpact(pts, detectMarkers(pts)[0], 0, 3);
+  assert.equal(invalidImpact.nBefore, 0);
+  assert.equal(invalidImpact.nAfter, 0);
+  assert.equal(invalidImpact.windowComparable, false);
 });
 
 test("metricSeries matches the naive slice-median reference on a randomized corpus", () => {
@@ -104,7 +108,7 @@ test("metricSeries matches the naive slice-median reference on a randomized corp
     const m = Math.floor(s.length / 2);
     return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
   };
-  for (const window of [0, 1, 3, 15, 1000]) {
+  for (const window of [1, 3, 15, 1000]) {
     const got = metricSeries(pts, (p) => p.costUsd, window);
     const want = pts.map((p, i) => {
       const slice = pts.slice(Math.max(0, i - window + 1), i + 1).map((q) => q.costUsd);
@@ -113,6 +117,10 @@ test("metricSeries matches the naive slice-median reference on a randomized corp
     assert.deepEqual(got, want, `window=${window}`);
   }
 
+  const invalidSeries = metricSeries(pts, (p) => p.costUsd, 0);
+  const oneSeries = metricSeries(pts, (p) => p.costUsd, 1);
+  assert.deepEqual(invalidSeries, oneSeries, "invalid series windows fall back to one session");
+
   // NaN metric values must take the recompute fallback and still match the
   // naive reference — including windows where NaNs enter and later leave.
   const nanPick = (p: SessionPoint) => (p.costUsd < 2 ? NaN : p.costUsd);
@@ -120,10 +128,11 @@ test("metricSeries matches the naive slice-median reference on a randomized corp
     const got = metricSeries(pts, nanPick, window);
     const want = pts.map((p, i) => {
       const slice = pts.slice(Math.max(0, i - window + 1), i + 1).map(nanPick);
-      return { at: p.at, value: median(slice), n: slice.length };
+      const finite = slice.filter(Number.isFinite);
+      return { at: p.at, value: finite.length ? median(finite) : Number.NaN, n: finite.length };
     });
-    assert.ok(got.some((s) => Number.isNaN(s.value)), `window=${window} exercises NaN windows`);
-    assert.ok(got.some((s, i) => i > window && !Number.isNaN(s.value)), `window=${window} recovers after NaNs leave`);
-    assert.deepEqual(got, want, `window=${window} with NaN values`);
+    assert.ok(got.some((s) => s.n < window), `window=${window} exposes the finite denominator`);
+    assert.ok(got.every((s) => s.n > 0 ? Number.isFinite(s.value) : Number.isNaN(s.value)), `window=${window} never turns partial evidence into NaN`);
+    assert.deepEqual(got, want, `window=${window} with invalid values`);
   }
 });

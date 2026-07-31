@@ -11,7 +11,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import PageHeader from "./PageHeader";
-import { SectionHeader, SectionNav } from "./Section";
+import { SectionHeader } from "./Section";
+import { ProgressiveSectionNav, sectionVisibilityClass, useProgressiveSection } from "./mobile/ProgressiveSectionNav";
 import { RedactToggle } from "./RedactToggle";
 import { compactDisplayPath } from "@/lib/redaction";
 import { useRedactedShow } from "@/lib/use-redaction";
@@ -20,6 +21,8 @@ import type { AllSourcesResult } from "@/lib/collection/aggregate";
 import type { RollupReport } from "@/lib/collection/rollup";
 import type { FtsHit } from "@/lib/live-cache";
 import { WeeklyUsageChart, ActivityHeatmap, ToolHealthList } from "./CollectionCharts";
+import { EvidenceComposition, EvidenceCoverageRow } from "./evidence/EvidenceComposition";
+import { EvidenceReview } from "./evidence/EvidenceReview";
 
 
 function StatusPill({ status }: { status: "present" | "empty" | "absent" }) {
@@ -27,54 +30,111 @@ function StatusPill({ status }: { status: "present" | "empty" | "absent" }) {
   return <span className={clsx("rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wider", tone)}>{status}</span>;
 }
 
-/** One cell inside a StatGroup — fixed two-line body so groups align. */
-function StatCell({ label, value, sub, title, tone }: { label: string; value: ReactNode; sub?: ReactNode; title?: string; tone?: string }) {
+/** One evidence-backed metric inside a group. Featured cells own the headline row. */
+function StatCell({ label, value, sub, title, tone, featured }: { label: string; value: ReactNode; sub?: ReactNode; title?: string; tone?: string; featured?: boolean }) {
   return (
-    <div className="px-3 py-2.5 min-w-0" title={title}>
-      <div className="text-[10px] uppercase tracking-wider text-fg-muted truncate">{label}</div>
-      <div className={clsx("text-base mono font-semibold tabular-nums mt-0.5 truncate", tone)}>{value}</div>
-      <div className="text-[11px] text-fg-dim mono truncate">{sub ?? " "}</div>
+    <div
+      className={clsx(
+        "min-w-0 px-3 py-2.5",
+        featured && "col-span-2 border-b border-bd-subtle bg-bg/35 px-4 py-3",
+      )}
+      title={title}
+    >
+      <div className="text-[9px] uppercase tracking-[0.12em] text-fg-muted">{label}</div>
+      <div className={clsx(featured ? "mt-0.5 text-[22px]" : "mt-1 text-base", "mono font-semibold tabular-nums leading-tight", tone)}>{value}</div>
+      <div className={clsx("mt-1 text-fg-dim mono", featured ? "text-[11px]" : "text-[10px]")}>{sub ?? " "}</div>
     </div>
   );
 }
 
 function StatGroup({ icon: Icon, label, children }: { icon: LucideIcon; label: string; children: ReactNode }) {
   return (
-    <div className="card overflow-hidden">
-      <div className="px-3 pt-2 pb-1.5 text-[10px] uppercase tracking-wider text-fg-dim flex items-center gap-1.5 border-b border-bd-subtle">
-        <Icon className="size-3" /> {label}
+    <div className="card min-w-0 overflow-hidden">
+      <div className="flex items-center gap-2 border-b border-bd-subtle px-3 py-2 text-[10px] uppercase tracking-[0.12em] text-fg-dim">
+        <span className="grid size-6 place-items-center rounded-md border border-bd-subtle bg-bg text-accent-soft">
+          <Icon className="size-3.5" />
+        </span>
+        {label}
       </div>
-      <div className="grid grid-cols-3 divide-x divide-bd-subtle">{children}</div>
+      <div className="grid grid-cols-2 divide-x divide-bd-subtle">{children}</div>
     </div>
   );
 }
 
 /** Day-part / weekday split derived from the session-start heatmap. */
 function RhythmPanel({ heatmap }: { heatmap: number[][] }) {
+  const [selectedPart, setSelectedPart] = useState<string | null>(null);
   const dayTotals = heatmap.map((row) => row.reduce((a, b) => a + b, 0));
   const total = Math.max(1, dayTotals.reduce((a, b) => a + b, 0));
   const hourTotals = Array.from({ length: 24 }, (_, h) => heatmap.reduce((a, row) => a + row[h], 0));
 
   const parts = [
-    { label: "Morning", range: "06–12", n: hourTotals.slice(6, 12).reduce((a, b) => a + b, 0) },
-    { label: "Afternoon", range: "12–18", n: hourTotals.slice(12, 18).reduce((a, b) => a + b, 0) },
-    { label: "Evening", range: "18–24", n: hourTotals.slice(18, 24).reduce((a, b) => a + b, 0) },
-    { label: "Night", range: "00–06", n: hourTotals.slice(0, 6).reduce((a, b) => a + b, 0) },
+    { label: "Morning", range: "06–12", n: hourTotals.slice(6, 12).reduce((a, b) => a + b, 0), opacity: 48 },
+    { label: "Afternoon", range: "12–18", n: hourTotals.slice(12, 18).reduce((a, b) => a + b, 0), opacity: 66 },
+    { label: "Evening", range: "18–24", n: hourTotals.slice(18, 24).reduce((a, b) => a + b, 0), opacity: 88 },
+    { label: "Night", range: "00–06", n: hourTotals.slice(0, 6).reduce((a, b) => a + b, 0), opacity: 34 },
   ];
   const maxPart = Math.max(1, ...parts.map((p) => p.n));
+  const dominant = parts.reduce((best, part) => part.n > best.n ? part : best, parts[0]);
+  const activePart = parts.find((part) => part.label === selectedPart) ?? dominant;
   const peakDay = dayTotals.indexOf(Math.max(...dayTotals));
   const peakHour = hourTotals.indexOf(Math.max(...hourTotals));
   const weekendPct = ((dayTotals[5] + dayTotals[6]) / total) * 100;
 
   return (
-    <div className="card p-4">
-      <h3 className="text-[11px] uppercase tracking-wider text-fg-muted mb-2.5">Day parts</h3>
-      <div className="space-y-2">
+    <div className="card overflow-hidden">
+      <div className="px-4 pt-4">
+        <h3 className="text-[11px] uppercase tracking-[0.12em] text-fg-muted">Day parts</h3>
+        <p className="mt-1 text-[11px] text-fg-dim">How session starts divide across the day.</p>
+      </div>
+
+      <div className="mx-4 mt-3 rounded-lg border border-bd-subtle bg-bg/40 p-3">
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <div className="text-[9px] uppercase tracking-wider text-fg-dim">{selectedPart ? "Selected" : "Dominant window"}</div>
+            <div className="mt-0.5 text-base font-semibold">{activePart.label} <span className="text-[11px] font-normal text-fg-dim mono">{activePart.range}</span></div>
+          </div>
+          <div className="text-right">
+            <div className="text-xl font-semibold mono tabular-nums">{((activePart.n / total) * 100).toFixed(0)}%</div>
+            <div className="text-[10px] text-fg-dim mono">{fmtNum(activePart.n)} starts</div>
+          </div>
+        </div>
+        <div className="mt-3 flex h-2.5 overflow-hidden rounded-full bg-bg-elev" aria-label="Session starts by day part">
+          {parts.map((part) => (
+            <button
+              key={part.label}
+              type="button"
+              aria-label={`${part.label}: ${fmtNumFull(part.n)} starts, ${((part.n / total) * 100).toFixed(0)}%`}
+              aria-pressed={activePart.label === part.label}
+              onClick={() => setSelectedPart(part.label)}
+              className="h-full min-w-[4px] outline-none transition-[filter,box-shadow]"
+              style={{
+                width: `${(part.n / total) * 100}%`,
+                background: `color-mix(in srgb, var(--color-accent) ${part.opacity}%, transparent)`,
+                boxShadow: activePart.label === part.label ? "inset 0 0 0 1px var(--color-accent-soft)" : undefined,
+              }}
+              title={`${part.label} ${part.range}: ${fmtNumFull(part.n)} starts`}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-1 px-3 py-3">
         {parts.map((p) => (
-          <div key={p.label} title={`${fmtNumFull(p.n)} sessions started ${p.range}`}>
+          <button
+            key={p.label}
+            type="button"
+            aria-pressed={activePart.label === p.label}
+            onClick={() => setSelectedPart(p.label)}
+            className={clsx(
+              "block min-h-11 w-full rounded-lg px-2 py-1.5 text-left outline-none transition-[background-color,box-shadow]",
+              activePart.label === p.label ? "bg-bg-elev shadow-sm" : "hover:bg-bg/60",
+            )}
+            title={`${fmtNumFull(p.n)} sessions started ${p.range}`}
+          >
             <div className="flex items-baseline justify-between gap-2 text-[12px]">
-              <span className="text-fg-muted">
-                {p.label} <span className="text-fg-dim text-[10px] mono">{p.range}</span>
+              <span className={activePart.label === p.label ? "text-fg" : "text-fg-muted"}>
+                {p.label} <span className="text-fg-dim text-[9px] mono">{p.range}</span>
               </span>
               <span className="mono tabular-nums text-[11px]">
                 {fmtNum(p.n)} <span className="text-fg-dim">· {((p.n / total) * 100).toFixed(0)}%</span>
@@ -83,18 +143,117 @@ function RhythmPanel({ heatmap }: { heatmap: number[][] }) {
             <div
               className="h-[3px] rounded-full mt-1"
               style={{
-                width: `${Math.max(2, (p.n / maxPart) * 100)}%`,
-                background: "color-mix(in srgb, var(--color-accent) 50%, transparent)",
+                width: `${p.n > 0 ? Math.max(2, (p.n / maxPart) * 100) : 0}%`,
+                background: `color-mix(in srgb, var(--color-accent) ${p.opacity}%, transparent)`,
               }}
             />
-          </div>
+          </button>
         ))}
       </div>
-      <div className="mt-3 pt-2.5 border-t border-bd-subtle space-y-1 text-[11px]">
-        <div className="flex justify-between gap-2"><span className="text-fg-dim">Busiest day</span><span className="mono tabular-nums">{DAYS[peakDay]} · {((dayTotals[peakDay] / total) * 100).toFixed(0)}%</span></div>
-        <div className="flex justify-between gap-2"><span className="text-fg-dim">Peak hour</span><span className="mono tabular-nums">{String(peakHour).padStart(2, "0")}:00</span></div>
-        <div className="flex justify-between gap-2"><span className="text-fg-dim">Weekend share</span><span className="mono tabular-nums">{weekendPct.toFixed(0)}%</span></div>
+      <div className="grid grid-cols-3 border-t border-bd-subtle bg-bg/25 px-4 py-3 text-[10px]">
+        <div>
+          <div className="text-fg-dim">Busiest day</div>
+          <div className="mt-1 mono tabular-nums">{DAYS[peakDay]} · {((dayTotals[peakDay] / total) * 100).toFixed(0)}%</div>
+        </div>
+        <div className="text-center">
+          <div className="text-fg-dim">Peak hour</div>
+          <div className="mt-1 mono tabular-nums">{String(peakHour).padStart(2, "0")}:00</div>
+        </div>
+        <div className="text-right">
+          <div className="text-fg-dim">Weekend</div>
+          <div className="mt-1 mono tabular-nums">{weekendPct.toFixed(0)}%</div>
+        </div>
       </div>
+    </div>
+  );
+}
+
+function ProjectRanking({
+  projects,
+  generatedAtMs,
+  formatProject,
+}: {
+  projects: RollupReport["byProject"];
+  generatedAtMs: number;
+  formatProject: (project: string) => string;
+}) {
+  const [selected, setSelected] = useState(0);
+  const [showAll, setShowAll] = useState(false);
+  const active = projects[Math.min(selected, Math.max(0, projects.length - 1))];
+  const maxCost = Math.max(1e-9, ...projects.map((project) => project.costUsd));
+  const totalCost = projects.reduce((sum, project) => sum + project.costUsd, 0);
+  const visibleProjects = showAll ? projects : projects.slice(0, 4);
+
+  return (
+    <div className="card overflow-hidden">
+      <div className="px-4 pt-4">
+        <h3 className="text-[11px] uppercase tracking-[0.12em] text-fg-muted">Top projects · all-time API equivalent</h3>
+        <p className="mt-1 text-[11px] text-fg-dim">Select a project to inspect volume and recency.</p>
+      </div>
+      {active && (
+        <div className="mx-4 mt-3 rounded-lg border border-bd-subtle bg-bg/40 p-3">
+          <div className="truncate text-sm font-medium" title={formatProject(active.project)}>{formatProject(active.project)}</div>
+          <div className="mt-2 grid grid-cols-3 gap-2">
+            <div>
+              <div className="text-[9px] uppercase tracking-wider text-fg-dim">API equiv.</div>
+              <div className="mt-0.5 mono text-sm font-semibold tabular-nums">{(active.estimatedCostSessions > 0 ? "~" : "") + fmtUsd(active.costUsd)}</div>
+            </div>
+            <div>
+              <div className="text-[9px] uppercase tracking-wider text-fg-dim">Sessions</div>
+              <div className="mt-0.5 mono text-sm font-semibold tabular-nums">{fmtNum(active.sessions)}</div>
+            </div>
+            <div>
+              <div className="text-[9px] uppercase tracking-wider text-fg-dim">I/O tokens</div>
+              <div className="mt-0.5 mono text-sm font-semibold tabular-nums">{fmtNum(active.tokens)}</div>
+            </div>
+          </div>
+          <div className="mt-2 text-[10px] text-fg-dim mono">active {fmtRel(active.lastActiveMs, generatedAtMs)} · {totalCost > 0 ? ((active.costUsd / totalCost) * 100).toFixed(0) : 0}% of top-project value</div>
+        </div>
+      )}
+      <div className="space-y-0.5 px-3 py-3">
+        {visibleProjects.map((project, index) => {
+          const isActive = index === selected;
+          return (
+            <button
+              key={project.project}
+              type="button"
+              aria-pressed={isActive}
+              onClick={() => setSelected(index)}
+              className={clsx(
+                "relative block min-h-11 w-full overflow-hidden rounded-lg px-2 py-1.5 text-left outline-none transition-[background-color,box-shadow]",
+                isActive ? "bg-bg-elev shadow-sm" : "hover:bg-bg/60",
+              )}
+              title={`${formatProject(project.project)} · ${fmtNumFull(project.sessions)} sessions · ${fmtNumFull(project.tokens)} input + output tokens`}
+            >
+              <span
+                className="pointer-events-none absolute inset-y-0 left-0 opacity-50"
+                style={{
+                  width: `${project.costUsd > 0 ? Math.max(2, (project.costUsd / maxCost) * 100) : 0}%`,
+                  background: "color-mix(in srgb, var(--color-accent) 9%, transparent)",
+                }}
+              />
+              <span className="relative flex items-center gap-2">
+                <span className={clsx("w-5 shrink-0 text-[10px] mono", isActive ? "text-accent-soft" : "text-fg-dim")}>{String(index + 1).padStart(2, "0")}</span>
+                <span className="min-w-0 flex-1">
+                  <span className={clsx("block truncate text-[11px]", isActive ? "text-fg" : "text-fg-muted")}>{formatProject(project.project).split("/").slice(-2).join("/")}</span>
+                  <span className="block text-[9px] text-fg-dim mono">{fmtNum(project.sessions)} sessions</span>
+                </span>
+                <span className="shrink-0 text-[11px] mono tabular-nums">{(project.estimatedCostSessions > 0 ? "~" : "") + fmtUsd(project.costUsd)}</span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      {projects.length > 4 && (
+        <button
+          type="button"
+          onClick={() => setShowAll((value) => !value)}
+          className="flex min-h-10 w-full items-center justify-center border-t border-bd-subtle px-3 text-[11px] text-fg-muted hover:bg-bg/50 hover:text-fg"
+          aria-expanded={showAll}
+        >
+          {showAll ? "Show top 4" : `Show all ${projects.length} projects`}
+        </button>
+      )}
     </div>
   );
 }
@@ -104,7 +263,7 @@ function ShareBar({ frac }: { frac: number }) {
   const pct = Math.max(0, Math.min(100, frac * 100));
   return (
     <div className="flex items-center gap-1.5 justify-end">
-      <div className="h-[3px] w-14 rounded-full bg-bg-elev overflow-hidden shrink-0">
+      <div className="h-1.5 w-20 rounded-full bg-bg-elev overflow-hidden shrink-0" role="img" aria-label={`${pct.toFixed(0)} percent share`}>
         <div className="h-full rounded-full" style={{ width: `${Math.max(pct > 0 ? 2 : 0, pct)}%`, background: "color-mix(in srgb, var(--color-accent) 55%, transparent)" }} />
       </div>
       <span className="text-fg-dim text-[10px] tabular-nums w-8 text-right">{pct < 1 && pct > 0 ? "<1" : pct.toFixed(0)}%</span>
@@ -143,12 +302,12 @@ function PricingEvidence({ model }: { model: AllSourcesResult["byModel"][number]
 /** Compact labeled <select> pill — mirrors the LiveClient sort/filter pills. */
 function SelectPill({ icon: Icon, value, onChange, options }: { icon: LucideIcon; value: string; onChange: (value: string) => void; options: Array<[string, string]> }) {
   return (
-    <label className="inline-flex items-center gap-2 rounded-md border border-bd bg-bg-elev px-2 py-1.5 text-xs text-fg-muted">
-      <Icon className="size-3.5" />
+    <label className="inline-flex min-h-10 max-w-full items-center gap-2 rounded-md border border-bd bg-bg-elev px-2.5 py-2 text-xs text-fg-muted">
+      <Icon className="size-3.5 shrink-0" aria-hidden="true" />
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="bg-transparent text-xs text-fg outline-none max-w-[160px]"
+        className="min-w-0 max-w-[12rem] bg-transparent text-xs text-fg outline-none focus-visible:ring-2 focus-visible:ring-accent"
       >
         {options.map(([optionValue, label]) => <option key={optionValue} value={optionValue}>{label}</option>)}
       </select>
@@ -157,6 +316,7 @@ function SelectPill({ icon: Icon, value, onChange, options }: { icon: LucideIcon
 }
 
 type SessionSort = "recent" | "tokens" | "duration" | "tools";
+type ModelSort = "cost" | "sessions" | "tokens" | "cache" | "tools" | "errors";
 const LOAD_STEP = 160;
 const MAX_LIMIT = 10_000;
 const SEARCH_DEBOUNCE_MS = 400;
@@ -167,8 +327,8 @@ const SEARCH_LIMIT = 50;
  * stays put while the metrics scroll under it. Opaque card background so
  * scrolled cells never show through; header cell sits above sibling headers.
  */
-const STICKY_TH = "sticky left-0 z-[2]";
-const STICKY_TD = "sticky left-0 z-[1] bg-bg-subtle";
+const STICKY_TH = "sticky left-0 z-[2] border-r border-bd-subtle";
+const STICKY_TD = "sticky left-0 z-[1] border-r border-bd-subtle bg-bg-subtle";
 
 /** Keep `?q=` in the address bar so a search survives reload/share — without a Next re-render. */
 function syncQueryUrl(query: string) {
@@ -182,12 +342,22 @@ function syncQueryUrl(query: string) {
 /** Full `?limit=` response — `AllSourcesResult` plus its continuation cursor. */
 type CollectionPayload = AllSourcesResult & { nextCursor?: string | null };
 
+/** Keep client-side row keys and continuation dedupe source-qualified. */
+function collectionSessionIdentity(
+  session: Pick<AllSourcesResult["sessions"][number], "sourceId" | "sessionId" | "path">,
+): string {
+  return `${session.sourceId}\u0000${session.path ?? session.sessionId}`;
+}
+
 /** Sessions-only `?cursor=` page — no stats/rollups, so paging stays O(page). */
 interface CursorPage {
   sessions: AllSourcesResult["sessions"];
   nextCursor: string | null;
   totalParsedSessions: number;
   generatedAtMs: number;
+  stale?: boolean;
+  refreshing?: boolean;
+  refreshError?: string;
 }
 
 /**
@@ -223,6 +393,8 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
   const [sessionSort, setSessionSort] = useState<SessionSort>("recent");
   const [harnessFilter, setHarnessFilter] = useState("all");
   const [modelFilter, setModelFilter] = useState("all");
+  const [modelSort, setModelSort] = useState<ModelSort>("cost");
+  const [modelQuery, setModelQuery] = useState("");
   // Exhaustion is cursor-driven: the API returns nextCursor=null once the
   // listable window (snapshot cap, retention) is walked, even while
   // totalParsedSessions is larger. `undefined` = no cursor yet (server-rendered
@@ -333,7 +505,7 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
       const next = (await res.json()) as CollectionPayload;
       setData(next);
       setNextCursor(next.nextCursor ?? null);
-      setErr(undefined);
+      setErr(next.refreshError);
       return next;
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -349,6 +521,20 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
     await fetchCollection(Math.max(80, data.sessions.length), setLoading);
   }
 
+  // Stale-while-revalidate intentionally serves the last complete snapshot
+  // immediately. Follow that background refresh so the amber banner clears
+  // itself instead of asking the user to press Rescan after the work finished.
+  useEffect(() => {
+    if (!data.refreshing || loading || err) return;
+    const timer = window.setTimeout(() => {
+      void fetchCollection(Math.max(80, data.sessions.length), () => {});
+    }, 2_000);
+    return () => window.clearTimeout(timer);
+    // fetchCollection is a component-local request helper; the snapshot fields
+    // below are the retry state machine's complete inputs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.refreshing, data.generatedAtMs, data.sessions.length, loading, err]);
+
   async function loadMore() {
     if (loading || loadingMore || nextCursor === null) return;
     // No cursor yet (initial data came from the server render): one full
@@ -360,17 +546,31 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
     setLoadingMore(true);
     try {
       const res = await fetch(`/api/collection?cursor=${encodeURIComponent(nextCursor)}&page=${LOAD_STEP}`);
+      if (res.status === 409) {
+        // The corpus reordered between pages. Restart from one atomic snapshot
+        // instead of appending a page that could skip or duplicate sessions.
+        await fetchCollection(Math.max(80, data.sessions.length), () => {});
+        return;
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const page = (await res.json()) as CursorPage;
       setData((prev) => {
         // The vanished-cursor fallback can overlap already-loaded rows — dedupe
         // on the same identity the row keys use.
-        const seen = new Set(prev.sessions.map((s) => s.path ?? s.sessionId));
-        const added = page.sessions.filter((s) => !seen.has(s.path ?? s.sessionId));
-        return { ...prev, sessions: [...prev.sessions, ...added], totalParsedSessions: page.totalParsedSessions };
+        const seen = new Set(prev.sessions.map(collectionSessionIdentity));
+        const added = page.sessions.filter((s) => !seen.has(collectionSessionIdentity(s)));
+        return {
+          ...prev,
+          sessions: [...prev.sessions, ...added],
+          totalParsedSessions: page.totalParsedSessions,
+          generatedAtMs: page.generatedAtMs,
+          stale: page.stale,
+          refreshing: page.refreshing,
+          refreshError: page.refreshError,
+        };
       });
       setNextCursor(page.nextCursor);
-      setErr(undefined);
+      setErr(page.refreshError);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -378,20 +578,45 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
     }
   }
 
-  const models = data.byModel ?? [];
+  const models = useMemo(() => data.byModel ?? [], [data.byModel]);
   const tools = data.byTool ?? [];
+  const visibleModels = useMemo(() => {
+    const query = modelQuery.trim().toLowerCase();
+    const list = query ? models.filter((model) => model.model.toLowerCase().includes(query)) : [...models];
+    list.sort((a, b) => {
+      switch (modelSort) {
+        case "sessions": return b.sessions - a.sessions || b.costUsd - a.costUsd;
+        case "tokens": return (b.inputTokens + b.outputTokens) - (a.inputTokens + a.outputTokens);
+        case "cache": return b.cacheReadTokens - a.cacheReadTokens;
+        case "tools": return b.toolCalls - a.toolCalls || b.toolErrors - a.toolErrors;
+        case "errors": {
+          const bRate = b.toolCalls > 0 ? b.toolErrors / b.toolCalls : 0;
+          const aRate = a.toolCalls > 0 ? a.toolErrors / a.toolCalls : 0;
+          return bRate - aRate || b.toolErrors - a.toolErrors;
+        }
+        default: return b.costUsd - a.costUsd || b.sessions - a.sessions;
+      }
+    });
+    return list;
+  }, [models, modelQuery, modelSort]);
 
   const harnessOptions = useMemo(() => {
     const seen = new Map<string, string>();
+    for (const source of data.sources) {
+      // Keep filters useful for sources represented by aggregate/archive data
+      // even when their rows are outside the currently loaded page.
+      if (source.status !== "absent") seen.set(source.id, source.label);
+    }
     for (const s of data.sessions) if (!seen.has(s.sourceId)) seen.set(s.sourceId, s.sourceLabel);
     return [...seen.entries()].sort((a, b) => a[1].localeCompare(b[1]));
-  }, [data.sessions]);
+  }, [data.sources, data.sessions]);
 
   const modelOptions = useMemo(() => {
     const seen = new Set<string>();
+    for (const model of models) seen.add(model.model);
     for (const s of data.sessions) seen.add(s.model ?? "unknown");
     return [...seen].sort();
-  }, [data.sessions]);
+  }, [data.sessions, models]);
 
   const visibleSessions = useMemo(() => {
     let list = data.sessions;
@@ -425,15 +650,16 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
   const hasTools = tools.length > 0;
 
   const sections = useMemo(() => [
-    { id: "overview", label: "Overview" },
-    { id: "fidelity", label: "Fidelity" },
-    ...(hasWeekly ? [{ id: "usage", label: "Usage" }] : []),
-    ...(hasHeatmap ? [{ id: "rhythm", label: "Rhythm" }] : []),
-    ...(hasModels ? [{ id: "models", label: "Models" }] : []),
-    ...(hasTools ? [{ id: "tools", label: "Tools" }] : []),
-    { id: "harnesses", label: "Harnesses" },
-    { id: "sessions", label: "Sessions" },
+    { id: "overview", label: "Start here", description: "Corpus size, API-equivalent spend, work volume, and a direct transcript search." },
+    { id: "fidelity", label: "Trust data", description: "See coverage gaps, storage boundaries, and the evidence behind each total." },
+    ...(hasWeekly ? [{ id: "usage", label: "Spend & usage", description: "Track session volume, tokens, and API-equivalent cost over time." }] : []),
+    ...(hasHeatmap ? [{ id: "rhythm", label: "When you work", description: "See weekly and day-part rhythms across session starts." }] : []),
+    ...(hasModels ? [{ id: "models", label: "Model mix", description: "Compare model usage, cost, tokens, and reliability." }] : []),
+    ...(hasTools ? [{ id: "tools", label: "Tool health", description: "Find which tools run most often and where failures cluster." }] : []),
+    { id: "harnesses", label: "Sources", description: "Inspect harness discovery, parse coverage, and archive status." },
+    { id: "sessions", label: "Find a session", description: "Filter, sort, and open the bounded transcript catalog." },
   ], [hasWeekly, hasHeatmap, hasModels, hasTools]);
+  const { activeSection, selectSection, isVisible } = useProgressiveSection(sections);
 
   const ioTokens = data.totalInputTokens + data.totalOutputTokens;
   const cacheRead = data.totalCacheReadTokens ?? 0;
@@ -450,16 +676,32 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
   const detectOnlyFiles = data.totalDetectOnlyFiles ?? data.sources.reduce((n, s) => n + (!s.parseable ? s.filesFound : 0), 0);
   const measuredUsageSessions = data.totalMeasuredUsageSessions ?? data.sources.reduce((n, s) => n + (s.sessionsWithMeasuredUsage ?? 0), 0);
   const measuredDurationSessions = data.totalMeasuredDurationSessions ?? data.sources.reduce((n, s) => n + (s.sessionsWithMeasuredDuration ?? 0), 0);
+  const inferredDurationSessions = data.totalInferredDurationSessions ?? data.sources.reduce((n, s) => n + (s.sessionsWithInferredDuration ?? 0), 0);
+  const subagentSessions = data.totalSubagentSessions ?? data.sources.reduce((n, s) => n + (s.subagentSessions ?? 0), 0);
+  const measuredModelSessions = data.totalMeasuredModelSessions ?? data.sources.reduce((n, s) => n + (s.sessionsWithMeasuredModel ?? 0), 0);
   const missingModelSessions = data.totalMissingModelSessions ?? data.sources.reduce((n, s) => n + (s.sessionsWithMissingModel ?? 0), 0);
   const inferredModelSessions = data.totalInferredModelSessions ?? data.sources.reduce((n, s) => n + (s.sessionsWithInferredModel ?? 0), 0);
   const missingTokenSessions = data.totalMissingTokenSessions ?? data.sources.reduce((n, s) => n + (s.sessionsWithMissingTokens ?? 0), 0);
   const inferredCostSessions = data.totalInferredCostSessions ?? data.sources.reduce((n, s) => n + (s.sessionsWithInferredCost ?? 0), 0);
   const malformedLineSessions = data.totalMalformedLineSessions ?? data.sources.reduce((n, s) => n + (s.sessionsWithMalformedLines ?? 0), 0);
   const staleSessions = data.totalStaleSessions ?? data.sources.reduce((n, s) => n + (s.staleSessions ?? 0), 0);
+  const parseWarningCounts = data.parseWarningCounts ?? {
+    sessionsWithWarnings: 0,
+    missingEvidence: 0,
+    inferredEvidence: 0,
+    incompleteTrace: 0,
+    malformedInput: 0,
+    runtimeErrors: 0,
+    mixedModels: 0,
+    other: 0,
+  };
   const partialSourceLabels = (data.partialSources ?? [])
     .map((id) => data.sources.find((s) => s.id === id)?.label ?? id)
     .join(", ");
   const inventoryPartialSourceLabels = (data.inventoryPartialSources ?? [])
+    .map((id) => data.sources.find((s) => s.id === id)?.label ?? id)
+    .join(", ");
+  const coveragePartialSourceLabels = (data.coveragePartialSources ?? [])
     .map((id) => data.sources.find((s) => s.id === id)?.label ?? id)
     .join(", ");
 
@@ -472,11 +714,17 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
 
   const totalModelCost = models.reduce((a, m) => a + m.costUsd, 0);
   const totalModelSessions = Math.max(1, models.reduce((a, m) => a + m.sessions, 0));
-
-  const projectMax = Math.max(1e-9, ...(rollup?.byProject ?? []).map((p) => p.costUsd));
+  const topCostModel = models.reduce<(typeof models)[number] | null>((best, model) => !best || model.costUsd > best.costUsd ? model : best, null);
+  const topSessionModel = models.reduce<(typeof models)[number] | null>((best, model) => !best || model.sessions > best.sessions ? model : best, null);
+  const topErrorModel = models
+    .filter((model) => model.toolCalls >= 10)
+    .reduce<(typeof models)[number] | null>((best, model) => {
+      if (!best) return model;
+      return model.toolErrors / model.toolCalls > best.toolErrors / best.toolCalls ? model : best;
+    }, null);
 
   return (
-    <div className="p-4 md:p-6 max-w-6xl mx-auto">
+    <div className="min-w-0 p-4 md:p-6 max-w-6xl mx-auto">
       <PageHeader
         icon={Boxes}
         title="Collection"
@@ -487,14 +735,14 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
             <RedactToggle redact={redact} onToggle={() => setRedact((v) => !v)} />
             <Link
               href="/collection/timeline"
-              className="flex items-center gap-1.5 rounded-md border border-bd px-2.5 py-1.5 text-sm text-fg-muted hover:bg-bg-elev hover:text-fg transition-colors"
+              className="flex min-h-10 items-center gap-1.5 rounded-md border border-bd px-2.5 py-2 text-sm text-fg-muted hover:bg-bg-elev hover:text-fg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             >
               <Activity className="size-3.5" /> Timeline &amp; Impact
             </Link>
             <button
               onClick={refresh}
               disabled={loading || loadingMore}
-              className="flex items-center gap-1.5 rounded-md border border-bd px-2.5 py-1.5 text-sm text-fg-muted hover:bg-bg-elev hover:text-fg transition-colors disabled:opacity-50"
+              className="flex min-h-10 items-center gap-1.5 rounded-md border border-bd px-2.5 py-2 text-sm text-fg-muted hover:bg-bg-elev hover:text-fg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50"
             >
               <RefreshCw className={clsx("size-3.5", loading && "animate-spin")} /> Rescan
             </button>
@@ -502,8 +750,10 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
         }
       />
 
-      <SectionNav
+      <ProgressiveSectionNav
         sections={sections}
+        activeSection={activeSection}
+        onSelect={selectSection}
         summary={`${fmtNum(data.totalParsedSessions)} sessions · ${tilde}${fmtUsd(data.totalCostUsd)} API eq.`}
       />
 
@@ -514,6 +764,17 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
             <div className="text-sm font-medium text-err">Collection scan failed</div>
             <div className="text-[12px] text-fg-muted mt-0.5 break-words">
               {err} — the stats below may be stale or empty. Use Rescan to retry.
+            </div>
+          </div>
+        </div>
+      )}
+      {!err && (data.stale || data.refreshing) && (
+        <div className="mb-4 rounded-lg border border-warn/40 bg-warn/10 p-3 flex items-start gap-2.5" role="status">
+          <AlertTriangle className="size-4 text-warn shrink-0 mt-0.5" />
+          <div>
+            <div className="text-sm font-medium text-warn">Collection snapshot is refreshing</div>
+            <div className="text-xs text-fg-muted mt-0.5">
+              The last complete scan remains visible while a newer corpus snapshot is built.
             </div>
           </div>
         </div>
@@ -546,21 +807,36 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
         </div>
       )}
 
-      <section id="overview" className="scroll-mt-16 mb-6">
+      {data.coveragePartial && (
+        <div className="mb-4 rounded-lg border border-warn/40 bg-warn/10 p-3 flex items-start gap-2.5" role="status">
+          <AlertTriangle className="size-4 text-warn shrink-0 mt-0.5" />
+          <div className="min-w-0">
+            <div className="text-sm font-medium text-warn">Parsed coverage has caveats</div>
+            <div className="text-[12px] text-fg-muted mt-0.5">
+              One or more discovered transcript files were unsupported, unreadable, or otherwise excluded from parsed totals
+              {coveragePartialSourceLabels ? <> for {coveragePartialSourceLabels}</> : null}. Parser warnings below describe the retained sessions.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isVisible("overview") && <section id="overview" className={clsx("scroll-mt-16 mb-6", sectionVisibilityClass(true))}>
         <div className="stagger-grid grid grid-cols-1 md:grid-cols-3 gap-3">
           <StatGroup icon={Layers} label="Inventory">
-            <StatCell label="Sources" value={String(data.presentSources)} sub={`of ${data.sources.length} known`} />
-            <StatCell label="Files" value={fmtNum(data.totalFiles)} title={`${fmtNumFull(data.totalFiles)} session files on disk`} />
             <StatCell
+              featured
               label="Sessions"
               value={fmtNum(data.totalParsedSessions)}
               title={fmtNumFull(data.totalParsedSessions)}
-              sub={data.totalArchivedSessions > 0 ? `incl. ${fmtNum(data.totalArchivedSessions)} archived` : undefined}
+              sub={subagentSessions > 0 ? `${fmtNum(subagentSessions)} child traces` : data.totalArchivedSessions > 0 ? `incl. ${fmtNum(data.totalArchivedSessions)} archived` : undefined}
             />
+            <StatCell label="Sources" value={String(data.presentSources)} sub={`of ${data.sources.length} known`} />
+            <StatCell label="Files" value={fmtNum(data.totalFiles)} title={`${fmtNumFull(data.totalFiles)} session files on disk`} sub="on-disk inventory" />
           </StatGroup>
 
           <StatGroup icon={Coins} label="API equivalent">
             <StatCell
+              featured
               label="List estimate"
               value={tilde + fmtUsd(data.totalCostUsd)}
               title={`${fmtUsdFull(data.totalCostUsd)} API-equivalent estimate from recorded token classes and ${data.pricingSource} rates checked ${data.pricingListDate}. Not actual subscription/provider spend. Aggregate estimates exclude request-level long-context surcharges when the transcript does not preserve enough threshold evidence.`}
@@ -581,7 +857,7 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
           </StatGroup>
 
           <StatGroup icon={Hammer} label="Work">
-            <StatCell label="Calls" value={fmtNum(data.totalToolCalls)} title={`${fmtNumFull(data.totalToolCalls)} tool calls`} />
+            <StatCell featured label="Calls" value={fmtNum(data.totalToolCalls)} title={`${fmtNumFull(data.totalToolCalls)} tool calls`} sub="tool invocations" />
             <StatCell
               label="Errors"
               value={data.totalToolCalls > 0 ? `${toolErrPct.toFixed(1)}%` : "—"}
@@ -596,9 +872,9 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
             />
           </StatGroup>
         </div>
-      </section>
+      </section>}
 
-      <section id="fidelity" className="scroll-mt-16 mb-6">
+      {isVisible("fidelity") && <section id="fidelity" className={clsx("scroll-mt-16 mb-6", sectionVisibilityClass(true))}>
         <SectionHeader
           icon={ShieldCheck}
           title="Data fidelity"
@@ -640,11 +916,10 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
               sub="parse health"
             />
             <StatCell
-              label="Stale sessions"
+              label="Historical >12h"
               value={fmtNum(staleSessions)}
-              tone={staleSessions > 0 ? "text-warn" : undefined}
-              title={`${fmtNumFull(staleSessions)} parsed sessions are older than the stale threshold used by the live parser.`}
-              sub="freshness signal"
+              title={`${fmtNumFull(staleSessions)} parsed sessions last emitted an event more than 12 hours ago. Historical sessions are expected in the archive and are not parser failures.`}
+              sub="expected in archive"
             />
             <StatCell
               label="Parseable files"
@@ -666,15 +941,72 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
             />
           </div>
           <p className="px-3 py-2 border-t border-bd-subtle text-[10px] text-fg-dim">
-            Measured and inferred counts describe parsed sessions (including archived cache rows). Parseable and detect-only counts describe different on-disk file classes; they are intentionally not combined into a coverage ratio.
+            Measured and inferred counts describe parsed sessions (including archived cache rows). Normal collection retains one compact parsed summary per transcript state and does not copy raw transcripts; unchanged scans are read-only. Optional full-text search stores bounded conversational head/tail excerpts so long sessions remain findable without unbounded cache growth.
           </p>
+          <div className="grid grid-cols-1 gap-5 border-t border-bd-subtle p-4 lg:grid-cols-[1.3fr_1fr]">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <EvidenceComposition
+                label="Model identity"
+                total={data.totalParsedSessions}
+                segments={[
+                  { label: "measured", value: measuredModelSessions, tone: "measured" },
+                  { label: "inferred", value: inferredModelSessions, tone: "inferred" },
+                  { label: "unavailable", value: Math.max(0, data.totalParsedSessions - measuredModelSessions - inferredModelSessions), tone: "missing" },
+                ]}
+              />
+              <EvidenceComposition
+                label="Duration"
+                total={data.totalParsedSessions}
+                segments={[
+                  { label: "measured", value: measuredDurationSessions, tone: "measured" },
+                  { label: "inferred", value: inferredDurationSessions, tone: "inferred" },
+                  { label: "unavailable", value: Math.max(0, data.totalParsedSessions - measuredDurationSessions - inferredDurationSessions), tone: "missing" },
+                ]}
+              />
+              <EvidenceComposition
+                label="Token usage"
+                total={data.totalParsedSessions}
+                segments={[
+                  { label: "measured", value: measuredUsageSessions, tone: "measured" },
+                  { label: "unavailable", value: Math.max(0, data.totalParsedSessions - measuredUsageSessions), tone: "missing" },
+                ]}
+              />
+              <EvidenceComposition
+                label="Cost"
+                total={data.totalParsedSessions}
+                segments={[
+                  { label: "measured", value: data.totalMeasuredCostSessions, tone: "measured" },
+                  { label: "inferred", value: inferredCostSessions, tone: "inferred" },
+                  { label: "unavailable", value: Math.max(0, data.totalParsedSessions - data.totalMeasuredCostSessions - inferredCostSessions), tone: "missing" },
+                ]}
+                note="Pricing coverage is not relabeled as measured cost."
+              />
+            </div>
+            <div className="rounded-lg border border-bd-subtle bg-bg-subtle/30 p-3">
+              <div className="mb-3 flex items-baseline justify-between gap-3">
+                <span className="text-[11px] font-medium text-fg">Actionable parser signals</span>
+                <span className="mono text-[10px] tabular-nums text-fg-dim">{fmtNum(parseWarningCounts.sessionsWithWarnings)} sessions</span>
+              </div>
+              <div className="space-y-2.5">
+                <EvidenceCoverageRow label="Missing evidence" value={parseWarningCounts.missingEvidence} total={data.totalParsedSessions} tone="missing" />
+                <EvidenceCoverageRow label="Inferred evidence" value={parseWarningCounts.inferredEvidence} total={data.totalParsedSessions} tone="inferred" />
+                <EvidenceCoverageRow label="Incomplete traces" value={parseWarningCounts.incompleteTrace} total={data.totalParsedSessions} tone="missing" />
+                <EvidenceCoverageRow label="Malformed input" value={parseWarningCounts.malformedInput} total={data.totalParsedSessions} tone="missing" />
+                <EvidenceCoverageRow label="Runtime errors" value={parseWarningCounts.runtimeErrors} total={data.totalParsedSessions} tone="missing" />
+                <EvidenceCoverageRow label="Mixed models" value={parseWarningCounts.mixedModels} total={data.totalParsedSessions} tone="inferred" />
+              </div>
+              <p className="mt-3 text-[10px] text-pretty text-fg-dim">
+                Categories may overlap within a session. Source labels such as harness and child-agent metadata are excluded from warnings.
+              </p>
+            </div>
+          </div>
         </div>
-      </section>
+      </section>}
 
       <section className="card p-3 mb-6">
         <form
           onSubmit={(e) => { e.preventDefault(); runSearch(q); }}
-          className="flex items-center gap-2"
+          className="flex flex-wrap items-center gap-2"
         >
           {searching
             ? <RefreshCw className="size-4 text-accent-soft shrink-0 animate-spin" aria-label="Searching" role="img" />
@@ -685,12 +1017,12 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search every session, every harness… (e.g. auth refactor)"
             aria-label="Search sessions"
-            className="flex-1 min-w-0 bg-transparent text-sm outline-none placeholder:text-fg-dim"
+            className="min-h-10 min-w-0 flex-1 basis-48 bg-transparent text-sm outline-none focus-visible:ring-2 focus-visible:ring-accent placeholder:text-fg-dim"
           />
           <button
             type="submit"
             disabled={searching || !q.trim()}
-            className="rounded-md border border-bd px-2.5 py-1 text-sm text-fg-muted hover:bg-bg-elev hover:text-fg transition-colors disabled:opacity-50"
+            className="min-h-10 rounded-md border border-bd px-2.5 py-2 text-sm text-fg-muted hover:bg-bg-elev hover:text-fg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50"
           >
             {searching ? "Searching…" : "Search"}
           </button>
@@ -700,7 +1032,7 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
               onClick={buildIndex}
               disabled={indexing}
               title="Reads transcripts and indexes their text for search. Incremental — only new/changed files are read."
-              className="flex items-center gap-1.5 rounded-md border border-bd px-2.5 py-1 text-sm text-warn hover:bg-bg-elev transition-colors disabled:opacity-60"
+              className="flex min-h-10 items-center gap-1.5 rounded-md border border-bd px-2.5 py-2 text-sm text-warn hover:bg-bg-elev transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-60"
             >
               <DatabaseZap className={clsx("size-3.5", indexing && "animate-pulse")} />
               {indexing ? `Indexing ${indexInfo.indexedFiles}/${indexInfo.totalFiles}…` : `Index ${indexInfo.totalFiles - indexInfo.indexedFiles} files`}
@@ -728,7 +1060,7 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
                 <Link
                   key={h.file}
                   href={`/collection/session?file=${encodeURIComponent(h.file)}`}
-                  className="block text-sm rounded-md px-2 py-1.5 -mx-2 hover:bg-bg-elev transition-colors"
+                  className="block min-h-11 rounded-md px-2 py-2 -mx-2 hover:bg-bg-elev transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                 >
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="rounded bg-accent/10 text-accent-soft px-1.5 py-0.5 text-[10px] shrink-0">{h.sourceId}</span>
@@ -744,95 +1076,133 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
         )}
       </section>
 
-      {hasWeekly && rollup && (
-        <section id="usage" className="scroll-mt-16 mb-6">
+      {hasWeekly && rollup && isVisible("usage") && (
+        <section id="usage" className={clsx("scroll-mt-16 mb-6", sectionVisibilityClass(true))}>
           <SectionHeader
             icon={TrendingUp}
             title="Usage"
             desc="Weekly API-list equivalent, volume, and where it goes — full history, every harness"
             right={`${rollup.weekly.length}w window`}
           />
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-3">
             <WeeklyUsageChart rollup={rollup} />
-            <div className="card p-4">
-              <h3 className="text-[11px] uppercase tracking-wider text-fg-muted mb-2.5">Top projects by API equivalent</h3>
-              <div className="space-y-2">
-                {rollup.byProject.map((p) => (
-                  <div key={p.project} title={`${fmtNumFull(p.sessions)} sessions · ${fmtNum(p.tokens)} input + output tokens · last active ${fmtRel(p.lastActiveMs, data.generatedAtMs)}`}>
-                    <div className="flex items-center gap-2 text-sm min-w-0">
-                      <span className="truncate flex-1 text-fg-muted text-[12px]">{compactDisplayPath(p.project, redact).split("/").slice(-2).join("/")}</span>
-                      <span className="mono tabular-nums text-[12px] shrink-0">{(rollup.anyEstimatedCost ? "~" : "") + fmtUsd(p.costUsd)}</span>
-                    </div>
-                    <div
-                      className="h-[3px] rounded-full mt-1"
-                      style={{
-                        width: `${Math.max(2, (p.costUsd / projectMax) * 100)}%`,
-                        background: "color-mix(in srgb, var(--color-accent) 45%, transparent)",
-                      }}
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
+            <ProjectRanking
+              projects={rollup.byProject}
+              generatedAtMs={data.generatedAtMs}
+              formatProject={(project) => compactDisplayPath(project, redact)}
+            />
           </div>
         </section>
       )}
 
-      {hasHeatmap && rollup && (
-        <section id="rhythm" className="scroll-mt-16 mb-6">
+      {hasHeatmap && rollup && isVisible("rhythm") && (
+        <section id="rhythm" className={clsx("scroll-mt-16 mb-6", sectionVisibilityClass(true))}>
           <SectionHeader
             icon={CalendarClock}
             title="Rhythm"
             desc="When sessions start — weekday × hour, plus the day-part split"
             right={`${fmtNum(rollup.heatmapSessions ?? 0)} sessions`}
           />
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-3">
             <ActivityHeatmap heatmap={hm} totalSessions={rollup.heatmapSessions ?? 0} />
             <RhythmPanel heatmap={hm} />
           </div>
         </section>
       )}
 
-      {hasModels && (
-        <section id="models" className="scroll-mt-16 mb-6">
+      {hasModels && isVisible("models") && (
+        <section id="models" className={clsx("scroll-mt-16 mb-6", sectionVisibilityClass(true))}>
           <SectionHeader
             icon={Cpu}
             title="Models"
             desc="Normalized model identities, measured usage, and rate provenance across harnesses"
             right={`${models.length} models · ${tilde}${fmtUsd(totalModelCost)} API eq.`}
           />
-          <div className="card overflow-hidden">
+          <div className="card min-w-0 overflow-hidden">
+            <div className="grid grid-cols-1 divide-y divide-bd-subtle border-b border-bd-subtle sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+              <div className="min-w-0 px-4 py-3">
+                <div className="text-[9px] uppercase tracking-[0.12em] text-fg-dim">Highest API equivalent</div>
+                <div className="mt-1 truncate text-[12px] font-medium mono" title={topCostModel?.model}>{topCostModel?.model ?? "—"}</div>
+                <div className="mt-1 text-lg font-semibold mono tabular-nums">{topCostModel ? `${topCostModel.listedRateSessions + topCostModel.familyRateSessions + topCostModel.fallbackRateSessions + topCostModel.allocatedCostSessions > 0 ? "~" : ""}${fmtUsd(topCostModel.costUsd)}` : "—"}</div>
+              </div>
+              <div className="min-w-0 px-4 py-3">
+                <div className="text-[9px] uppercase tracking-[0.12em] text-fg-dim">Most sessions</div>
+                <div className="mt-1 truncate text-[12px] font-medium mono" title={topSessionModel?.model}>{topSessionModel?.model ?? "—"}</div>
+                <div className="mt-1 text-lg font-semibold mono tabular-nums">{topSessionModel ? fmtNum(topSessionModel.sessions) : "—"} <span className="text-[10px] font-normal text-fg-dim">sessions</span></div>
+              </div>
+              <div className="min-w-0 px-4 py-3">
+                <div className="text-[9px] uppercase tracking-[0.12em] text-fg-dim">Highest tool error rate</div>
+                <div className="mt-1 truncate text-[12px] font-medium mono" title={topErrorModel?.model}>{topErrorModel?.model ?? "—"}</div>
+                <div className={clsx("mt-1 text-lg font-semibold mono tabular-nums", topErrorModel && topErrorModel.toolErrors / topErrorModel.toolCalls >= 0.05 ? "text-err" : undefined)}>
+                  {topErrorModel ? `${((topErrorModel.toolErrors / topErrorModel.toolCalls) * 100).toFixed(1)}%` : "—"} <span className="text-[10px] font-normal text-fg-dim">min. 10 calls</span>
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 border-b border-bd-subtle px-3 py-2">
+              <label className="flex min-h-10 min-w-[220px] flex-1 items-center gap-2 rounded-lg border border-bd bg-bg px-3 text-xs text-fg-muted focus-within:border-accent/70">
+                <Search className="size-3.5 shrink-0" />
+                <input
+                  value={modelQuery}
+                  onChange={(event) => setModelQuery(event.target.value)}
+                  placeholder="Find a model"
+                  aria-label="Find a model"
+                  className="min-w-0 flex-1 bg-transparent text-xs text-fg outline-none placeholder:text-fg-dim"
+                />
+                {modelQuery && (
+                  <button type="button" onClick={() => setModelQuery("")} className="min-h-8 rounded px-2 py-1 text-[10px] text-fg-dim hover:bg-bg-elev hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent" aria-label="Clear model search">
+                    Clear
+                  </button>
+                )}
+              </label>
+              <SelectPill
+                icon={ArrowDownWideNarrow}
+                value={modelSort}
+                onChange={(value) => setModelSort(value as ModelSort)}
+                options={[
+                  ["cost", "API equivalent"],
+                  ["sessions", "Sessions"],
+                  ["tokens", "I/O tokens"],
+                  ["cache", "Cache reads"],
+                  ["tools", "Tool calls"],
+                  ["errors", "Tool error rate"],
+                ]}
+              />
+              <span className="ml-auto text-[10px] text-fg-dim mono tabular-nums" aria-live="polite">{fmtNum(visibleModels.length)} of {fmtNum(models.length)} models</span>
+            </div>
             <div className="overflow-x-auto">
-              <table className="data-table">
+              <table className="data-table min-w-[760px]" aria-label="Model usage and pricing evidence">
                 <thead>
                   <tr>
-                    <th className={STICKY_TH}>Model</th>
-                    <th className="num">Sessions</th>
-                    <th className="num">I/O tokens</th>
-                    <th className="num">Cache reads</th>
-                    <th className="num">Tool calls</th>
-                    <th className="num">Tool err</th>
-                    <th className="num">API equiv.</th>
-                    <th className="num">Share</th>
+                    <th scope="col" className={STICKY_TH}>Model</th>
+                    <th scope="col" className="num">Sessions</th>
+                    <th scope="col" className="num">I/O tokens</th>
+                    <th scope="col" className="num">Cache reads</th>
+                    <th scope="col" className="num">Tool calls</th>
+                    <th scope="col" className="num">Tool error rate</th>
+                    <th scope="col" className="num">API equiv.</th>
+                    <th scope="col" className="num">Share</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {models.map((m) => {
+                  {visibleModels.length === 0 && (
+                    <tr><td colSpan={8} className="px-4 py-8 text-center text-sm text-fg-dim">No models match “{modelQuery}”.</td></tr>
+                  )}
+                  {visibleModels.map((m) => {
                     const errPct = m.toolCalls ? (m.toolErrors / m.toolCalls) * 100 : 0;
                     const share = totalModelCost > 0 ? m.costUsd / totalModelCost : m.sessions / totalModelSessions;
-                    const modelCostEstimated = m.listedRateSessions + m.familyRateSessions + m.fallbackRateSessions > 0;
+                    const modelCostEstimated = m.listedRateSessions + m.familyRateSessions + m.fallbackRateSessions + m.allocatedCostSessions > 0;
                     return (
-                      <tr key={m.model}>
-                        <td className={clsx("mono text-[11px] max-w-[220px]", STICKY_TD)}>
+                      <tr key={m.model} className="cv-auto">
+                        <th scope="row" className={clsx("max-w-[240px] px-3 py-2 text-left font-normal mono text-[11px]", STICKY_TD)}>
                           <div className="truncate">{m.model === "unknown" ? <span className="text-fg-dim">unknown</span> : m.model}</div>
                           <PricingEvidence model={m} />
-                        </td>
+                        </th>
                         <td className="num" title={`${fmtNumFull(m.pricedSessions)} priced · ${fmtNumFull(m.inferredModelSessions)} inferred model ids`}>{fmtNum(m.sessions)}</td>
                         <td className="num text-fg-muted" title={`${fmtNumFull(m.inputTokens + m.outputTokens)} input + output — ↑${fmtNum(m.inputTokens)} ↓${fmtNum(m.outputTokens)}; processed usage, not unique text`}>{fmtNum(m.inputTokens + m.outputTokens)}</td>
                         <td className="num text-fg-dim" title={fmtNumFull(m.cacheReadTokens)}>{fmtNum(m.cacheReadTokens)}</td>
                         <td className="num text-fg-muted">{fmtNum(m.toolCalls)}</td>
                         <td className={clsx("num", errPct >= 5 ? "text-err" : "text-fg-dim")}>{m.toolCalls ? `${errPct.toFixed(1)}%` : "—"}</td>
-                        <td className="num" title={`${fmtUsdFull(m.costUsd)} API-equivalent estimate · ${fmtNumFull(m.pricedSessions)}/${fmtNumFull(m.sessions)} sessions priced · ${fmtNumFull(m.listedRateSessions)} listed, ${fmtNumFull(m.familyRateSessions)} family-mapped, ${fmtNumFull(m.fallbackRateSessions)} fallback · not actual spend`}>
+                        <td className="num" title={`${fmtUsdFull(m.costUsd)} API-equivalent estimate · ${fmtNumFull(m.pricedSessions)}/${fmtNumFull(m.sessions)} sessions priced · ${fmtNumFull(m.measuredCostSessions)} recorded, ${fmtNumFull(m.allocatedCostSessions)} allocated, ${fmtNumFull(m.listedRateSessions)} listed, ${fmtNumFull(m.familyRateSessions)} family-mapped, ${fmtNumFull(m.fallbackRateSessions)} fallback · not actual spend`}>
                           {m.costUsd > 0 ? (modelCostEstimated ? "~" : "") + fmtUsd(m.costUsd) : "—"}
                         </td>
                         <td className="num"><ShareBar frac={share} /></td>
@@ -843,14 +1213,14 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
               </table>
             </div>
             <div className="px-3 py-1.5 border-t border-bd-subtle text-[10px] text-fg-dim">
-              Share is of {totalModelCost > 0 ? "estimated API-equivalent value" : "sessions"}. Input + output is processed usage, not unique text; cache reads are reported separately. Pricing evidence: {fmtNum(data.totalListedRateSessions)} listed-rate, {fmtNum(data.totalFamilyRateSessions)} family-mapped, {fmtNum(data.totalFallbackRateSessions)} fallback session estimates.
+              Share is of {totalModelCost > 0 ? "estimated API-equivalent value" : "sessions"}. Input + output is processed usage, not unique text; cache reads are reported separately. Pricing evidence: {fmtNum(models.reduce((sum, model) => sum + model.allocatedCostSessions, 0))} allocated, {fmtNum(data.totalListedRateSessions)} listed-rate, {fmtNum(data.totalFamilyRateSessions)} family-mapped, {fmtNum(data.totalFallbackRateSessions)} fallback session estimates.
             </div>
           </div>
         </section>
       )}
 
-      {hasTools && (
-        <section id="tools" className="scroll-mt-16 mb-6">
+      {hasTools && isVisible("tools") && (
+        <section id="tools" className={clsx("scroll-mt-16 mb-6", sectionVisibilityClass(true))}>
           <SectionHeader
             icon={Wrench}
             title="Tools"
@@ -861,16 +1231,16 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
         </section>
       )}
 
-      <section id="harnesses" className="scroll-mt-16 mb-6">
+      {isVisible("harnesses") && <section id="harnesses" className={clsx("scroll-mt-16 mb-6", sectionVisibilityClass(true))}>
         <SectionHeader
           icon={HardDrive}
           title="Harnesses"
           desc="Every known agent harness on this machine — present, empty, or absent"
           right={`${data.presentSources} present · ${data.sources.length} known`}
         />
-        <div className="card overflow-hidden">
+        <div className="card min-w-0 overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="data-table">
+            <table className="data-table min-w-[800px]">
               <thead>
                 <tr>
                   <th className={STICKY_TH}>Harness</th>
@@ -942,16 +1312,16 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
             </div>
           </div>
         )}
-      </section>
+      </section>}
 
-      <section id="sessions" className="scroll-mt-16 mb-5">
+      {isVisible("sessions") && <section id="sessions" className={clsx("scroll-mt-16 mb-5", sectionVisibilityClass(true))}>
         <SectionHeader
           icon={History}
           title="Sessions"
           desc="Most recent sessions across all harnesses — click one to read its transcript"
           right={loadedLabel}
         />
-        <div className="card overflow-hidden">
+        <div className="card min-w-0 overflow-hidden">
           <div className="flex flex-wrap items-center gap-2 border-b border-bd-subtle px-3 py-2">
             <SelectPill
               icon={Filter}
@@ -976,11 +1346,10 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
             </span>
           </div>
           <div className="overflow-x-auto max-h-[480px] overflow-y-auto">
-            <table className="data-table">
+            <table className="data-table min-w-[720px]">
               <thead>
                 <tr>
-                  <th className={STICKY_TH}>Source</th>
-                  <th>Session</th>
+                  <th className={STICKY_TH}>Session</th>
                   <th>Model</th>
                   <th className="num">Dur</th>
                   <th className="num">Tokens</th>
@@ -991,21 +1360,17 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
               </thead>
               <tbody>
                 {data.sessions.length === 0 && (
-                  <tr><td colSpan={8} className="px-3 py-6 text-center text-fg-dim text-sm">No parsed sessions found.</td></tr>
+                  <tr><td colSpan={7} className="px-3 py-6 text-center text-fg-dim text-sm">No parsed sessions found.</td></tr>
                 )}
                 {data.sessions.length > 0 && visibleSessions.length === 0 && (
-                  <tr><td colSpan={8} className="px-3 py-6 text-center text-fg-dim text-sm">No loaded sessions match the current filters.</td></tr>
+                  <tr><td colSpan={7} className="px-3 py-6 text-center text-fg-dim text-sm">No loaded sessions match the current filters.</td></tr>
                 )}
-                {visibleSessions.map((s, i) => {
+                {visibleSessions.map((s) => {
                   const title = show(s.displayTitle || s.lastPromptPreview) || compactDisplayPath(s.project, redact);
                   const project = compactDisplayPath(s.project, redact);
                   return (
-                    <tr key={s.path ?? `${s.sourceId}-${s.sessionId}-${i}`} className="cv-auto">
-                      <td className={STICKY_TD}>
-                        <span className="rounded bg-accent/10 text-accent-soft px-1.5 py-0.5 text-[10px] whitespace-nowrap">{s.sourceLabel}</span>
-                        {s.archived && <span className="ml-1 rounded bg-bg-elev text-fg-dim px-1.5 py-0.5 text-[10px]" title="File pruned from disk; kept from the parse archive">archived</span>}
-                      </td>
-                      <td className="max-w-[280px]">
+                    <tr key={collectionSessionIdentity(s)} className="cv-auto">
+                      <td className={clsx(STICKY_TD, "min-w-[220px] max-w-[300px]")}>
                         {s.path ? (
                           <Link href={`/collection/session?file=${encodeURIComponent(s.path)}`} className="block group" title={title}>
                             <span className="block truncate text-[12px] text-fg group-hover:text-accent-soft group-hover:underline">{title}</span>
@@ -1017,6 +1382,36 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
                             <span className="block truncate text-[10px] text-fg-dim">{project}</span>
                           </span>
                         )}
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          <span className="rounded bg-accent/10 text-accent-soft px-1.5 py-0.5 text-[10px] whitespace-nowrap">{s.sourceLabel}</span>
+                          {s.isSubagent && <span className="rounded bg-accent/10 text-accent-soft px-1.5 py-0.5 text-[10px]" title={s.parentSessionId ? `Child trace of ${s.parentSessionId}` : "Child-agent trace"}>child</span>}
+                          {s.archived && <span className="rounded bg-bg-elev text-fg-dim px-1.5 py-0.5 text-[10px]" title="File pruned from disk; kept from the parse archive">archived</span>}
+                        </div>
+                        <EvidenceReview
+                          className="mt-1"
+                          identity={`${s.sourceId} / ${s.sessionId}`}
+                          source={`${s.sourceLabel} (${s.sourceId})`}
+                          provenance={s.archived ? "Archived parsed summary" : s.path ? "Parsed from transcript" : "Parsed summary without a retained path"}
+                          transcript={s.path
+                            ? {
+                                status: s.archived ? "archived" : "available",
+                                detail: s.archived
+                                  ? "The parsed summary remains available, but the source file may have been pruned."
+                                  : "The source-qualified transcript path is available on the detail page.",
+                                href: `/collection/session?file=${encodeURIComponent(s.path)}`,
+                                linkLabel: s.archived ? "Open archive status" : "Open transcript",
+                              }
+                            : {
+                                status: "unavailable",
+                                detail: "This bounded row has no transcript path to open; treat its metrics as summary evidence only.",
+                              }}
+                          caveats={[
+                            s.archived ? "Full transcript text is gone when the source file has been pruned." : null,
+                            s.isSubagent ? "Child traces are retained evidence and are excluded from Timeline outcome denominators." : null,
+                            s.dataQuality < 50 ? `Data quality is ${Math.round(s.dataQuality)}/100; inspect the source before relying on derived metrics.` : null,
+                            "The list row contains bounded metadata; raw transcript content loads only on the detail page.",
+                          ].filter((caveat): caveat is string => Boolean(caveat))}
+                        />
                       </td>
                       <td className="mono text-[11px]">{s.model ?? <span className="text-fg-dim">unknown</span>}</td>
                       <td className="num text-fg-dim">{s.durationMs > 0 ? fmtDuration(s.durationMs) : "—"}</td>
@@ -1037,7 +1432,7 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
                 <button
                   onClick={loadMore}
                   disabled={loadingMore || loading}
-                  className="flex items-center gap-1.5 rounded-md border border-bd px-2.5 py-1 text-sm text-fg-muted hover:bg-bg-elev hover:text-fg transition-colors disabled:opacity-50"
+                  className="flex min-h-10 items-center gap-1.5 rounded-md border border-bd px-2.5 py-2 text-sm text-fg-muted hover:bg-bg-elev hover:text-fg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50"
                 >
                   {loadingMore
                     ? <RefreshCw className="size-3.5 animate-spin" />
@@ -1054,7 +1449,7 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
             </div>
           )}
         </div>
-      </section>
+      </section>}
 
       {data.anyEstimatedCost && (
         <p className="text-[11px] text-fg-dim mt-3">

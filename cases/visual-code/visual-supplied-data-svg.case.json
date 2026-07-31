@@ -1,0 +1,80 @@
+{
+  "id": "visual-supplied-data-svg",
+  "difficulty": "medium",
+  "category": "visual-code",
+  "name": "Turn supplied data into an accessible SVG chart",
+  "description": "Create a self-contained SVG from the supplied weekly throughput data. The case checks data fidelity, inspectable semantics, and a bounded render receipt; it does not grade aesthetic quality from source tokens.",
+  "tags": [
+    "visual-code",
+    "svg",
+    "supplied-data",
+    "accessibility",
+    "artifact-contract"
+  ],
+  "prompt": "Read `data/weekly-throughput.json` and create `trend.svg` as a self-contained, accessible SVG chart. Preserve every supplied label and numeric value as inspectable `data-label`/`data-value` attributes, include a title and description connected with `aria-labelledby`, and expose `data-testid=\"throughput-chart\"`, `data-series=\"weekly-throughput\"`, and one `data-bar` per record. Use the fixed 720x360 viewBox. Then create `evidence/render.json` using the render-evidence receipt contract for a 720x360@1 viewport with no console errors or horizontal overflow and selectors for the SVG, chart, and five bars. Run `npm test`. Do not modify the input JSON, test, or package files. The receipt proves a bounded artifact/runtime contract only; it is not a pixel-quality verdict.",
+  "setup": {
+    "type": "fixture",
+    "fixture": "supplied-data-svg"
+  },
+  "runner": {
+    "max_turns": 20,
+    "timeout_seconds": 240,
+    "permission_mode": "bypassPermissions"
+  },
+  "benchmark": {
+    "intent": "Whether an agent can transform supplied structured data into a faithful, accessible, self-contained SVG artifact with runtime evidence bound to its exact bytes.",
+    "deliverable": "trend.svg plus a matching evidence/render.json receipt for the supplied weekly data.",
+    "evidence": ["deterministic", "artifact"],
+    "usage": "low"
+  },
+  "visual": {
+    "kind": "svg",
+    "expected_artifacts": ["trend.svg", "evidence/render.json"]
+  },
+  "graders": [
+    {
+      "type": "tests_pass",
+      "command": "npm test",
+      "timeout_ms": 30000,
+      "min_passed": 3
+    },
+    {
+      "type": "render_evidence",
+      "artifact_path": "trend.svg",
+      "receipt_path": "evidence/render.json",
+      "artifact_kind": "svg",
+      "viewport": {"width": 720, "height": 360, "device_scale_factor": 1},
+      "selectors": [
+        {"selector": "svg", "min_count": 1, "visible": true},
+        {"selector": "[data-testid=\"throughput-chart\"]", "min_count": 1, "visible": true},
+        {"selector": "[data-bar]", "min_count": 5, "visible": true}
+      ]
+    },
+    {
+      "type": "file_contains",
+      "path": "trend.svg",
+      "pattern": "aria-labelledby=\"chart-title chart-desc\""
+    },
+    {
+      "type": "file_contains",
+      "path": "trend.svg",
+      "pattern": "data-value=\"40\""
+    },
+    {
+      "type": "file_contains",
+      "path": "trend.svg",
+      "pattern": "data-label=\"Fri\""
+    },
+    {
+      "type": "files_unchanged",
+      "paths": ["data/weekly-throughput.json", "verify.test.mjs", "package.json"],
+      "forbidden": true
+    }
+  ],
+  "pass_threshold": 1,
+  "oracle": {
+    "solve": "oracle/visual-supplied-data-svg.sh",
+    "noop_max_score": 0.2,
+    "known_bad": ["oracle/visual-supplied-data-svg-bad.sh"]
+  }
+}

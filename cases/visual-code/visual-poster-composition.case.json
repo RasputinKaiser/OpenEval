@@ -1,0 +1,24 @@
+{
+  "id": "visual-poster-composition",
+  "category": "visual-code",
+  "difficulty": "easy",
+  "name": "Compose an evidence poster",
+  "description": "Make a small editorial poster that communicates the identity and promise of an evaluation tool through typography, contrast, and a clear focal point.",
+  "tags": ["visual-code", "web-ui", "typography", "composition", "responsive"],
+  "prompt": "Create a single self-contained file named evidence-poster.html. Design an editorial poster for OpenEval with a visible title exactly \"Make evidence legible.\", a short supporting line, one dominant focal statistic \"87%\", and three concise principles: Trace every turn, Compare honestly, Keep humans in the loop. Use inline HTML and CSS only. Establish a clear poster composition with a focal hierarchy, intentional typography scale, and a small-screen media query. Do not use JavaScript, SVG, external assets, network requests, external stylesheets, or other files. The benchmark tests communication and composition structure, not a particular visual style.",
+  "benchmark": {"intent": "Whether the agent can make a compact creative brief readable through hierarchy, contrast, and deliberate composition instead of assembling an undifferentiated card.", "deliverable": "evidence-poster.html", "evidence": ["deterministic", "artifact", "judge"], "usage": "low"},
+  "setup": {"type": "none"},
+  "budget": {"max_turns": 12, "max_cost_usd": 0.5},
+  "visual": {"kind": "web_ui", "expected_artifacts": ["evidence-poster.html"]},
+  "graders": [
+    {"type": "file_exists", "path": "evidence-poster.html", "weight": 10},
+    {"type": "file_contains", "path": "evidence-poster.html", "pattern": "<h1\\b[^>]*>Make evidence legible\\.</h1>", "weight": 14},
+    {"type": "file_contains", "path": "evidence-poster.html", "pattern": "87%", "weight": 10},
+    {"type": "exit_code", "command": "node -e \"const s=require('fs').readFileSync('evidence-poster.html','utf8'); for(const x of ['Trace every turn','Compare honestly','Keep humans in the loop']) if(!s.includes(x)) process.exit(1)\"", "weight": 20},
+    {"type": "file_contains", "path": "evidence-poster.html", "pattern": "@media[^{]*max-width", "weight": 12},
+    {"type": "file_contains", "path": "evidence-poster.html", "pattern": "<script\\b|<svg\\b|https?://|<link\\b|@import\\b|url\\(", "negate": true, "weight": 8, "forbidden": true},
+    {"type": "rubric_llm", "judge_harness": "codex", "judge_model": "gpt-5.6-luna", "rubric": "Assess the source for poster composition: a clear dominant title, one focal statistic, supporting line, three principles, strong hierarchy, and responsive intent. Reward deliberate structure and communication; do not require a particular color palette or claim pixel-perfect taste.", "artifact_paths": ["evidence-poster.html"], "min_score": 0.72, "weight": 26}
+  ],
+  "pass_threshold": 0.82,
+  "oracle": {"solve": "oracle/visual-poster-composition.sh", "known_bad": ["oracle/visual-poster-composition-bad.sh"]}
+}

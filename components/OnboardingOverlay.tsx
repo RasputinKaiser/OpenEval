@@ -1,58 +1,108 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Check, Terminal } from "lucide-react";
+import { usePathname } from "next/navigation";
+import { ArrowRight, Check, Terminal, X } from "lucide-react";
 import { cachedFetch } from "@/lib/cached-fetch";
 import { ONBOARDING_DISMISSED_KEY, SHOW_ONBOARDING_EVENT } from "./first-run-steps";
 
 export default function OnboardingOverlay() {
+  const pathname = usePathname();
   const [show, setShow] = useState(false);
+  const [manual, setManual] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
+    if (pathname !== "/") return;
     try {
       const dismissed = localStorage.getItem(ONBOARDING_DISMISSED_KEY);
       if (!dismissed) {
-        cachedFetch<{ runs: unknown[] }>("/api/runs")
-          .then((d) => { if ((d.runs ?? []).length === 0) setShow(true); })
+        Promise.all([
+          cachedFetch<{ runs: unknown[] }>("/api/runs"),
+          cachedFetch<{ known?: { parseable?: boolean; sessionCount?: number }[] }>("/api/collection?mode=discover"),
+        ])
+          .then(([runs, collection]) => {
+            const parseableSessions = (collection.known ?? [])
+              .filter((source) => source.parseable)
+              .reduce((total, source) => total + (source.sessionCount ?? 0), 0);
+            if ((runs.runs ?? []).length === 0 && parseableSessions === 0) setShow(true);
+          })
           // A failed poll is "unknown", not "new user" — never pop a modal
           // over the app because the API was briefly unreachable.
           .catch(() => {});
       }
     } catch {}
-  }, []);
+  }, [pathname]);
 
   // Re-entry: Settings dispatches this event to replay the tour on demand.
   useEffect(() => {
-    const onShow = () => setShow(true);
+    const onShow = () => {
+      restoreFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      setManual(true);
+      setShow(true);
+    };
     window.addEventListener(SHOW_ONBOARDING_EVENT, onShow);
     return () => window.removeEventListener(SHOW_ONBOARDING_EVENT, onShow);
   }, []);
 
   useEffect(() => {
     if (!show) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") dismiss(); };
+    restoreFocusRef.current ??= document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focusable = () => Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    ) ?? []);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        dismiss();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const items = focusable();
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    const focusFirst = window.requestAnimationFrame(() => focusable()[0]?.focus());
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return () => {
+      window.cancelAnimationFrame(focusFirst);
+      window.removeEventListener("keydown", onKey);
+    };
   }, [show]);
 
   function dismiss() {
     try { localStorage.setItem(ONBOARDING_DISMISSED_KEY, "1"); } catch {}
     setShow(false);
+    setManual(false);
+    window.requestAnimationFrame(() => restoreFocusRef.current?.focus());
+    restoreFocusRef.current = null;
   }
 
-  if (!show) return null;
+  if (!show || (pathname !== "/" && !manual)) return null;
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Welcome to OpenEval">
+    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="onboarding-title" aria-describedby="onboarding-description">
       <div className="absolute inset-0 bg-black/60" onClick={dismiss} />
-      <div className="relative w-full max-w-md rounded-lg border border-bd bg-bg-subtle shadow-2xl overflow-hidden" style={{ animation: "menu-enter 200ms cubic-bezier(0.2, 0, 0, 1)" }}>
+      <div ref={dialogRef} tabIndex={-1} className="relative w-full max-w-md rounded-lg border border-bd bg-bg-subtle shadow-2xl overflow-hidden" style={{ animation: "menu-enter 200ms cubic-bezier(0.2, 0, 0, 1)" }}>
         <div className="p-6 text-center">
+          <button type="button" onClick={dismiss} data-onboarding-close aria-label="Close welcome tour" className="absolute right-3 top-3 min-h-10 min-w-10 grid place-items-center rounded-md text-fg-dim hover:bg-bg-elev hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
+            <X className="size-4" />
+          </button>
           <div className="mx-auto mb-4 size-12 rounded-lg bg-gradient-to-br from-accent to-accent-soft grid place-items-center">
             <Terminal className="size-6 text-white" />
           </div>
-          <h2 className="text-lg font-semibold mb-1">Welcome to OpenEval</h2>
-          <p className="text-sm text-fg-muted mb-6">
+          <h2 id="onboarding-title" className="text-lg font-semibold mb-1">Welcome to OpenEval</h2>
+          <p id="onboarding-description" className="text-sm text-fg-muted mb-6">
             Evaluate agent CLIs across SWE, single-tool, reasoning, and visual-code tasks. Here&apos;s how to get started:
           </p>
           <div className="space-y-3 text-left mb-6">

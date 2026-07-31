@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "batch": "user-flow-200",
+  "updatedAt": "2026-07-30",
+  "scope": [
+    "brand-new-user",
+    "beginner",
+    "intermediate",
+    "expert",
+    "discoverability",
+    "configuration",
+    "evaluation",
+    "observation",
+    "evidence-literacy"
+  ],
+  "rowRange": { "first": "US-2251", "last": "US-2450", "totalRows": 200 },
+  "groups": [
+    { "level": "brand-new-user", "label": "Brand-new user", "rows": 50, "fixedRows": 45, "pendingRows": 5 },
+    { "level": "beginner", "label": "Beginner", "rows": 50, "fixedRows": 45, "pendingRows": 5 },
+    { "level": "intermediate", "label": "Intermediate", "rows": 50, "fixedRows": 45, "pendingRows": 5 },
+    { "level": "expert", "label": "Expert", "rows": 50, "fixedRows": 45, "pendingRows": 5 }
+  ],
+  "denominator": {
+    "runnableBenchmarkCases": 35,
+    "capabilityNuclei": 100,
+    "providerRunsAdded": 0,
+    "note": "User-flow rows are product journey coverage. They do not increase the independent provider-evaluation or capability denominator."
+  },
+  "evidencePosture": {
+    "fixedRows": 180,
+    "pendingRows": 20,
+    "pendingReason": "Live provider success/recovery, assistive review, and human handoff review were not exercised in this local flow pass.",
+    "sourceProof": "Existing route, component, validation, API, CLI, and evidence contracts mapped to each fixed row.",
+    "browserProof": "Available in-app browser route smoke after production rebuild; full proficiency study is not claimed.",
+    "accessibilityBoundary": "Source, automated, and browser evidence do not claim full WCAG conformance or assistive-technology review."
+  }
+}

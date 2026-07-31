@@ -96,7 +96,7 @@ export default function CaseSidePanel({
         <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
           <Mini label="Turns" value={String(runner.numTurns)} icon={Hash} />
           <Mini label="Duration" value={runner.durationMs < 1000 ? `${runner.durationMs}ms` : `${(runner.durationMs / 1000).toFixed(1)}s`} icon={Clock} />
-          <Mini label="tok/s" value={runner.durationMs > 0 ? (runner.usage.outputTokens / (runner.durationMs / 1000)).toFixed(1) : "0"} icon={Gauge} />
+          <Mini label="Output tok/s" value={runner.durationMs > 0 ? (runner.usage.outputTokens / (runner.durationMs / 1000)).toFixed(1) : "—"} icon={Gauge} />
           <Mini label={cost!.label} value={cost!.value} icon={DollarSign} />
           <Mini label="Tokens in" value={runner.usage.inputTokens.toLocaleString()} icon={Cpu} />
           <Mini label="Tokens out" value={runner.usage.outputTokens.toLocaleString()} icon={Cpu} />

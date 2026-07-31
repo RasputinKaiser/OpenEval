@@ -288,6 +288,10 @@ export function topEntries(map: Map<string, number>, limit: number): Array<{ key
 }
 
 export function extractFilePaths(value: unknown, out = new Set<string>()): Set<string> {
+  // Tool arguments and outputs are untrusted transcript data. Once the
+  // bounded detail projection has enough paths, stop traversing path-bearing
+  // branches rather than retaining an attacker-controlled set.
+  if (out.size >= MAX_EXTRACTED_FILE_PATHS) return out;
   if (typeof value === "string") {
     // Every alternation below requires one of these four substrings
     // ("/private/tmp/" contains "/tmp/", "../" contains "./"), so bailing on
@@ -298,6 +302,7 @@ export function extractFilePaths(value: unknown, out = new Set<string>()): Set<s
     ) return out;
     const pathLike = value.match(/(?:\/Users\/[^\s"'<>`]+|\/home\/[^\s"'<>`]+|\/private\/tmp\/[^\s"'<>`]+|\/tmp\/[^\s"'<>`]+|\.{1,2}\/[A-Za-z0-9._/-]+)/g) ?? [];
     for (const candidate of pathLike) {
+      if (out.size >= MAX_EXTRACTED_FILE_PATHS) break;
       const cleaned = candidate.replace(/[),.;:]+$/, "");
       if (cleaned.includes("://") || cleaned.startsWith("//")) continue;
       if (/[\[\]\^\?\*\|\\`]/.test(cleaned)) continue;
@@ -309,7 +314,7 @@ export function extractFilePaths(value: unknown, out = new Set<string>()): Set<s
     // parser's outer catch then dropped the WHOLE session as a null tombstone.
     // Consumers sort the Set, so traversal order is not observable.
     const pending: unknown[] = [value];
-    while (pending.length > 0) {
+    while (pending.length > 0 && out.size < MAX_EXTRACTED_FILE_PATHS) {
       const current = pending.pop();
       if (typeof current === "string") {
         extractFilePaths(current, out);
@@ -363,7 +368,7 @@ export function buildWarnings(
   malformedLineCount: number,
   lineCount: number,
   hookErrors: number,
-  sawResult: boolean,
+  _sawResult: boolean,
   model?: string | null,
   turnInferenceSource?: "messageCount" | "userMessages" | "turnContext",
 ): string[] {
@@ -381,7 +386,10 @@ export function buildWarnings(
         : "messageCount";
     warnings.push(`turn count inferred from ${label}`);
   }
-  if (!sawResult) warnings.push("no final result event found");
+  // Interactive Claude/ncode transcripts commonly end after an assistant
+  // message and have no synthetic `result` record. That absence alone does
+  // not prove truncation; malformed lines and explicit hook/runtime errors
+  // below remain actionable warnings.
   if (malformedLineCount > 0) warnings.push(`${malformedLineCount}/${lineCount} malformed line(s) skipped`);
   if (hookErrors > 0) warnings.push(`${hookErrors} hook error(s) reported`);
   return warnings;
@@ -417,6 +425,39 @@ export function booleanOrNull(value: unknown): boolean | null {
  * cumulative snapshot kept) preserves the curve at sub-pixel resolution.
  */
 export const MAX_USAGE_SEGMENTS = 500;
+
+/** Hard bound while a parser is still reading a very long append-only file. */
+export const MAX_EXTRACTED_FILE_PATHS = 256;
+/** Bounded cardinality for transcript metadata sets retained in cached detail. */
+export const MAX_TRACE_METADATA_ITEMS = 256;
+
+/**
+ * Append one usage point while keeping parser working memory bounded. The
+ * final projection still uses downsampleUsageSegments, but without this
+ * online merge a huge transcript could retain every intermediate point first.
+ */
+export function appendUsageSegment(segments: LiveUsageSegment[], segment: LiveUsageSegment): void {
+  segments.push(segment);
+  // Keep enough points for the existing final halving contract (for example
+  // 1100 points still become 275 in downsampleUsageSegments), while placing a
+  // hard ceiling on parser working memory for very large transcripts.
+  if (segments.length <= MAX_USAGE_SEGMENTS * 8) return;
+  const merged: LiveUsageSegment[] = [];
+  for (let i = 0; i + 1 < segments.length; i += 2) {
+    const a = segments[i];
+    const b = segments[i + 1];
+    merged.push({
+      atMs: b.atMs,
+      cumulativeInput: b.cumulativeInput,
+      cumulativeOutput: b.cumulativeOutput,
+      deltaInput: a.deltaInput + b.deltaInput,
+      deltaOutput: a.deltaOutput + b.deltaOutput,
+      outTokPerSec: b.outTokPerSec,
+    });
+  }
+  if (segments.length % 2 === 1) merged.push(segments[segments.length - 1]);
+  segments.splice(0, segments.length, ...merged);
+}
 
 export function downsampleUsageSegments(segments: LiveUsageSegment[]): LiveUsageSegment[] {
   let out = segments;

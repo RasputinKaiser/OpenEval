@@ -7,6 +7,7 @@
   "tags": ["visual-code", "web-ui", "table", "sorting", "interactive"],
   "split": "public",
   "prompt": "Create a single self-contained file named results-table.html (inline <style> and <script> only, no external assets or network imports). Build a sortable results table for OpenEval cases. Requirements: a root element with data-testid=\"results-table\", an h1 containing \"Case Results\", and a <table> with a <thead> whose header cells (<th>) carry data-sort-key attributes for the columns \"case\", \"score\", and \"status\". Each sortable <th> must have a scope=\"col\" attribute and an aria-sort attribute (initially \"none\"). Include a <tbody> with at least three <tr> data rows. Add inline JavaScript that attaches a click handler to the header cells which sorts the tbody rows by the clicked column and updates aria-sort to \"ascending\" or \"descending\". Do not create any other files.",
+  "benchmark": { "intent": "Whether the agent can turn tabular data into a keyboard- and screen-reader-aware interaction with an explicit state model.", "deliverable": "results-table.html", "evidence": ["deterministic", "artifact"], "usage": "medium" },
   "setup": { "type": "none" },
   "runner": { "max_turns": 18, "timeout_seconds": 240, "permission_mode": "bypassPermissions" },
   "budget": { "max_turns": 18, "max_cost_usd": 0.75 },

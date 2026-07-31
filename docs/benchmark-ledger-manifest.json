@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-07-30",
+  "ledger": {
+    "totalRows": 2450,
+    "priorRows": 1000,
+    "nextRows": 1000,
+    "nextRowGroups": 10,
+    "rowsPerGroup": 100,
+    "uxRows": 250,
+    "userFlowRows": 200
+  },
+  "denominator": {
+    "runnableCases": 35,
+    "capabilityNuclei": 100,
+    "nextBatchEvidenceLensRows": 1000,
+    "verifiedOracleCases": 35,
+    "verifiedKnownBadCases": 35,
+    "note": "Ledger rows and evidence-lens rows are not independent provider evaluations. Capability denominators count distinct cases with independent fixtures, graders, or evidence contracts; evidence-lens and UX rows remain product-QA coverage unless promoted by a case receipt."
+  },
+  "uxBatch": {
+    "manifest": "docs/ux-250-manifest.json",
+    "rows": 250,
+    "fixedRows": 225,
+    "pendingRows": 25,
+    "groups": 5
+  },
+  "userFlowBatch": {
+    "manifest": "docs/user-flow-200-manifest.json",
+    "rows": 200,
+    "fixedRows": 180,
+    "pendingRows": 20,
+    "groups": 4
+  },
+  "caseCategories": {
+    "agentic-swe": 9,
+    "reasoning": 6,
+    "single-tool": 6,
+    "visual-code": 14
+  },
+  "proofPosture": {
+    "visualContracts": { "declared": 14, "runtimeVerified": 0, "status": "unknown" },
+    "llmJudgeContracts": { "declared": 7, "runtimeVerified": 0, "status": "unknown" },
+    "traceContracts": { "declared": 4, "runtimeVerified": 0, "status": "unknown" },
+    "manualReviews": { "declared": 0, "runtimeVerified": 0, "status": "not_applicable" },
+    "providerRuns": { "fresh": 0, "status": "pending" }
+  }
+}

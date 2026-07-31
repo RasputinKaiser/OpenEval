@@ -1,0 +1,25 @@
+{
+  "id": "visual-map-route-planner",
+  "category": "visual-code",
+  "difficulty": "medium",
+  "name": "Design a readable route planner",
+  "description": "Create a static map-like interface where a user can understand the route, landmarks, and next action at a glance.",
+  "tags": ["visual-code", "web-ui", "map", "information-design", "accessibility"],
+  "prompt": "Create a single self-contained file named route-planner.html. Design a polished route planner for an imaginary OpenEval field station. Include a visible heading exactly \"OpenEval Field Route\", a map region with a clearly ordered route from Start to Finish, at least five labeled landmarks marked data-landmark, a legend, a current-position state, and a next-action panel. Use inline HTML and CSS only; a CSS grid or positioned map is fine. Make the route understandable without relying on color alone by using labels or symbols. Do not use JavaScript, SVG, external assets, network requests, external stylesheets, or other files.",
+  "benchmark": {"intent": "Whether the agent can organize spatial and sequential information so a user can understand where they are and what to do next.", "deliverable": "route-planner.html", "evidence": ["deterministic", "artifact", "judge"], "usage": "medium"},
+  "setup": {"type": "none"},
+  "budget": {"max_turns": 16, "max_cost_usd": 0.7},
+  "visual": {"kind": "web_ui", "expected_artifacts": ["route-planner.html"]},
+  "graders": [
+    {"type": "file_exists", "path": "route-planner.html", "weight": 8},
+    {"type": "file_contains", "path": "route-planner.html", "pattern": "<h1\\b[^>]*>OpenEval Field Route</h1>", "weight": 12},
+    {"type": "exit_code", "command": "node -e \"const s=require('fs').readFileSync('route-planner.html','utf8'); if((s.match(/data-landmark=/g)||[]).length<5) process.exit(1); if(!/Start/.test(s)||!/Finish/.test(s)||!/next-action/i.test(s)) process.exit(1)\"", "weight": 24},
+    {"type": "file_contains", "path": "route-planner.html", "pattern": "aria-label=|aria-labelledby=", "weight": 10},
+    {"type": "file_contains", "path": "route-planner.html", "pattern": "grid-template|display\\s*:\\s*grid|data-route-state", "weight": 12},
+    {"type": "file_contains", "path": "route-planner.html", "pattern": "legend|Legend", "weight": 8},
+    {"type": "file_contains", "path": "route-planner.html", "pattern": "<script\\b|<svg\\b|https?://|<link\\b|@import\\b|url\\(", "negate": true, "weight": 8, "forbidden": true},
+    {"type": "rubric_llm", "judge_harness": "codex", "judge_model": "gpt-5.6-luna", "rubric": "Assess whether this source creates a legible route-planning experience: clear start-to-finish sequence, landmarks with labels, current state, next action, legend, and non-color cues. Reward information architecture and useful hierarchy rather than decorative map-like noise.", "artifact_paths": ["route-planner.html"], "min_score": 0.72, "weight": 18}
+  ],
+  "pass_threshold": 0.82,
+  "oracle": {"solve": "oracle/visual-map-route-planner.sh", "known_bad": ["oracle/visual-map-route-planner-bad.sh"]}
+}

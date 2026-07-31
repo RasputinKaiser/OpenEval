@@ -1,0 +1,53 @@
+{
+  "id": "visual-isometric-voxel-world",
+  "category": "visual-code",
+  "difficulty": "medium",
+  "name": "Create an isometric voxel world",
+  "description": "Build a small CSS 3D world with a clear sense of layers, materials, and composition. The output is an HTML artifact so the benchmark measures scene construction rather than SVG fluency.",
+  "tags": [
+    "visual-code",
+    "web-ui",
+    "css-3d",
+    "isometric",
+    "voxel",
+    "composition"
+  ],
+  "split": "public",
+  "canary": "CANARY-VOXEL-2026-01",
+  "prompt": "Create a single self-contained file named voxel-world.html. Build a polished, static isometric voxel world using only inline HTML and CSS: a dark sky, a ground plane, at least nine visible cube/voxel elements, and three distinct depth layers marked with data-iso-layer values. Use CSS perspective and transform-style: preserve-3d, and give the scene a visible heading exactly \"OpenEval Voxel World\" plus a short legend. Make the composition feel intentional: vary the heights or materials of the voxels and include a foreground, middle, and background relationship. Do not use SVG, JavaScript, external assets, network requests, external stylesheets, images, fonts, or other files. This benchmark checks structure and source-level composition evidence; the rendered preview is a separate visual artifact, not a pixel-perfect verdict.",
+  "benchmark": {
+    "intent": "Whether the agent can turn a spatial art direction brief into a coherent layered CSS scene instead of satisfying a file-format checklist.",
+    "deliverable": "voxel-world.html with a previewable isometric scene",
+    "evidence": ["deterministic", "artifact", "judge"],
+    "usage": "medium"
+  },
+  "setup": {
+    "type": "none"
+  },
+  "budget": {
+    "max_turns": 18,
+    "max_cost_usd": 0.8
+  },
+  "visual": {
+    "kind": "web_ui",
+    "requires_vision_input": false,
+    "expected_artifacts": ["voxel-world.html"]
+  },
+  "graders": [
+    {"type": "file_exists", "path": "voxel-world.html", "weight": 8},
+    {"type": "file_contains", "path": "voxel-world.html", "pattern": "<h1\\b[^>]*>OpenEval Voxel World</h1>", "weight": 8},
+    {"type": "file_contains", "path": "voxel-world.html", "pattern": "perspective\\s*:\\s*[0-9]+px", "weight": 12},
+    {"type": "file_contains", "path": "voxel-world.html", "pattern": "transform-style\\s*:\\s*preserve-3d", "weight": 12},
+    {"type": "exit_code", "command": "node -e \"const fs=require('fs'); const s=fs.readFileSync('voxel-world.html','utf8'); const layers=[...s.matchAll(/data-iso-layer=['\\\"]([^'\\\"]+)['\\\"]/g)].map(m=>m[1]); if(new Set(layers).size<3) process.exit(1); if((s.match(/class=['\\\"][^'\\\"]*\\bvoxel\\b/g)||[]).length<9) process.exit(1)\"", "weight": 22},
+    {"type": "file_contains", "path": "voxel-world.html", "pattern": "translateZ\\(\\s*-?[0-9]+px\\s*\\)", "weight": 10},
+    {"type": "file_contains", "path": "voxel-world.html", "pattern": "<svg\\b|<script\\b|https?://|<img\\b|<link\\b|@import\\b|url\\(", "negate": true, "weight": 8, "forbidden": true},
+    {"type": "file_exists", "path": "index.html", "negate": true, "weight": 5, "forbidden": true},
+    {"type": "rubric_llm", "judge_harness": "codex", "judge_model": "gpt-5.6-luna", "rubric": "Review the bounded HTML/CSS artifact as source evidence for this brief: a coherent isometric voxel world with foreground/middle/background relationships, intentional material or height variation, a visible title and legend, and a composition that is more than repeated placeholder boxes. Reward concrete evidence in the source. Do not claim pixel-perfect visual quality from source alone.", "artifact_paths": ["voxel-world.html"], "min_score": 0.72, "weight": 15}
+  ],
+  "pass_threshold": 0.82,
+  "oracle": {
+    "solve": "oracle/visual-isometric-voxel-world.sh",
+    "known_bad": ["oracle/visual-isometric-voxel-world-bad.sh"],
+    "noop_max_score": 0.1
+  }
+}

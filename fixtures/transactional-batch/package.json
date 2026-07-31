@@ -1,0 +1,8 @@
+{
+  "name": "transactional-batch",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "node --test src/transaction.test.js"
+  }
+}

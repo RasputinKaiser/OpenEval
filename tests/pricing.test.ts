@@ -9,6 +9,7 @@ test("rateForModel returns OpenRouter-sourced rates for known models", () => {
   assert.equal(rateForModel("claude-fable-5")?.output, 50);
   assert.equal(rateForModel("claude-haiku-4-5")?.input, 1);
   assert.equal(rateForModel("gpt-5.5")?.output, 30);
+  assert.deepEqual(rateForModel("gpt-5.6-luna"), { input: 0.1, output: 0.6, cacheRead: 0.01, cacheWrite: 0.125 });
   assert.equal(rateForModel("gpt-5-codex")?.input, 1.25);
   assert.equal(rateForModel("z-ai/glm-5.2")?.input, 0.952);
   assert.equal(rateForModel("/data/models/hf/zai-org__GLM-5.2-FP8")?.input, 0.952);
@@ -52,7 +53,7 @@ test("pricing resolves the listed model instead of a broad GPT or Claude family 
   assert.deepEqual(rateForModel("gpt-5.4"), { input: 2.5, output: 15, cacheRead: 0.25, cacheWrite: 2.5 });
   assert.deepEqual(rateForModel("gpt-5.4-mini"), { input: 0.75, output: 4.5, cacheRead: 0.075, cacheWrite: 0.75 });
   assert.deepEqual(rateForModel("gpt-5-codex"), { input: 1.25, output: 10, cacheRead: 0.125, cacheWrite: 1.25 });
-  assert.deepEqual(rateForModel("gpt-5.6-luna"), { input: 1, output: 6, cacheRead: 0.1, cacheWrite: 1.25 });
+  assert.deepEqual(rateForModel("gpt-5.6-luna"), { input: 0.1, output: 0.6, cacheRead: 0.01, cacheWrite: 0.125 });
   assert.deepEqual(rateForModel("gpt-5.6-terra"), { input: 2.5, output: 15, cacheRead: 0.25, cacheWrite: 3.125 });
   assert.deepEqual(rateForModel("claude-sonnet-4-6"), { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 });
   assert.deepEqual(rateForModel("z-ai/glm-5.2"), { input: 0.952, output: 2.992, cacheRead: 0.1768, cacheWrite: 0.952 });

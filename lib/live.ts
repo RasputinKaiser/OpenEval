@@ -26,6 +26,7 @@ export type {
   LiveAggregate,
   LiveAggregateList,
   LiveTranscriptTurn,
+  TranscriptNormalization,
   TranscriptResult,
   LiveSessionDetailResult,
   LiveTraceFormat,
@@ -34,10 +35,10 @@ export type {
   KnownFileStat,
 } from "./live/types";
 export { compactDisplayPath, redactSensitiveText } from "./redaction";
-export { looksLikeToolError, codexToolOutputError, readFileLines, MAX_USAGE_SEGMENTS } from "./live/util";
+export { looksLikeToolError, codexToolOutputError, readFileLines, MAX_USAGE_SEGMENTS, MAX_EXTRACTED_FILE_PATHS, MAX_TRACE_METADATA_ITEMS, appendUsageSegment } from "./live/util";
 export { defaultLiveLimitForHarness, isPathInLiveSource, liveTraceFormatForHarness } from "./live/sources";
 export { summarizeLiveSessionFile, summarizeHermesSessionFile, summarizeCodexSessionFile } from "./live/summarize";
-export { parseSessionTranscript, getErroringTurns } from "./live/transcript";
+export { parseSessionTranscript, getErroringTurns, ERRORING_TURN_CAP } from "./live/transcript";
 export { stripIdeContextWrapper } from "./live/parse-codex";
 export {
   listSourceFiles,

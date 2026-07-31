@@ -48,9 +48,12 @@ export async function GET(_request: Request, props: { params: Promise<{ id: stri
         toolDurationCoverage: t.toolDurationCoverage,
         durationSource: t.durationSource,
         tokenSource: t.tokenSource,
+        costSource: r?.usage?.costSource ?? "missing",
         toolSource: t.toolSource,
         throughputMode: t.throughputMode,
         warnings: t.warnings,
+        visualKind: c.case_def?.visual?.kind ?? null,
+        visualArtifacts: c.case_def?.visual?.expected_artifacts ?? [],
       };
     });
 

@@ -1,4 +1,4 @@
-import { getRun, listEvents } from "@/lib/db";
+import { getRun, listEvents, recentEventCursor } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -80,6 +80,9 @@ export async function GET(request: Request, props: { params: Promise<{ id: strin
   const heartbeatEveryTicks = Math.max(1, Math.round(heartbeatMs / pollMs));
 
   let sinceId = resolveLastEventId(request);
+  const recentActivity = new URL(request.url).searchParams.get("activity") === "recent";
+  const boundedCursor = recentActivity && sinceId === 0 ? recentEventCursor(params.id, EVENT_BATCH) : 0;
+  if (boundedCursor > 0) sinceId = boundedCursor;
   let closed = false;
   let interval: ReturnType<typeof setInterval> | undefined;
   const clearPoll = () => { if (interval) { clearInterval(interval); interval = undefined; } };
@@ -153,7 +156,14 @@ export async function GET(request: Request, props: { params: Promise<{ id: strin
         // Guaranteed close: a terminal (or deleted) run ends the stream even
         // when no run_completed/run_fatal event was ever written.
         const current = getRun(params.id);
-        if (!current || isTerminalRun(current)) {
+        if (current && isTerminalRun(current)) {
+          // A run can become terminal without persisting a lifecycle event
+          // (crash, force-cancel, or an older runner). Emit a control frame so
+          // EventSource clients close cleanly instead of auto-reconnecting
+          // forever against a stream that has already ended.
+          controller.enqueue(encoder.encode(`event: run_stream_closed\ndata: ${JSON.stringify({ kind: "run_stream_closed", case_id: null, at: Date.now(), data: { status: current.status, reason: "terminal_snapshot" } })}\n\n`));
+          stop();
+        } else if (!current) {
           stop();
         }
       };
@@ -177,6 +187,7 @@ export async function GET(request: Request, props: { params: Promise<{ id: strin
       "Cache-Control": "no-cache, no-transform",
       "Connection": "keep-alive",
       "X-Accel-Buffering": "no",
+      "X-OpenEval-Activity-Window": recentActivity ? String(EVENT_BATCH) : "full",
     },
   });
 }

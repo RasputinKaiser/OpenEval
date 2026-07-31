@@ -22,14 +22,15 @@ export const SECTIONS: NavSection[] = [
     items: [{ href: "/", label: "Dashboard", icon: LayoutDashboard }],
   },
   {
-    label: "Evaluate",
-    items: [
-      { href: "/runs", label: "Runs", icon: Activity },
-      { href: "/runs/leaderboard", label: "Leaderboard", icon: Trophy },
-      { href: "/runs/compare", label: "Compare", icon: GitCompareArrows },
-      { href: "/cases", label: "Cases", icon: FileText },
-      { href: "/runs/new", label: "New Run", icon: Plus },
-    ],
+      label: "Evaluate",
+      items: [
+        { href: "/runs", label: "Runs", icon: Activity },
+        { href: "/runs/leaderboard", label: "Leaderboard", icon: Trophy },
+        { href: "/runs/compare", label: "Compare", icon: GitCompareArrows },
+        { href: "/cases", label: "Cases", icon: FileText },
+        { href: "/runs/new", label: "New Run", icon: Plus },
+        { href: "/accuracy", label: "Accuracy", icon: ShieldCheck },
+      ],
   },
   {
     label: "Observe",
@@ -37,7 +38,6 @@ export const SECTIONS: NavSection[] = [
       { href: "/live", label: "Live", icon: Radio },
       { href: "/collection", label: "Collection", icon: Boxes },
       { href: "/collection/timeline", label: "Timeline", icon: TrendingUp },
-      { href: "/accuracy", label: "Accuracy", icon: ShieldCheck },
     ],
   },
   {
@@ -83,7 +83,7 @@ export default function Sidebar() {
 
   return (
     <aside className={clsx(
-      "shrink-0 border-b border-bd bg-bg-subtle/80 backdrop-blur md:flex md:min-h-screen md:flex-col md:border-b-0 md:border-r transition-[width]",
+      "sidebar-shell hidden shrink-0 border-b border-bd backdrop-blur md:flex md:min-h-screen md:flex-col md:border-b-0 md:border-r transition-[width]",
       collapsed ? "md:w-14" : "md:w-60"
     )}>
       <div className="px-4 py-3 md:border-b md:border-bd md:py-5">
@@ -99,11 +99,11 @@ export default function Sidebar() {
           )}
         </div>
       </div>
-      <nav aria-label="Primary" className="flex gap-1 overflow-x-auto px-2 pb-2 md:flex-1 md:flex-col md:space-y-0.5 md:overflow-visible md:p-2">
+      <nav aria-label="Primary" className="sidebar-nav flex gap-1 overflow-x-auto px-2 pb-2 md:flex-1 md:flex-col md:space-y-0.5 md:overflow-visible md:p-2">
         {SECTIONS.map((section, si) => (
           <div key={section.label ?? si} className="flex gap-1 md:block md:space-y-0.5 shrink-0">
             {section.label && !collapsed && (
-              <div className="hidden md:block px-3 pt-3 pb-1 text-[10px] uppercase tracking-widest text-fg-dim select-none">{section.label}</div>
+              <div className="hidden px-3 pb-1 pt-3 text-[10px] uppercase tracking-widest text-fg-dim select-none md:block">{section.label}</div>
             )}
             {section.label && collapsed && <div className="hidden md:block mx-2 my-2 border-t border-bd-subtle" />}
             {section.items.map((item) => {
@@ -115,25 +115,27 @@ export default function Sidebar() {
                   key={item.href}
                   href={item.href}
                   title={collapsed ? item.label : undefined}
+                  aria-label={collapsed ? item.label : undefined}
+                  data-tooltip={collapsed ? item.label : undefined}
                   aria-current={active ? "page" : undefined}
                   className={clsx(
-                    "relative flex shrink-0 items-center gap-2 rounded-md text-sm transition-colors",
+                    "sidebar-link relative flex shrink-0 items-center gap-2 rounded-md text-sm",
                     collapsed ? "md:justify-center md:px-0 px-3 py-3 md:py-2" : "px-3 py-3 md:py-2",
-                    active ? "bg-accent/15 text-accent-soft" : "text-fg-muted hover:bg-bg-elev hover:text-fg"
+                    active && "sidebar-link--active",
                   )}
                 >
-                  {active && <div aria-hidden="true" className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full bg-accent-soft" />}
+                  {active && <div aria-hidden="true" className="sidebar-link__indicator absolute bottom-1.5 left-0 top-1.5 w-0.5 rounded-full" />}
                   <Icon aria-hidden="true" className="size-4 shrink-0" />
                   {/* Collapsed hides the label visually (md+) but keeps it for AT. */}
                   <span className={clsx(collapsed && "md:sr-only")}>{item.label}</span>
                   {showBadge && (
-                    <span aria-hidden="true" className="absolute right-1 top-1.5 size-2 rounded-full bg-accent-soft animate-pulse" />
+                    <span aria-hidden="true" className="sidebar-running-dot absolute right-1 top-1.5 size-2 rounded-full animate-pulse" />
                   )}
                   {showBadge && (
                     <span className="sr-only">{runningCount} running</span>
                   )}
                   {showBadge && !collapsed && (
-                    <span aria-hidden="true" className="ml-auto text-[10px] mono text-accent-soft bg-accent/15 rounded-full px-1.5 tabular-nums">{runningCount}</span>
+                    <span aria-hidden="true" className="sidebar-running-count ml-auto rounded-full px-1.5 text-[10px] mono tabular-nums">{runningCount}</span>
                   )}
                 </Link>
               );
@@ -142,13 +144,26 @@ export default function Sidebar() {
         ))}
       </nav>
       <div className="hidden border-t border-bd p-3 md:flex md:items-center md:justify-between">
-        {!collapsed && <div className="text-[10px] text-fg-dim mono">v{packageMetadata.version}</div>}
+        {!collapsed && (
+          <a
+            href={`https://github.com/RasputinKaiser/OpenEval/releases/tag/v${packageMetadata.version}`}
+            target="_blank"
+            rel="noreferrer"
+            className="text-[10px] text-fg-dim mono underline decoration-transparent underline-offset-2 transition-colors hover:text-accent-soft hover:decoration-accent-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            aria-label={`OpenEval release v${packageMetadata.version}`}
+            title={`OpenEval release v${packageMetadata.version}`}
+            data-testid="release-version"
+          >
+            v{packageMetadata.version}
+          </a>
+        )}
         <div className="flex items-center gap-1">
           <ThemeToggle collapsed={collapsed} />
           <button
             onClick={() => setCollapsed(!collapsed)}
-            className="min-h-10 min-w-10 flex items-center justify-center rounded-md text-fg-dim hover:text-fg hover:bg-bg-elev transition-colors"
+            className="sidebar-collapse-button min-h-10 min-w-10 flex items-center justify-center rounded-md text-fg-dim transition-colors"
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
             {collapsed ? <PanelLeftOpen aria-hidden="true" className="size-4" /> : <PanelLeftClose aria-hidden="true" className="size-4" />}
           </button>

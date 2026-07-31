@@ -42,11 +42,13 @@ export function computeBackoffDelay(
  * browser's internal auto-reconnect does), so manual backoff reconnects pass
  * the cursor here; the route accepts both and prefers the query param.
  */
-export function buildStreamUrl(runId: string, lastEventId?: number | null): string {
+export function buildStreamUrl(runId: string, lastEventId?: number | null, recent = false): string {
   const base = `/api/runs/${encodeURIComponent(runId)}/events/stream`;
-  return typeof lastEventId === "number" && Number.isFinite(lastEventId) && lastEventId > 0
-    ? `${base}?lastEventId=${Math.floor(lastEventId)}`
-    : base;
+  const params = new URLSearchParams();
+  if (recent) params.set("activity", "recent");
+  if (typeof lastEventId === "number" && Number.isFinite(lastEventId) && lastEventId > 0) params.set("lastEventId", String(Math.floor(lastEventId)));
+  const query = params.toString();
+  return query ? `${base}?${query}` : base;
 }
 
 /**
@@ -60,14 +62,15 @@ export function shouldManualReconnect(readyState: number): boolean {
 
 const EVENT_KINDS = [
   "run_started", "run_completed", "run_fatal", "run_aborted",
-  "case_started", "case_grading", "case_finished",
+  "case_started", "case_grading", "case_finished", "case_error",
   "tool_use", "tool_result", "assistant_message", "grader_result",
+  "run_heartbeat", "run_stream_closed",
 ];
 
 // run_aborted counts: cancelled/orphan-reaped runs end with it INSTEAD of
 // run_completed, and without it here the hook would reconnect-churn against a
 // server that closes every stream for the terminal run.
-const TERMINAL_KINDS = new Set(["run_completed", "run_fatal", "run_aborted"]);
+const TERMINAL_KINDS = new Set(["run_completed", "run_fatal", "run_aborted", "run_stream_closed"]);
 
 /**
  * Subscribe to the SSE event stream for a single run.
@@ -102,12 +105,16 @@ export function useRunEvents(
   lastEventId: number | null;
   /** Consecutive failed reconnect attempts; 0 while healthy. */
   reconnectAttempt: number;
+  /** Bounded replay buffer for a live activity surface. */
+  events: RunEvent[];
 } {
   const { enabled = true, onEvent, buffer = 200, pauseWhenHidden = true } = opts;
   const [status, setStatus] = useState<RunEventsStatus>("idle");
   const [lastEvent, setLastEvent] = useState<RunEvent | null>(null);
   const [lastEventId, setLastEventId] = useState<number | null>(null);
   const [reconnectAttempt, setReconnectAttempt] = useState(0);
+  const [visibleEvents, setVisibleEvents] = useState<RunEvent[]>([]);
+  const eventsRunId = useRef<string | null>(null);
 
   const onEventRef = useRef(onEvent);
   useEffect(() => { onEventRef.current = onEvent; }, [onEvent]);
@@ -116,6 +123,11 @@ export function useRunEvents(
     if (!runId || !enabled) {
       setStatus("idle");
       return;
+    }
+
+    if (eventsRunId.current !== runId) {
+      eventsRunId.current = runId;
+      setVisibleEvents([]);
     }
 
     let es: EventSource | null = null;
@@ -154,6 +166,7 @@ export function useRunEvents(
           const dropped = events.shift();
           if (dropped) seen.delete(dropped.id);
         }
+        setVisibleEvents([...events]);
         setLastEvent(ev);
         onEventRef.current?.(ev);
         if (TERMINAL_KINDS.has(ev.kind)) {
@@ -186,7 +199,7 @@ export function useRunEvents(
         return; // the visibilitychange listener resumes us
       }
       setStatus(attempt > 0 ? "reconnecting" : "connecting");
-      const src = new EventSource(buildStreamUrl(runId!, lastId));
+      const src = new EventSource(buildStreamUrl(runId!, lastId, true));
       es = src;
       src.onopen = () => {
         if (stopped || src !== es) return;
@@ -239,5 +252,5 @@ export function useRunEvents(
     };
   }, [runId, enabled, buffer, pauseWhenHidden]);
 
-  return { status, lastEvent, lastEventId, reconnectAttempt };
+  return { status, lastEvent, lastEventId, reconnectAttempt, events: visibleEvents };
 }

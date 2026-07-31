@@ -1,0 +1,34 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Run explorer</title>
+    <style>body{font-family:system-ui;margin:0;padding:24px}main{max-width:720px}li[hidden]{display:none}</style>
+  </head>
+  <body>
+    <main data-testid="filter-app">
+      <h1>Run explorer</h1>
+      <form data-testid="filter-form">
+        <label for="wrong-status">Status</label>
+        <select id="status" name="status">
+          <option value="">All statuses</option>
+          <option value="passed">Passed</option>
+          <option value="failed">Failed</option>
+          <option value="blocked">Blocked</option>
+        </select>
+        <button>Apply filter</button>
+      </form>
+      <ul data-testid="result-list">
+        <li data-status="passed">Passed run</li>
+        <li data-status="failed">Failed run</li>
+        <li data-status="blocked">Blocked run</li>
+      </ul>
+      <p data-testid="empty-state">No matching runs.</p>
+    </main>
+    <script>
+      const form = document.querySelector('[data-testid="filter-form"]');
+      const status = document.querySelector('#status');
+      form.addEventListener('click', () => {});
+    </script>
+  </body>
+</html>

@@ -1,12 +1,13 @@
 function Bar({ className }: { className: string }) {
-  return <div className={`shimmer rounded ${className}`} />;
+  return <div aria-hidden="true" className={`shimmer rounded ${className}`} />;
 }
 
 /** Mirrors the session transcript viewer: back link, file header, then a
  * column of turn cards. */
 export default function Loading() {
   return (
-    <div className="p-4 md:p-6 max-w-5xl mx-auto" aria-busy="true" aria-label="Loading session transcript">
+    <div role="status" aria-live="polite" className="p-4 md:p-6 max-w-5xl mx-auto" aria-busy="true" aria-label="Loading session transcript">
+      <span className="sr-only">Loading session transcript…</span>
       <Bar className="mb-2 h-3 w-20" />
       <div className="mb-6">
         <div className="flex items-center gap-3">

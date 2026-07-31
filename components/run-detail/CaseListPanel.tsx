@@ -46,7 +46,7 @@ export default function CaseListPanel({
     return cases
       .map((c, i) => ({ c, i }))
       .filter(({ c }) => {
-        if (caseFilter !== "all" && c.status !== caseFilter) return false;
+        if (caseFilter !== "all" && !(caseFilter === "running" && c.status === "grading") && c.status !== caseFilter) return false;
         if (!q) return true;
         return c.case_name.toLowerCase().includes(q) ||
           c.case_id.toLowerCase().includes(q) ||
@@ -87,12 +87,13 @@ export default function CaseListPanel({
       </div>
 
       <div className="px-4 py-2 border-b border-bd-subtle flex flex-wrap items-center gap-2 text-[11px]">
-        <button onClick={() => setCaseFilter("all")} className={clsx("px-1.5 py-0.5 rounded transition-colors", caseFilter === "all" ? "bg-bg-elev text-fg" : "text-fg-muted hover:text-fg")}>All</button>
-        <button onClick={() => setCaseFilter("passed")} className={clsx("px-1.5 py-0.5 rounded transition-colors", caseFilter === "passed" ? "bg-ok/15 text-ok" : "text-ok hover:opacity-80")}>● {counts.passed}</button>
-        <button onClick={() => setCaseFilter("failed")} className={clsx("px-1.5 py-0.5 rounded transition-colors", caseFilter === "failed" ? "bg-err/15 text-err" : "text-err hover:opacity-80")}>● {counts.failed}</button>
-        <button onClick={() => setCaseFilter("error")} className={clsx("px-1.5 py-0.5 rounded transition-colors", caseFilter === "error" ? "bg-warn/15 text-warn" : "text-warn hover:opacity-80")}>! {counts.error}</button>
-        {counts.running > 0 && <button onClick={() => setCaseFilter("running")} className={clsx("px-1.5 py-0.5 rounded transition-colors", caseFilter === "running" ? "bg-accent/15 text-accent-soft" : "text-accent-soft hover:opacity-80")}>● {counts.running}</button>}
-        {counts.pending > 0 && <button onClick={() => setCaseFilter("pending")} className={clsx("px-1.5 py-0.5 rounded transition-colors", caseFilter === "pending" ? "bg-bg-elev text-fg" : "text-fg-dim hover:text-fg")}>● {counts.pending}</button>}
+        <button type="button" aria-pressed={caseFilter === "all"} onClick={() => setCaseFilter("all")} className={clsx("px-1.5 py-0.5 rounded transition-colors", caseFilter === "all" ? "bg-bg-elev text-fg" : "text-fg-muted hover:text-fg")}>All</button>
+        <button type="button" aria-label={`Show passed cases (${counts.passed})`} aria-pressed={caseFilter === "passed"} onClick={() => setCaseFilter("passed")} className={clsx("px-1.5 py-0.5 rounded transition-colors", caseFilter === "passed" ? "bg-ok/15 text-ok" : "text-ok hover:opacity-80")}>● {counts.passed}</button>
+        <button type="button" aria-label={`Show failed cases (${counts.failed})`} aria-pressed={caseFilter === "failed"} onClick={() => setCaseFilter("failed")} className={clsx("px-1.5 py-0.5 rounded transition-colors", caseFilter === "failed" ? "bg-err/15 text-err" : "text-err hover:opacity-80")}>● {counts.failed}</button>
+        <button type="button" aria-label={`Show error cases (${counts.error})`} aria-pressed={caseFilter === "error"} onClick={() => setCaseFilter("error")} className={clsx("px-1.5 py-0.5 rounded transition-colors", caseFilter === "error" ? "bg-warn/15 text-warn" : "text-warn hover:opacity-80")}>! {counts.error}</button>
+        {counts.running > 0 && <button type="button" aria-label={`Show running and grading cases (${counts.running})`} aria-pressed={caseFilter === "running" || caseFilter === "grading"} onClick={() => setCaseFilter("running")} className={clsx("px-1.5 py-0.5 rounded transition-colors", caseFilter === "running" || caseFilter === "grading" ? "bg-accent/15 text-accent-soft" : "text-accent-soft hover:opacity-80")}>● {counts.running}</button>}
+        {counts.pending > 0 && <button type="button" aria-label={`Show pending cases (${counts.pending})`} aria-pressed={caseFilter === "pending"} onClick={() => setCaseFilter("pending")} className={clsx("px-1.5 py-0.5 rounded transition-colors", caseFilter === "pending" ? "bg-bg-elev text-fg" : "text-fg-dim hover:text-fg")}>● {counts.pending}</button>}
+        {counts.skipped > 0 && <button type="button" aria-label={`Show skipped cases (${counts.skipped})`} aria-pressed={caseFilter === "skipped"} onClick={() => setCaseFilter("skipped")} className={clsx("px-1.5 py-0.5 rounded transition-colors", caseFilter === "skipped" ? "bg-bg-elev text-fg" : "text-fg-dim hover:text-fg")}>↷ {counts.skipped}</button>}
         <span className="ml-auto mono text-fg-muted">{visibleCases.length}/{cases.length} · {passRatio}%</span>
       </div>
 
@@ -104,6 +105,7 @@ export default function CaseListPanel({
               ref={caseSearchRef}
               value={caseSearch}
               onChange={(e) => setCaseSearch(e.target.value)}
+              aria-label="Filter cases"
               placeholder="Filter cases…"
               className="w-full pl-8 pr-2 py-1.5 text-xs bg-bg border border-bd rounded-md focus:outline-none focus:border-accent placeholder:text-fg-dim"
             />
@@ -140,7 +142,7 @@ export default function CaseListPanel({
         </div>
       )}
 
-      <div className="scroll-contain max-h-[calc(100vh-280px)] overflow-y-auto divide-y divide-bd-subtle">
+      <div className="scroll-contain max-h-none overflow-y-auto divide-y divide-bd-subtle lg:max-h-[calc(100vh-280px)]">
         {visibleCases.map(({ c, i }) => (
           <CaseRow
             key={c.id}
@@ -155,7 +157,7 @@ export default function CaseListPanel({
         ))}
         {visibleCases.length === 0 && (
           <div className="px-4 py-8 text-center text-sm text-fg-muted">
-            No cases match the current filter.
+            {cases.length === 0 ? (live ? "Waiting for cases to enter this run." : "No cases are attached to this run yet.") : "No cases match the current filter."}
           </div>
         )}
       </div>

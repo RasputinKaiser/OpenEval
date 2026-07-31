@@ -3,7 +3,15 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { extractJudgeDigest, buildJudgePrompt, selectJudgeSample, markerWindowSample, openRouterContent } from "../lib/insights/judge";
+import {
+  extractJudgeDigest,
+  buildJudgePrompt,
+  selectJudgeSample,
+  markerWindowSample,
+  normalizeJudgeReasons,
+  JUDGE_REASON_MAX_CHARS,
+  openRouterContent,
+} from "../lib/insights/judge";
 import { toPoints, detectMarkers, markerImpact } from "../lib/insights/timeline";
 import type { LiveSession, OutcomeSignals } from "../lib/live";
 import type { StoredJudgment } from "../lib/live-cache";
@@ -90,6 +98,26 @@ test("extractJudgeDigest understands Hermes single-JSON conversations", () => {
   const d = extractJudgeDigest(file);
   assert.equal(d.firstUser, "trace the missing invoice");
   assert.equal(d.lastAssistant, "The invoice was restored.");
+});
+
+test("judge summaries and persisted reasons stay bounded while raw transcript data is read-only", () => {
+  const huge = "x".repeat(10_000);
+  const file = writeTmp([
+    { type: "user", message: { role: "user", content: huge } },
+    { type: "assistant", message: { content: [{ type: "text", text: huge }] } },
+    { type: "user", message: { content: [{ type: "text", text: huge }] } },
+  ]);
+  const d = extractJudgeDigest(file);
+  assert.ok((d.firstUser?.length ?? 0) <= 601);
+  assert.ok((d.lastAssistant?.length ?? 0) <= 401);
+  assert.ok((d.laterUsers[0]?.length ?? 0) <= 241);
+
+  const reasons = normalizeJudgeReasons([huge, "short", 42, "y".repeat(JUDGE_REASON_MAX_CHARS + 10)]);
+  assert.equal(reasons.length, 3);
+  assert.equal(reasons[0].length, JUDGE_REASON_MAX_CHARS + 1, "clipped reasons include one ellipsis");
+  assert.equal(reasons[1], "short");
+  assert.equal(reasons[2].length, JUDGE_REASON_MAX_CHARS + 1);
+  assert.equal(fs.readFileSync(file, "utf8").includes(huge), true, "source transcript remains on disk");
 });
 
 test("buildJudgePrompt embeds the digest and demands bare JSON", () => {

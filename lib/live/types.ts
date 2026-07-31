@@ -1,4 +1,5 @@
 import type { FieldMapping } from "../adapters/generic";
+import type { ParseWarningCounts } from "./warning-taxonomy";
 
 export type MetricSource = "measured" | "inferred" | "missing" | "malformed";
 
@@ -30,6 +31,8 @@ export interface LiveUsageSummary {
   totalCostUsd: number;
   sessionsWithMeasuredUsage: number;
   sessionsWithMeasuredCost: number;
+  /** Any recorded or priced cost evidence, including an exact measured $0. */
+  sessionsWithCostEvidence: number;
   sessionsWithPricedUsage: number;
   sessionsWithListedRate: number;
   sessionsWithFamilyRate: number;
@@ -93,6 +96,12 @@ export interface LiveModelUsage {
 
 export interface LiveSession {
   sessionId: string;
+  /** Explicit child-agent identity when the trace format records it. */
+  isSubagent?: boolean;
+  /** Parent thread/session id when the child trace records a stable link. */
+  parentSessionId?: string | null;
+  /** Human-readable child label or storage agent id, when available. */
+  agentLabel?: string | null;
   displayTitle: string | null;
   lastPromptPreview: string | null;
   project: string;
@@ -162,6 +171,9 @@ export interface LiveSession {
  */
 export type LiveSessionListItem = Pick<LiveSession,
   | "sessionId"
+  | "isSubagent"
+  | "parentSessionId"
+  | "agentLabel"
   | "displayTitle"
   | "project"
   | "model"
@@ -233,6 +245,8 @@ export interface LiveScanCoverage {
   unscannedFiles: number;
   archivedSessionsAdded: number;
   truncated: boolean;
+  /** Discovery or parse warnings mean the population is not proven complete. */
+  partial: boolean;
 }
 
 export interface LiveAggregate {
@@ -250,6 +264,9 @@ export interface LiveAggregate {
   totalToolCalls: number;
   totalToolErrors: number;
   sessionsWithMeasuredDuration: number;
+  sessionsWithInferredDuration: number;
+  subagentSessions: number;
+  sessionsWithMeasuredModel: number;
   sessionsWithMissingModel: number;
   sessionsWithInferredModel: number;
   sessionsWithMissingTokens: number;
@@ -260,6 +277,8 @@ export interface LiveAggregate {
   avgDataQuality: number;
   scanCoverage: LiveScanCoverage;
   scanWarnings: string[];
+  /** Actionable parser-warning counts over the full parsed population. */
+  parseWarningCounts: ParseWarningCounts;
   byModel: Array<{
     model: string;
     sessions: number;
@@ -299,11 +318,37 @@ export interface LiveTranscriptTurn {
   preview: string;
   /** Conversation role for viewer grouping; "meta" = protocol/bookkeeping noise. */
   role?: "user" | "assistant" | "tool" | "meta";
+  /** Structured, bounded tool evidence retained without copying the raw record. */
+  tool?: {
+    callId?: string;
+    name: string;
+    phase: "call" | "result";
+    status?: string;
+    durationMs?: number;
+  };
+  /** Structured multimodal evidence retained without embedding image/file payloads. */
+  media?: {
+    images?: number;
+    files?: number;
+  };
+}
+
+export interface TranscriptNormalization {
+  /** Non-empty raw records parsed before the semantic display projection. */
+  rawRecords: number;
+  /** Codex event/response copies with the same role and exact text hidden once. */
+  suppressedMirrors: number;
+  /** Compound Claude-style records split into separate prose/reasoning/tool turns. */
+  compoundRecords: number;
 }
 
 export interface TranscriptResult {
   turns: LiveTranscriptTurn[];
   error?: string;
+  /** The bounded parser or error-context projection omitted additional turns. */
+  truncated?: boolean;
+  /** Honest accounting for the raw-record to semantic-turn viewer projection. */
+  normalization?: TranscriptNormalization;
 }
 
 export interface LiveSessionDetailResult {

@@ -5,7 +5,7 @@
   "name": "Explain an off-by-one bug and fix it",
   "description": "Agent must explain an off-by-one bug in a loop and provide a corrected version. Backstop regex checks for the fixed loop bound.",
   "tags": ["explanation", "bug", "edge-case"],
-  "prompt": "Consider this JavaScript snippet that is supposed to return the nth Fibonacci number (0-indexed: fib(0)=0, fib(1)=1):\n\nfunction fib(n) {\n  if (n <= 1) return n;\n  let a = 0, b = 1;\n  for (let i = 2; i < n; i++) {\n    [a, b] = [b, a + b];\n  }\n  return b;\n}\n\nIt has an off-by-one bug. Explain what the bug is and how to fix it, then give the corrected function. Answer in a short paragraph followed by the corrected code.",
+  "prompt": "Consider this JavaScript snippet that is supposed to return the nth Fibonacci number (0-indexed: fib(0)=0, fib(1)=1):\n\nfunction fib(n) {\n  if (n <= 1) return n;\n  let a = 0, b = 1;\n  for (let i = 2; i < n; i++) {\n    [a, b] = [b, a + b];\n  }\n  return b;\n}\n\nIt has an off-by-one bug. Explain what the bug is and how to fix it, then give the corrected function in your final answer. Also write only the corrected function (without Markdown fences) to fib-fixed.js. Do not create any other files.",
   "setup": { "type": "none" },
   "runner": { "max_turns": 5, "timeout_seconds": 180, "permission_mode": "bypassPermissions" },
   "budget": { "max_cost_usd": 0.5 },
@@ -17,7 +17,9 @@
   "graders": [
     { "type": "rubric_llm", "rubric": "The explanation must identify that the loop stops one iteration too early because `i < n` should be `i <= n`, so the function returns the (n-1)th Fibonacci number instead of the nth. The corrected code must change the loop bound to `i <= n` (or equivalent). Score 0-1.", "min_score": 0.7 },
     { "type": "regex_match", "pattern": "i\\s*<=\\s*n", "source": "final_text" },
-    { "type": "regex_match", "pattern": "[Oo]ff[- ]by[- ]one|[Oo]ne iteration too early|[Ll]oop bound", "source": "final_text" }
+    { "type": "regex_match", "pattern": "[Oo]ff[- ]by[- ]one|[Oo]ne iteration too early|[Ll]oop bound", "source": "final_text" },
+    { "type": "file_contains", "path": "fib-fixed.js", "pattern": "function\\s+fib\\s*\\(\\s*n\\s*\\)[\\s\\S]*for\\s*\\(\\s*let\\s+i\\s*=\\s*2\\s*;\\s*i\\s*<=\\s*n\\s*;\\s*i\\+\\+", "weight": 1 },
+    { "type": "file_contains", "path": "fib-fixed.js", "pattern": "if\\s*\\(\\s*n\\s*<=\\s*1\\s*\\)\\s*return\\s+n[\\s\\S]*return\\s+b", "weight": 1 }
   ],
   "pass_threshold": 1
 }

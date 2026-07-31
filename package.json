@@ -1,6 +1,6 @@
 {
   "name": "openeval",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "description": "Local-first evaluation dashboard for agent CLIs with deterministic graders, live trace telemetry, and accuracy audits.",
   "license": "MIT",
@@ -35,6 +35,7 @@
     "judge:windows": "tsx scripts/judge-windows.ts",
     "audit:accuracy": "tsx lib/cli/accuracy.ts",
     "audit:accuracy:strict": "tsx lib/cli/accuracy.ts --strict --strict-known-bad",
+    "render:evidence": "tsx scripts/render-evidence.ts",
     "live": "echo \"Live evals run on demand at http://localhost:3000/live\"",
     "report": "tsx lib/cli/report.ts",
     "test:redaction": "OPENEVAL_DATA_ROOT=.test-data node --import tsx --test tests/redaction.test.ts"

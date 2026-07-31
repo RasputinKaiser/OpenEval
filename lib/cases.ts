@@ -112,6 +112,24 @@ const GraderSpecSchema = z.discriminatedUnion("type", [
     model: z.string().optional(),
     judge_harness: z.string().optional(),
     judge_model: z.string().optional(),
+    artifact_paths: z.array(z.string().min(1)).max(4).optional(),
+    ...GraderCommonShape,
+  }).strict(),
+  z.object({
+    type: z.literal("render_evidence"),
+    artifact_path: z.string().min(1),
+    receipt_path: z.string().min(1),
+    artifact_kind: z.enum(["html", "svg"]).optional(),
+    viewport: z.object({
+      width: z.number().int().positive().max(10_000),
+      height: z.number().int().positive().max(10_000),
+      device_scale_factor: z.number().positive().max(8).optional(),
+    }).strict(),
+    selectors: z.array(z.object({
+      selector: z.string().min(1).max(240),
+      min_count: z.number().int().positive().max(1_000_000).optional(),
+      visible: z.boolean().optional(),
+    }).strict()).max(64).optional(),
     ...GraderCommonShape,
   }).strict(),
   z.object({
@@ -135,10 +153,17 @@ const SetupSchema = z
     path: ["repo"],
   });
 const VisualSchema = z.object({
-  kind: z.enum(["svg", "threejs", "web_ui", "app_ui", "screenshot"]),
+  kind: z.enum(["svg", "threejs", "web_ui", "app_ui", "screenshot", "canvas", "data", "diagram", "text"]),
   requires_vision_input: z.boolean().optional(),
   input_images: z.array(z.string().min(1)).optional(),
   expected_artifacts: z.array(z.string()).optional(),
+}).strict();
+
+const BenchmarkSchema = z.object({
+  intent: z.string().min(1),
+  deliverable: z.string().optional(),
+  evidence: z.array(z.enum(["deterministic", "trace", "artifact", "judge", "human"])).min(1),
+  usage: z.enum(["low", "medium", "high"]).optional(),
 }).strict();
 
 export const CaseDefinitionSchema = z.object({
@@ -151,6 +176,7 @@ export const CaseDefinitionSchema = z.object({
   split: z.enum(["public", "held_out"]).optional(),
   canary: z.string().optional(),
   prompt: z.string(),
+  benchmark: BenchmarkSchema.optional(),
   setup: SetupSchema.optional(),
   runner: z.object({
     max_turns: z.number().optional(),

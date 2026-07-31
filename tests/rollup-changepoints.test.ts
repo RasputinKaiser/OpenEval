@@ -49,7 +49,7 @@ test("buildRollup buckets sessions by week and ranks projects by cost", (t) => {
   t.mock.method(Date, "now", () => now);
   const sessions = [
     session({ startedAt: now, costUsd: 5, project: "/a" }),
-    session({ startedAt: now - 1000, costUsd: 3, project: "/b" }),
+    session({ startedAt: now - 1000, costUsd: 3, project: "/b", metricSources: { model: "measured", tokens: "measured", cost: "measured", duration: "measured", turns: "measured" } }),
     session({ startedAt: now - 8 * 86_400_000, costUsd: 2, project: "/a" }), // last week
     session({ startedAt: now - 400 * 86_400_000, costUsd: 99, project: "/old" }), // outside window
   ];
@@ -58,13 +58,33 @@ test("buildRollup buckets sessions by week and ranks projects by cost", (t) => {
   const thisWeek = r.weekly[r.weekly.length - 1];
   assert.equal(thisWeek.sessions, 2);
   assert.equal(thisWeek.costUsd, 8);
+  assert.equal(thisWeek.estimatedCostSessions, 1, "weekly bucket retains its own inferred-cost provenance");
   const lastWeek = r.weekly[r.weekly.length - 2];
   assert.equal(lastWeek.sessions, 1);
+  assert.equal(lastWeek.estimatedCostSessions, 1);
   // /old is outside the weekly window but still ranks in projects (all-time).
   assert.equal(r.byProject[0].project, "/old");
   assert.equal(r.byProject[1].project, "/a");
   assert.equal(r.byProject[1].costUsd, 7);
+  assert.equal(r.byProject[1].estimatedCostSessions, 2);
+  assert.equal(r.byProject[2].project, "/b");
+  assert.equal(r.byProject[2].estimatedCostSessions, 0, "project labels must not inherit another project's inferred-cost evidence");
   assert.equal(r.anyEstimatedCost, true);
+});
+
+test("buildRollup exposes top-level and child-trace denominators", (t) => {
+  const now = new Date(2026, 6, 15, 12, 0).getTime();
+  t.mock.method(Date, "now", () => now);
+  const r = buildRollup([
+    session({ startedAt: now, project: "/scope" }),
+    session({ startedAt: now - 1_000, project: "/scope", isSubagent: true, parentSessionId: "parent" }),
+  ], { weeks: 2 });
+  const week = r.weekly[r.weekly.length - 1];
+  const project = r.byProject.find((p) => p.project === "/scope")!;
+  assert.deepEqual([r.topLevelSessions, r.childSessions], [1, 1]);
+  assert.deepEqual([week.sessions, week.topLevelSessions, week.childSessions], [2, 1, 1]);
+  assert.deepEqual([project.sessions, project.topLevelSessions, project.childSessions], [2, 1, 1]);
+  assert.deepEqual([r.heatmapSessions, r.heatmapTopLevelSessions, r.heatmapChildSessions], [2, 1, 1]);
 });
 
 test("buildRollup keeps sessions on the far side of a DST transition", (t) => {
@@ -115,6 +135,10 @@ test("detectChangePoints finds a step shift and attributes a nearby marker", () 
   assert.ok(Math.abs(errShift!.at - (t0 + 40 * DAY)) <= 3 * DAY, "shift located near the true step");
   assert.ok(errShift!.after > errShift!.before);
   assert.ok(errShift!.nearMarkers.some((m) => m.includes("new-linter")), "adopted skill listed as suspect");
+  assert.equal(errShift!.attribution, "adoption-correlated");
+  assert.equal(errShift!.sampleBefore, 20);
+  assert.equal(errShift!.sampleAfter, 20);
+  assert.equal(errShift!.comparability, "comparable");
 });
 
 test("detectChangePoints stays quiet on a flat series", () => {
@@ -127,6 +151,73 @@ test("detectChangePoints stays quiet on a flat series", () => {
   const points = toPoints(sessions);
   const cps = detectChangePoints(points, [], { window: 20 });
   assert.equal(cps.length, 0);
+});
+
+test("detectChangePoints treats measured-zero cost as evidence and keeps shifts finite", () => {
+  const DAY = 86_400_000;
+  const t0 = Date.parse("2026-02-01T00:00:00Z");
+  const sessions = [];
+  for (let i = 0; i < 20; i++) {
+    sessions.push(session({
+      startedAt: t0 + i * DAY,
+      costUsd: i < 10 ? 0 : 2,
+      metricSources: { model: "measured", tokens: "measured", cost: "measured", duration: "measured", turns: "measured" },
+    }));
+  }
+  const points = toPoints(sessions);
+  const cp = detectChangePoints(points, [], { window: 5 }).find((c) => c.metric === "costUsd");
+  assert.ok(cp, "expected measured cost shift");
+  assert.equal(cp!.before, 0, "measured $0 is not treated as unavailable");
+  assert.equal(cp!.after, 2);
+  assert.equal(cp!.sampleBefore, 5);
+  assert.equal(cp!.sampleAfter, 5);
+  assert.equal(cp!.zScore, 50, "zero-variance steps use a finite cap");
+  assert.equal(cp!.effectSize, null, "constant nonzero step has no finite standardized effect");
+  assert.equal(cp!.attribution, "global");
+});
+
+test("detectChangePoints marks measured/inferred cost transitions as mixed provenance", () => {
+  const DAY = 86_400_000;
+  const t0 = Date.parse("2026-03-01T00:00:00Z");
+  const sessions = [];
+  for (let i = 0; i < 20; i++) {
+    sessions.push(session({
+      startedAt: t0 + i * DAY,
+      costUsd: i < 10 ? 1 : 3,
+      metricSources: { model: "measured", tokens: "measured", cost: i < 10 ? "measured" : "inferred", duration: "measured", turns: "measured" },
+    }));
+  }
+  const cp = detectChangePoints(toPoints(sessions), [], { window: 5 }).find((c) => c.metric === "costUsd");
+  assert.ok(cp);
+  assert.equal(cp!.comparability, "mixed-provenance");
+  assert.equal(cp!.provenance, "mixed");
+});
+
+test("detectChangePoints does not turn child-only proximity into adoption attribution", () => {
+  const DAY = 86_400_000;
+  const t0 = Date.parse("2026-04-01T00:00:00Z");
+  const points = toPoints(Array.from({ length: 20 }, (_, i) => session({
+    startedAt: t0 + i * DAY,
+    toolErrorRate: i < 10 ? 0.05 : 0.4,
+  })));
+  const cps = detectChangePoints(points, [{
+    kind: "skill",
+    name: "child-marker",
+    firstSeenAt: t0 + 10 * DAY,
+    sessionCount: 0,
+    observedIn: "child",
+  }], { window: 5 });
+  const cp = cps.find((candidate) => candidate.metric === "toolErrorRate");
+  assert.ok(cp);
+  assert.equal(cp!.nearMarkers.length, 0);
+  assert.equal(cp!.attribution, "global");
+});
+
+test("detectChangePoints rejects thin or invalid windows instead of manufacturing shifts", () => {
+  const points = toPoints(Array.from({ length: 10 }, (_, i) => session({ startedAt: i + 1, costUsd: 1 })));
+  assert.deepEqual(detectChangePoints(points, [], { window: 0 }), []);
+  assert.deepEqual(detectChangePoints(points, [], { window: 3, minSamplesPerSide: 5 }), []);
+  assert.deepEqual(detectChangePoints(points, [], { window: 5, attributionDays: -1 }), detectChangePoints(points, [], { window: 5, attributionDays: 0 }));
 });
 
 test("buildRollup heatmap counts session starts by weekday/hour, Monday-first", () => {

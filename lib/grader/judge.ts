@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { z } from "zod";
 import { getAdapter } from "../adapters/registry";
 import type { RunnerContext } from "../types";
 import { spawnHarnessProcess, emptyRunnerResult } from "../runner/spawn";
@@ -14,13 +15,56 @@ export interface JudgeResult {
   error?: string;
 }
 
+/**
+ * The rubric grader has a narrower response contract than the session judge.
+ * Keep the generic JSON extractor below for the latter, but validate rubric
+ * replies before they can influence a case result. Optional fields preserve
+ * compatibility with the historical boolean-only and score-only replies; any
+ * field that is present must still have the type and bounded size promised by
+ * the rubric prompt.
+ */
+export const RubricJudgeVerdictSchema = z
+  .object({
+    passed: z.boolean().optional(),
+    score: z.number().finite().min(0).max(1).optional(),
+    reason: z.string().trim().min(1).max(500).optional(),
+  })
+  .strict()
+  .refine((verdict) => verdict.passed !== undefined || verdict.score !== undefined, {
+    message: "verdict must include passed or score",
+  });
+
+export type RubricJudgeVerdict = z.infer<typeof RubricJudgeVerdictSchema>;
+
+export interface RubricJudgeParseResult {
+  verdict: RubricJudgeVerdict | null;
+  error?: string;
+}
+
+export type RubricJudgeFailureCode = "backend_unavailable" | "cancelled" | "invalid_verdict";
+
+export interface RubricJudgeFailureRecord {
+  contract: "openeval.rubric-judge";
+  version: 1;
+  status: "blocked";
+  backend: { harness: string; model: string | null };
+  failure: { code: RubricJudgeFailureCode; detail: string };
+  response?: string;
+}
+
 export const OPENROUTER_DEFAULT_JUDGE_MODEL = "tencent/hy3:free";
-export const CODEX_DEFAULT_JUDGE_MODEL = "gpt-5.5";
+/** The Codex subscription-backed judge used by the current Evaluate workflow. */
+export const CODEX_DEFAULT_JUDGE_MODEL = "gpt-5.6-luna";
+export const CODEX_DEFAULT_JUDGE_REASONING_EFFORT = "high";
 
 export function defaultJudgeModel(harness: string): string | undefined {
   if (harness === "openrouter") return OPENROUTER_DEFAULT_JUDGE_MODEL;
   if (harness === "codex") return CODEX_DEFAULT_JUDGE_MODEL;
   return undefined;
+}
+
+export function defaultJudgeReasoningEffort(harness: string): string | undefined {
+  return harness === "codex" ? CODEX_DEFAULT_JUDGE_REASONING_EFFORT : undefined;
 }
 
 /**
@@ -47,6 +91,46 @@ export function extractJudgeJson(text: string): Record<string, unknown> | null {
   return null;
 }
 
+function formatSchemaIssues(error: z.ZodError): string {
+  return error.issues
+    .slice(0, 4)
+    .map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`)
+    .join("; ");
+}
+
+/** Validate the exact rubric verdict after extracting JSON from a reply. */
+export function parseRubricJudgeVerdict(text: string): RubricJudgeParseResult {
+  const json = extractJudgeJson(text);
+  if (!json) return { verdict: null, error: "no JSON object found in judge reply" };
+  const parsed = RubricJudgeVerdictSchema.safeParse(json);
+  return parsed.success
+    ? { verdict: parsed.data }
+    : { verdict: null, error: `invalid rubric verdict: ${formatSchemaIssues(parsed.error)}` };
+}
+
+/**
+ * Keep judge failures inspectable after the case is persisted. This is a
+ * diagnostic receipt, not a verdict: blocked judge infrastructure must never
+ * become an agent pass/fail claim.
+ */
+export function serializeRubricJudgeFailure(input: {
+  harness: string;
+  model?: string;
+  code: RubricJudgeFailureCode;
+  detail: string;
+  response?: string;
+}): string {
+  const record: RubricJudgeFailureRecord = {
+    contract: "openeval.rubric-judge",
+    version: 1,
+    status: "blocked",
+    backend: { harness: input.harness, model: input.model ?? null },
+    failure: { code: input.code, detail: input.detail.slice(0, 500) },
+    ...(input.response ? { response: input.response.slice(0, 500) } : {}),
+  };
+  return JSON.stringify(record, null, 2);
+}
+
 /**
  * A judge's score is only meaningful on the 0..1 scale the prompt demands.
  * Out-of-range replies (a model grading on 0..10, or echoing garbage) are
@@ -61,17 +145,21 @@ export function validJudgeScore(score: unknown): number | null {
 
 /**
  * Judge backend order: explicit environment variables win, then the local
- * Settings-page selection, then automatic discovery (OpenRouter when a key is
- * available, otherwise the pinned Codex CLI fallback). "openrouter" is an
- * HTTP backend, not a harness adapter; the selected model works for either.
+ * Settings-page selection, then the pinned Codex subscription fallback.
+ * "openrouter" is an HTTP backend, not a harness adapter, and must be selected
+ * explicitly; a merely-present API key does not move local judging elsewhere.
  */
-export function resolveJudge(): { harness: string; model?: string; judgeName: string } {
+export function resolveJudge(): { harness: string; model?: string; reasoningEffort?: string; judgeName: string } {
   const settings = readAppSettings();
-  const harness = process.env.JUDGE_HARNESS || settings.judgeSource || (process.env.OPENROUTER_API_KEY ? "openrouter" : "codex");
+  // Prefer the local Codex subscription by default. OpenRouter remains an
+  // explicit environment/settings choice; a merely-present API key should not
+  // silently move evaluation judging to a different provider.
+  const harness = process.env.JUDGE_HARNESS || settings.judgeSource || "codex";
   // A concrete Codex default avoids inheriting a configured model an older CLI
   // cannot run. Per-harness defaults also apply to explicit grader overrides.
   const model = process.env.JUDGE_MODEL || settings.judgeModel || defaultJudgeModel(harness);
-  return { harness, model, judgeName: `${harness}${model ? "/" + model : ""}` };
+  const reasoningEffort = process.env.JUDGE_REASONING_EFFORT || defaultJudgeReasoningEffort(harness);
+  return { harness, model, reasoningEffort, judgeName: `${harness}${model ? "/" + model : ""}${reasoningEffort ? ` (${reasoningEffort})` : ""}` };
 }
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
@@ -164,7 +252,11 @@ export async function runJudge(opts: {
     timeoutMs: opts.timeoutMs,
     permissionMode: "default",
     model: opts.model,
-    extraArgs: [],
+    // Codex exposes reasoning effort as a config override rather than a
+    // dedicated exec flag. Keep the judge setting explicit and reproducible.
+    extraArgs: opts.harness === "codex"
+      ? ["-c", `model_reasoning_effort=${JSON.stringify(process.env.JUDGE_REASONING_EFFORT || CODEX_DEFAULT_JUDGE_REASONING_EFFORT)}`]
+      : [],
     harness: opts.harness,
     signal: opts.signal,
   };

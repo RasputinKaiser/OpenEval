@@ -24,7 +24,7 @@ function PanelHeader({ icon: Icon, title, subtitle }: { icon: any; title: string
 // depend on `data`, so memo lets the unchanged-reference case skip them.
 export const ModelPanel = React.memo(function ModelPanel({ data }: { data: LiveAggregateList }) {
   return (
-    <section className="card overflow-hidden">
+    <section className="card min-w-0 overflow-hidden">
       <div className="border-b border-bd-subtle px-4 py-3">
         <div className="flex items-center gap-2 text-sm font-medium">
           <BarChart3 className="size-4 text-fg-muted" /> Model evidence
@@ -34,7 +34,7 @@ export const ModelPanel = React.memo(function ModelPanel({ data }: { data: LiveA
         </div>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="min-w-[560px] w-full text-sm">
           <thead className="sticky top-0 bg-bg-subtle text-[10px] uppercase tracking-wider text-fg-muted">
             <tr>
               <th className="px-4 py-2 text-left font-medium">Model</th>
@@ -77,7 +77,7 @@ export const TraceIntelligencePanels = React.memo(function TraceIntelligencePane
       desc="Execution graph, tool reliability, operator queue, and file impact across the scanned sessions"
       right={`${fmt(data.totalToolCalls)} tool calls`}
     />
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 2xl:grid-cols-4">
+    <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-2 2xl:grid-cols-4">
       <section className="card overflow-hidden">
         <PanelHeader icon={GitFork} title="Execution graph" subtitle="Root thread, sidechains, and agents." />
         <div className="grid grid-cols-3 gap-2 p-4">

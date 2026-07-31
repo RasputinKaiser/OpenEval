@@ -7,12 +7,12 @@ import { FILTER_MODES, SORT_MODES, type FilterMode, type SortMode } from "./live
 
 function SelectPill({ icon: Icon, value, onChange, options, label }: { icon: any; value: string; onChange: (value: string) => void; options: ReadonlyArray<readonly [string, string]>; label: string }) {
   return (
-    <label className="inline-flex items-center gap-2 rounded-md border border-bd bg-bg-elev px-2 py-1.5 text-xs text-fg-muted">
-      <Icon className="size-3.5" />
+    <label className="inline-flex min-h-10 max-w-full items-center gap-2 rounded-md border border-bd bg-bg-elev px-2.5 py-2 text-xs text-fg-muted">
+      <Icon className="size-3.5 shrink-0" aria-hidden="true" />
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="bg-transparent text-xs text-fg outline-none"
+        className="min-w-0 max-w-[12rem] bg-transparent text-xs text-fg outline-none focus-visible:ring-2 focus-visible:ring-accent"
         aria-label={label}
       >
         {options.map(([optionValue, optionLabel]) => <option key={optionValue} value={optionValue}>{optionLabel}</option>)}
@@ -39,7 +39,7 @@ export function SessionFilters({
   const searchRef = useRef<HTMLInputElement>(null);
   useFocusOnSlash(searchRef);
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex min-w-0 flex-wrap gap-2">
       <SelectPill icon={Filter} label="Filter sessions" value={filter} onChange={(v) => onFilterChange(v as FilterMode)} options={FILTER_MODES} />
       <SelectPill icon={ArrowDownWideNarrow} label="Sort sessions" value={sort} onChange={(v) => onSortChange(v as SortMode)} options={SORT_MODES} />
       <div className="relative">
@@ -50,7 +50,7 @@ export function SessionFilters({
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder="Search…"
           aria-label="Search sessions"
-          className="w-32 lg:w-44 pl-8 pr-2 py-1.5 text-[11px] bg-bg border border-bd rounded-md focus:outline-none focus:border-accent focus:w-40 lg:focus:w-52 transition-[width,border-color] placeholder:text-fg-dim"
+          className="min-h-10 w-36 min-w-0 flex-1 bg-bg pl-8 pr-2 text-[11px] border border-bd rounded-md focus:outline-none focus:border-accent focus-visible:ring-2 focus-visible:ring-accent sm:flex-none sm:w-32 lg:w-44 sm:focus:w-40 lg:focus:w-52 transition-[width,border-color] placeholder:text-fg-dim"
         />
       </div>
     </div>

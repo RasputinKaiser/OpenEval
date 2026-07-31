@@ -1,14 +1,26 @@
 import TimelineClient from "@/components/TimelineClient";
-import { collectAllSessions } from "@/lib/collection/aggregate";
-import { buildTimeline, type TimelineReport } from "@/lib/insights/collect";
+import type { TimelineReport } from "@/lib/insights/collect";
+import { getTimelineSnapshot } from "@/lib/collection/snapshot-service";
 
 export const dynamic = "force-dynamic";
 
 export default async function TimelinePage() {
-  let data: TimelineReport;
+  let data: TimelineReport & {
+    generatedAtMs?: number;
+    stale?: boolean;
+    refreshing?: boolean;
+    refreshError?: string;
+  };
   let error: string | undefined;
   try {
-    data = buildTimeline(collectAllSessions());
+    const snapshot = await getTimelineSnapshot();
+    data = {
+      ...snapshot.value,
+      generatedAtMs: snapshot.generatedAtMs,
+      stale: snapshot.stale,
+      refreshing: snapshot.refreshing,
+      ...(snapshot.refreshError ? { refreshError: snapshot.refreshError } : {}),
+    };
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
     data = {

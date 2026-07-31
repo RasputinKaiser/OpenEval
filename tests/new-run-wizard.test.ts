@@ -100,15 +100,25 @@ test("POST /api/runs: explicit-but-empty caseIds → 400 tagged field=caseIds", 
 test("POST /api/runs: registered harness passes the gate; case selection failure is tagged field=caseIds", async () => {
   const runsRoute = await import("../app/api/runs/route");
   const registry = await import("../lib/adapters/registry");
-  const known = registry.listAdapters()[0]?.id;
-  assert.ok(known, "at least one built-in harness is registered");
-  const db = await import("../lib/db");
-  const before = db.countRuns();
-  // Temp cwd has no cases/ dir, so selection fails after harness validation passes.
-  const res = await runsRoute.POST(postRuns({ harness: known, caseIds: ["does-not-exist"] }));
-  assert.equal(res.status, 400);
-  const body = await res.json();
-  assert.match(body.error, /No cases match/);
-  assert.equal(body.field, "caseIds");
-  assert.equal(db.countRuns(), before);
+  const known = registry.listAdapters().find((adapter) => adapter.id === "ncode")?.id;
+  assert.equal(known, "ncode", "the bundled ncode harness remains registered");
+  const previousBin = process.env.NCODE_BIN;
+  // Use the current Node executable as a deterministic --version probe. This
+  // keeps the API validation test independent of whichever provider CLIs are
+  // installed or authenticated on the developer's machine.
+  process.env.NCODE_BIN = process.execPath;
+  try {
+    const db = await import("../lib/db");
+    const before = db.countRuns();
+    // Temp cwd has no cases/ dir, so selection fails after harness validation passes.
+    const res = await runsRoute.POST(postRuns({ harness: known, caseIds: ["does-not-exist"] }));
+    assert.equal(res.status, 400);
+    const body = await res.json();
+    assert.match(body.error, /No cases match/);
+    assert.equal(body.field, "caseIds");
+    assert.equal(db.countRuns(), before);
+  } finally {
+    if (previousBin === undefined) delete process.env.NCODE_BIN;
+    else process.env.NCODE_BIN = previousBin;
+  }
 });

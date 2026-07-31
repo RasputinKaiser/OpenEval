@@ -129,7 +129,7 @@ Without overrides, structured parsers (`claude-stream-json`, `codex-jsonl`) repo
 
 Formats:
 
-- `claude-projects`: scans project subdirectories one level below each root for `.jsonl` files.
+- `claude-projects`: scans root `.jsonl` transcripts in project subdirectories and child-agent `agent-*.jsonl` transcripts under each parent session's `subagents` tree, including bounded `workflows/*` descendants. Metadata and workflow journals are excluded.
 - `codex-sessions`: recursively scans `.jsonl` files and parses Codex session records.
 - `jsonl-dir`: recursively scans `.jsonl` files and applies generic field mappings plus Claude-style trace handling.
 

@@ -8,6 +8,7 @@ import HarnessBadge from "./HarnessBadge";
 import PageHeader from "./PageHeader";
 import { cachedFetch } from "@/lib/cached-fetch";
 import { fmtDuration, fmtNum, fmtNumFull, fmtPct, fmtUsd, fmtUsdFull } from "@/lib/format";
+import EvaluateNav from "./EvaluateNav";
 
 /** Sticky harness column: row identity stays put while metrics scroll on narrow screens. */
 const STICKY_TH = "sticky left-0 z-[2] bg-bg-subtle";
@@ -81,6 +82,7 @@ export default function LeaderboardClient() {
         title="Harness Leaderboard"
         subtitle="Compare agent CLIs head-to-head: pass rate, cost, tokens, speed. The payoff for running the same suite across harnesses."
       />
+      <EvaluateNav />
 
       {loadError && (
         <div className="mb-4 rounded-lg border border-err/40 bg-err/10 p-3 flex items-start gap-2.5" role="alert">
@@ -93,7 +95,7 @@ export default function LeaderboardClient() {
       )}
 
       {loading ? (
-        <div className="flex items-center gap-2 text-sm text-fg-muted"><Loader2 className="size-4 animate-spin" /> Aggregating runs…</div>
+        <div role="status" aria-live="polite" className="flex items-center gap-2 text-sm text-fg-muted"><Loader2 className="size-4 animate-spin" /> Aggregating runs…</div>
       ) : loadError ? null : rows.length === 0 ? (
         <section className="card p-10 text-center">
           <div className="text-sm text-fg-muted mb-2">No runs yet. Fan a suite across harnesses to populate the leaderboard:</div>
@@ -115,39 +117,40 @@ export default function LeaderboardClient() {
             </section>
           )}
           <section className="card overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+            <div className="overflow-x-auto" tabIndex={0} aria-label="Scrollable harness leaderboard table">
+              <table className="w-full min-w-[980px] text-sm">
+                <caption className="sr-only">Harness leaderboard. Pass-rate denominator is total graded cases; cost is in US dollars; token columns show input and output totals.</caption>
                 <thead className="sticky top-0 z-10 text-[11px] uppercase tracking-wider text-fg-muted bg-bg-subtle border-b border-bd-subtle">
                   <tr>
-                    <th className="text-center px-2 py-2 font-medium w-8">#</th>
-                    <th className={clsx("text-left px-4 py-2 font-medium", STICKY_TH)}>
+                    <th scope="col" className="text-center px-2 py-2 font-medium w-8">#</th>
+                    <th scope="col" aria-sort={sortKey === "harness" ? (sortDir === "asc" ? "ascending" : "descending") : "none"} className={clsx("text-left px-4 py-2 font-medium", STICKY_TH)}>
                       <SortBtn label="Harness" k="harness" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="left" />
                     </th>
-                    <th className="text-right px-4 py-2 font-medium">
+                    <th scope="col" aria-sort={sortKey === "runCount" ? (sortDir === "asc" ? "ascending" : "descending") : "none"} className="text-right px-4 py-2 font-medium">
                       <SortBtn label="Runs" k="runCount" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} />
                     </th>
-                    <th className="text-right px-4 py-2 font-medium">
+                    <th scope="col" aria-sort={sortKey === "totalCases" ? (sortDir === "asc" ? "ascending" : "descending") : "none"} className="text-right px-4 py-2 font-medium">
                       <SortBtn label="Cases" k="totalCases" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} />
                     </th>
-                    <th className="text-right px-4 py-2 font-medium">
+                    <th scope="col" aria-sort={sortKey === "passRate" ? (sortDir === "asc" ? "ascending" : "descending") : "none"} className="text-right px-4 py-2 font-medium">
                       <SortBtn label="Pass rate" k="passRate" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} />
                     </th>
-                    <th className="text-right px-4 py-2 font-medium">
+                    <th scope="col" aria-sort={sortKey === "passed" ? (sortDir === "asc" ? "ascending" : "descending") : "none"} className="text-right px-4 py-2 font-medium">
                       <SortBtn label="Passed" k="passed" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} />
                     </th>
-                    <th className="text-right px-4 py-2 font-medium">
-                      <SortBtn label="Cost" k="totalCostUsd" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} />
+                    <th scope="col" aria-sort={sortKey === "totalCostUsd" ? (sortDir === "asc" ? "ascending" : "descending") : "none"} className="text-right px-4 py-2 font-medium">
+                      <SortBtn label="Cost (USD)" k="totalCostUsd" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} />
                     </th>
-                    <th className="text-right px-4 py-2 font-medium">
-                      <SortBtn label="Tokens out" k="totalTokensOut" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} />
+                    <th scope="col" aria-sort={sortKey === "totalTokensOut" ? (sortDir === "asc" ? "ascending" : "descending") : "none"} className="text-right px-4 py-2 font-medium">
+                      <SortBtn label="Tokens (in / out)" k="totalTokensOut" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} />
                     </th>
-                    <th className="text-right px-4 py-2 font-medium">
-                      <SortBtn label="Avg tok/s" k="avgTokPerSec" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} />
+                    <th scope="col" aria-sort={sortKey === "avgTokPerSec" ? (sortDir === "asc" ? "ascending" : "descending") : "none"} className="text-right px-4 py-2 font-medium">
+                      <SortBtn label="Avg output tok/s" k="avgTokPerSec" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} />
                     </th>
-                    <th className="text-right px-4 py-2 font-medium">
+                    <th scope="col" aria-sort={sortKey === "totalDurationMs" ? (sortDir === "asc" ? "ascending" : "descending") : "none"} className="text-right px-4 py-2 font-medium">
                       <SortBtn label="Total time" k="totalDurationMs" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} />
                     </th>
-                    <th className="text-left px-4 py-2 font-medium">
+                    <th scope="col" aria-sort={sortKey === "model" ? (sortDir === "asc" ? "ascending" : "descending") : "none"} className="text-left px-4 py-2 font-medium">
                       <SortBtn label="Model" k="model" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="left" />
                     </th>
                   </tr>
@@ -169,11 +172,11 @@ export default function LeaderboardClient() {
                       <td className="px-4 py-2.5 text-right mono">{r.totalCases}</td>
                       <td className="px-4 py-2.5 text-right">
                         <div className="flex items-center justify-end gap-2">
-                          <div className="h-1.5 w-16 overflow-hidden rounded-full bg-bg-elev">
-                            <div className="h-full flex">
-                              <div className="bg-ok" style={{ width: `${r.passRate * 100}%` }} />
-                              {r.failed > 0 && <div className="bg-err" style={{ width: `${(r.failed / r.totalCases) * 100}%` }} />}
-                              {r.errored > 0 && <div className="bg-warn" style={{ width: `${(r.errored / r.totalCases) * 100}%` }} />}
+                          <div className="h-1.5 w-16 overflow-hidden rounded-full bg-bg-elev" role="img" aria-label={`${r.harness}: ${fmtPct(r.passRate)} pass rate; ${r.passed} passed, ${r.failed} failed, ${r.errored} infra errors out of ${r.totalCases} cases`}>
+                            <div className="h-full flex" aria-hidden="true">
+                              <div className="bg-ok" style={{ width: `${boundedPercent(r.passRate)}%` }} />
+                              {r.failed > 0 && <div className="bg-err" style={{ width: `${boundedPercent(r.totalCases > 0 ? r.failed / r.totalCases : 0)}%` }} />}
+                              {r.errored > 0 && <div className="bg-warn" style={{ width: `${boundedPercent(r.totalCases > 0 ? r.errored / r.totalCases : 0)}%` }} />}
                             </div>
                           </div>
                           <span className={clsx("mono font-semibold tabular-nums", r.passRate >= 0.8 ? "text-ok" : r.passRate >= 0.5 ? "text-fg-muted" : "text-err")}>
@@ -186,8 +189,8 @@ export default function LeaderboardClient() {
                         {r.errored > 0 && <span className="text-fg-dim"> · {r.errored} err</span>}
                       </td>
                       <td className="px-4 py-2.5 text-right mono" title={fmtUsdFull(r.totalCostUsd)}>{fmtUsd(r.totalCostUsd)}</td>
-                      <td className="px-4 py-2.5 text-right mono text-xs" title={`${fmtNumFull(r.totalTokensIn)} in / ${fmtNumFull(r.totalTokensOut)} out`}>{fmtNum(r.totalTokensIn)} / {fmtNum(r.totalTokensOut)}</td>
-                      <td className="px-4 py-2.5 text-right mono">{r.avgTokPerSec.toFixed(1)}</td>
+                      <td className="px-4 py-2.5 text-right mono text-xs" title={`${fmtNumFull(r.totalTokensIn)} input / ${fmtNumFull(r.totalTokensOut)} output`}>{fmtNum(r.totalTokensIn)} / {fmtNum(r.totalTokensOut)}</td>
+                      <td className="px-4 py-2.5 text-right mono">{Number.isFinite(r.avgTokPerSec) ? r.avgTokPerSec.toFixed(1) : "—"}</td>
                       <td className="px-4 py-2.5 text-right mono">{fmtDuration(r.totalDurationMs)}</td>
                       <td className="px-4 py-2.5 text-[11px] text-fg-dim mono">{r.model || "—"}</td>
                     </tr>
@@ -195,6 +198,7 @@ export default function LeaderboardClient() {
                 </tbody>
               </table>
             </div>
+            <p className="border-t border-bd-subtle px-3 py-2 text-[11px] text-fg-dim sm:hidden">Swipe horizontally to inspect cost, tokens, speed, and model.</p>
           </section>
           <div className="mt-4 flex items-center gap-3 text-xs">
             <Link href="/runs/compare" className="flex items-center gap-1.5 text-accent-soft hover:underline">
@@ -227,7 +231,9 @@ function SortBtn({
   const active = sortKey === k;
   return (
     <button
+      type="button"
       onClick={() => onClick(k)}
+      aria-label={`${label}${active ? `, sorted ${sortDir === "asc" ? "ascending" : "descending"}` : ", not sorted"}`}
       className={clsx(
         "inline-flex items-center gap-1 hover:text-fg transition-colors",
         active && "text-accent-soft"
@@ -238,4 +244,8 @@ function SortBtn({
       {align === "right" ? label : null}
     </button>
   );
+}
+
+function boundedPercent(value: number): number {
+  return Number.isFinite(value) ? Math.min(100, Math.max(0, value * 100)) : 0;
 }

@@ -237,11 +237,18 @@ test("GET artifact: missing path param → 400 envelope naming path", async () =
 
 test("GET /api/settings returns settings without faulting in an empty root", async () => {
   const { settingsRoute } = await importRoutes();
-  const res = await settingsRoute.GET();
+  const res = await settingsRoute.GET(new Request("http://localhost/api/settings"));
   assert.equal(res.status, 200);
   const body = await res.json();
   assert.ok(body.settings);
   assert.ok(body.effectiveJudge);
+});
+
+test("GET /api/settings rejects a non-local Host before exposing machine configuration", async () => {
+  const { settingsRoute } = await importRoutes();
+  const res = await settingsRoute.GET(new Request("http://evil.example/api/settings"));
+  assert.equal(res.status, 403);
+  assert.deepEqual(await res.json(), { error: "host not allowed" });
 });
 
 test("PUT /api/settings: malformed JSON no longer silently resets settings → 400 envelope", async () => {

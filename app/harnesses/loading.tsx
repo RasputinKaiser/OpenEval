@@ -1,12 +1,13 @@
 function Bar({ className }: { className: string }) {
-  return <div className={`shimmer rounded ${className}`} />;
+  return <div aria-hidden="true" className={`shimmer rounded ${className}`} />;
 }
 
 /** Mirrors HarnessesClient: page header with re-probe action, then the
  * harness-list sidebar / detail-card two-column grid. */
 export default function Loading() {
   return (
-    <div className="p-8 max-w-6xl mx-auto" aria-busy="true" aria-label="Loading harnesses">
+    <div role="status" aria-live="polite" className="p-8 max-w-6xl mx-auto" aria-busy="true" aria-label="Loading harnesses">
+      <span className="sr-only">Loading harnesses…</span>
       <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <Bar className="mb-2 h-8 w-40" />

@@ -1,0 +1,35 @@
+{
+  "id": "visual-pixel-art-scene",
+  "category": "visual-code",
+  "difficulty": "medium",
+  "name": "Create a deterministic pixel-art field",
+  "description": "Visual-code task: create a self-contained pixel-art SVG scene. Grading checks the declared SVG and pixel-structure contract only; it does not claim pixel-level visual quality.",
+  "tags": ["visual-code", "svg", "pixel-art", "deterministic"],
+  "split": "public",
+  "prompt": "Create a file named pixel-scene.svg. It must be a self-contained SVG with viewBox=\"0 0 320 200\" and a crisp pixel-art scene made from rect-based grid/pixel elements. Include a visible text title exactly \"OpenEval Pixel Field\". Use a limited palette of no more than eight distinct fill colors, with no external assets or network imports. Do not create any other files. This is graded through deterministic structural checks, not pixel-level visual comparison.",
+  "benchmark": { "intent": "Whether the agent can use a constrained palette and repeated grid units to communicate a recognizable pixel-art scene.", "deliverable": "pixel-scene.svg", "evidence": ["deterministic", "artifact"], "usage": "low" },
+  "setup": { "type": "none" },
+  "runner": { "max_turns": 12, "timeout_seconds": 180, "permission_mode": "bypassPermissions" },
+  "budget": { "max_turns": 12, "max_cost_usd": 0.5 },
+  "visual": {
+    "kind": "svg",
+    "requires_vision_input": false,
+    "expected_artifacts": ["pixel-scene.svg"]
+  },
+  "graders": [
+    { "type": "file_exists", "path": "pixel-scene.svg", "weight": 10 },
+    { "type": "file_contains", "path": "pixel-scene.svg", "pattern": "<svg[^>]+viewBox=[\"']0 0 320 200[\"']", "weight": 15 },
+    { "type": "file_contains", "path": "pixel-scene.svg", "pattern": "<text\\b[^>]*>OpenEval Pixel Field</text>", "weight": 15 },
+    { "type": "file_contains", "path": "pixel-scene.svg", "pattern": "<rect\\b", "weight": 10 },
+    { "type": "exit_code", "command": "node -e \"const fs=require('fs'); const s=fs.readFileSync('pixel-scene.svg','utf8'); const n=(s.match(/<rect\\b/g)||[]).length; if(n<12) process.exit(1)\"", "weight": 15 },
+    { "type": "exit_code", "command": "node -e \"const fs=require('fs'); const s=fs.readFileSync('pixel-scene.svg','utf8'); const fills=[...s.matchAll(/\\bfill=['\\\"]([^'\\\"]+)['\\\"]/g)].map(m=>m[1]); const n=new Set(fills).size; if(fills.length<3||n>8) process.exit(1)\"", "weight": 15 },
+    { "type": "file_contains", "path": "pixel-scene.svg", "pattern": "https?://(?!www\\.w3\\.org/)|<image\\b|<script\\b", "negate": true, "weight": 5, "forbidden": true },
+    { "type": "file_exists", "path": "index.html", "negate": true, "weight": 5, "forbidden": true }
+  ],
+  "pass_threshold": 0.85,
+  "oracle": {
+    "solve": "oracle/visual-pixel-art-scene.sh",
+    "noop_max_score": 0.1,
+    "known_bad": ["oracle/visual-pixel-art-scene-bad.sh"]
+  }
+}

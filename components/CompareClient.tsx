@@ -7,6 +7,9 @@ import { AlertTriangle, ArrowRight, GitCompareArrows, Loader2 } from "lucide-rea
 import PageHeader from "./PageHeader";
 import { presentSummaryCost } from "@/lib/cost-display";
 import { fmtNum, fmtNumFull, fmtPct as fmtPctStrict } from "@/lib/format";
+import EvaluateNav from "./EvaluateNav";
+import EvaluationProfile from "./EvaluationProfile";
+import VisualComparisonStage from "./VisualComparisonStage";
 
 /** Sticky first column: case identity stays put while deltas scroll on narrow screens. */
 const STICKY_TH = "sticky left-0 z-[2] bg-bg-subtle";
@@ -17,8 +20,10 @@ interface Props { runs: RunLite[]; initialA?: string; initialB?: string; }
 
 interface CaseRow { caseId: string; sample: number; caseName: string; category: string; difficulty?: string;
   aStatus: string | null; bStatus: string | null;
-  aTokPerSec: number; bTokPerSec: number; aCost: number; bCost: number; aTurns: number; bTurns: number;
-  aModel?: string | null; bModel?: string | null; }
+  aTokPerSec: number | null; bTokPerSec: number | null; aCost: number | null; bCost: number | null; aTurns: number | null; bTurns: number | null;
+  aCaseRef: string | null; bCaseRef: string | null;
+  aModel?: string | null; bModel?: string | null;
+  aVisualArtifacts: string[]; bVisualArtifacts: string[]; }
 
 export default function CompareClient({ runs, initialA, initialB }: Props) {
   const [a, setA] = useState(initialA || runs[0]?.id || "");
@@ -33,10 +38,26 @@ export default function CompareClient({ runs, initialA, initialB }: Props) {
   useEffect(() => { setA(initialA || runs[0]?.id || ""); setB(initialB || runs[1]?.id || ""); }, [initialA, initialB, runs]);
 
   useEffect(() => {
-    if (!a || !b || a === b) { setRows([]); setSummaryA(null); setSummaryB(null); return; }
+    if (!a && !b) return;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (a) params.set("a", a); else params.delete("a");
+      if (b) params.set("b", b); else params.delete("b");
+      const query = params.toString();
+      window.history.replaceState(null, "", query ? `?${query}` : window.location.pathname);
+    } catch {}
+  }, [a, b]);
+
+  useEffect(() => {
+    if (!a || !b || a === b) { setRows([]); setSummaryA(null); setSummaryB(null); setLoadError(null); return; }
     let cancelled = false;
     setLoading(true);
     setLoadError(null);
+    // Do not leave the previous pair's evidence visible while a newly
+    // selected pair is loading. That briefly misattributes deltas to B.
+    setRows([]);
+    setSummaryA(null);
+    setSummaryB(null);
     const get = (id: string) => fetch(`/api/runs/${id}?lite=1`).then((r) => {
       if (!r.ok) throw new Error(`HTTP ${r.status} loading run ${id}`);
       return r.json();
@@ -52,10 +73,14 @@ export default function CompareClient({ runs, initialA, initialB }: Props) {
       const mapB = new Map<string, any>((db.cases || []).map((c: any) => [keyOf(c), c]));
       const keys = new Set<string>([...mapA.keys(), ...mapB.keys()]);
       const out: CaseRow[] = [];
+      const artifactsOf = (c: any): string[] => Array.isArray(c?.case_def?.visual?.expected_artifacts)
+        ? c.case_def.visual.expected_artifacts.filter((path: unknown): path is string => typeof path === "string")
+        : [];
       for (const key of keys) {
         const ca = mapA.get(key); const cb = mapB.get(key);
         const src = cb || ca;
-        const rate = (c: any) => c?.runner_result ? c.runner_result.usage.outputTokens / Math.max(c.runner_result.durationMs / 1000, 0.001) : 0;
+        const rate = outputRate(ca);
+        const rateB = outputRate(cb);
         out.push({
           caseId: src.case_id,
           sample: src.sample ?? 0,
@@ -64,12 +89,15 @@ export default function CompareClient({ runs, initialA, initialB }: Props) {
           difficulty: src?.difficulty,
           aStatus: ca?.status ?? null,
           bStatus: cb?.status ?? null,
-          aTokPerSec: rate(ca), bTokPerSec: rate(cb),
-          aCost: ca?.runner_result?.usage.costUsd ?? 0,
-          bCost: cb?.runner_result?.usage.costUsd ?? 0,
-          aTurns: ca?.runner_result?.numTurns ?? 0,
-          bTurns: cb?.runner_result?.numTurns ?? 0,
+          aTokPerSec: rate, bTokPerSec: rateB,
+          aCost: costValue(ca),
+          bCost: costValue(cb),
+          aTurns: runnerValue(ca, "numTurns"),
+          bTurns: runnerValue(cb, "numTurns"),
+          aCaseRef: ca?.id ?? ca?.case_id ?? null,
+          bCaseRef: cb?.id ?? cb?.case_id ?? null,
           aModel: ca?.runner_result?.model, bModel: cb?.runner_result?.model,
+          aVisualArtifacts: artifactsOf(ca), bVisualArtifacts: artifactsOf(cb),
         });
       }
       out.sort((x, y) => cmp(x.caseName, y.caseName) || x.sample - y.sample);
@@ -88,10 +116,15 @@ export default function CompareClient({ runs, initialA, initialB }: Props) {
   const sampleCounts = new Map<string, number>();
   for (const row of rows) sampleCounts.set(row.caseId, (sampleCounts.get(row.caseId) ?? 0) + 1);
   const multiSample = new Set([...sampleCounts].filter(([, count]) => count > 1).map(([caseId]) => caseId));
+  const visualRows = rows.filter((row) => row.aVisualArtifacts.length > 0 || row.bVisualArtifacts.length > 0);
+  const comparableVisualCount = visualRows.filter((row) => row.aVisualArtifacts.length > 0 && row.bVisualArtifacts.length > 0).length;
+  const runA = runs.find((run) => run.id === a);
+  const runB = runs.find((run) => run.id === b);
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto">
-      <PageHeader icon={GitCompareArrows} title="Compare runs" subtitle="Diff two runs to surface per-case regressions and model deltas." />
+      <PageHeader icon={GitCompareArrows} title="Evaluation lab" subtitle="Compare outcomes, inspect evidence posture, and watch visual outputs side by side." />
+      <EvaluateNav />
 
       {runs.length >= 2 && (
         <div className="card p-4 mb-4">
@@ -114,19 +147,36 @@ export default function CompareClient({ runs, initialA, initialB }: Props) {
       )}
 
       {a && b && a !== b && summaryA && summaryB && (
-        <section className="stagger-grid grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-          <Delta label="Pass rate" a={fmtPctStrict(summaryA.passRate)} b={fmtPctStrict(summaryB.passRate)} higherIsBetter aVal={summaryA.passRate} bVal={summaryB.passRate} />
-          <Delta label="pass@1" a={fmtPct(summaryA.passAt1)} b={fmtPct(summaryB.passAt1)} aVal={summaryA.passAt1} bVal={summaryB.passAt1} higherIsBetter hint={`95% CI ${fmtCi(summaryA.passAt1Ci95)} → ${fmtCi(summaryB.passAt1Ci95)}`} />
-          <Delta label="pass@k" a={fmtPct(summaryA.passAtK)} b={fmtPct(summaryB.passAtK)} aVal={summaryA.passAtK} bVal={summaryB.passAtK} />
-          <Delta label="pass^k (reliability)" a={fmtPct(summaryA.passPowK)} b={fmtPct(summaryB.passPowK)} aVal={summaryA.passPowK} bVal={summaryB.passPowK} />
-          <Delta label="Cost coverage" a={presentSummaryCost(summaryA).value} b={presentSummaryCost(summaryB).value} aVal={summaryA.totalCostUsd} bVal={summaryB.totalCostUsd} lowerIsBetter comparable={(summaryA.missingCostCases ?? 0) === 0 && (summaryB.missingCostCases ?? 0) === 0} />
-          <Delta label="Avg tok/s" a={(summaryA.totalTokensOut / Math.max(summaryA.totalDurationMs / 1000, 0.001)).toFixed(1)} b={(summaryB.totalTokensOut / Math.max(summaryB.totalDurationMs / 1000, 0.001)).toFixed(1)} aVal={summaryA.totalTokensOut / Math.max(summaryA.totalDurationMs, 1)} bVal={summaryB.totalTokensOut / Math.max(summaryB.totalDurationMs, 1)} />
-          <Delta label="Tokens in" a={fmtNum(summaryA.totalTokensIn)} b={fmtNum(summaryB.totalTokensIn)} aVal={summaryA.totalTokensIn} bVal={summaryB.totalTokensIn} lowerIsBetter fmtDiff={(d) => fmtNum(d)} hint={`${fmtNumFull(summaryA.totalTokensIn)} → ${fmtNumFull(summaryB.totalTokensIn)}`} />
-          <Delta label="Errors" a={String(summaryA.errored)} b={String(summaryB.errored)} aVal={summaryA.errored} bVal={summaryB.errored} lowerIsBetter />
-        </section>
+        <>
+          <div aria-label="Outcome profile">
+            <EvaluationProfile
+              baseline={{ name: runA?.name ?? a, summary: summaryA }}
+              comparison={{ name: runB?.name ?? b, summary: summaryB }}
+              visualContractCount={visualRows.length}
+              comparableVisualCount={comparableVisualCount}
+            />
+          </div>
+          {visualRows.length > 0 && (
+            <VisualComparisonStage
+              baseline={{ id: a, name: runA?.name ?? a, status: runA?.status ?? "" }}
+              comparison={{ id: b, name: runB?.name ?? b, status: runB?.status ?? "" }}
+              rows={visualRows}
+            />
+          )}
+          <section className="stagger-grid grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            <Delta label="Pass rate" a={fmtPctStrict(summaryA.passRate)} b={fmtPctStrict(summaryB.passRate)} higherIsBetter aVal={summaryA.passRate} bVal={summaryB.passRate} />
+            <Delta label="pass@1" a={fmtPct(summaryA.passAt1)} b={fmtPct(summaryB.passAt1)} aVal={summaryA.passAt1} bVal={summaryB.passAt1} higherIsBetter hint={`95% CI ${fmtCi(summaryA.passAt1Ci95)} → ${fmtCi(summaryB.passAt1Ci95)}`} />
+            <Delta label="pass@k" a={fmtPct(summaryA.passAtK)} b={fmtPct(summaryB.passAtK)} aVal={summaryA.passAtK} bVal={summaryB.passAtK} />
+            <Delta label="pass^k (reliability)" a={fmtPct(summaryA.passPowK)} b={fmtPct(summaryB.passPowK)} aVal={summaryA.passPowK} bVal={summaryB.passPowK} />
+            <Delta label="Cost coverage" a={presentSummaryCost(summaryA).value} b={presentSummaryCost(summaryB).value} aVal={summaryA.totalCostUsd} bVal={summaryB.totalCostUsd} lowerIsBetter comparable={(summaryA.missingCostCases ?? 0) === 0 && (summaryB.missingCostCases ?? 0) === 0} />
+            <Delta label="Avg output tok/s" a={formatRate(summaryOutputRate(summaryA))} b={formatRate(summaryOutputRate(summaryB))} aVal={summaryOutputRate(summaryA)} bVal={summaryOutputRate(summaryB)} higherIsBetter />
+            <Delta label="Tokens in" a={fmtNum(summaryA.totalTokensIn)} b={fmtNum(summaryB.totalTokensIn)} aVal={summaryA.totalTokensIn} bVal={summaryB.totalTokensIn} lowerIsBetter fmtDiff={(d) => fmtNum(d)} hint={`${fmtNumFull(summaryA.totalTokensIn)} → ${fmtNumFull(summaryB.totalTokensIn)}`} />
+            <Delta label="Errors" a={String(summaryA.errored)} b={String(summaryB.errored)} aVal={summaryA.errored} bVal={summaryB.errored} lowerIsBetter />
+          </section>
+        </>
       )}
 
-      {loading && <div className="text-sm text-fg-muted mb-4 flex items-center gap-2"><Loader2 className="size-3.5 animate-spin" /> Loading diff…</div>}
+      {loading && <div role="status" aria-live="polite" className="text-sm text-fg-muted mb-4 flex items-center gap-2"><Loader2 className="size-3.5 animate-spin" /> Loading diff…</div>}
 
       {runs.length === 0 && (
         <section className="card p-10 text-center">
@@ -168,22 +218,23 @@ export default function CompareClient({ runs, initialA, initialB }: Props) {
         <>
           <div className="flex flex-wrap gap-3 mb-3 text-xs items-center">
             <div className="flex gap-1">
-              <button onClick={() => setViewMode("all")} className={clsx("px-2.5 py-1 rounded-md border transition-colors", viewMode === "all" ? "border-accent bg-accent/10 text-accent-soft" : "border-bd text-fg-muted hover:bg-bg-elev")}>All</button>
-              <button onClick={() => setViewMode("regressions")} className={clsx("px-2.5 py-1 rounded-md border transition-colors", viewMode === "regressions" ? "border-err bg-err/10 text-err" : "border-bd text-fg-muted hover:bg-bg-elev")}>▼ {regressions.length} regression{regressions.length !== 1 ? "s" : ""}</button>
-              <button onClick={() => setViewMode("improvements")} className={clsx("px-2.5 py-1 rounded-md border transition-colors", viewMode === "improvements" ? "border-ok bg-ok/10 text-ok" : "border-bd text-fg-muted hover:bg-bg-elev")}>▲ {improvements.length} improvement{improvements.length !== 1 ? "s" : ""}</button>
+              <button type="button" onClick={() => setViewMode("all")} aria-pressed={viewMode === "all"} className={clsx("min-h-10 px-2.5 py-1 rounded-md border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent", viewMode === "all" ? "border-accent bg-accent/10 text-accent-soft" : "border-bd text-fg-muted hover:bg-bg-elev")}>All</button>
+              <button type="button" onClick={() => setViewMode("regressions")} aria-pressed={viewMode === "regressions"} className={clsx("min-h-10 px-2.5 py-1 rounded-md border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent", viewMode === "regressions" ? "border-err bg-err/10 text-err" : "border-bd text-fg-muted hover:bg-bg-elev")}>▼ {regressions.length} regression{regressions.length !== 1 ? "s" : ""}</button>
+              <button type="button" onClick={() => setViewMode("improvements")} aria-pressed={viewMode === "improvements"} className={clsx("min-h-10 px-2.5 py-1 rounded-md border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent", viewMode === "improvements" ? "border-ok bg-ok/10 text-ok" : "border-bd text-fg-muted hover:bg-bg-elev")}>▲ {improvements.length} improvement{improvements.length !== 1 ? "s" : ""}</button>
             </div>
           </div>
           <section className="card overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
+                <caption className="sr-only">Per-case comparison. Delta is comparison B minus baseline A; an em dash means the metric is missing on one or both sides.</caption>
                 <thead className="sticky top-0 z-10 text-[11px] uppercase tracking-wider text-fg-muted bg-bg-subtle border-b border-bd-subtle">
                   <tr>
                     <th className={clsx("text-left px-4 py-2 font-medium", STICKY_TH)}>Case</th>
                     <th className="text-left px-4 py-2 font-medium">A</th>
                     <th className="text-left px-4 py-2 font-medium">B</th>
-                    <th className="text-right px-4 py-2 font-medium">tok/s Δ</th>
-                    <th className="text-right px-4 py-2 font-medium">cost Δ</th>
-                    <th className="text-right px-4 py-2 font-medium">turns Δ</th>
+                    <th className="text-right px-4 py-2 font-medium">Output tok/s Δ</th>
+                    <th className="text-right px-4 py-2 font-medium">Estimated cost (USD) Δ</th>
+                    <th className="text-right px-4 py-2 font-medium">Turns Δ</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-bd-subtle">
@@ -196,14 +247,18 @@ export default function CompareClient({ runs, initialA, initialB }: Props) {
                           {(regressed || improved) && (
                             <div className={clsx("absolute left-0 top-0 bottom-0 w-0.5", regressed ? "bg-err" : "bg-ok")} />
                           )}
-                          <Link href={`/runs/${b}/case/${r.caseId}`} className="hover:text-accent-soft block truncate">{r.caseName}</Link>
+                          <Link
+                            href={`/runs/${r.bCaseRef ? b : a}/case/${r.bCaseRef ?? r.aCaseRef ?? r.caseId}`}
+                            aria-label={`Open ${r.caseName} sample ${r.sample} evidence`}
+                            className="hover:text-accent-soft block truncate"
+                          >{r.caseName}</Link>
                           <div className="text-[10px] text-fg-dim mono truncate">{r.caseId}{multiSample.has(r.caseId) ? ` · sample ${r.sample}` : ""} · {r.category}{r.difficulty ? ` · ${r.difficulty}` : ""}</div>
                         </td>
-                        <td className="px-4 py-2"><StatusPill status={r.aStatus} /></td>
-                        <td className="px-4 py-2"><StatusPill status={r.bStatus} /></td>
-                        <td className="px-4 py-2 text-right mono"><DeltaText value={r.bTokPerSec - r.aTokPerSec} digits={1} higherIsBetter /></td>
-                        <td className="px-4 py-2 text-right mono"><DeltaText value={r.bCost - r.aCost} digits={4} prefix="$" lowerIsBetter /></td>
-                        <td className="px-4 py-2 text-right mono"><DeltaText value={r.bTurns - r.aTurns} digits={0} lowerIsBetter /></td>
+                        <td className="px-4 py-2"><StatusLink runId={a} caseId={r.aCaseRef ?? r.caseId} caseName={r.caseName} side="baseline A" status={r.aStatus} /></td>
+                        <td className="px-4 py-2"><StatusLink runId={b} caseId={r.bCaseRef ?? r.caseId} caseName={r.caseName} side="comparison B" status={r.bStatus} /></td>
+                        <td className="px-4 py-2 text-right mono"><MetricDelta a={r.aTokPerSec} b={r.bTokPerSec} digits={1} higherIsBetter label="output throughput" /></td>
+                        <td className="px-4 py-2 text-right mono"><MetricDelta a={r.aCost} b={r.bCost} digits={4} prefix="$" lowerIsBetter label="estimated cost" /></td>
+                        <td className="px-4 py-2 text-right mono"><MetricDelta a={r.aTurns} b={r.bTurns} digits={0} lowerIsBetter label="turn count" /></td>
                       </tr>
                     );
                   })}
@@ -218,10 +273,11 @@ export default function CompareClient({ runs, initialA, initialB }: Props) {
 }
 
 function RunSelect({ label, value, onChange, runs }: { label: string; value: string; onChange: (v: string) => void; runs: RunLite[] }) {
+  const id = label === "Baseline A" ? "compare-baseline-a" : "compare-comparison-b";
   return (
     <div>
-      <label className="text-[11px] uppercase tracking-wider text-fg-muted">{label}</label>
-      <select value={value} onChange={(e) => onChange(e.target.value)} className="mt-1.5 w-full px-3 py-2 text-sm bg-bg border border-bd rounded-md mono">
+      <label htmlFor={id} className="text-[11px] uppercase tracking-wider text-fg-muted">{label}</label>
+      <select id={id} value={value} onChange={(e) => onChange(e.target.value)} className="mt-1.5 min-h-11 w-full px-3 py-2 text-sm bg-bg border border-bd rounded-md mono outline-none focus:border-accent focus-visible:ring-2 focus-visible:ring-accent">
         <option value="">Select run…</option>
         {runs.map((r) => <option key={r.id} value={r.id}>{r.name} ({r.id}){r.model ? ` · ${r.model}` : ""}{r.passRate != null ? ` · ${(r.passRate * 100).toFixed(0)}%` : ""}</option>)}
       </select>
@@ -249,6 +305,19 @@ function StatusPill({ status }: { status: string | null }) {
   );
 }
 
+function StatusLink({ runId, caseId, caseName, side, status }: { runId: string; caseId: string; caseName: string; side: string; status: string | null }) {
+  if (!status) return <StatusPill status={status} />;
+  return <Link href={`/runs/${runId}/case/${caseId}`} aria-label={`Open ${caseName} in ${side}`}><StatusPill status={status} /></Link>;
+}
+
+function MetricDelta({ a, b, digits, prefix, higherIsBetter, lowerIsBetter, label }: { a: number | null; b: number | null; digits: number; prefix?: string; higherIsBetter?: boolean; lowerIsBetter?: boolean; label: string }) {
+  if (a == null || b == null) {
+    const missing = a == null && b == null ? "both runs" : a == null ? "baseline A" : "comparison B";
+    return <span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs text-fg-dim" title={`Not comparable: ${label} evidence is missing on ${missing}.`} aria-label={`Not comparable: ${label} evidence is missing on ${missing}`}>—</span>;
+  }
+  return <DeltaText value={b - a} digits={digits} prefix={prefix} higherIsBetter={higherIsBetter} lowerIsBetter={lowerIsBetter} />;
+}
+
 function DeltaText({ value, digits, prefix = "", higherIsBetter, lowerIsBetter }: { value: number; digits: number; prefix?: string; higherIsBetter?: boolean; lowerIsBetter?: boolean }) {
   let tone = "text-fg-muted";
   let bg = "";
@@ -271,17 +340,18 @@ function DeltaText({ value, digits, prefix = "", higherIsBetter, lowerIsBetter }
   );
 }
 
-function Delta({ label, a, b, aVal, bVal, higherIsBetter, lowerIsBetter, comparable = true, hint, fmtDiff }: { label: string; a: string; b: string; aVal: number; bVal: number; higherIsBetter?: boolean; lowerIsBetter?: boolean; comparable?: boolean; hint?: string; fmtDiff?: (d: number) => string }) {
-  const diff = bVal - aVal;
+function Delta({ label, a, b, aVal, bVal, higherIsBetter, lowerIsBetter, comparable = true, hint, fmtDiff }: { label: string; a: string; b: string; aVal?: number | null; bVal?: number | null; higherIsBetter?: boolean; lowerIsBetter?: boolean; comparable?: boolean; hint?: string; fmtDiff?: (d: number) => string }) {
+  const comparableValues = comparable && aVal != null && bVal != null && Number.isFinite(aVal) && Number.isFinite(bVal);
+  const diff = comparableValues ? bVal - aVal : null;
   let tone = "text-fg-muted";
   let bgTone = "";
   let arrow = "";
-  if (higherIsBetter) {
+  if (diff != null && higherIsBetter) {
     tone = diff > 0 ? "text-ok" : diff < 0 ? "text-err" : "text-fg-muted";
     bgTone = diff > 0 ? "bg-ok/5" : diff < 0 ? "bg-err/5" : "";
     arrow = diff > 0 ? "▲" : diff < 0 ? "▼" : "";
   }
-  if (lowerIsBetter) {
+  if (diff != null && lowerIsBetter) {
     tone = diff < 0 ? "text-ok" : diff > 0 ? "text-err" : "text-fg-muted";
     bgTone = diff < 0 ? "bg-ok/5" : diff > 0 ? "bg-err/5" : "";
     arrow = diff < 0 ? "▼" : diff > 0 ? "▲" : "";
@@ -294,15 +364,46 @@ function Delta({ label, a, b, aVal, bVal, higherIsBetter, lowerIsBetter, compara
         <span className="text-fg-dim">→</span>
         <span className="text-sm mono font-medium tabular-nums">{b}</span>
       </div>
-      <div className={clsx("text-[11px] mono mt-0.5 tabular-nums", tone)}>{comparable ? `${arrow} ${diff > 0 ? "+" : ""}${fmtDiff ? fmtDiff(diff) : diff.toFixed(2)}` : "incomplete coverage — not comparable"}</div>
+      <div className={clsx("text-[11px] mono mt-0.5 tabular-nums", tone)}>{diff != null ? `${arrow} ${diff > 0 ? "+" : ""}${fmtDiff ? fmtDiff(diff) : diff.toFixed(2)}` : "incomplete coverage — not comparable"}</div>
       {hint && <div className="text-[10px] mono text-fg-dim mt-0.5 tabular-nums">{hint}</div>}
     </div>
   );
 }
 
 function fmtCi(ci?: { lo: number; hi: number }): string {
-  return ci ? `${(ci.lo * 100).toFixed(0)}–${(ci.hi * 100).toFixed(0)}%` : "—";
+  return ci && Number.isFinite(ci.lo) && Number.isFinite(ci.hi) ? `${(ci.lo * 100).toFixed(0)}–${(ci.hi * 100).toFixed(0)}%` : "—";
 }
 
-function fmtPct(x?: number) { return x == null ? "—" : `${(x * 100).toFixed(0)}%`; }
+function fmtPct(x?: number) { return x == null || !Number.isFinite(x) ? "—" : `${(x * 100).toFixed(0)}%`; }
 function cmp(a: string, b: string) { return a < b ? -1 : a > b ? 1 : 0; }
+
+function numeric(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function outputRate(caseData: any): number | null {
+  const durationMs = numeric(caseData?.runner_result?.durationMs);
+  const outputTokens = numeric(caseData?.runner_result?.usage?.outputTokens);
+  if (durationMs == null || durationMs <= 0 || outputTokens == null) return null;
+  return outputTokens / (durationMs / 1000);
+}
+
+function costValue(caseData: any): number | null {
+  const source = caseData?.runner_result?.usage?.costSource;
+  const cost = numeric(caseData?.runner_result?.usage?.costUsd);
+  return source === "missing" || cost == null ? null : cost;
+}
+
+function runnerValue(caseData: any, key: "numTurns"): number | null {
+  return caseData?.runner_result ? numeric(caseData.runner_result[key]) : null;
+}
+
+function summaryOutputRate(summary: any): number | null {
+  const output = numeric(summary?.totalTokensOut);
+  const durationMs = numeric(summary?.totalDurationMs);
+  return output != null && durationMs != null && durationMs > 0 ? output / (durationMs / 1000) : null;
+}
+
+function formatRate(value: number | null): string {
+  return value == null ? "—" : `${value.toFixed(1)} tok/s`;
+}

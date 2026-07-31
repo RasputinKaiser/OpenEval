@@ -126,6 +126,78 @@ test("auditCases forwards options to every row", () => {
   assert.ok(audit.cases[0].weaknesses.some((w) => w.startsWith("oracle script missing on disk")));
 });
 
+test("evidence surfaces distinguish verified, unknown, and not-applicable proof", () => {
+  const c = makeCase({
+    oracle: { solve: "oracle/solve.sh", known_bad: ["oracle/bad.sh"] },
+    visual: { kind: "svg", expected_artifacts: ["dist/card.svg"] },
+    graders: [
+      { type: "exit_code", command: "true" },
+      { type: "rubric_llm", rubric: "A useful answer is specific." },
+    ] as GraderSpec[],
+  });
+  const unknown = auditCase(c);
+  assert.equal(unknown.evidence.tests.status, "pass");
+  assert.equal(unknown.evidence.oracle.status, "unknown");
+  assert.equal(unknown.evidence.known_bad.status, "unknown");
+  assert.equal(unknown.evidence.trace.status, "not_applicable");
+  assert.equal(unknown.evidence.visual.status, "unknown");
+  assert.equal(unknown.evidence.judge.status, "unknown");
+  assert.equal(unknown.evidence.manual.status, "not_applicable");
+  assert.equal(unknown.oracleScriptsVerified, 0);
+
+  const verified = auditCase(c, { casesDir: "/tmp/cases", fileExists: () => true });
+  assert.equal(verified.evidence.oracle.status, "pass");
+  assert.equal(verified.evidence.known_bad.status, "pass");
+  assert.equal(verified.oracleScriptsVerified, 1);
+  assert.equal(verified.knownBadScriptsVerified, 1);
+});
+
+test("trace contracts remain unknown until a runtime transcript receipt exists", () => {
+  const audit = auditCase(makeCase({
+    graders: [{
+      type: "step",
+      tool: "Bash",
+      input_includes: "test",
+      before_tool: "Edit",
+    }] as GraderSpec[],
+  }));
+  assert.equal(audit.evidence.trace.status, "unknown");
+  assert.equal(audit.evidence.trace.declaredEvidence, 1);
+  assert.equal(audit.evidence.trace.verifiedEvidence, 0);
+  assert.match(audit.evidence.trace.detail, /runtime transcript evidence is not attached/);
+});
+
+test("aggregate audit keeps corpus issues and unknown proof visible", () => {
+  const c = makeCase({
+    oracle: { solve: "oracle/solve.sh", known_bad: ["oracle/bad.sh"] },
+    visual: { kind: "web_ui", expected_artifacts: ["dist/index.html"] },
+  });
+  const audit = auditCases([c], {
+    casesDir: "/tmp/cases",
+    fileExists: () => true,
+    corpusErrors: ["single-tool/broken.case.json: (invalid JSON)"],
+  });
+  assert.equal(audit.corpus.status, "fail");
+  assert.equal(audit.corpus.invalidFiles, 1);
+  assert.equal(audit.surfaces.oracle.status, "pass");
+  assert.equal(audit.surfaces.visual.status, "unknown");
+  assert.equal(audit.status, "fail");
+  assert.equal(audit.failedCases, 0);
+  assert.equal(audit.unknownCases, 1);
+});
+
+test("oracle path escapes are rejected without exposing the raw path", () => {
+  const privateRef = "/Users/ralto/private/oracle.sh";
+  const row = auditCase(makeCase({ oracle: { solve: privateRef } }), {
+    casesDir: "/tmp/cases",
+    fileExists: () => true,
+  });
+  assert.equal(row.evidence.oracle.status, "fail");
+  assert.ok(row.weaknesses.some((w) => w.startsWith("oracle script path escapes")));
+  assert.ok(row.weaknesses.every((w) => !w.includes(privateRef)));
+  assert.equal(hasStrictAccuracyFailure(row), true);
+});
+
 // --- CLI-level guarantees on the REAL corpus ---
 
 function runCli(args: string[]): { status: number; stdout: string; stderr: string } {

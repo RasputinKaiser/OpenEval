@@ -135,10 +135,12 @@ Migrations are formalized by a `schema_version` table (`version`, `applied_at`):
 
 `/api/settings/maintenance` (local-only — it re-validates the `Host` header with the same rules as the middleware, for GET as well as mutating methods) exposes:
 
-- `GET` — DB size stats (main/WAL/SHM bytes, page counts, freelist, journal mode), table row counts, schema version, and any recovery notice. Paths in responses are redacted.
+- `GET` — DB size stats (main/WAL/SHM bytes, page counts, freelist, journal mode), table row counts, schema version, any recovery notice, and a read-only inventory of the local data footprint. The inventory reports measured bytes/file counts for the evaluation DB, live parsed cache, raw transcripts, workdirs, reports, and settings, plus the retention provenance for each area. Paths and inventory warnings in responses are redacted.
 - `POST {"action": "quick_check" | "integrity_check"}` — integrity verification.
 - `POST {"action": "checkpoint"}` — `PRAGMA wal_checkpoint(TRUNCATE)`.
 - `POST {"action": "vacuum"}` — `VACUUM`, reporting size before/after.
+
+The inventory is metadata-only: it does not open transcript contents or delete, prune, or rewrite any local data. A complete total means all known targets were stat'd; `partial` entries produce a lower-bound total when the bounded traversal or filesystem access prevents a full measurement. Missing optional areas (for example, reports before the first report bundle) are reported as `missing`, not as an error. Raw transcripts remain retained independently of workdir cleanup, while the live parsed cache is rebuildable and workdir cleanup keeps only the five most recent run groups.
 
 ## Dashboard And APIs
 
@@ -204,7 +206,7 @@ The SSE endpoint polls `listEvents()` every 600 ms, starts with `retry: 2000`, s
 
 Formats:
 
-- `claude-projects`: reads project directories under each root and includes `.jsonl` files directly inside those project directories.
+- `claude-projects`: reads root transcripts directly inside each project directory, plus Claude child-agent transcripts at `<parent>/subagents/agent-*.jsonl` and bounded workflow descendants at `<parent>/subagents/workflows/*/agent-*.jsonl`. Metadata and workflow journals are excluded.
 - `codex-sessions`: recursively collects `.jsonl` files up to `maxDepth` and parses Codex session records.
 - `jsonl-dir`: recursively collects `.jsonl` files up to `maxDepth` and parses generic/Claude-like records, using descriptor field mappings when available.
 
@@ -223,7 +225,7 @@ The Collection subsystem (`lib/insights/*`, `lib/live-cache.ts`) extends live sc
 - `judge_failures`: a retry ledger for judge runs. Failures persist with an attempt count; after `MAX_JUDGE_ATTEMPTS` (3) a file is skipped. Missing files and sessions with no extractable text are recorded as permanent failures. `judgeSkipSet()` unions already-judged and dead files so judge sweeps never spin on the same broken input.
 - A full-text (FTS5) index over transcript conversational text, backing `/collection` search.
 
-Judging uses the same backend chain as the `rubric_llm` grader (`resolveJudge()`: explicit `JUDGE_HARNESS`/`JUDGE_MODEL`, then the local `/settings` selection, then OpenRouter when a key exists, else the Codex CLI), and session parsers drop any session whose first user text starts with the judge-prompt marker — the judge's own CLI sessions are instrumentation, not user work.
+Judging uses the same backend chain as the `rubric_llm` grader (`resolveJudge()`: explicit `JUDGE_HARNESS`/`JUDGE_MODEL`, then the local `/settings` selection, then the Codex CLI subscription fallback at `gpt-5.6-luna` with `model_reasoning_effort=high`; OpenRouter is explicit), and session parsers drop any session whose first user text starts with the judge-prompt marker — the judge's own CLI sessions are instrumentation, not user work.
 
 The Timeline (`/collection/timeline`) derives adoption markers (skills, MCP servers, subagents, models) from parsed sessions, computes before/after impact deltas with confound flags, and detects metric change points. Heuristic outcome scores can be refined by persisted judge verdicts.
 

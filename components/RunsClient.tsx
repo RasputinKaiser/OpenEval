@@ -7,6 +7,7 @@ import StatusBadge from "./StatusBadge";
 import HarnessBadge from "./HarnessBadge";
 import { ChevronDown, Search, X } from "lucide-react";
 import type { RunRecord } from "@/lib/types";
+import { fmtDateTime, fmtStableDateTime } from "@/lib/format";
 import { useFocusOnSlash } from "@/lib/use-focus-slash";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 
@@ -28,15 +29,20 @@ const STATUSES: { key: StatusFilter; label: string }[] = [
   { key: "failed", label: "Failed" },
 ];
 
-export default function RunsClient({ runs }: { runs: RunRecord[] }) {
+export default function RunsClient({ runs, referenceTimeMs }: { runs: RunRecord[]; referenceTimeMs?: number }) {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [sort, setSort] = useState<SortKey>("newest");
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, 200);
   const [pageSize, setPageSize] = useState(50);
+  const [nowMs, setNowMs] = useState<number | null>(referenceTimeMs ?? null);
   const searchRef = useRef<HTMLInputElement>(null);
   useFocusOnSlash(searchRef);
+
+  useEffect(() => {
+    setNowMs(Date.now());
+  }, []);
 
   useEffect(() => {
     try {
@@ -90,16 +96,19 @@ export default function RunsClient({ runs }: { runs: RunRecord[] }) {
   const dateSorted = sort === "newest" || sort === "oldest";
   const paged = visible.slice(0, pageSize);
   const groups = useMemo(() => {
-    if (!dateSorted) return [{ label: "", items: paged }];
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    if (!dateSorted || nowMs === null) return [{ label: "", items: paged }];
+    const current = new Date(nowMs);
+    const startOfUtcDay = (ms: number) => {
+      const date = new Date(ms);
+      return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+    };
+    const today = startOfUtcDay(current.getTime());
     const dayMs = 86_400_000;
     const result: { label: string; items: typeof visible }[] = [];
     let currentLabel = "";
     let bucket: typeof visible = [];
     for (const r of paged) {
-      const created = new Date(r.created_at);
-      const dayStart = new Date(created.getFullYear(), created.getMonth(), created.getDate()).getTime();
+      const dayStart = startOfUtcDay(r.created_at);
       const daysAgo = Math.floor((today - dayStart) / dayMs);
       let label: string;
       if (daysAgo === 0) label = "Today";
@@ -116,7 +125,7 @@ export default function RunsClient({ runs }: { runs: RunRecord[] }) {
     }
     if (bucket.length) result.push({ label: currentLabel, items: bucket });
     return result;
-  }, [paged, dateSorted]);
+  }, [paged, dateSorted, nowMs]);
 
   return (
     <div>
@@ -127,6 +136,7 @@ export default function RunsClient({ runs }: { runs: RunRecord[] }) {
               <button
                 key={s.key}
                 onClick={() => setStatusFilter(s.key)}
+                aria-pressed={statusFilter === s.key}
                 className={clsx(
                   "text-[11px] px-2.5 py-1.5 rounded-md border transition-colors",
                   statusFilter === s.key
@@ -142,6 +152,8 @@ export default function RunsClient({ runs }: { runs: RunRecord[] }) {
           <div className="relative">
             <button
               onClick={() => setOpen(!open)}
+              aria-expanded={open}
+              aria-haspopup="menu"
               className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1.5 rounded-md border border-bd text-fg-muted hover:bg-bg-elev"
             >
               {SORTS.find((s) => s.key === sort)?.label}
@@ -158,6 +170,7 @@ export default function RunsClient({ runs }: { runs: RunRecord[] }) {
                     <button
                       key={s.key}
                       onClick={() => { setSort(s.key); setOpen(false); }}
+                      aria-pressed={sort === s.key}
                       className={clsx(
                         "w-full text-left px-3 py-1.5 text-xs hover:bg-bg-elev",
                         sort === s.key && "text-accent-soft"
@@ -176,6 +189,7 @@ export default function RunsClient({ runs }: { runs: RunRecord[] }) {
               ref={searchRef}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              aria-label="Search runs"
               placeholder="Search runs…"
               className="w-32 lg:w-44 pl-8 pr-2 py-1.5 text-[11px] bg-bg border border-bd rounded-md focus:outline-none focus:border-accent focus:w-40 lg:focus:w-52 transition-[width,border-color] placeholder:text-fg-dim"
             />
@@ -189,6 +203,7 @@ export default function RunsClient({ runs }: { runs: RunRecord[] }) {
             <select
               value={pageSize}
               onChange={(e) => setPageSize(Number(e.target.value))}
+              aria-label="Runs per page"
               className="text-[11px] bg-bg border border-bd rounded-md px-1.5 py-1 focus:outline-none focus:border-accent"
             >
               <option value={25}>25</option>
@@ -222,7 +237,9 @@ export default function RunsClient({ runs }: { runs: RunRecord[] }) {
                     <div className="min-w-0 flex-1">
                       <div className="truncate font-medium">{r.name}</div>
                       <div className="text-[11px] text-fg-dim mono mt-0.5 flex items-center gap-1.5 flex-wrap">
-                        {new Date(r.created_at).toLocaleString()} · {r.params.runner}
+                        <time dateTime={fmtStableDateTime(r.created_at)} title={fmtDateTime(r.created_at)}>
+                          {nowMs === null ? fmtStableDateTime(r.created_at) : fmtDateTime(r.created_at)}
+                        </time> · {r.params.runner}
                         {r.params.harness && <HarnessBadge harness={r.params.harness} />}
                         <span>· {r.params.parallel}×</span>
                         {r.params.samples && r.params.samples > 1 ? <span>· {r.params.samples} samples</span> : null}

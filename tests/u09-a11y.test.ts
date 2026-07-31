@@ -103,6 +103,8 @@ test("sidebar nav is labelled and marks the current page", () => {
     /packageMetadata\.version/,
     "sidebar version must come from package metadata instead of a stale literal"
   );
+  assert.match(src, /releases\/tag\/v\$\{packageMetadata\.version\}/);
+  assert.match(src, /data-testid="release-version"/);
 });
 
 test("toasts announce politely and expose variant as text", () => {

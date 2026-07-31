@@ -15,6 +15,26 @@ export interface ProbeCheck {
   error?: string;
 }
 
+/**
+ * Descriptor facts that explain how OpenEval executes and collects a harness.
+ * This is deliberately smaller than NormalizedDescriptor: the API should make
+ * capability/provenance decisions inspectable without exposing every command
+ * template detail twice.
+ */
+export interface HarnessIntegration {
+  parser: string;
+  promptMode: "arg" | "flag" | "stdin" | "template";
+  modelDefault: string | null;
+  modelAliasCount: number;
+  modelDiscovery: boolean;
+  liveTrace: {
+    format: string;
+    roots: string[];
+    maxDepth: number | null;
+    inferredModel: string | null;
+  } | null;
+}
+
 export interface DiscoveredHarness {
   id: string;
   label: string;
@@ -24,10 +44,30 @@ export interface DiscoveredHarness {
   source: "env" | "path" | "well_known" | "default" | "none";
   version: string | null;
   capabilities: AdapterCapabilities;
+  integration: HarnessIntegration;
   imageFlag: string | null;
   probe?: { version: ProbeCheck; help?: ProbeCheck; imageFlagObserved: boolean | null };
   sampleCommand?: { bin: string; args: string[]; env: Record<string, string>; stdin?: string; model?: string };
   detail?: string;
+}
+
+function integration(adapter: HarnessAdapter): HarnessIntegration {
+  const liveTrace = adapter.descriptor.liveTrace;
+  return {
+    parser: adapter.descriptor.parser,
+    promptMode: adapter.descriptor.prompt.mode,
+    modelDefault: adapter.descriptor.models?.default ?? null,
+    modelAliasCount: adapter.descriptor.models?.aliases?.length ?? 0,
+    modelDiscovery: Boolean(adapter.descriptor.models?.discovery),
+    liveTrace: liveTrace
+      ? {
+          format: liveTrace.format,
+          roots: [...liveTrace.roots],
+          maxDepth: liveTrace.maxDepth ?? null,
+          inferredModel: liveTrace.inferredModel ?? null,
+        }
+      : null,
+  };
 }
 
 /** Match the exact descriptor-declared option, including `--flag=VALUE`. */
@@ -75,6 +115,18 @@ export function runProbe(bin: string, args: string[]): Promise<{ ok: boolean; ou
 }
 
 async function probe(adapter: HarnessAdapter): Promise<DiscoveredHarness> {
+  // Command construction is descriptor-only and remains useful when the
+  // executable is missing: it gives the operator an exact install/debug
+  // target without running a model.
+  const defaultModel = resolveDefaultModel(adapter.id).id;
+  const sample = adapter.buildCommand(sampleCtx(defaultModel));
+  const sampleCommand = {
+    bin: sample.bin,
+    args: sample.args,
+    env: sample.env,
+    stdin: sample.stdin,
+    ...(defaultModel ? { model: defaultModel } : {}),
+  };
   const { bin, source } = resolveBin(adapter);
   if (!bin) {
     return {
@@ -86,7 +138,9 @@ async function probe(adapter: HarnessAdapter): Promise<DiscoveredHarness> {
       source: "none",
       version: null,
       capabilities: adapter.capabilities,
+      integration: integration(adapter),
       imageFlag: adapter.descriptor.imageFlag ?? null,
+      sampleCommand,
       detail: `No binary found on PATH or well-known paths (looked for: ${adapter.binNames.join(", ")}).`,
     };
   }
@@ -95,8 +149,6 @@ async function probe(adapter: HarnessAdapter): Promise<DiscoveredHarness> {
   const helpArgs = adapter.descriptor.helpArgs;
   const helpResult = helpArgs.length ? await runProbe(bin, helpArgs) : null;
   const status: HarnessStatus = versionResult.ok && (helpResult == null || helpResult.ok) ? "available" : "error";
-  const defaultModel = resolveDefaultModel(adapter.id).id;
-  const sample = adapter.buildCommand(sampleCtx(defaultModel));
   const imageFlagObserved = helpResult && adapter.descriptor.imageFlag
     ? probeFlagObserved(helpResult.output, adapter.descriptor.imageFlag)
     : null;
@@ -110,13 +162,14 @@ async function probe(adapter: HarnessAdapter): Promise<DiscoveredHarness> {
     source,
     version: versionResult.ok ? versionResult.output.split("\n")[0].slice(0, 120) : null,
     capabilities: adapter.capabilities,
+    integration: integration(adapter),
     imageFlag: adapter.descriptor.imageFlag ?? null,
     probe: {
       version: { args: versionArgs, ok: versionResult.ok, output: versionResult.output.slice(0, 4000) || undefined, error: versionResult.error || undefined },
       ...(helpResult ? { help: { args: helpArgs, ok: helpResult.ok, output: helpResult.output.slice(0, 4000) || undefined, error: helpResult.error || undefined } } : {}),
       imageFlagObserved,
     },
-    sampleCommand: { bin: sample.bin, args: sample.args, env: sample.env, stdin: sample.stdin, ...(defaultModel ? { model: defaultModel } : {}) },
+    sampleCommand,
     detail: failure ? `Binary resolved to ${bin} but \`<bin> ${(failure === versionResult ? versionArgs : helpArgs).join(" ")}\` failed: ${failure.error || "no output"}` : undefined,
   };
 }

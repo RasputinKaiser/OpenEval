@@ -88,3 +88,26 @@ test("configured non-local host is allowed explicitly", () => {
     else process.env.OPENEVAL_ALLOWED_HOSTS = previous;
   }
 });
+
+test("host and Origin comparison is case-insensitive but rejects Origin paths", async () => {
+  assert.equal(middleware(req("POST", {
+    host: "LOCALHOST:3000",
+    origin: "http://localhost:3000",
+    "sec-fetch-site": "same-origin",
+  })).status, 200);
+
+  const res = middleware(req("POST", {
+    host: "localhost:3000",
+    origin: "http://localhost:3000/forged-path",
+  }));
+  assert.equal(res.status, 403);
+  assert.deepEqual(await res.json(), { error: "cross-origin request rejected" });
+});
+
+test("host userinfo is rejected instead of being parsed as a local hostname", async () => {
+  const res = middleware(req("POST", {
+    host: "attacker.example@localhost:3000",
+  }));
+  assert.equal(res.status, 403);
+  assert.deepEqual(await res.json(), { error: "host not allowed" });
+});

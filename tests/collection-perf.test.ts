@@ -309,3 +309,25 @@ test("FTS index pass is chunked, budget-cancellable, and resumes from persisted 
   assert.equal(res.index.totalFiles, 4);
   assert.ok(res.hits.length >= 1, "indexed text is searchable");
 });
+
+test("FTS re-indexes a same-size, same-mtime transcript rewrite", () => {
+  const dir = makeCorpus("openeval-perf-fts-rewrite-");
+  const def: CollectionSourceDef = { id: "perf-fts-rewrite", label: "Perf FTS rewrite", roots: [dir], format: "jsonl-dir", parseable: true };
+  _setSearchSourcesForTest(() => [def]);
+  const file = writeSessionFile(dir, "rewrite", "2026-06-20T11:00:00.000Z");
+
+  assert.equal(indexPendingFiles(10).indexed, 1);
+  assert.ok(searchSessions("ledger", 10).hits.some((hit) => hit.file === file));
+
+  const before = fs.statSync(file);
+  const original = fs.readFileSync(file, "utf8");
+  fs.writeFileSync(file, original.replaceAll("ledger", "budget"), "utf8");
+  fs.utimesSync(file, before.atime, before.mtime);
+  const after = fs.statSync(file);
+  assert.equal(after.size, before.size, "fixture rewrite must preserve byte length");
+  assert.equal(after.mtimeMs, before.mtimeMs, "fixture rewrite must preserve mtime");
+
+  assert.equal(indexPendingFiles(10).indexed, 1, "bounded content identity must invalidate the stale row");
+  assert.equal(searchSessions("ledger", 10).hits.some((hit) => hit.file === file), false);
+  assert.equal(searchSessions("budget", 10).hits.some((hit) => hit.file === file), true);
+});

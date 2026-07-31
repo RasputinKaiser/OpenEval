@@ -18,7 +18,7 @@ export interface TokenRate {
 
 export type RateConfidence = "listed" | "family" | "fallback";
 
-export const PRICING_LIST_DATE = "2026-07-15";
+export const PRICING_LIST_DATE = "2026-07-30";
 export const PRICING_SOURCE = "OpenRouter /api/v1/models";
 
 /** Conservative open-model fallback for any named-but-unlisted model. */
@@ -44,7 +44,7 @@ const LISTED_RATES: ListedRate[] = [
   { sourceModel: "anthropic/claude-haiku-4.5", aliases: ["claude-haiku-4-5", "anthropic/claude-haiku-4.5"], rate: { input: 1, output: 5, cacheRead: 0.1, cacheWrite: 1.25 } },
 
   { sourceModel: "openai/gpt-5.6-sol", aliases: ["gpt-5.6-sol", "openai/gpt-5.6-sol"], rate: { input: 5, output: 30, cacheRead: 0.5, cacheWrite: 6.25 } },
-  { sourceModel: "openai/gpt-5.6-luna", aliases: ["gpt-5.6-luna", "openai/gpt-5.6-luna"], rate: { input: 1, output: 6, cacheRead: 0.1, cacheWrite: 1.25 } },
+  { sourceModel: "openai/gpt-5.6-luna", aliases: ["gpt-5.6-luna", "openai/gpt-5.6-luna"], rate: { input: 0.1, output: 0.6, cacheRead: 0.01, cacheWrite: 0.125 } },
   { sourceModel: "openai/gpt-5.6-terra", aliases: ["gpt-5.6-terra", "openai/gpt-5.6-terra"], rate: { input: 2.5, output: 15, cacheRead: 0.25, cacheWrite: 3.125 } },
   { sourceModel: "openai/gpt-5.5", aliases: ["gpt-5.5", "openai/gpt-5.5"], rate: { input: 5, output: 30, cacheRead: 0.5, cacheWrite: 5 } },
   { sourceModel: "openai/gpt-5.4", aliases: ["gpt-5.4", "openai/gpt-5.4"], rate: { input: 2.5, output: 15, cacheRead: 0.25, cacheWrite: 2.5 } },

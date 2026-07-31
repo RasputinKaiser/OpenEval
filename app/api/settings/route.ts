@@ -3,6 +3,7 @@ import { z } from "zod";
 import { hasAdapter } from "@/lib/adapters/registry";
 import { resolveJudge } from "@/lib/grader/judge";
 import { readAppSettings, saveAppSettings } from "@/lib/settings";
+import { isValidModelId } from "@/lib/models";
 import { badRequest, internalError, parseJsonBody } from "@/lib/api-http";
 
 export const dynamic = "force-dynamic";
@@ -12,10 +13,29 @@ function validSource(source: string): boolean {
 }
 function effectiveJudge() {
   const resolved = resolveJudge();
-  return { source: resolved.harness, model: resolved.model ?? "", name: resolved.judgeName };
+  return { source: resolved.harness, model: resolved.model ?? "", reasoningEffort: resolved.reasoningEffort ?? "", name: resolved.judgeName };
 }
 
-export async function GET() {
+function allowedHost(req: Request): boolean {
+  const rawHost = req.headers.get("host") ?? (() => {
+    try { return new URL(req.url).host; } catch { return null; }
+  })();
+  if (!rawHost) return false;
+  let hostname = "";
+  try { hostname = new URL(`http://${rawHost}`).hostname.toLowerCase(); } catch { return false; }
+  const configured = (process.env.OPENEVAL_ALLOWED_HOSTS ?? "")
+    .split(",")
+    .map((host) => host.trim().toLowerCase())
+    .filter(Boolean);
+  return hostname === "localhost" || hostname.endsWith(".localhost")
+    || hostname === "127.0.0.1" || hostname === "[::1]"
+    || configured.includes(hostname);
+}
+
+export async function GET(req: Request) {
+  if (!allowedHost(req)) {
+    return NextResponse.json({ error: "host not allowed" }, { status: 403 });
+  }
   try {
     const settings = readAppSettings();
     return NextResponse.json({
@@ -24,6 +44,7 @@ export async function GET() {
       environmentOverrides: {
         source: Boolean(process.env.JUDGE_HARNESS),
         model: Boolean(process.env.JUDGE_MODEL),
+        reasoningEffort: Boolean(process.env.JUDGE_REASONING_EFFORT),
         openrouterKey: Boolean(process.env.OPENROUTER_API_KEY),
       },
       // Verbatim override values so Settings can show exactly what wins over the
@@ -55,6 +76,11 @@ export async function PUT(req: Request) {
   }
   if (judgeModel.length > 240) {
     return badRequest("Judge model is too long", { detail: "judgeModel must be at most 240 characters." });
+  }
+  if (judgeModel && !isValidModelId(judgeModel)) {
+    return badRequest("Judge model is invalid", {
+      detail: "judgeModel must be at most 200 characters and contain no control characters.",
+    });
   }
   if (!validSource(judgeSource)) {
     return badRequest(`Unknown judge source "${judgeSource}"`, {

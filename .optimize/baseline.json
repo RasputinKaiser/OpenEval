@@ -270,6 +270,112 @@
         "lint": true,
         "bench": true
       }
+    },
+    {
+      "ts": "2026-07-28T18:06:50+00:00",
+      "git": {
+        "rev": "5a72c5f",
+        "dirty": true
+      },
+      "medians": {
+        "types": 10.602,
+        "test": 30.211,
+        "lint": 6.221,
+        "bench": 5.423
+      },
+      "output_tokens": {
+        "types": 0,
+        "test": 145,
+        "lint": 67,
+        "bench": 28
+      },
+      "ok": {
+        "types": true,
+        "test": true,
+        "lint": true,
+        "bench": true
+      }
+    },
+    {
+      "ts": "2026-07-28T18:37:37+00:00",
+      "git": {
+        "rev": "5a72c5f",
+        "dirty": true
+      },
+      "medians": {
+        "types": 18.505,
+        "test": 79.395,
+        "lint": 8.59,
+        "build": 550.227,
+        "bench": 7.175
+      },
+      "output_tokens": {
+        "types": 0,
+        "test": 337,
+        "lint": 67,
+        "build": 817,
+        "bench": 28
+      },
+      "ok": {
+        "types": true,
+        "test": false,
+        "lint": true,
+        "build": true,
+        "bench": true
+      }
+    },
+    {
+      "ts": "2026-07-28T20:33:05+00:00",
+      "git": {
+        "rev": "5a72c5f",
+        "dirty": true
+      },
+      "medians": {
+        "types": 3.783,
+        "test": 11.65,
+        "lint": 2.411,
+        "bench": 2.087
+      },
+      "output_tokens": {
+        "types": 0,
+        "test": 146,
+        "lint": 67,
+        "bench": 28
+      },
+      "ok": {
+        "types": true,
+        "test": true,
+        "lint": true,
+        "bench": true
+      }
+    },
+    {
+      "ts": "2026-07-31T00:46:19+00:00",
+      "git": {
+        "rev": "5a72c5f",
+        "dirty": true
+      },
+      "medians": {
+        "types": 1.868,
+        "test": 11.447,
+        "lint": 2.707,
+        "build": 113.854,
+        "bench": 2.16
+      },
+      "output_tokens": {
+        "types": 0,
+        "test": 184,
+        "lint": 67,
+        "build": 833,
+        "bench": 28
+      },
+      "ok": {
+        "types": true,
+        "test": true,
+        "lint": true,
+        "build": true,
+        "bench": true
+      }
     }
   ]
 }

@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "batch": "ux-250",
+  "updatedAt": "2026-07-30",
+  "scope": ["sizing", "visibility", "contrast", "color-scheme", "responsive-density", "evaluate-scanability", "observe-watchability"],
+  "rowRange": { "first": "US-2001", "last": "US-2250", "totalRows": 250 },
+  "groups": [
+    { "prefix": "UX Typography and spacing", "rows": 50, "fixedRows": 45, "pendingRows": 5 },
+    { "prefix": "UX Contrast and semantic color", "rows": 50, "fixedRows": 45, "pendingRows": 5 },
+    { "prefix": "UX Responsive sizing and density", "rows": 50, "fixedRows": 45, "pendingRows": 5 },
+    { "prefix": "UX Evaluate scanability", "rows": 50, "fixedRows": 45, "pendingRows": 5 },
+    { "prefix": "UX Observe watchability and charts", "rows": 50, "fixedRows": 45, "pendingRows": 5 }
+  ],
+  "denominator": {
+    "runnableBenchmarkCases": 35,
+    "capabilityNuclei": 100,
+    "providerRunsAdded": 0,
+    "note": "These are product-QA UX rows. They do not increase the independent provider-evaluation or capability denominator."
+  },
+  "evidencePosture": {
+    "fixedRows": 225,
+    "pendingRows": 25,
+    "pendingReason": "Manual color-vision or assistive review is not attached to this local source, test, and browser sweep.",
+    "browserProof": "desktop and narrow in-app browser route smoke after production rebuild",
+    "computedStyleProof": "dark and light theme token and representative control inspection",
+    "accessibilityBoundary": "Source, automated, and browser evidence do not claim full WCAG conformance or assistive-technology review."
+  }
+}

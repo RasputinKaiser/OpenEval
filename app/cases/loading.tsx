@@ -1,10 +1,11 @@
 function Bar({ className }: { className: string }) {
-  return <div className={`shimmer rounded ${className}`} />;
+  return <div aria-hidden="true" className={`shimmer rounded ${className}`} />;
 }
 
 export default function Loading() {
   return (
-    <div className="p-8 max-w-7xl mx-auto" aria-busy="true" aria-label="Loading cases">
+    <div role="status" aria-live="polite" className="p-8 max-w-7xl mx-auto" aria-busy="true" aria-label="Loading cases">
+      <span className="sr-only">Loading cases…</span>
       <header className="mb-6">
         <Bar className="mb-2 h-8 w-32" />
         <Bar className="h-4 w-72" />

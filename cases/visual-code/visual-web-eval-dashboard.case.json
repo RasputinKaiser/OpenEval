@@ -7,6 +7,7 @@
   "tags": ["visual-code", "web-ui", "dashboard", "html", "css"],
   "split": "public",
   "prompt": "Create two files: index.html and styles.css. Build a polished desktop-first static dashboard for an agent evaluation run. The page must include a root element with data-testid=\"eval-dashboard\", an h1 containing \"OpenEval Run Report\", four metric cards with data-testid=\"metric-card\", a case table with data-testid=\"case-table\", and an inline SVG chart with data-testid=\"pass-chart\". Include visible labels for \"Pass@1\", \"Pass@k\", \"Known-bad\", and \"Visual-code\". Use CSS grid or flex layout in styles.css. Do not use external assets, scripts, or network imports.",
+  "benchmark": { "intent": "Whether the agent can organize benchmark evidence into an operator dashboard with metrics, trend, and case-level detail.", "deliverable": "index.html and styles.css", "evidence": ["deterministic", "artifact"], "usage": "medium" },
   "setup": { "type": "none" },
   "runner": { "max_turns": 18, "timeout_seconds": 240, "permission_mode": "bypassPermissions" },
   "budget": { "max_turns": 18, "max_cost_usd": 0.75 },
