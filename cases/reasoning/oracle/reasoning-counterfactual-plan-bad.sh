@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
-cat <<'EOF'
-Restart the service to see if the failure clears. Then check the database and call the payment API provider to ask if they are having issues. Notify the team once service is back up.
-EOF
+plan='1. Restart the service and wait to see whether the failure clears.
+2. Notify the team and ask the payment API provider whether it is having issues.
+3. Roll back only if the restart fails, without first checking health checks or logs.'
+printf '%s\n' "$plan" > remediation-plan.txt
+printf '%s\n' "$plan"

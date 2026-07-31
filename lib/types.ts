@@ -23,12 +23,34 @@ export type GraderSpecVariant =
   | { type: "git_diff_contains"; pattern: string; negate?: boolean; pathFilter?: string; weight?: number }
   | { type: "checksum"; path: string; algorithm?: "sha256" | "md5"; expected: string; weight?: number }
   | { type: "step"; tool?: string; input_includes?: string; input_includes_any?: string[]; at_index?: number; min_count?: number; before_tool?: string; negate?: boolean; weight?: number }
-  | { type: "rubric_llm"; rubric: string; min_score?: number; model?: string; judge_harness?: string; judge_model?: string; weight?: number }
+  | { type: "rubric_llm"; rubric: string; min_score?: number; model?: string; judge_harness?: string; judge_model?: string; artifact_paths?: string[]; weight?: number }
+  | {
+      type: "render_evidence";
+      artifact_path: string;
+      receipt_path: string;
+      artifact_kind?: "html" | "svg";
+      viewport: { width: number; height: number; device_scale_factor?: number };
+      selectors?: Array<{ selector: string; min_count?: number; visible?: boolean }>;
+      weight?: number;
+    }
   | { type: "manual"; note?: string; weight?: number };
 
 export type GraderSpec = GraderSpecVariant & { forbidden?: boolean };
 
 export type EvidenceTier = "deterministic" | "trace" | "visual" | "llm_judge" | "manual";
+
+export type BenchmarkEvidence = "deterministic" | "trace" | "artifact" | "judge" | "human";
+
+export interface BenchmarkContract {
+  /** The user-facing question this case is meant to answer. */
+  intent: string;
+  /** A short description of the artifact or answer the agent must leave behind. */
+  deliverable?: string;
+  /** Evidence channels declared by the case author. */
+  evidence: BenchmarkEvidence[];
+  /** A rough usage hint for launch presets, not provider billing. */
+  usage?: "low" | "medium" | "high";
+}
 
 export interface CaseDefinition {
   id: string;
@@ -40,6 +62,7 @@ export interface CaseDefinition {
   split?: "public" | "held_out";
   canary?: string;
   prompt: string;
+  benchmark?: BenchmarkContract;
   setup?: {
     type: "none" | "fixture" | "git-clone";
     fixture?: string;
@@ -65,7 +88,7 @@ export interface CaseDefinition {
     known_bad?: string[];
   };
   visual?: {
-    kind: "svg" | "threejs" | "web_ui" | "app_ui" | "screenshot";
+    kind: "svg" | "threejs" | "web_ui" | "app_ui" | "screenshot" | "canvas" | "data" | "diagram" | "text";
     requires_vision_input?: boolean;
     /** Paths relative to the prepared workdir that should be attached to the initial prompt. */
     input_images?: string[];

@@ -1,0 +1,8 @@
+{
+  "name": "supplied-data-svg",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "node --test verify.test.mjs"
+  }
+}

@@ -9,6 +9,7 @@ import type { DiscoveredSource } from "../lib/collection/discover";
 import { _setCacheDbForTest } from "../lib/live-cache";
 import { collectSourceFiles } from "../lib/live";
 import { _setCollectionHooksForTest, type CollectionSessionItem } from "../lib/collection/aggregate";
+import { _clearSnapshotServicesForTest } from "../lib/collection/snapshot-service";
 
 // Every scan goes through the live-cache; an in-memory DB keeps parallel test
 // processes off the shared .test-data SQLite cache.
@@ -92,6 +93,9 @@ test("?limit= response keeps its full-aggregate shape and gains nextCursor", asy
   assert.equal(body.sessions.length, 3);
   assert.deepEqual(body.sessions.map((s: CollectionSessionItem) => s.sessionId), ["s7", "s6", "s5"]);
   assert.equal(typeof body.nextCursor, "string", "a truncated list must carry a continuation cursor");
+  const cursorPayload = JSON.parse(Buffer.from(body.nextCursor, "base64url").toString("utf8"));
+  assert.equal(cursorPayload.g, body.generatedAtMs, "continuations must be bound to one snapshot generation");
+  assert.equal(cursorPayload.s, "route-src", "continuations must bind the source-local session identity");
 
   // A limit that covers the whole corpus is exhausted: nextCursor is null.
   const all = await (await getCollection("?limit=100")).json();
@@ -135,6 +139,18 @@ test("the same cursor over an unchanged snapshot returns an identical page", asy
   assert.deepEqual(a.sessions.map((s: CollectionSessionItem) => s.sessionId), ["s4", "s3", "s2"]);
 });
 
+test("a cursor from a different snapshot generation is rejected before paging", async () => {
+  const first = await (await getCollection("?limit=2")).json();
+  const payload = JSON.parse(Buffer.from(first.nextCursor, "base64url").toString("utf8"));
+  payload.g += 1;
+  const staleCursor = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
+  const res = await getCollection(`?cursor=${encodeURIComponent(staleCursor)}&page=2`);
+  assert.equal(res.status, 409);
+  const body = await res.json();
+  assert.match(body.error, /snapshot changed/);
+  assert.equal(body.generatedAtMs, first.generatedAtMs);
+});
+
 test("a vanished cursor falls back to the first strictly-older item", async () => {
   // Cursor identity that no longer exists, positioned at s5's timestamp:
   // the walk must resume at the first item with lastEventAt < t (s4).
@@ -172,4 +188,29 @@ test("page size is clamped to 1..500 and defaults on junk", async () => {
   const clampedHigh = await (await getCollection(`?cursor=${cursor}&page=9999`)).json();
   assert.equal(clampedHigh.sessions.length, 6);
   assert.equal(clampedHigh.nextCursor, null);
+});
+
+test("a vanished cursor resumes through equal-timestamp rows using source identity", async () => {
+  const tie = "2026-06-25T12:00:00.000Z";
+  writeSessionFile("same-b", tie);
+  writeSessionFile("same-d", tie);
+  _setCollectionHooksForTest({ ...routeTestHooks(sourceDef), fingerprintTtlMs: 0 });
+  _clearSnapshotServicesForTest();
+  try {
+    const full = await (await getCollection("?limit=100")).json();
+    const cursor = Buffer.from(JSON.stringify({
+      t: Date.parse(tie),
+      id: "vanished",
+      p: path.join(corpusDir, "same-c.jsonl"),
+      s: "route-src",
+      g: full.generatedAtMs,
+    }), "utf8").toString("base64url");
+    const page = await (await getCollection(`?cursor=${encodeURIComponent(cursor)}&page=2`)).json();
+    assert.deepEqual(page.sessions.map((s: CollectionSessionItem) => s.sessionId), ["same-d", "s4"]);
+  } finally {
+    fs.rmSync(path.join(corpusDir, "same-b.jsonl"), { force: true });
+    fs.rmSync(path.join(corpusDir, "same-d.jsonl"), { force: true });
+    _clearSnapshotServicesForTest();
+    _setCollectionHooksForTest(routeTestHooks(sourceDef));
+  }
 });

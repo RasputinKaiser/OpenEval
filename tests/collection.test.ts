@@ -8,7 +8,7 @@ import { allCollectionSources, defToSpec, KNOWN_COLLECTION_SOURCES, type Collect
 import { looksLikeTranscriptFile, type DiscoveredSource } from "../lib/collection/discover";
 import { _setCacheDbForTest } from "../lib/live-cache";
 import { collectSourceFiles, scanSourceSessions } from "../lib/live";
-import { _setCollectionHooksForTest, collectAllSessions, fingerprintDiscovery, scanAllSources } from "../lib/collection/aggregate";
+import { _setCollectionHooksForTest, collectionSessionIdentity, collectAllSessions, fingerprintDiscovery, scanAllSources } from "../lib/collection/aggregate";
 import { buildRollup } from "../lib/collection/rollup";
 
 // Every scan goes through the live-cache; use a file-level in-memory DB so
@@ -82,6 +82,13 @@ test("allCollectionSources includes runnable harnesses and curated extras", () =
   assert.equal(sources.find((s) => s.id === "claude-code")?.parseable, true);
   // detect-only extras are honest about not being parsed
   assert.equal(sources.find((s) => s.id === "cursor")?.parseable, false);
+});
+
+test("collection session identity is source-qualified when harness ids collide", () => {
+  const first = { sourceId: "codex", sessionId: "same-session", path: undefined };
+  const second = { sourceId: "claude", sessionId: "same-session", path: undefined };
+  assert.notEqual(collectionSessionIdentity(first), collectionSessionIdentity(second));
+  assert.equal(collectionSessionIdentity(first), "codex\u0000same-session");
 });
 
 test("curated extras never duplicate an adapter's root", () => {

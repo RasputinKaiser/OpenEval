@@ -40,10 +40,45 @@ test("scoreOutcome: praise lifts, correction drops, neutral stays ~0.5", () => {
   assert.ok(pos.reasons.length > 0);
 });
 
+test("scoreOutcome ignores malformed numeric signals without emitting NaN", () => {
+  const result = scoreOutcome(session({
+    startedAt: 1,
+    toolErrorRate: Number.NaN,
+    outcomeSignals: {
+      userPositive: Number.NaN,
+      userNegative: Number.POSITIVE_INFINITY,
+      rephrases: -4,
+      reworkFiles: Number.NaN,
+    } as OutcomeSignals,
+  }));
+  assert.equal(result.score, 0.5);
+  assert.equal(result.hasSignal, false);
+  assert.ok(Number.isFinite(result.score));
+});
+
 test("toPoints orders by time and flattens fields", () => {
   const pts = toPoints([session({ startedAt: 300 }), session({ startedAt: 100 }), session({ startedAt: 200 })]);
   assert.deepEqual(pts.map((p) => p.at), [100, 200, 300]);
   assert.equal(pts[0].source, "Claude Code");
+});
+
+test("buildTimeline keeps child traces out of human outcome denominators", () => {
+  const report = buildTimeline([
+    session({ startedAt: 100, sessionId: "parent", skillsUsed: ["shared-skill"], outcomeSignals: { userPositive: 1 } as OutcomeSignals }),
+    session({ startedAt: 150, sessionId: "child-with-parent-id", parentSessionId: "parent", skillsUsed: ["shared-skill", "child-only-skill"], outcomeSignals: { userNegative: 3 } as OutcomeSignals }),
+    session({ startedAt: 200, sessionId: "child", isSubagent: true, parentSessionId: "parent", skillsUsed: ["child-only-skill"], outcomeSignals: { userNegative: 3 } as OutcomeSignals }),
+  ]);
+  assert.equal(report.totalSessions, 1);
+  assert.equal(report.excludedSubagentSessions, 2);
+  assert.equal(report.signalSessions, 1);
+  const childOnly = report.markers.find((marker) => marker.name === "child-only-skill");
+  assert.equal(childOnly?.firstSeenAt, 150);
+  assert.equal(childOnly?.sessionCount, 0, "child traces never enter the top-level marker denominator");
+  assert.equal(childOnly?.evidenceSessionCount, 2);
+  assert.equal(childOnly?.childSessionCount, 2);
+  assert.equal(childOnly?.observedIn, "child");
+  assert.equal(report.markers.find((marker) => marker.name === "shared-skill")?.observedIn, "both");
+  assert.equal(report.impacts.some((impact) => impact.marker.name === "child-only-skill"), false);
 });
 
 test("detectMarkers records first-seen and usage counts", () => {
@@ -125,6 +160,26 @@ test("markerImpact: both sides judged → no pool-mix confound", () => {
   assert.ok(!impact.confounds.some((c) => POOL_MIX.test(c)));
 });
 
+test("markerImpact effect size uses the same judged-only pool as its medians", () => {
+  const sessions = [
+    ...Array.from({ length: 10 }, (_, i) => session({ startedAt: i + 1, path: `/t/${i + 1}.jsonl` })),
+    ...Array.from({ length: 10 }, (_, i) => session({ startedAt: i + 11, path: `/t/${i + 11}.jsonl`, skillsUsed: ["judged-skill"] })),
+  ];
+  const judgedBefore = Array.from({ length: 5 }, (_, i) => `/t/${i + 1}.jsonl`);
+  const judgedAfter = Array.from({ length: 5 }, (_, i) => `/t/${i + 11}.jsonl`);
+  const points = toPoints(sessions, new Map([
+    ...judgmentsFor(judgedBefore, 0.2),
+    ...judgmentsFor(judgedAfter, 0.8),
+  ]));
+  const marker = detectMarkers(points).find((m) => m.name === "judged-skill")!;
+  const impact = markerImpact(points, marker, 10, 5);
+
+  assert.equal(impact.outcomePoolBefore, "judged");
+  assert.equal(impact.outcomePoolAfter, "judged");
+  assert.equal(impact.effectSize, null, "constant judged-only sides have no finite pooled variance");
+  assert.equal(impact.strength, "large", "the raw judged median shift remains explicit when variance is zero");
+});
+
 test("markerImpact flags thin samples as low confidence", () => {
   const pts = toPoints([
     session({ startedAt: 1 }),
@@ -155,6 +210,18 @@ test("markerImpact distinguishes full windows from the outcome denominator", () 
   assert.ok(impact.confounds.some((c) => /outcome unavailable/.test(c)));
 });
 
+test("markerImpact marks one-sided windows as unavailable for every delta", () => {
+  const pts = toPoints([
+    ...[1, 2, 3, 4, 5, 6].map((startedAt) => session({ startedAt, skillsUsed: ["first-session"] })),
+  ]);
+  const marker = detectMarkers(pts).find((m) => m.name === "first-session")!;
+  const impact = markerImpact(pts, marker, 20, 5);
+  assert.equal(impact.nBefore, 0);
+  assert.equal(impact.nAfter, 6);
+  assert.equal(impact.windowComparable, false);
+  assert.ok(impact.confounds.some((c) => /comparison window unavailable/.test(c)));
+});
+
 test("buildTimeline exposes exact signal, judged, heuristic, and no-signal counts", () => {
   const report = buildTimeline([
     session({ startedAt: 1 }),
@@ -168,4 +235,79 @@ test("buildTimeline exposes exact signal, judged, heuristic, and no-signal count
   assert.equal(report.heuristicSignalSessions, 2);
   assert.equal(report.noSignalSessions, 1);
   assert.equal(report.signalCoverage, 2 / 3);
+});
+
+test("buildTimeline keeps overall trend unavailable until both homogeneous halves are thick enough", () => {
+  const none = buildTimeline([session({ startedAt: 1 }), session({ startedAt: 2 })]);
+  assert.equal(none.overall.comparable, false);
+  assert.deepEqual([none.overall.firstHalfN, none.overall.secondHalfN], [0, 0]);
+  assert.equal(none.overall.trend, 0);
+
+  const one = buildTimeline([session({ startedAt: 1, outcomeSignals: { userPositive: 1 } as OutcomeSignals })]);
+  assert.equal(one.overall.comparable, false);
+  assert.deepEqual([one.overall.firstHalfN, one.overall.secondHalfN], [0, 1]);
+
+  const two = buildTimeline([
+    session({ startedAt: 1, outcomeSignals: { userPositive: 1 } as OutcomeSignals }),
+    session({ startedAt: 2, outcomeSignals: { userNegative: 1 } as OutcomeSignals }),
+  ]);
+  assert.equal(two.overall.comparable, false);
+  assert.deepEqual([two.overall.firstHalfN, two.overall.secondHalfN], [1, 1]);
+
+  const ten = buildTimeline([
+    ...Array.from({ length: 5 }, (_, i) => session({ startedAt: i + 1, outcomeSignals: { userPositive: 1 } as OutcomeSignals })),
+    ...Array.from({ length: 5 }, (_, i) => session({ startedAt: i + 6, outcomeSignals: { userNegative: 1 } as OutcomeSignals })),
+  ]);
+  assert.equal(ten.overall.comparable, true);
+  assert.equal(ten.overall.outcomeProvenance, "heuristic");
+  assert.deepEqual([ten.overall.firstHalfN, ten.overall.secondHalfN], [5, 5]);
+  assert.notEqual(ten.overall.trend, 0);
+});
+
+test("toPoints distinguishes unavailable outcomes and measured-zero cost from inferred zero", () => {
+  const [neutral, measuredZero, inferredZero] = toPoints([
+    session({ startedAt: 1, metricSources: { model: "measured", tokens: "measured", cost: "missing", duration: "measured", turns: "measured" } }),
+    session({ startedAt: 2, costUsd: 0, metricSources: { model: "measured", tokens: "measured", cost: "measured", duration: "measured", turns: "measured" } }),
+    session({ startedAt: 3, costUsd: 0, metricSources: { model: "measured", tokens: "measured", cost: "inferred", duration: "measured", turns: "measured" } }),
+  ]);
+  assert.equal(neutral.outcomeProvenance, "unavailable");
+  assert.equal(measuredZero.costAvailable, true);
+  assert.equal(measuredZero.costUsd, 0);
+  assert.equal(inferredZero.costAvailable, false);
+});
+
+test("detectMarkers deduplicates repeated names within one trace", () => {
+  const [marker] = detectMarkers(toPoints([
+    session({ startedAt: 1, skillsUsed: ["repeat", "repeat", "repeat"], mcpServersUsed: ["mcp", "mcp"] }),
+  ])).filter((m) => m.kind === "skill");
+  assert.equal(marker?.sessionCount, 1);
+  assert.equal(marker?.evidenceSessionCount, 1);
+});
+
+test("markerImpact with thin evidence exposes provenance, comparability, and no effect size", () => {
+  const pts = toPoints([
+    ...Array.from({ length: 2 }, (_, i) => session({ startedAt: i + 1, outcomeSignals: { userPositive: 1 } as OutcomeSignals })),
+    ...Array.from({ length: 2 }, (_, i) => session({ startedAt: i + 3, skillsUsed: ["thin"], outcomeSignals: { userNegative: 1 } as OutcomeSignals })),
+  ]);
+  const marker = detectMarkers(pts).find((m) => m.name === "thin")!;
+  const impact = markerImpact(pts, marker, 20, 5);
+  assert.equal(impact.outcomeComparable, false);
+  assert.equal(impact.comparability, "thin");
+  assert.equal(impact.effectSize, null);
+  assert.equal(impact.beforeEvidence.outcome.n, 2);
+  assert.equal(impact.afterEvidence.outcome.n, 2);
+});
+
+test("markerImpact reports measured cost per session, including exact zero", () => {
+  const pts = toPoints([
+    ...Array.from({ length: 5 }, (_, i) => session({ startedAt: i + 1, costUsd: 0, metricSources: { model: "measured", tokens: "measured", cost: "measured", duration: "measured", turns: "measured" } })),
+    ...Array.from({ length: 5 }, (_, i) => session({ startedAt: i + 6, costUsd: 2, skillsUsed: ["cost-aware"], metricSources: { model: "measured", tokens: "measured", cost: "measured", duration: "measured", turns: "measured" } })),
+  ]);
+  const marker = detectMarkers(pts).find((m) => m.name === "cost-aware")!;
+  const impact = markerImpact(pts, marker, 5, 5);
+  assert.equal(impact.before.costUsd, 0);
+  assert.equal(impact.after.costUsd, 2);
+  assert.equal(impact.beforeEvidence.costUsd.n, 5);
+  assert.equal(impact.afterEvidence.costUsd.n, 5);
+  assert.equal(impact.metricComparable.costUsd, true);
 });

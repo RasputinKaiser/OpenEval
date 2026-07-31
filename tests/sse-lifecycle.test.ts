@@ -254,6 +254,7 @@ test("stream closes when the run goes terminal without a completion event", asyn
     clearTimeout(flip);
     assert.equal(ended, true, "terminal DB status must close the stream even with no run_completed event");
     assert.equal(parseSseEvents(raw).length, 1, "prior events still replayed");
+    assert.match(raw, /event: run_stream_closed\n/, "terminal snapshot emits a close control frame");
   } finally {
     delete process.env.OPENEVAL_SSE_POLL_MS;
   }
@@ -380,6 +381,8 @@ test("buildStreamUrl: carries the resume cursor and encodes the run id", async (
   assert.equal(buildStreamUrl("abc123", 0), "/api/runs/abc123/events/stream");
   assert.equal(buildStreamUrl("abc123", 42), "/api/runs/abc123/events/stream?lastEventId=42");
   assert.equal(buildStreamUrl("abc123", 42.9), "/api/runs/abc123/events/stream?lastEventId=42");
+  assert.equal(buildStreamUrl("abc123", null, true), "/api/runs/abc123/events/stream?activity=recent");
+  assert.equal(buildStreamUrl("abc123", 42, true), "/api/runs/abc123/events/stream?activity=recent&lastEventId=42");
   assert.equal(buildStreamUrl("abc123", NaN), "/api/runs/abc123/events/stream");
   assert.equal(buildStreamUrl("a/b"), "/api/runs/a%2Fb/events/stream");
 });

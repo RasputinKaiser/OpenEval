@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 import TelemetryStrip from "./TelemetryStrip";
 import RunTimeline from "./RunTimeline";
+import RunWatch from "./RunWatch";
 import { CircleDot } from "lucide-react";
 import type { RunCaseRecord } from "@/lib/types";
 import { exportCsv, exportJson } from "@/lib/export";
@@ -15,9 +16,9 @@ import CaseSidePanel from "./run-detail/CaseSidePanel";
 import { summarizeRunConfidence } from "./run-detail/trust";
 import { useCollapsedSections } from "./run-detail/collapse";
 
-interface Props { runId: string; runName?: string; initialCases: RunCaseRecord[]; running: boolean; model?: string; harness?: string; harnessInfo?: { id: string; bin: string | null; version: string | null }; }
+interface Props { runId: string; runName?: string; initialCases: RunCaseRecord[]; running: boolean; createdAt?: number; endedAt?: number | null; model?: string; harness?: string; harnessInfo?: { id: string; bin: string | null; version: string | null }; }
 
-export default function RunDetailClient({ runId, runName, initialCases, running, model, harness, harnessInfo }: Props) {
+export default function RunDetailClient({ runId, runName, initialCases, running, createdAt, endedAt, model, harness, harnessInfo }: Props) {
   const [cases, setCases] = useState<RunCaseRecord[]>(initialCases);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(initialCases.length ? 0 : null);
   const [live, setLive] = useState(running);
@@ -33,38 +34,48 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
       // Optimistic: the server marked the run aborted; in-flight cases still
       // finish naturally and land via the final refetch.
       setCancelPhase("cancelled");
+      await refetchLite(true, true);
       setLive(false);
-      refetchLite();
     } catch {
       setCancelPhase("idle");
     }
   }
 
   const fetchInFlight = useRef<Promise<void> | null>(null);
-  const refetchLite = useCallback(async () => {
-    if (fetchInFlight.current) return fetchInFlight.current;
-    fetchInFlight.current = (async () => {
+  const fetchInFlightToken = useRef<object | null>(null);
+  const refetchLite = useCallback(async (finalize = false, force = false) => {
+    if (fetchInFlight.current && !force) return fetchInFlight.current;
+    if (fetchInFlight.current && force) await fetchInFlight.current.catch(() => {});
+    const requestToken = {};
+    const request = (async () => {
       try {
         const res = await fetch(`/api/runs/${runId}?lite=1`).then((r) => r.json());
         if (res.cases) setCases(res.cases);
-        if (res.run?.status !== "running") setLive(false);
+        if (res.run?.status !== "running" && !finalize) setLive(false);
       } catch {
         // transient
       } finally {
-        fetchInFlight.current = null;
+        if (fetchInFlightToken.current === requestToken) {
+          fetchInFlight.current = null;
+          fetchInFlightToken.current = null;
+        }
       }
     })();
-    return fetchInFlight.current;
+    fetchInFlightToken.current = requestToken;
+    fetchInFlight.current = request;
+    return request;
   }, [runId]);
 
   // SSE-driven refetch: case state transitions invalidate the lite snapshot.
-  useRunEvents(runId, {
-    enabled: live,
+  const runEvents = useRunEvents(runId, {
+    // Keep the stream enabled after completion so settled runs can replay a
+    // bounded recent-activity buffer once, then close on their terminal event.
+    enabled: true,
     onEvent: (ev) => {
-      if (ev.kind === "case_started" || ev.kind === "case_grading" || ev.kind === "case_finished" || ev.kind === "grader_result") {
+      if (ev.kind === "case_started" || ev.kind === "case_grading" || ev.kind === "case_finished" || ev.kind === "case_error" || ev.kind === "grader_result") {
         refetchLite();
-      } else if (ev.kind === "run_completed" || ev.kind === "run_fatal" || ev.kind === "run_aborted") {
-        setLive(false);
+      } else if (ev.kind === "run_completed" || ev.kind === "run_fatal" || ev.kind === "run_aborted" || ev.kind === "run_stream_closed") {
+        void refetchLite(true, true).finally(() => setLive(false));
       }
     },
   });
@@ -76,6 +87,7 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
     passed: cases.filter((c) => c.status === "passed").length,
     failed: cases.filter((c) => c.status === "failed").length,
     error: cases.filter((c) => c.status === "error").length,
+    skipped: cases.filter((c) => c.status === "skipped").length,
     running: cases.filter((c) => c.status === "running" || c.status === "grading").length,
     pending: cases.filter((c) => c.status === "pending").length,
   };
@@ -110,15 +122,6 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
 
   return (
     <div>
-      <TelemetryStrip runId={runId} />
-      {cases.length > 0 && (
-        <RunTimeline
-          cases={cases}
-          selectedIndex={selectedIdx}
-          onSelect={setSelectedIdx}
-          live={live}
-        />
-      )}
       <RunHero
         runId={runId}
         runName={runName}
@@ -134,6 +137,28 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
         onExportCsv={exportCaseCsv}
         onExportJson={exportRunJson}
       />
+
+      <RunWatch
+        runId={runId}
+        createdAt={createdAt}
+        endedAt={endedAt}
+        cases={cases}
+        live={live}
+        streamStatus={runEvents.status}
+        events={runEvents.events}
+        selectedIdx={selectedIdx}
+        onSelect={setSelectedIdx}
+      />
+
+      <TelemetryStrip runId={runId} />
+      {cases.length > 0 && (
+        <RunTimeline
+          cases={cases}
+          selectedIndex={selectedIdx}
+          onSelect={setSelectedIdx}
+          live={live}
+        />
+      )}
 
       <RunConfidencePanel confidence={confidence} />
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.4fr] gap-4">

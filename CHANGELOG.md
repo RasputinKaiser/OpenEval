@@ -2,6 +2,72 @@
 
 All notable public changes to OpenEval are recorded here.
 
+## [0.1.4] - 2026-07-31
+
+Final evaluation-flow, observation-fidelity, responsive UX, and stability pass.
+
+This release turns the previously separate benchmark, accuracy, observation, and evidence surfaces into one more coherent local-first evaluation workflow. It also adds a detailed four-level user-flow coverage tranche and makes the visible runtime release tag link directly to the corresponding GitHub release.
+
+### Evaluate and benchmark authoring
+
+- Added a shared Evaluate workflow across Runs, Leaderboard, Compare, Cases, New Run, and Accuracy, with consistent ordering, selected-state semantics, route-aware active states, and narrow-screen horizontal containment where the navigation is intentionally wider than the viewport.
+- Reworked run diagnostics charts with explicit chart titles, numeric tick values, units, readable legends, accessible point labels, ranked throughput bars, and status distinctions that do not rely on color alone.
+- Removed the misleading presentation of unavailable token or cost data as numeric zeroes. Missing, inferred, measured, and unavailable values remain distinguishable in tables, cards, charts, and reports.
+- Added a watchable evaluation pulse for run detail with current case, next case, lifecycle phase, progress, timing, result state, connection status, recent activity, and direct evidence navigation.
+- Added bounded visual comparison surfaces for SVG, HTML, pixel-art, 3D, isometric voxel, data-story, route-planner, poster, runbook, and related artifact outputs. Artifact identity, bytes, SHA-256, and viewport remain separate from pixel-quality judgment.
+- Added low-usage creative benchmark coverage spanning 3D depth, pixel-art scenes, isometric voxel worlds, supplied-data SVG, accessible forms, data-story cards, route planning, Markdown runbooks, and other visual/code outputs.
+- Reorganized New Run around a focused Core suite, Visual lab, Reasoning, and Everything presets. The wizard shows planned executions and budget implications before launch, while Everything is clearly marked as the highest-usage option.
+- Added visible selected-case recovery in New Run. Cases selected outside the current filter remain listed, “Clear visible” is distinct from “Clear all,” and “Show selected” restores the hidden selection view.
+- Added a Cases starter path for first-time operators, with a bounded Core-suite launch route and a Creative sampler path.
+- Added explicit API-side validation for empty case selections, invalid harnesses, unavailable harnesses, malformed request values, bounded sample counts, and bounded parallelism.
+
+### Accuracy, evidence, and evaluation truthfulness
+
+- Expanded the runnable corpus to 35 cases across agentic SWE, reasoning, single-tool, and visual-code categories.
+- Maintained 35/35 oracle coverage and 35/35 known-bad rejection coverage; the strict audit remains explicit about which trace, visual, and LLM-judge surfaces are still Unknown.
+- Added structured evidence contracts for deterministic checks, trace checks, visual contracts, judge-backed evidence, and manual review without promoting one evidence tier into another.
+- Accuracy now exposes evidence-loop actions, direct case/run links, weaknesses, uncertainties, judge posture, and empty-corpus recovery.
+- Compare now surfaces pass-rate, throughput, visual-contract, and error deltas while preserving compatibility and missing-evidence boundaries.
+- Added benchmark and user-flow manifests so product QA rows, evidence-lens rows, capability nuclei, and independently runnable benchmark cases cannot be confused in denominators.
+- Added 250 UX stories covering sizing, visibility, contrast, color semantics, responsive density, interaction states, and evaluation/observation surfaces.
+- Added 200 user-flow stories split evenly across brand-new, beginner, intermediate, and expert journeys. The 200-row tranche maps launch, discovery, evaluation, observation, configuration, recovery, and evidence-literacy paths while retaining a 20-row pending boundary for live or human proof.
+
+### Live observation and data fidelity
+
+- Preserved the semantic transcript/tool-call normalization pass for Codex, Claude, and ncode traces, including paired calls/results, bounded arguments/results, status, duration, tool names, and tool-search records.
+- Kept raw transcripts authoritative while bounding derived payloads, transcript windows, FTS fields, DOM projections, and API response sizes.
+- Added source-qualified session identity, parser-version cache invalidation, stale/partial scan disclosures, exact source inventory, and explicit discovered/scanned/parsed/dropped/unscanned populations.
+- Collection and Timeline now distinguish signal, judged, heuristic, and no-signal populations, with outcome denominators and comparison windows shown rather than implied.
+- Live and Collection retain measured/inferred/missing/malformed provenance for model, token, cost, duration, tools, and trace structure.
+- Timeline refreshes coalesce safely, preserve the last good report through failures, expose retry/recovery state, and stop terminal or failed judge polling.
+- Transcript search includes tool call IDs, status, duration, arguments, results, and bounded semantic text while avoiding raw message-body leakage in list payloads.
+- Child traces and judge sessions remain attributable and are kept out of the wrong outcome denominators.
+
+### Stability, security, and lifecycle behavior
+
+- Hardened run cancellation and abort propagation through in-flight harness and grader work, with terminal state ordering and SSE stream closure made explicit.
+- Added route-level loading, error, retry, and empty states across the major evaluation and observation routes.
+- Added doctor checks for Node/runtime mismatch, native SQLite binding health, stale Next cache, port occupancy, database quick-check, and disk headroom.
+- Kept harness discovery and launch diagnostics honest for missing binaries, failed probes, wrapper failures, revoked authentication, and unavailable providers.
+- Hardened API mutation requests with local/same-origin checks, bounded query/body validation, stable error envelopes, and safe maintenance boundaries.
+- Kept artifact and transcript access server-owned and symlink-safe, rejecting path traversal and out-of-source detail requests.
+- Preserved redaction and public-upload checks so local databases, transcripts, usernames, private paths, and secret-shaped fixtures do not become release artifacts.
+- Added hermetic launch and harness-gate tests so the test suite does not depend on a developer's current provider login state.
+
+### Accessibility and responsive UX
+
+- Added labeled dialogs, focus containment/restoration, Escape dismissal, visible close actions, and live status regions for onboarding, navigation, loading, errors, and run state.
+- Improved keyboard focus rings, touch target sizing, native button semantics, pressed/current-page state, screen-reader lifecycle announcements, and non-color status cues.
+- Rebalanced shell, card, table, chart, stat, session, and evidence layouts for desktop, tablet, and narrow viewports.
+- Verified the primary evaluation routes at 390×844 with zero positive document overflow; intentional internal scrolling remains scoped to data-heavy controls.
+- Preserved dark/light theme semantics and CSS-variable-safe color mixing rather than relying on unsupported Tailwind opacity expansion for raw color variables.
+
+### Verification and proof boundary
+
+- Full TypeScript typecheck, test suite, lint, production build, strict accuracy audit, doctor audit, public-upload audit, and diff hygiene checks pass for the release source.
+- Post-build browser smoke covered Dashboard, Cases, New Run, Runs, Leaderboard, Compare, Accuracy, Live, Collection, and Timeline without a visible Next error page or browser console warnings/errors.
+- This release does not claim fresh provider-backed success for every harness, pixel-quality truth from structural artifact receipts, full WCAG conformance, assistive-technology review, or human visual review. Those remain explicit Unknown/PENDING evidence states until exercised.
+
 ## [0.1.3] - 2026-07-27
 
 Data-fidelity, proof-UX, accessibility, and measured performance release.
@@ -66,7 +132,8 @@ OpenEval's first tagged public release.
 - Delivery master, poster, and 1280×640 GitHub/X social preview attached directly to the GitHub Release; production source stays outside the product repository.
 - Explicit application and launch-film model credits in the README.
 
-[Unreleased]: https://github.com/RasputinKaiser/OpenEval/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/RasputinKaiser/OpenEval/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/RasputinKaiser/OpenEval/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/RasputinKaiser/OpenEval/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.2
 [0.1.1]: https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.1

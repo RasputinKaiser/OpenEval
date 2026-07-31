@@ -1,0 +1,11 @@
+{
+  "title": "Weekly throughput",
+  "unit": "cases",
+  "records": [
+    { "label": "Mon", "value": 18 },
+    { "label": "Tue", "value": 31 },
+    { "label": "Wed", "value": 12 },
+    { "label": "Thu", "value": 26 },
+    { "label": "Fri", "value": 40 }
+  ]
+}

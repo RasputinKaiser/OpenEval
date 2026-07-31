@@ -1,6 +1,12 @@
 #!/usr/bin/env tsx
 import fs from "node:fs";
-import { auditCases, evidenceLabel, hasStrictAccuracyFailure } from "../accuracy";
+import {
+  accuracyStatusLabel,
+  accuracySurfaceLabel,
+  auditCases,
+  evidenceLabel,
+  hasStrictAccuracyFailure,
+} from "../accuracy";
 import { loadCasesStrict } from "../cases";
 import { CASES_DIR } from "../config";
 
@@ -12,7 +18,8 @@ regex-only backstops behind an LLM judge, missing oracle scripts on disk).
 
 Options:
   --strict            Exit nonzero if any case lacks an oracle or a
-                      deterministic/trace grader. (unchanged)
+                      deterministic/trace grader, or has an unresolved oracle
+                      script. (unchanged)
   --strict-known-bad  Additionally exit nonzero if any case lacks a known-bad
                       rejection script. Opt-in; leaves --strict untouched.
   -h, --help          Show this help.`;
@@ -29,9 +36,11 @@ async function main() {
   const cases = await loadCasesStrict();
   // Server-side: inject the fs predicate so the on-disk oracle-script check runs
   // (lib/accuracy.ts stays node:fs-free for the client bundle).
-  const audit = auditCases(cases, { casesDir: CASES_DIR, fileExists: (p) => fs.existsSync(p) });
+  const audit = auditCases(cases, { casesDir: CASES_DIR, fileExists: (p) => fs.existsSync(p), corpusErrors: [] });
 
   console.log(`Accuracy audit: ${audit.totalCases} cases`);
+  console.log(`  audit status: ${accuracyStatusLabel(audit.status)}`);
+  console.log(`  corpus: ${accuracyStatusLabel(audit.corpus.status)} — ${audit.corpus.summary}`);
   console.log(`  oracle coverage: ${audit.oracleCases}/${audit.totalCases}`);
   console.log(`  known-bad scripts: ${audit.knownBadCases}/${audit.totalCases}`);
   console.log(`  deterministic/trace coverage: ${audit.deterministicOrTraceCases}/${audit.totalCases}`);
@@ -40,6 +49,11 @@ async function main() {
   console.log("  evidence tiers:");
   for (const [tier, count] of Object.entries(audit.tierTotals)) {
     console.log(`    ${evidenceLabel(tier as any).padEnd(14)} ${count}`);
+  }
+  console.log("  evidence surfaces:");
+  for (const surface of Object.keys(audit.surfaces) as Array<keyof typeof audit.surfaces>) {
+    const summary = audit.surfaces[surface];
+    console.log(`    ${accuracySurfaceLabel(surface).padEnd(22)} ${accuracyStatusLabel(summary.status).padEnd(13)} ${summary.passingCases}/${summary.applicableCases} applicable; ${summary.declaredEvidence} declared, ${summary.verifiedEvidence} verified`);
   }
 
   const weak = audit.cases.filter((c) => c.weaknesses.length > 0);

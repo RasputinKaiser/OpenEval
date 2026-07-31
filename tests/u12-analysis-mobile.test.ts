@@ -88,6 +88,20 @@ test("chart tooltips support pinning (touch/keyboard) and Escape/outside dismiss
   }
 });
 
+test("Collection visualizations expose selection, provenance, and model exploration controls", () => {
+  const charts = read("components/CollectionCharts.tsx");
+  const collection = read("components/CollectionClient.tsx");
+  assert.match(charts, /estimatedCostSessions/, "weekly marks must use bucket-level estimate provenance");
+  assert.match(charts, /aria-pressed=\{selected === i\}/, "weeks must expose the selected mark");
+  assert.match(charts, /Selected hour/, "the heatmap must expose a readable active-cell summary");
+  assert.match(charts, /Less/, "the heatmap must include an intensity legend");
+  assert.match(collection, /Top projects · all-time API equivalent/, "project ranking must state its all-time scope");
+  assert.match(collection, /Find a model/, "models must be searchable");
+  assert.match(collection, /Tool error rate/, "model error values must be labeled as rates");
+  assert.match(collection, /allocatedCostSessions/, "allocated model costs must remain visibly estimated");
+  assert.match(collection, /scope="row"/, "model identities must be semantic row headers");
+});
+
 test("Collection search debounces, reports counts, and preserves ?q= in the URL", () => {
   const src = read("components/CollectionClient.tsx");
   assert.match(src, /SEARCH_DEBOUNCE_MS/, "search must be debounced");
@@ -101,7 +115,7 @@ test("Collection load-more keeps cursor pagination semantics (no limit-growth re
   const src = read("components/CollectionClient.tsx");
   assert.match(src, /cursor=\$\{encodeURIComponent\(nextCursor\)\}/, "pages must continue from the cursor");
   assert.match(src, /nextCursor === null/, "explicit null must mean exhausted");
-  assert.match(src, /s\.path \?\? s\.sessionId/, "dedupe must key on path ?? sessionId");
+  assert.match(src, /collectionSessionIdentity\(s\)/, "dedupe must use the source-qualified session identity");
 });
 
 test("Timeline marker filter persists its state in the URL", () => {
@@ -110,6 +124,12 @@ test("Timeline marker filter persists its state in the URL", () => {
   assert.match(src, /searchParams\.delete\("kind"/, "the 'all' state must clear ?kind=");
   assert.match(src, /get\("kind"\)/, "the filter must initialize from the URL");
   assert.match(src, /aria-pressed/, "filter pills must expose toggle state");
+  assert.match(src, /TIMELINE_IMPACT_WINDOW/, "dense impact rows must mount in bounded progressive windows");
+  assert.match(src, /TIMELINE_MARKER_WINDOW/, "dense adoption rows must mount in bounded progressive windows");
+  assert.match(src, /renderedImpacts\.map/, "the impact table must render its window instead of the full corpus");
+  assert.match(src, /for \(const m of renderedMarkers\)/, "the adoption rail must render its newest window");
+  assert.match(src, /Global shifts \(context\)/, "kind filters must explicitly preserve global shift semantics");
+  assert.match(src, /independent of adoption filters and not attribution/, "global shifts must remain explicitly non-attributed");
 });
 
 test("Compare explains its empty and one-run states", () => {

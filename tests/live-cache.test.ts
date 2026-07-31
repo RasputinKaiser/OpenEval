@@ -46,6 +46,26 @@ test("live-cache: caches null parses (unparseable files are not re-parsed)", () 
   });
 });
 
+test("live-cache: identical puts are no-op writes", () => {
+  withMemoryDb(() => {
+    const conn = new Database(":memory:");
+    _setCacheDbForTest(conn);
+    conn.exec(`
+      CREATE TABLE cache_update_count (n INTEGER NOT NULL);
+      INSERT INTO cache_update_count VALUES (0);
+      CREATE TRIGGER count_session_cache_updates AFTER UPDATE ON session_cache
+      BEGIN
+        UPDATE cache_update_count SET n = n + 1;
+      END;
+    `);
+    cachePut("/stable.jsonl", 100, 5, fakeSession, "same-context");
+    cachePut("/stable.jsonl", 100, 5, fakeSession, "same-context");
+    const row = conn.prepare("SELECT n FROM cache_update_count").get() as { n: number };
+    assert.equal(row.n, 0, "an identical summary must not dirty a SQLite page or append to the WAL");
+    conn.close();
+  });
+});
+
 test("live-cache: a parser-version bump invalidates old rows", () => {
   withMemoryDb(() => {
     const conn = new Database(":memory:");
@@ -149,10 +169,28 @@ test("live-cache: FTS index round-trips, replaces on re-index, and survives odd 
     ftsUpsert({ file: "/s/a.jsonl", sourceId: "claude-code", project: "/p", title: "fix auth", at: 111, userText: "totally different now", assistantText: "" }, 2, 11);
     assert.equal(ftsSearch("auth refactor").length, 0);
     assert.equal(ftsSearch("totally different").length, 1);
-    assert.deepEqual(ftsIndexedFiles().get("/s/a.jsonl"), { mtimeMs: 2, size: 11 });
+    assert.deepEqual(ftsIndexedFiles().get("/s/a.jsonl"), { mtimeMs: 2, size: 11, sourceId: "claude-code" });
     // FTS5 syntax characters must not throw.
     assert.deepEqual(ftsSearch('c++ "quote OR (NEAR'), []);
     // Embedded quotes are doubled, then the token is wrapped: "b" → """b""".
     assert.equal(toFtsMatch('a "b" c*'), '"a" """b""" "c"*');
+  });
+});
+
+test("live-cache: source provenance changes invalidate an otherwise identical FTS row", () => {
+  withMemoryDb(() => {
+    ftsUpsert({ file: "/shared/session.jsonl", sourceId: "old-source", project: "/p", title: "old", at: 1, userText: "old provenance", assistantText: "" }, 10, 20);
+    ftsUpsert({ file: "/shared/session.jsonl", sourceId: "new-source", project: "/p", title: "new", at: 1, userText: "new provenance", assistantText: "" }, 10, 20);
+    assert.equal(ftsSearch("old provenance").length, 0);
+    assert.equal(ftsSearch("new provenance")[0]?.sourceId, "new-source");
+    assert.equal(ftsIndexedFiles().get("/shared/session.jsonl")?.sourceId, "new-source");
+  });
+});
+
+test("live-cache: non-finite FTS limits fall back to a bounded default", () => {
+  withMemoryDb(() => {
+    ftsUpsert({ file: "/bounded.jsonl", sourceId: "src", project: "/p", title: "bounded", at: 1, userText: "bounded query", assistantText: "" }, 1, 1);
+    assert.equal(ftsSearch("bounded", Number.NaN).length, 1);
+    assert.equal(ftsSearch("bounded", Number.POSITIVE_INFINITY).length, 1);
   });
 });

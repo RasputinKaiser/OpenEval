@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import clsx from "clsx";
 import { AlertCircle, AlertTriangle, Gauge, Inbox, RefreshCw } from "lucide-react";
@@ -30,7 +30,7 @@ export function Stat({ label, value, icon: Icon, tone }: { label: string; value:
   return (
     <div className="flex items-center justify-between gap-2">
       <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-fg-muted">
-        <Icon className="size-3" /> {label}
+        <Icon aria-hidden="true" className="size-3" /> {label}
       </div>
       <div className={clsx("mono text-base font-semibold tabular-nums", tone === "err" && "text-err", tone === "warn" && "text-warn", tone === "ok" && "text-ok")}>{value}</div>
     </div>
@@ -54,11 +54,11 @@ export function ListStack({ items, redact, users, empty }: { items: Array<{ key:
 export function SourceChip({ label, source }: { label: string; source: MetricSource }) {
   return (
     <span className={clsx(
-      "inline-flex items-center rounded px-1.5 py-0.5 text-[10px]",
-      source === "measured" && "bg-ok/10 text-ok",
-      source === "inferred" && "bg-accent/10 text-accent-soft",
-      source === "missing" && "bg-warn/10 text-warn",
-      source === "malformed" && "bg-err/10 text-err"
+      "inline-flex items-center rounded border px-1.5 py-0.5 text-[10px]",
+      source === "measured" && "border-ok/20 bg-ok/10 text-ok",
+      source === "inferred" && "border-accent/20 bg-accent/10 text-accent-soft",
+      source === "missing" && "border-warn/20 bg-warn/10 text-warn",
+      source === "malformed" && "border-err/20 bg-err/10 text-err"
     )}>
       {label}
     </span>
@@ -68,8 +68,8 @@ export function SourceChip({ label, source }: { label: string; source: MetricSou
 export function QualityBadge({ value }: { value: number }) {
   return (
     <span className={clsx(
-      "inline-flex w-fit items-center gap-1 rounded px-2 py-1 text-[11px] mono",
-      value >= 80 ? "bg-ok/10 text-ok" : value >= 55 ? "bg-warn/10 text-warn" : "bg-err/10 text-err"
+      "inline-flex w-fit items-center gap-1 rounded border px-2 py-1 text-[11px] mono",
+      value >= 80 ? "border-ok/20 bg-ok/10 text-ok" : value >= 55 ? "border-warn/20 bg-warn/10 text-warn" : "border-err/20 bg-err/10 text-err"
     )}>
       <Gauge className="size-3" /> {Math.round(value)}%
     </span>
@@ -78,17 +78,36 @@ export function QualityBadge({ value }: { value: number }) {
 
 export function StatusPill({ session, stale: staleProp }: { session: LiveSessionListItem; stale?: boolean }) {
   const stale = staleProp ?? isSessionStale(session);
-  if (session.isError || session.toolErrors > 0 || session.hookErrors > 0) {
-    return <span className="w-fit rounded bg-err/10 px-2 py-1 text-[10px] mono text-err">error</span>;
+  // Only a parser/session-level failure is terminal. Tool and hook incidents
+  // are recoverable telemetry and get their own amber status below, while a
+  // historical session is distinct from a failed live poll.
+  if (session.isError) {
+    return <span className="w-fit rounded border border-err/25 bg-err/10 px-2 py-1 text-[10px] mono text-err">error</span>;
   }
-  if (stale) return <span className="w-fit rounded bg-warn/10 px-2 py-1 text-[10px] mono text-warn">stale</span>;
-  return <span className="w-fit rounded bg-ok/10 px-2 py-1 text-[10px] mono text-ok">ok</span>;
+  if (stale) {
+    return <span title="No session event for more than 12 hours; live polling may still be healthy." className="w-fit rounded border border-fg-dim/30 bg-fg-dim/10 px-2 py-1 text-[10px] mono text-fg-muted">inactive &gt;12h</span>;
+  }
+  if (session.toolErrors > 0 || session.hookErrors > 0) {
+    return <span className="w-fit rounded border border-warn/25 bg-warn/10 px-2 py-1 text-[10px] mono text-warn">incident</span>;
+  }
+  return <span className="w-fit rounded border border-ok/25 bg-ok/10 px-2 py-1 text-[10px] mono text-ok">ok</span>;
+}
+
+/** Specific recoverable incidents stay visible without hijacking terminal status. */
+export function IncidentBadges({ session }: { session: LiveSessionListItem }) {
+  if (session.toolErrors === 0 && session.hookErrors === 0) return null;
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1 text-[10px] mono text-warn" aria-label="Recoverable session incidents">
+      {session.toolErrors > 0 ? <span className="rounded border border-warn/20 bg-warn/10 px-1.5 py-0.5">{session.toolErrors} tool incident{session.toolErrors === 1 ? "" : "s"}</span> : null}
+      {session.hookErrors > 0 ? <span className="rounded border border-warn/20 bg-warn/10 px-1.5 py-0.5">{session.hookErrors} hook incident{session.hookErrors === 1 ? "" : "s"}</span> : null}
+    </span>
+  );
 }
 
 // Isolated ticker so the once-a-second re-render stays inside this tiny
 // component instead of touching the session table. When `staleError` is set
-// the last poll failed: the dot turns amber and the label says the data on
-// screen is from the last successful poll instead of silently looking fresh.
+// the last poll failed: the dot turns amber and the label says polling failed
+// while the data on screen is from the last successful poll.
 export function UpdatedIndicator({ updatedAt, staleError }: { updatedAt: number | null; staleError?: string }) {
   const [now, setNow] = useState<number | null>(null);
   useEffect(() => {
@@ -96,10 +115,13 @@ export function UpdatedIndicator({ updatedAt, staleError }: { updatedAt: number 
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
-  if (updatedAt == null) return null;
-  const seconds = now == null ? 0 : Math.max(0, Math.floor((now - updatedAt) / 1000));
-  const age = seconds < 120 ? `${seconds}s` : `${Math.floor(seconds / 60)}m`;
   if (staleError) {
+    const age = updatedAt == null
+      ? "no successful update"
+      : (() => {
+        const seconds = now == null ? 0 : Math.max(0, Math.floor((now - updatedAt) / 1000));
+        return seconds < 120 ? `${seconds}s` : `${Math.floor(seconds / 60)}m`;
+      })();
     return (
       <span
         role="status"
@@ -107,10 +129,12 @@ export function UpdatedIndicator({ updatedAt, staleError }: { updatedAt: number 
         title={`Live poll failing: ${redactSensitiveText(staleError)} — showing last good data`}
       >
         <AlertTriangle className="size-3" aria-hidden />
-        stale · last update {age} ago
+        {updatedAt == null ? "poll failed · no successful update" : `poll failed · last good update ${age} ago`}
       </span>
     );
   }
+  if (updatedAt == null) return null;
+  const seconds = now == null ? 0 : Math.max(0, Math.floor((now - updatedAt) / 1000));
   const label = seconds < 1 ? "updated just now" : seconds < 120 ? `updated ${seconds}s ago` : `updated ${Math.floor(seconds / 60)}m ago`;
   return (
     <span
@@ -126,10 +150,11 @@ export function UpdatedIndicator({ updatedAt, staleError }: { updatedAt: number 
 
 export function LoadingSkeleton() {
   return (
-    <div className="mx-auto max-w-7xl p-8">
+    <div role="status" aria-busy="true" aria-label="Loading live sessions" className="mx-auto min-h-[calc(100vh-4rem)] max-w-7xl p-4 md:p-6">
+      <span className="sr-only">Loading live sessions…</span>
       <header className="mb-6">
         <div className="mb-2 h-8 w-64 shimmer rounded" />
-        <div className="h-4 w-96 shimmer rounded" />
+        <div className="h-4 w-full max-w-96 shimmer rounded" />
       </header>
       <section className="mb-6 grid grid-cols-1 gap-3 md:grid-cols-3">
         {Array.from({ length: 3 }).map((_, i) => (
@@ -167,7 +192,7 @@ export function LoadingSkeletonRows() {
 
 export function EmptyCard({ warnings }: { warnings: string[] }) {
   return (
-    <div className="mx-auto max-w-7xl p-8">
+    <div role="status" aria-label="No live sessions" className="mx-auto max-w-7xl p-4 md:p-6">
       <div className="card flex flex-col items-center p-8 text-center">
         <Inbox className="mb-4 size-10 text-fg-muted" />
         <h2 className="mb-2 text-lg font-medium">No live sessions found yet</h2>
@@ -184,18 +209,28 @@ export function EmptyCard({ warnings }: { warnings: string[] }) {
 }
 
 export function ErrorCard({ message }: { message: string }) {
+  const [retrying, setRetrying] = useState(false);
+  const retryingRef = useRef(false);
+  const retry = () => {
+    if (retryingRef.current) return;
+    retryingRef.current = true;
+    setRetrying(true);
+    window.location.reload();
+  };
   return (
-    <div className="mx-auto max-w-7xl p-8">
+    <div role="alert" className="mx-auto min-h-[calc(100vh-4rem)] max-w-7xl p-4 md:p-6">
       <div className="card flex flex-col items-center border-err/30 p-8 text-center">
         <AlertCircle className="mb-4 size-10 text-err" />
         <h2 className="mb-2 text-lg font-medium">Could not load live sessions</h2>
         <p className="mb-4 max-w-lg break-words text-sm text-fg-muted">{redactSensitiveText(message)}</p>
         <button
           type="button"
-          onClick={() => window.location.reload()}
-          className="inline-flex items-center gap-2 rounded border border-bd bg-bg-elev px-3 py-1.5 text-sm hover:bg-bg-subtle"
+          onClick={retry}
+          disabled={retrying}
+          aria-busy={retrying}
+          className="inline-flex min-h-10 items-center gap-2 rounded border border-bd bg-bg-elev px-3 py-2 text-sm hover:bg-bg-subtle disabled:cursor-wait disabled:opacity-60"
         >
-          <RefreshCw className="size-4" /> Retry now
+          <RefreshCw className="size-4" aria-hidden="true" /> {retrying ? "Retrying…" : "Retry now"}
         </button>
       </div>
     </div>

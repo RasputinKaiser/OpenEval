@@ -10,6 +10,7 @@ import {
   mergeAggregate,
   needsAttention,
   parseLiveViewState,
+  prioritizeSessionWarnings,
   selectVisibleSessions,
   sessionKey,
   shortId,
@@ -163,14 +164,44 @@ test("selectVisibleSessions filters by attention, staleness, and missing provena
   );
 });
 
-test("selectVisibleSessions searches id, project, title, and model", () => {
+test("selectVisibleSessions searches identity, provenance, child context, and incidents", () => {
   const now = Date.now();
   const byTitle = makeSession({ sessionId: "a", path: "/t/a.jsonl", displayTitle: "Fix flaky test", lastEventAt: now });
-  const byModel = makeSession({ sessionId: "b", path: "/t/b.jsonl", model: "opus-mini", lastEventAt: now });
+  const byModel = makeSession({
+    sessionId: "b",
+    path: "/t/b.jsonl",
+    model: "opus-mini",
+    isSubagent: true,
+    parentSessionId: "parent-42",
+    agentLabel: "cache scout",
+    modeSummary: { permissionModes: {}, gitBranch: "fix/cache", entrypoint: null },
+    parseWarnings: ["malformed line 4 skipped"],
+    toolErrors: 1,
+    lastEventAt: now,
+  });
   const rows = [byTitle, byModel];
   assert.deepEqual(selectVisibleSessions(rows, { filter: "all", sort: "recent", search: "FLAKY" }, now).map((s) => s.sessionId), ["a"]);
   assert.deepEqual(selectVisibleSessions(rows, { filter: "all", sort: "recent", search: "opus" }, now).map((s) => s.sessionId), ["b"]);
+  for (const query of ["child agent", "parent-42", "cache scout", "fix/cache", "malformed", "tool error"]) {
+    assert.deepEqual(selectVisibleSessions(rows, { filter: "all", sort: "recent", search: query }, now).map((s) => s.sessionId), ["b"]);
+  }
   assert.deepEqual(selectVisibleSessions(rows, { filter: "all", sort: "recent", search: "zzz" }, now), []);
+});
+
+test("parser warnings prioritize actionable incidents and preserve stable order", () => {
+  assert.deepEqual(prioritizeSessionWarnings([
+    "source: Claude Code",
+    "model inferred as opus",
+    "model missing from trace",
+    "malformed line 4 skipped",
+    "hook error: post-tool",
+  ]), [
+    "hook error: post-tool",
+    "malformed line 4 skipped",
+    "model missing from trace",
+    "model inferred as opus",
+    "source: Claude Code",
+  ]);
 });
 
 test("selectVisibleSessions sort modes order correctly and do not mutate input", () => {
@@ -247,6 +278,7 @@ test("full detail loader rejects paths outside the selected live source", () => 
   try {
     fs.writeFileSync(outside, "{}", "utf8");
     assert.equal(readLiveSessionDetail(outside, "codex"), null);
+    assert.equal(readLiveSessionDetail("x".repeat(5000), "codex"), null, "oversized server-action path input is rejected before resolution");
   } finally {
     fs.rmSync(path.dirname(outside), { recursive: true, force: true });
   }

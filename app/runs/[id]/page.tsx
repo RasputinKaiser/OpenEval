@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { getRun, listRunCases } from "@/lib/db";
 import RunDetailClient from "@/components/RunDetailClient";
+import EvaluateNav from "@/components/EvaluateNav";
 
 export const dynamic = "force-dynamic";
 
@@ -12,11 +13,14 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
   const harnessInfo = cases.find((c) => c.harness_info)?.harness_info;
   return (
     <main className="p-4 max-w-7xl mx-auto">
+      <EvaluateNav />
       <RunDetailClient
         runId={params.id}
         runName={run.name}
         initialCases={cases}
         running={run.status === "running"}
+        createdAt={run.created_at}
+        endedAt={run.ended_at}
         model={run.params.model}
         harness={run.params.harness}
         harnessInfo={harnessInfo}

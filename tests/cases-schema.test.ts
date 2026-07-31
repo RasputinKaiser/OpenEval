@@ -60,3 +60,16 @@ test("every shipped case loads via loadCasesStrict with zero validation errors",
     assert.ok(c.graders.length >= 1, `${c.id}: no graders`);
   }
 });
+
+test("creative lab cases declare an intent and use more than one artifact medium", async () => {
+  const cases = await loadCasesStrict({ force: true });
+  const creative = cases.filter((c) => c.category === "visual-code");
+  assert.ok(creative.length >= 10, `expected a broad creative catalog, got ${creative.length}`);
+  assert.ok(creative.every((c) => c.benchmark?.intent), "every creative case needs a capability intent");
+  assert.ok(creative.every((c) => c.benchmark?.deliverable), "every creative case needs a concrete deliverable");
+  assert.ok(creative.every((c) => c.visual?.expected_artifacts?.length), "every creative case needs an expected artifact");
+  assert.ok(new Set(creative.map((c) => c.visual?.kind)).size >= 4, "creative cases should span at least four artifact kinds");
+  const voxel = creative.find((c) => c.id === "visual-isometric-voxel-world");
+  assert.equal(voxel?.visual?.expected_artifacts?.[0], "voxel-world.html");
+  assert.notEqual(voxel?.visual?.expected_artifacts?.[0], "voxel-world.svg");
+});

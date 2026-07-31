@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import fs from "node:fs";
-import { DB_PATH, ensureDirs } from "./config";
+import path from "node:path";
+import { DB_PATH, ROOT, TRANSCRIPTS_DIR, WORKDIRS_DIR, ensureDirs } from "./config";
 import type { RunCaseRecord, RunRecord, RunSummary } from "./types";
 
 let db: Database.Database | null = null;
@@ -293,8 +294,226 @@ export interface DbStats {
   recovery: DbRecoveryNotice | null;
 }
 
+export type StorageInventoryStatus = "measured" | "missing" | "partial";
+
+export interface StorageInventoryEntry {
+  id: "eval-db" | "live-cache" | "transcripts" | "workdirs" | "reports" | "settings";
+  label: string;
+  path: string;
+  bytes: number;
+  files: number;
+  directories: number;
+  status: StorageInventoryStatus;
+  retention: string;
+}
+
+export interface StorageInventory {
+  generatedAt: number;
+  totalBytes: number;
+  complete: boolean;
+  entries: StorageInventoryEntry[];
+  warnings: string[];
+}
+
+type InventoryTarget = {
+  id: StorageInventoryEntry["id"];
+  label: string;
+  path: string;
+  kind: "files" | "directory";
+  retention: string;
+};
+
+type InventoryMeasurement = Pick<StorageInventoryEntry, "bytes" | "files" | "directories" | "status"> & { warnings: string[] };
+
+const STORAGE_INVENTORY_ENTRY_CAP = 100_000;
+const STORAGE_INVENTORY_DEPTH_CAP = 64;
+
+const INVENTORY_TARGETS: InventoryTarget[] = [
+  {
+    id: "eval-db",
+    label: "Evaluation database",
+    path: DB_PATH,
+    kind: "files",
+    retention: "Run rows and events are retained; workdir cleanup does not remove them.",
+  },
+  {
+    id: "live-cache",
+    label: "Live parsed cache",
+    path: path.join(ROOT, "data", "live-cache.db"),
+    kind: "files",
+    retention: "Rebuildable parsed summaries; removing the cache would force a re-parse, not remove raw transcripts.",
+  },
+  {
+    id: "transcripts",
+    label: "Raw transcripts",
+    path: TRANSCRIPTS_DIR,
+    kind: "directory",
+    retention: "Raw transcript JSONL is retained independently of workdir cleanup and is not changed by this inventory.",
+  },
+  {
+    id: "workdirs",
+    label: "Run workdirs",
+    path: WORKDIRS_DIR,
+    kind: "directory",
+    retention: "Terminal evidence; automatic cleanup keeps the five most recent run groups.",
+  },
+  {
+    id: "reports",
+    label: "Report bundles",
+    path: path.join(ROOT, "data", "reports"),
+    kind: "directory",
+    retention: "Generated reports survive workdir cleanup and are not changed by this inventory.",
+  },
+  {
+    id: "settings",
+    label: "Saved settings",
+    path: path.join(ROOT, "data", "settings.json"),
+    kind: "files",
+    retention: "Small local judge-setting metadata file.",
+  },
+];
+
 function fileSize(p: string): number {
   try { return fs.statSync(p).size; } catch { return 0; }
+}
+
+function measureFileSet(paths: string[]): InventoryMeasurement {
+  let bytes = 0;
+  let files = 0;
+  const warnings: string[] = [];
+  for (const filePath of paths) {
+    try {
+      const stat = fs.lstatSync(filePath);
+      if (stat.isSymbolicLink() || !stat.isFile()) {
+        warnings.push(`Skipped non-regular storage entry: ${filePath}`);
+        continue;
+      }
+      bytes += stat.size;
+      files += 1;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException)?.code !== "ENOENT") {
+        warnings.push(`Could not stat storage entry ${filePath}: ${String((error as Error)?.message ?? error)}`);
+      }
+    }
+  }
+  return {
+    bytes,
+    files,
+    directories: 0,
+    status: warnings.length ? "partial" : files ? "measured" : "missing",
+    warnings,
+  };
+}
+
+function measureDirectory(root: string): InventoryMeasurement {
+  let bytes = 0;
+  let files = 0;
+  let directories = 0;
+  let visited = 0;
+  const warnings: string[] = [];
+
+  try {
+    const rootStat = fs.lstatSync(root);
+    if (rootStat.isSymbolicLink() || !rootStat.isDirectory()) {
+      return {
+        bytes: 0,
+        files: 0,
+        directories: 0,
+        status: "partial",
+        warnings: [`Skipped non-directory storage root: ${root}`],
+      };
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
+      return { bytes: 0, files: 0, directories: 0, status: "missing", warnings: [] };
+    }
+    return {
+      bytes: 0,
+      files: 0,
+      directories: 0,
+      status: "partial",
+      warnings: [`Could not stat storage directory ${root}: ${String((error as Error)?.message ?? error)}`],
+    };
+  }
+
+  const stack: Array<{ directory: string; depth: number }> = [{ directory: root, depth: 0 }];
+
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+    let children: fs.Dirent[];
+    try {
+      children = fs.readdirSync(current.directory, { withFileTypes: true });
+    } catch (error) {
+      warnings.push((error as NodeJS.ErrnoException)?.code === "ENOENT"
+        ? `Storage directory disappeared during inventory: ${current.directory}`
+        : `Could not read storage directory ${current.directory}: ${String((error as Error)?.message ?? error)}`);
+      continue;
+    }
+
+    for (const child of children) {
+      visited += 1;
+      if (visited > STORAGE_INVENTORY_ENTRY_CAP) {
+        warnings.push(`Storage inventory stopped after ${STORAGE_INVENTORY_ENTRY_CAP.toLocaleString()} entries; byte totals are a lower bound.`);
+        return { bytes, files, directories, status: "partial", warnings };
+      }
+      const childPath = path.join(current.directory, child.name);
+      if (child.isSymbolicLink()) {
+        warnings.push(`Skipped symbolic link during storage inventory: ${childPath}`);
+        continue;
+      }
+      if (child.isDirectory()) {
+        directories += 1;
+        if (current.depth >= STORAGE_INVENTORY_DEPTH_CAP) {
+          warnings.push(`Storage inventory depth cap reached at ${childPath}; byte totals are a lower bound.`);
+          continue;
+        }
+        stack.push({ directory: childPath, depth: current.depth + 1 });
+        continue;
+      }
+      if (!child.isFile()) continue;
+      try {
+        bytes += fs.lstatSync(childPath).size;
+        files += 1;
+      } catch (error) {
+        warnings.push(`Could not stat storage entry ${childPath}: ${String((error as Error)?.message ?? error)}`);
+      }
+    }
+  }
+
+  return {
+    bytes,
+    files,
+    directories,
+    status: warnings.length ? "partial" : files || directories ? "measured" : "missing",
+    warnings,
+  };
+}
+
+export function getStorageInventory(): StorageInventory {
+  const warnings: string[] = [];
+  const entries = INVENTORY_TARGETS.map((target) => {
+    const measurement = target.kind === "files"
+      ? measureFileSet([target.path, `${target.path}-wal`, `${target.path}-shm`].filter((candidate) => target.id !== "settings" || candidate === target.path))
+      : measureDirectory(target.path);
+    warnings.push(...measurement.warnings);
+    return {
+      id: target.id,
+      label: target.label,
+      path: target.path,
+      bytes: measurement.bytes,
+      files: measurement.files,
+      directories: measurement.directories,
+      status: measurement.status,
+      retention: target.retention,
+    } satisfies StorageInventoryEntry;
+  });
+  return {
+    generatedAt: Date.now(),
+    totalBytes: entries.reduce((sum, entry) => sum + entry.bytes, 0),
+    complete: entries.every((entry) => entry.status !== "partial"),
+    entries,
+    warnings,
+  };
 }
 
 export function getDbStats(): DbStats {
@@ -460,6 +679,12 @@ export function appendEvent(runId: string, kind: string, payload: unknown, caseI
 
 export function listEvents(runId: string, sinceId = 0, limit = 500): Array<{ id: number; run_id: string; case_id: string | null; kind: string; payload_json: string; at: number }> {
   return getDb().prepare(`SELECT * FROM events WHERE run_id = ? AND id > ? ORDER BY id ASC LIMIT ?`).all(runId, sinceId, limit) as any[];
+}
+
+/** Cursor just before the latest bounded activity window for a run. */
+export function recentEventCursor(runId: string, limit = 200): number {
+  const row = getDb().prepare(`SELECT id FROM events WHERE run_id = ? ORDER BY id DESC LIMIT 1 OFFSET ?`).get(runId, Math.max(0, limit - 1)) as { id?: number } | undefined;
+  return typeof row?.id === "number" ? Math.max(0, row.id - 1) : 0;
 }
 
 export function getLastEventAt(runId: string): number | null {

@@ -4,9 +4,10 @@ import Database from "better-sqlite3";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { _setCacheDbForTest } from "../lib/live-cache";
+import { _setCacheDbForTest, PARSER_VERSION } from "../lib/live-cache";
 import {
   compactDisplayPath,
+  getErroringTurns,
   parseSessionTranscript,
   isPathInLiveSource,
   redactSensitiveText,
@@ -16,10 +17,13 @@ import {
   summarizeCodexSessionFile,
   summarizeLiveSessionFile,
 } from "../lib/live";
+import { aggregate } from "../lib/live/aggregate";
+import { resolveLiveSource } from "../lib/live/sources";
 import { HARNESS_DESC_DIR } from "../lib/config";
 import { JUDGE_PROMPT_MARKER } from "../lib/insights/signals";
 import { estimateCostUsd } from "../lib/pricing";
 import { GET as liveGet } from "../app/api/live/route";
+import { readCodexConversationMessages } from "../lib/live/parse-codex";
 
 // Parsing goes through the live-cache; point it at a throwaway in-memory DB so
 // parallel test processes never race on the shared .test-data SQLite cache.
@@ -44,6 +48,41 @@ function writeSession(lines: unknown[], extras: string[] = []): string {
   return file;
 }
 
+test("Codex thread/item rollouts preserve lineage, prose, measured usage, tools, and turn completion", () => {
+  const file = writeSession([
+    { type: "thread.started", timestamp: "2026-07-01T00:00:00.000Z", thread_id: "thread-new", cwd: "/repo", source: { subagent: { parent_thread_id: "parent", agent_nickname: "Worker" } } },
+    { type: "item.completed", timestamp: "2026-07-01T00:00:01.000Z", item: { id: "user-1", type: "user_message", text: "Inspect the parser", model: "gpt-5.6-luna" } },
+    { type: "item.completed", timestamp: "2026-07-01T00:00:02.000Z", usage: { last_token_usage: { input_tokens: 100, output_tokens: 20, cached_input_tokens: 10 } }, item: { id: "assistant-1", type: "agent_message", text: "The parser is covered.", model: "gpt-5.6-luna" } },
+    { type: "item.completed", timestamp: "2026-07-01T00:00:03.000Z", item: { id: "call-1", type: "function_call", call_id: "call-1", name: "exec_command", arguments: "{}" } },
+    { type: "item.completed", timestamp: "2026-07-01T00:00:04.000Z", item: { id: "output-1", type: "function_call_output", call_id: "call-1", output: "Exit code: 1\\nfailed" } },
+    { type: "turn.completed", timestamp: "2026-07-01T00:00:05.000Z", duration_ms: 1234, status: "completed" },
+  ]);
+  const session = summarizeCodexSessionFile(file, "2026/07/01", Date.parse("2026-07-01T00:00:00.000Z"));
+  assert.ok(session);
+  assert.equal(PARSER_VERSION, 23);
+  assert.equal(session.sessionId, "thread-new");
+  assert.equal(session.isSubagent, true);
+  assert.equal(session.parentSessionId, "parent");
+  assert.equal(session.agentLabel, "Worker");
+  assert.equal(session.lastPromptPreview, "Inspect the parser");
+  assert.equal(session.model, "gpt-5.6-luna");
+  assert.equal(session.inputTokens, 90);
+  assert.equal(session.outputTokens, 20);
+  assert.equal(session.cacheReadTokens, 10);
+  assert.equal(session.durationMs, 1234);
+  assert.equal(session.numTurns, 1);
+  assert.equal(session.toolCalls, 1);
+  assert.equal(session.toolErrors, 1);
+  assert.equal(session.isError, true);
+
+  const messages = [...readCodexConversationMessages([
+    JSON.stringify({ type: "event_msg", payload: { type: "user_message", message: "same" } }),
+    JSON.stringify({ type: "response_item", payload: { type: "message", role: "user", content: [{ text: "same" }] } }),
+    JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "done" } }),
+  ])];
+  assert.deepEqual(messages.map((message) => [message.role, message.text]), [["user", "same"], ["assistant", "done"]]);
+});
+
 test("parseSessionTranscript opens Hermes single-JSON sessions", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "openeval-hermes-transcript-"));
   const file = path.join(dir, "session_20260715_000000_demo.json");
@@ -64,8 +103,196 @@ test("parseSessionTranscript opens Hermes single-JSON sessions", () => {
     assert.equal(parsed.error, undefined);
     assert.ok(parsed.turns.some((turn) => turn.label === "You"));
     assert.ok(parsed.turns.some((turn) => turn.label === "Tool: bash"));
-    assert.ok(parsed.turns.some((turn) => turn.label === "Tool result — error"));
+    assert.ok(parsed.turns.some((turn) => turn.label === "bash result — error"));
     assert.equal(parsed.turns.some((turn) => turn.type === "malformed"), false);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("parseSessionTranscript preserves new Codex thread/item prose and tool evidence", () => {
+  const file = writeSession([
+    { type: "thread.started", timestamp: "2026-07-01T00:00:00.000Z", thread_id: "thread-transcript", cwd: "/repo" },
+    { type: "item.completed", timestamp: "2026-07-01T00:00:01.000Z", item: { id: "user-1", type: "user_message", text: "Inspect the parser" } },
+    { type: "item.completed", timestamp: "2026-07-01T00:00:02.000Z", item: { id: "assistant-1", type: "agent_message", text: "I found the parser." } },
+    { type: "item.completed", timestamp: "2026-07-01T00:00:03.000Z", item: { id: "call-1", type: "function_call", name: "exec_command", arguments: "{\"cmd\":\"npm test\"}" } },
+    { type: "item.completed", timestamp: "2026-07-01T00:00:04.000Z", item: { id: "output-1", type: "function_call_output", call_id: "call-1", output: "Exit code: 1\\nfailed" } },
+    { type: "turn.completed", timestamp: "2026-07-01T00:00:05.000Z", duration_ms: 1234, status: "completed" },
+  ]);
+  const parsed = parseSessionTranscript(file, "jsonl-dir");
+  assert.equal(parsed.error, undefined);
+  assert.deepEqual(
+    parsed.turns.filter((turn) => turn.role !== "meta").map((turn) => [turn.role, turn.label]),
+    [["user", "You"], ["assistant", "Assistant"], ["tool", "Tool: exec_command"], ["tool", "exec_command result — error"]],
+  );
+  assert.equal(parsed.turns.some((turn) => turn.label === "Turn completed"), true);
+  assert.equal(parsed.turns.some((turn) => turn.severity === "error"), true);
+});
+
+test("Codex custom and tool-search records are counted, paired, and rendered as tool evidence", () => {
+  const file = writeSession([
+    { timestamp: "2026-07-30T00:00:00.000Z", type: "session_meta", payload: { id: "codex-custom-tools", cwd: "/repo" } },
+    { timestamp: "2026-07-30T00:00:01.000Z", type: "turn_context", payload: { model: "gpt-5.6-sol" } },
+    { timestamp: "2026-07-30T00:00:02.000Z", type: "response_item", payload: {
+      type: "custom_tool_call", call_id: "custom-1", name: "exec", status: "completed", input: "tools.exec_command({cmd:'npm test'})",
+    } },
+    { timestamp: "2026-07-30T00:00:04.500Z", type: "response_item", payload: {
+      type: "custom_tool_call_output", call_id: "custom-1", output: [{ type: "input_text", text: "Script completed\nOutput:\n42" }],
+    } },
+    { timestamp: "2026-07-30T00:00:05.000Z", type: "response_item", payload: {
+      type: "tool_search_call", call_id: "search-1", status: "completed", arguments: { query: "calendar tool" },
+    } },
+    { timestamp: "2026-07-30T00:00:06.000Z", type: "response_item", payload: {
+      type: "tool_search_output", call_id: "search-1", status: "completed",
+      tools: [{ type: "namespace", tools: [{ type: "function", name: "calendar_list" }] }],
+    } },
+  ]);
+
+  const session = summarizeCodexSessionFile(file, "2026/07/30", Date.parse("2026-07-30T00:00:00.000Z"));
+  assert.ok(session);
+  assert.equal(session.toolCalls, 2);
+  assert.equal(session.toolErrors, 0);
+  assert.deepEqual(session.toolSummaries.map(({ name, calls }) => [name, calls]), [["exec", 1], ["tool_search", 1]]);
+
+  const transcript = parseSessionTranscript(file);
+  const tools = transcript.turns.filter((turn) => turn.role === "tool");
+  assert.deepEqual(tools.map((turn) => [turn.tool?.name, turn.tool?.phase]), [
+    ["exec", "call"],
+    ["exec", "result"],
+    ["tool_search", "call"],
+    ["tool_search", "result"],
+  ]);
+  assert.equal(tools[1].tool?.durationMs, 2500);
+  assert.match(tools[1].preview, /Script completed/);
+  assert.match(tools[3].preview, /calendar_list/);
+});
+
+test("parseSessionTranscript hides only adjacent Codex protocol mirrors", () => {
+  const sharedAssistant = "The parser is ready.";
+  const sharedUser = "Inspect the parser.";
+  const longPrefix = "x".repeat(520);
+  const file = writeSession([
+    { timestamp: "2026-07-30T00:00:00.000Z", type: "event_msg", payload: { type: "agent_message", message: sharedAssistant } },
+    { timestamp: "2026-07-30T00:00:00.010Z", type: "response_item", payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: sharedAssistant }] } },
+    { timestamp: "2026-07-30T00:00:01.000Z", type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: sharedUser }] } },
+    { timestamp: "2026-07-30T00:00:01.010Z", type: "event_msg", payload: { type: "user_message", message: sharedUser } },
+    { timestamp: "2026-07-30T00:00:02.000Z", type: "event_msg", payload: { type: "user_message", message: "repeat intentionally" } },
+    { timestamp: "2026-07-30T00:00:03.000Z", type: "event_msg", payload: { type: "user_message", message: "repeat intentionally" } },
+    { timestamp: "2026-07-30T00:00:04.000Z", type: "event_msg", payload: { type: "agent_message", message: `${longPrefix}A` } },
+    { timestamp: "2026-07-30T00:00:04.010Z", type: "response_item", payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: `${longPrefix}B` }] } },
+  ]);
+
+  const parsed = parseSessionTranscript(file);
+  assert.deepEqual(parsed.normalization, {
+    rawRecords: 8,
+    suppressedMirrors: 2,
+    compoundRecords: 0,
+  });
+  assert.equal(parsed.turns.length, 6);
+  assert.equal(parsed.turns.filter((turn) => turn.preview === "repeat intentionally").length, 2, "same-envelope repeated prompts are genuine turns");
+  assert.equal(parsed.turns.filter((turn) => turn.role === "assistant").length, 3, "long messages sharing the preview prefix are not collapsed");
+});
+
+test("parseSessionTranscript preserves multimodal evidence while collapsing the text echo", () => {
+  const prompt = "Compare these two screenshots and improve transcript capture.";
+  const file = writeSession([
+    {
+      timestamp: "2026-07-30T00:00:00.000Z",
+      type: "response_item",
+      payload: {
+        type: "message",
+        role: "user",
+        content: [
+          { type: "input_text", text: prompt },
+          { type: "input_text", text: "/tmp/screenshot-one.png" },
+          { type: "input_image", image_url: "data:image/png;base64,AAAA", detail: "auto" },
+          { type: "input_text", text: "<image>" },
+          { type: "input_text", text: "/tmp/screenshot-two.png" },
+          { type: "input_image", image_url: "data:image/png;base64,BBBB", detail: "auto" },
+          { type: "input_text", text: "</image>" },
+        ],
+      },
+    },
+    {
+      timestamp: "2026-07-30T00:00:00.010Z",
+      type: "event_msg",
+      payload: { type: "user_message", message: prompt },
+    },
+  ]);
+
+  const parsed = parseSessionTranscript(file);
+  assert.equal(parsed.turns.length, 1);
+  assert.equal(parsed.turns[0].preview, prompt);
+  assert.deepEqual(parsed.turns[0].media, { images: 2 });
+  assert.deepEqual(parsed.normalization, {
+    rawRecords: 2,
+    suppressedMirrors: 1,
+    compoundRecords: 0,
+  });
+});
+
+test("parseSessionTranscript expands compound Claude tool records with prose, IDs, outcomes, and timing", () => {
+  const file = writeSession([
+    {
+      timestamp: "2026-07-30T00:00:00.000Z",
+      type: "assistant",
+      message: {
+        content: [
+          { type: "thinking", thinking: "I should inspect both files." },
+          { type: "text", text: "I will compare the files." },
+          { type: "tool_use", id: "bash-1", name: "Bash", input: { command: "npm test" } },
+          { type: "tool_use", id: "read-1", name: "Read", input: { file_path: "state.yaml" } },
+        ],
+      },
+    },
+    {
+      timestamp: "2026-07-30T00:00:02.500Z",
+      type: "user",
+      message: {
+        content: [
+          { type: "text", text: "Keep the raw file unchanged." },
+          { type: "tool_result", tool_use_id: "bash-1", content: "90 tests passed" },
+          { type: "tool_result", tool_use_id: "read-1", content: "permission denied", is_error: true },
+        ],
+      },
+    },
+  ]);
+
+  const parsed = parseSessionTranscript(file);
+  assert.deepEqual(parsed.normalization, {
+    rawRecords: 2,
+    suppressedMirrors: 0,
+    compoundRecords: 2,
+  });
+  assert.deepEqual(parsed.turns.map((turn) => [turn.role, turn.label]), [
+    ["assistant", "Thinking"],
+    ["assistant", "Assistant"],
+    ["tool", "Tool: Bash"],
+    ["tool", "Tool: Read"],
+    ["user", "You"],
+    ["tool", "Bash result"],
+    ["tool", "Read result — error"],
+  ]);
+  const tools = parsed.turns.filter((turn) => turn.role === "tool");
+  assert.deepEqual(tools.map((turn) => [turn.tool?.callId, turn.tool?.name, turn.tool?.phase]), [
+    ["bash-1", "Bash", "call"],
+    ["read-1", "Read", "call"],
+    ["bash-1", "Bash", "result"],
+    ["read-1", "Read", "result"],
+  ]);
+  assert.equal(tools[2].tool?.durationMs, 2500);
+  assert.equal(tools[3].tool?.durationMs, 2500);
+  assert.equal(tools[3].severity, "error");
+});
+
+test("error timeline context is capped and reports omitted warning turns", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "openeval-live-error-context-"));
+  const file = path.join(dir, "session.jsonl");
+  fs.writeFileSync(file, Array.from({ length: 400 }, () => "not-json").join("\n"), "utf8");
+  try {
+    const result = getErroringTurns(file, "jsonl-dir");
+    assert.equal(result.turns.length, 240);
+    assert.equal(result.truncated, true);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -470,9 +697,85 @@ test("Claude subagent worktree transcripts derive a unique child identity", () =
   const session = summarizeLiveSessionFile(file, "/tmp/project", Date.parse("2026-07-15T00:00:00.000Z"));
   assert.ok(session);
   assert.equal(session.sessionId, "parent-session/agent-a51a701450616629b");
+  assert.equal(session.isSubagent, true);
+  assert.equal(session.parentSessionId, "parent-session");
+  assert.equal(session.agentLabel, "agent-a51a701450616629b");
   assert.equal(session.project, "/tmp/repo/.claude/worktrees/child-worktree");
   assert.equal(session.traceGraph.agentCount, 1);
   assert.ok(session.parseWarnings.includes("source: subagent"));
+});
+
+test("Claude collection discovers bounded nested subagent transcripts", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "openeval-claude-projects-"));
+  const alias = `${root}-alias`;
+  const projectDir = path.join(root, "project-a");
+  const parentDir = path.join(projectDir, "parent-session");
+  const subagentsDir = path.join(parentDir, "subagents");
+  fs.mkdirSync(subagentsDir, { recursive: true });
+  fs.writeFileSync(path.join(projectDir, "parent-session.jsonl"), [
+    JSON.stringify({
+      type: "user", timestamp: "2026-07-15T00:00:00.000Z", sessionId: "parent-session",
+      uuid: "parent-user", parentUuid: null, cwd: "/tmp/project-a", message: { content: "Coordinate the work" },
+    }),
+    JSON.stringify({
+      type: "assistant", timestamp: "2026-07-15T00:00:01.000Z", sessionId: "parent-session",
+      uuid: "parent-assistant", parentUuid: "parent-user", cwd: "/tmp/project-a",
+      message: { model: "claude-sonnet-5", content: [{ type: "text", text: "Delegating." }], usage: { input_tokens: 12, output_tokens: 3 } },
+    }),
+  ].join("\n"));
+  fs.writeFileSync(path.join(subagentsDir, "agent-child.jsonl"), [
+    JSON.stringify({
+      type: "user", timestamp: "2026-07-15T00:00:02.000Z", sessionId: "parent-session",
+      uuid: "child-user", parentUuid: null, isSidechain: true, agentId: "child",
+      cwd: "/tmp/project-a/.claude/worktrees/child", message: { content: "Inspect the fixture" },
+    }),
+    JSON.stringify({
+      type: "assistant", timestamp: "2026-07-15T00:00:03.000Z", sessionId: "parent-session",
+      uuid: "child-assistant", parentUuid: "child-user", isSidechain: true, agentId: "child",
+      cwd: "/tmp/project-a/.claude/worktrees/child",
+      message: { model: "claude-sonnet-5", content: [{ type: "text", text: "Done." }], usage: { input_tokens: 8, output_tokens: 2 } },
+    }),
+  ].join("\n"));
+  const workflowDir = path.join(subagentsDir, "workflows", "wf-demo");
+  fs.mkdirSync(workflowDir, { recursive: true });
+  fs.writeFileSync(path.join(workflowDir, "agent-workflow.jsonl"), [
+    JSON.stringify({
+      type: "user", timestamp: "2026-07-15T00:00:04.000Z", sessionId: "parent-session",
+      uuid: "workflow-user", parentUuid: null, isSidechain: true, agentId: "workflow",
+      cwd: "/tmp/project-a/.claude/worktrees/workflow", message: { content: "Run the workflow check" },
+    }),
+    JSON.stringify({
+      type: "assistant", timestamp: "2026-07-15T00:00:05.000Z", sessionId: "parent-session",
+      uuid: "workflow-assistant", parentUuid: "workflow-user", isSidechain: true, agentId: "workflow",
+      cwd: "/tmp/project-a/.claude/worktrees/workflow",
+      message: { model: "claude-sonnet-5", content: [{ type: "text", text: "Workflow done." }], usage: { input_tokens: 9, output_tokens: 2 } },
+    }),
+  ].join("\n"));
+  fs.writeFileSync(path.join(subagentsDir, "agent-child.meta.json"), "{}", "utf8");
+  fs.writeFileSync(path.join(workflowDir, "journal.jsonl"), JSON.stringify({ type: "result", agentId: "workflow", result: "bookkeeping only" }), "utf8");
+  fs.symlinkSync(root, alias, "dir");
+
+  try {
+    const data = scanSourceSessions({
+      id: "claude-test",
+      label: "Claude Code",
+      roots: [root, alias],
+      format: "claude-projects",
+    }, 10, { sessionRetention: 10 });
+    assert.equal(data.scanCoverage.discoveredFiles, 3);
+    assert.equal(data.totalSessions, 3);
+    assert.equal(data.subagentSessions, 2);
+    const child = data.sessions.find((session) => session.agentLabel === "agent-child");
+    assert.equal(child?.sessionId, "parent-session/agent-child");
+    assert.equal(child?.parentSessionId, "parent-session");
+    assert.ok(child?.path?.endsWith("/parent-session/subagents/agent-child.jsonl"));
+    const workflow = data.sessions.find((session) => session.agentLabel === "agent-workflow");
+    assert.equal(workflow?.sessionId, "parent-session/agent-workflow");
+    assert.ok(workflow?.path?.endsWith("/parent-session/subagents/workflows/wf-demo/agent-workflow.jsonl"));
+  } finally {
+    fs.rmSync(alias, { force: true });
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("scanLiveSessions reads descriptor liveTrace usage without fabricating missing values", () => {
@@ -533,13 +836,46 @@ test("scanLiveSessions reads descriptor liveTrace usage without fabricating miss
     assert.equal(data.usageSummary.totalCostUsd, 0.0123);
     assert.equal(data.usageSummary.sessionsWithMeasuredUsage, 1);
     assert.equal(data.usageSummary.sessionsWithMeasuredCost, 1);
+    assert.equal(data.usageSummary.sessionsWithCostEvidence, 1);
     assert.equal(data.usageSummary.tokenCoverage, 1);
+    assert.equal(data.usageSummary.costCoverage, 1);
     assert.equal(data.sessions[0].usageSegments.length, 1);
     assert.ok(isPathInLiveSource(path.join(root, "session.jsonl"), "tmp-live-source"));
     assert.equal(isPathInLiveSource(path.join(os.tmpdir(), "outside.jsonl"), "tmp-live-source"), false);
   } finally {
     fs.rmSync(descPath, { force: true });
     fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("measured zero cost remains cost evidence rather than missing coverage", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "openeval-live-zero-cost-"));
+  const file = path.join(dir, "session.jsonl");
+  fs.writeFileSync(file, JSON.stringify({
+    type: "done",
+    session_id: "zero-cost",
+    model: "api-model",
+    duration_ms: 10,
+    num_turns: 1,
+    usage: { input_tokens: 1, output_tokens: 0, cost_usd: 0 },
+  }), "utf8");
+  try {
+    const session = summarizeLiveSessionFile(file, dir, Date.now(), {
+      fields: {
+        sessionId: "session_id", model: "model", durationMs: "duration_ms", numTurns: "num_turns",
+        inputTokens: "usage.input_tokens", outputTokens: "usage.output_tokens", costUsd: "usage.cost_usd",
+      },
+      sourceFormat: "jsonl-dir",
+    });
+    assert.ok(session);
+    const data = aggregate([session!]);
+    assert.equal(data.usageSummary.sessionsWithMeasuredCost, 1);
+    assert.equal(data.usageSummary.sessionsWithCostEvidence, 1);
+    assert.equal(data.usageSummary.sessionsWithPricedUsage, 0);
+    assert.equal(data.usageSummary.costCoverage, 1);
+    assert.equal(data.byModel[0].measuredCostSessions, 1);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 });
 
@@ -643,8 +979,34 @@ test("summarizeCodexSessionFile keeps the root identity when fork context embeds
   const session = summarizeCodexSessionFile(file, "2026/07/15", Date.parse("2026-07-15T01:53:29.000Z"));
   assert.ok(session);
   assert.equal(session.sessionId, "child-thread");
+  assert.equal(session.isSubagent, true);
+  assert.equal(session.parentSessionId, "parent-thread");
   assert.equal(session.project, "/tmp/child");
   assert.ok(session.parseWarnings.includes("source: Codex Desktop / subagent 0.144.2"));
+});
+
+test("summarizeCodexSessionFile links legacy root-level subagent metadata", () => {
+  const file = writeSession([
+    {
+      timestamp: "2026-07-15T02:00:00.000Z",
+      type: "session_meta",
+      payload: {
+        id: "legacy-child",
+        cwd: "/tmp/legacy-child",
+        thread_source: "subagent",
+        source: { subagent: { other: "legacy" } },
+        parent_thread_id: "legacy-parent",
+        agent_nickname: "Legacy worker",
+      },
+    },
+    { timestamp: "2026-07-15T02:00:01.000Z", type: "event_msg", payload: { type: "agent_message", message: "done" } },
+  ]);
+
+  const session = summarizeCodexSessionFile(file, "2026/07/15", Date.parse("2026-07-15T02:00:00.000Z"));
+  assert.ok(session);
+  assert.equal(session.isSubagent, true);
+  assert.equal(session.parentSessionId, "legacy-parent");
+  assert.equal(session.agentLabel, "Legacy worker");
 });
 
 test("summarizeCodexSessionFile rejects placeholder models from metadata and turn context", () => {
@@ -1097,7 +1459,9 @@ test("live API serves seeded descriptor sessions with exact content and rejects 
     assert.equal(data.usageSummary.totalCostUsd, 0.75);
     assert.equal(data.usageSummary.sessionsWithMeasuredUsage, 2);
     assert.equal(data.usageSummary.sessionsWithMeasuredCost, 2);
+    assert.equal(data.usageSummary.sessionsWithCostEvidence, 2);
     assert.equal(data.usageSummary.tokenCoverage, 1);
+    assert.equal(data.usageSummary.costCoverage, 1);
     assert.equal(typeof data.sig, "string");
 
     // limit is respected: same source, capped to one session.
@@ -1122,28 +1486,67 @@ test("live API serves seeded descriptor sessions with exact content and rejects 
   }
 });
 
-test("live API resolves built-in default roots without throwing on any machine", async () => {
-  // Default-root resolution smoke test: ncode/codex declare home-relative
-  // liveTrace roots. Assert only shape — never the machine's session content —
-  // so this passes on a box with zero, one, or a thousand real sessions.
-  const harnesses = ["ncode", "codex"];
-  const responses = await Promise.all(
-    harnesses.map((harness) => liveGet(new Request(`http://localhost/api/live?harness=${harness}&limit=1`))),
-  );
-  const payloads = await Promise.all(responses.map((response) => response.json()));
-  harnesses.forEach((harness, i) => {
-    assert.equal(responses[i].status, 200);
-    const data = payloads[i];
-    assert.equal(data.sourceHarness, harness);
-    assert.equal(data.sourceStatus, "available");
-    assert.ok(Array.isArray(data.sessions));
-    assert.equal(typeof data.totalSessions, "number");
-    assert.ok(data.totalSessions <= 1, `limit=1 respected for ${harness}`);
-    assert.equal(data.sessions.length, data.totalSessions);
-    assert.equal(typeof data.usageSummary.totalTokens, "number");
-    assert.ok(Array.isArray(data.scanWarnings));
-    assert.equal(typeof data.sig, "string");
+test("live API resolves built-in-format roots through isolated descriptor fixtures", async () => {
+  // Keep both built-in trace layouts covered without scanning the operator's
+  // ~/.ncode or ~/.codex trees. The API only needs the descriptor contract here;
+  // the seeded descriptor test above covers non-empty session content.
+  const builtInRoots = [
+    { harness: "ncode", format: "claude-projects", roots: [path.join(os.homedir(), ".ncode", "projects")] },
+    { harness: "codex", format: "codex-sessions", roots: [path.join(os.homedir(), ".codex", "sessions"), path.join(os.homedir(), ".codex", "archived_sessions")] },
+  ];
+  for (const expected of builtInRoots) {
+    const source = resolveLiveSource(expected.harness);
+    assert.equal(source.status, "available");
+    assert.equal(source.format, expected.format);
+    assert.deepEqual(source.roots, expected.roots);
+  }
+
+  const runId = `tmp-live-default-${process.pid}-${Date.now()}`;
+  const fixtures = [
+    { id: `${runId}-ncode`, format: "claude-projects" as const, parser: "claude-stream-json" as const, maxDepth: 2 },
+    { id: `${runId}-codex`, format: "codex-sessions" as const, parser: "codex-jsonl" as const, maxDepth: 5 },
+  ].map((spec) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), `${spec.id}-root-`));
+    const descPath = path.join(HARNESS_DESC_DIR, `${spec.id}.harness.json`);
+    return { ...spec, root, descPath };
   });
+  fs.mkdirSync(HARNESS_DESC_DIR, { recursive: true });
+  for (const fixture of fixtures) {
+    fs.writeFileSync(fixture.descPath, JSON.stringify({
+      id: fixture.id,
+      label: `Temporary ${fixture.format} source`,
+      binNames: [fixture.id],
+      parser: fixture.parser,
+      argTemplate: ["run"],
+      liveTrace: { format: fixture.format, roots: [fixture.root], maxDepth: fixture.maxDepth },
+    }), "utf8");
+  }
+
+  try {
+    const responses = await Promise.all(
+      fixtures.map((fixture) => liveGet(new Request(`http://localhost/api/live?harness=${fixture.id}&limit=1`))),
+    );
+    const payloads = await Promise.all(responses.map((response) => response.json()));
+    fixtures.forEach((fixture, i) => {
+      assert.equal(responses[i].status, 200);
+      const data = payloads[i];
+      assert.equal(data.sourceHarness, fixture.id);
+      assert.equal(data.sourceStatus, "available");
+      assert.deepEqual(data.sessions, []);
+      assert.equal(data.totalSessions, 0);
+      assert.equal(data.scanCoverage.discoveredFiles, 0);
+      assert.equal(data.scanCoverage.scannedFiles, 0);
+      assert.equal(data.scanCoverage.partial, false);
+      assert.equal(typeof data.usageSummary.totalTokens, "number");
+      assert.ok(Array.isArray(data.scanWarnings));
+      assert.equal(typeof data.sig, "string");
+    });
+  } finally {
+    for (const fixture of fixtures) {
+      fs.rmSync(fixture.descPath, { force: true });
+      fs.rmSync(fixture.root, { recursive: true, force: true });
+    }
+  }
 });
 
 test("live API sig shortcut returns a tiny unchanged payload on match and the full payload otherwise", async () => {
@@ -1406,6 +1809,7 @@ test("scan fills the limit with real sessions past newer parse-dropped judge fil
       unscannedFiles: 1,
       archivedSessionsAdded: 0,
       truncated: true,
+      partial: true,
     });
 
     // limit=1 bounds the scan at 5 files — all six newest are droppable, so the
@@ -1424,7 +1828,22 @@ test("scan fills the limit with real sessions past newer parse-dropped judge fil
       unscannedFiles: 5,
       archivedSessionsAdded: 0,
       truncated: true,
+      partial: true,
     });
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("unreadable live source roots remain explicitly partial", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "openeval-live-partial-root-"));
+  const notADirectory = path.join(dir, "not-a-directory.jsonl");
+  fs.writeFileSync(notADirectory, "{}", "utf8");
+  try {
+    const data = scanSourceSessions({ id: "partial", label: "Partial", roots: [notADirectory], format: "jsonl-dir", maxDepth: 1 }, 10);
+    assert.equal(data.totalSessions, 0);
+    assert.equal(data.scanCoverage.partial, true);
+    assert.ok(data.scanWarnings.some((warning) => warning.includes("Could not read live trace directory")));
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

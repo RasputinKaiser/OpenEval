@@ -1,0 +1,79 @@
+{
+  "id": "swe-atomic-batch",
+  "difficulty": "hard",
+  "category": "agentic-swe",
+  "name": "Make a batch update atomic",
+  "description": "A small in-memory transaction helper leaks earlier writes when a later operation fails. Repair it so successful batches commit once, rejected batches restore the original state, and the trace records rollback versus commit explicitly.",
+  "tags": [
+    "bugfix",
+    "node",
+    "transaction",
+    "rollback",
+    "trace",
+    "recovery"
+  ],
+  "prompt": "Work test-first in this fixture. FIRST run `npm test` and inspect the failures. Then repair `src/transaction.js` so `applyTransaction(state, operations)` is atomic: valid debit/credit operations commit to a new state and append `transaction.committed`; invalid, overdraft, or unknown operations return `ok: false`, preserve the original state exactly, and append `transaction.rolled_back` without a commit event. Keep the ordered `transaction.started` and operation-applied events. Run `npm test` again after the fix. Do not modify `src/transaction.test.js` or `package.json`.",
+  "setup": {
+    "type": "fixture",
+    "fixture": "transactional-batch",
+    "init_git": true
+  },
+  "runner": {
+    "max_turns": 22,
+    "timeout_seconds": 240,
+    "permission_mode": "bypassPermissions"
+  },
+  "benchmark": {
+    "intent": "Whether an agent can preserve atomic state semantics and an auditable commit/rollback trace when a multi-step update partially fails.",
+    "deliverable": "A tested transaction helper with no partial state leak and explicit rollback/commit events.",
+    "evidence": ["deterministic", "trace"],
+    "usage": "medium"
+  },
+  "graders": [
+    {
+      "type": "tests_pass",
+      "command": "npm test",
+      "timeout_ms": 30000,
+      "min_passed": 4
+    },
+    {
+      "type": "exit_code",
+      "command": "node -e \"const {applyTransaction}=require('./src/transaction'); const before={balance:100,version:7}; const result=applyTransaction(before,[{type:'debit',amount:60},{type:'debit',amount:50}]); if(result.ok||JSON.stringify(result.state)!==JSON.stringify(before)||result.events.at(-1)?.type!=='transaction.rolled_back'||result.events.some(e=>e.type==='transaction.committed')) process.exit(1)\""
+    },
+    {
+      "type": "file_contains",
+      "path": "src/transaction.js",
+      "pattern": "transaction\\.rolled_back"
+    },
+    {
+      "type": "git_diff_contains",
+      "pathFilter": "src/transaction.js",
+      "pattern": "transaction\\.rolled_back"
+    },
+    {
+      "type": "files_unchanged",
+      "paths": ["src/transaction.test.js", "package.json"],
+      "forbidden": true
+    },
+    {
+      "type": "step",
+      "tool": "Bash",
+      "input_includes": "test",
+      "before_tool": "Edit",
+      "weight": 0.5
+    },
+    {
+      "type": "step",
+      "tool": "Bash",
+      "input_includes": "test",
+      "min_count": 2,
+      "weight": 0.5
+    }
+  ],
+  "pass_threshold": 0.8,
+  "oracle": {
+    "solve": "oracle/swe-atomic-batch.sh",
+    "noop_max_score": 0.2,
+    "known_bad": ["oracle/swe-atomic-batch-bad.sh"]
+  }
+}

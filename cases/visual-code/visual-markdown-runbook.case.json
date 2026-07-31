@@ -1,0 +1,31 @@
+{
+  "id": "visual-markdown-runbook",
+  "category": "visual-code",
+  "difficulty": "medium",
+  "name": "Write an incident runbook",
+  "description": "Turn a noisy evaluation failure into a compact runbook that a human can scan, follow, and safely roll back.",
+  "tags": ["visual-code", "markdown", "documentation", "mermaid", "incident-response"],
+  "split": "public",
+  "canary": "CANARY-RUNBOOK-2026-01",
+  "prompt": "Create a single Markdown file named RUNBOOK.md. Write a concise OpenEval incident runbook with these sections in this order: Situation, Decision, Verification, Rollback, and Owner notes. Include a fenced Mermaid flowchart that shows Queue to Analyze to Publish, with a named reject path from Analyze to Review. Include a small Markdown decision table with the exact columns Signal and Action. The Rollback section must contain a concrete command and a warning to preserve the raw transcript. Keep it self-contained: do not link to external sites, embed HTML, or create other files. This benchmark measures information architecture and operational usefulness, not a particular writing voice.",
+  "benchmark": {
+    "intent": "Whether the agent can turn an operational brief into a scan-friendly, actionable document with process structure and safe rollback guidance.",
+    "deliverable": "RUNBOOK.md",
+    "evidence": ["deterministic", "artifact"],
+    "usage": "low"
+  },
+  "setup": {"type": "none"},
+  "budget": {"max_turns": 14, "max_cost_usd": 0.65},
+  "visual": {"kind": "text", "expected_artifacts": ["RUNBOOK.md"]},
+  "graders": [
+    {"type": "file_exists", "path": "RUNBOOK.md", "weight": 10},
+    {"type": "exit_code", "command": "node -e \"const s=require('fs').readFileSync('RUNBOOK.md','utf8'); const h=['## Situation','## Decision','## Verification','## Rollback','## Owner notes']; let p=-1; for(const x of h){const n=s.indexOf(x); if(n<=p) process.exit(1); p=n} const has=(patterns)=>patterns.some((pattern)=>pattern.test(s)); if(!has([/Queue\\s*-->\\s*Analyze/i,/Q\\s*\\[\\s*Queue\\s*\\]\\s*-->\\s*A\\s*\\[\\s*Analyze\\s*\\]/i])||!has([/Analyze\\s*-->\\s*Publish/i,/A\\s*-->\\s*P\\s*\\[\\s*Publish\\s*\\]/i])||!has([/Analyze\\s*-->[^\\n]*reject[^\\n]*Review/i,/A\\s*-->[^\\n]*reject[^\\n]*R\\s*\\[\\s*Review\\s*\\]/i])) process.exit(1); if(!/preserve the raw transcript/i.test(s)) process.exit(1)\"", "weight": 26},
+    {"type": "file_contains", "path": "RUNBOOK.md", "pattern": "```mermaid[\\s\\S]*(?:graph|flowchart)\\s+(?:LR|TD)", "weight": 14},
+    {"type": "file_contains", "path": "RUNBOOK.md", "pattern": "\\|\\s*Signal\\s*\\|\\s*Action\\s*\\|", "weight": 14},
+    {"type": "file_contains", "path": "RUNBOOK.md", "pattern": "(?:git revert|npm run|rm -i|rollback)", "weight": 10},
+    {"type": "file_contains", "path": "RUNBOOK.md", "pattern": "https?://|<script\\b|<iframe\\b", "negate": true, "weight": 10, "forbidden": true},
+    {"type": "file_contains", "path": "RUNBOOK.md", "pattern": "raw transcript", "weight": 16}
+  ],
+  "pass_threshold": 1,
+  "oracle": {"solve": "oracle/visual-markdown-runbook.sh", "noop_max_score": 0.1, "known_bad": ["oracle/visual-markdown-runbook-bad.sh"]}
+}

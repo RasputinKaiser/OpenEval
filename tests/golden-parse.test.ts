@@ -101,7 +101,7 @@ test("golden: claude-projects interactive session (no result record)", () => {
   assert.equal(session.traceGraph.orphanMessages, 0);
   assert.equal(session.modeSummary.gitBranch, "main");
   assert.equal(session.cliVersion, "2.0.1");
-  assert.ok(session.parseWarnings.includes("no final result event found"));
+  assert.equal(session.parseWarnings.includes("no final result event found"), false);
   assert.ok(session.parseWarnings.includes("turn count inferred from user messages"));
 });
 

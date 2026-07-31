@@ -68,6 +68,18 @@ test("node version: fails below the engines floor", () => {
   }
 });
 
+test("node version: fails closed when the runtime version is malformed", () => {
+  const root = tmpdir("doctor-node-invalid-");
+  try {
+    writeHealthyCheckout(root, CURRENT_MAJOR);
+    const r = checkNodeVersion(root, "not-a-version");
+    assert.equal(r.status, "fail");
+    assert.match(r.detail, /Could not parse/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("better-sqlite3: loads on a healthy environment", async () => {
   const r = await checkBetterSqlite3();
   assert.equal(r.status, "ok");

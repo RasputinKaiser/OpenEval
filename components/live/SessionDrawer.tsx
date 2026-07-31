@@ -18,10 +18,11 @@ import {
   Zap,
 } from "lucide-react";
 import { compactDisplayPath } from "@/lib/redaction";
+import { fmtDateTime, fmtStableDateTime, fmtTime } from "@/lib/format";
 import { useFocusTrap } from "@/lib/use-focus-trap";
 import type { LiveSession, LiveSessionDetailResult, LiveSessionListItem, LiveTranscriptTurn, MetricSource, TranscriptResult } from "@/lib/live";
-import { collectionTranscriptHref, displayText, fmt, fmtBytes, fmtMs } from "./live-shared";
-import { ListStack, LoadingSkeletonRows, MetricGroup, QualityBadge, SourceChip, StatusPill, TinyMetric } from "./LivePrimitives";
+import { collectionTranscriptHref, decimateUsageSegments, displayText, fmt, fmtBytes, fmtMs, fmtUsd } from "./live-shared";
+import { IncidentBadges, ListStack, LoadingSkeletonRows, MetricGroup, QualityBadge, SourceChip, StatusPill, TinyMetric } from "./LivePrimitives";
 
 function DetailPanel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -32,21 +33,24 @@ function DetailPanel({ title, children }: { title: string; children: React.React
   );
 }
 
-function MetricCard({ label, value }: { label: string; value: string; source?: MetricSource }) {
-  return (
-    <div className="rounded-lg border border-bd bg-bg/45 p-3">
-      <div className="mb-1 text-[10px] uppercase tracking-wider text-fg-muted">{label}</div>
-      <div className="mono truncate text-base font-medium tabular-nums text-fg">{value}</div>
-    </div>
-  );
-}
-
 const SOURCE_BORDER: Record<MetricSource, string> = {
   measured: "border-ok/15 bg-ok/5",
   inferred: "border-accent/15 bg-accent/5",
   missing: "border-warn/15 bg-warn/5",
   malformed: "border-err/15 bg-err/5",
 };
+
+function MetricCard({ label, value, source }: { label: string; value: string; source?: MetricSource }) {
+  return (
+    <div className={clsx("rounded-lg border border-bd bg-bg/45 p-3", source && SOURCE_BORDER[source])}>
+      <div className="mb-1 flex items-center justify-between gap-2 text-[10px] uppercase tracking-wider text-fg-muted">
+        <span>{label}</span>
+        {source && <SourceChip label={source} source={source} />}
+      </div>
+      <div className="mono truncate text-base font-medium tabular-nums text-fg">{value}</div>
+    </div>
+  );
+}
 
 function SourceCell({ label, source }: { label: string; source: MetricSource }) {
   return (
@@ -68,7 +72,16 @@ function MiniStat({ label, value, icon: Icon, tone }: { label: string; value: st
   );
 }
 
-const TurnRow = React.memo(function TurnRow({ turn, redact, users }: { turn: LiveTranscriptTurn; redact: boolean; users: ReadonlySet<string> }) {
+function Timestamp({ ms, mounted, className }: { ms: number; mounted: boolean; className?: string }) {
+  const stable = fmtStableDateTime(ms);
+  return (
+    <time className={className} dateTime={stable} title={fmtDateTime(ms)}>
+      {mounted ? fmtTime(ms) : stable}
+    </time>
+  );
+}
+
+const TurnRow = React.memo(function TurnRow({ turn, redact, users, mounted }: { turn: LiveTranscriptTurn; redact: boolean; users: ReadonlySet<string>; mounted: boolean }) {
   return (
     <div className={clsx(
       "rounded-lg border p-3",
@@ -77,7 +90,7 @@ const TurnRow = React.memo(function TurnRow({ turn, redact, users }: { turn: Liv
       <div className="mb-1 flex flex-wrap items-center gap-2">
         <span className="text-[10px] uppercase tracking-wider text-fg-muted">{turn.label}</span>
         <span className="rounded bg-bg-elev px-1.5 py-0.5 text-[10px] text-fg-dim">{turn.type}</span>
-        {turn.at ? <span className="mono text-[10px] text-fg-dim">{new Date(turn.at).toLocaleTimeString()}</span> : null}
+        {turn.at ? <Timestamp ms={turn.at} mounted={mounted} className="mono text-[10px] text-fg-dim" /> : null}
       </div>
       <pre className="mono max-h-40 overflow-auto whitespace-pre-wrap text-[11px] leading-5 text-fg-muted">
         {displayText(turn.preview, redact, users)}
@@ -86,18 +99,25 @@ const TurnRow = React.memo(function TurnRow({ turn, redact, users }: { turn: Liv
   );
 });
 
-function UsageTimeline({ session }: { session: LiveSession }) {
-  const maxOutput = Math.max(...session.usageSegments.map((segment) => segment.cumulativeOutput), 1);
+const UsageTimeline = React.memo(function UsageTimeline({ session, mounted }: { session: LiveSession; mounted: boolean }) {
+  const segments = decimateUsageSegments(session.usageSegments);
+  const sampled = segments.length < session.usageSegments.length;
+  const maxOutput = Math.max(...segments.map((segment) => segment.cumulativeOutput), 1);
   return (
     <div className="space-y-2">
-      {session.usageSegments.map((segment, index) => {
+      {sampled ? (
+        <div className="rounded border border-accent/20 bg-accent/5 px-3 py-2 text-[10px] text-fg-muted" role="status">
+          Showing {segments.length} summarized points from {session.usageSegments.length}; adjacent usage records are merged and cumulative totals are preserved.
+        </div>
+      ) : null}
+      {segments.map((segment, index) => {
         const width = Math.max(4, Math.round((segment.cumulativeOutput / maxOutput) * 100));
         const fastTok = segment.outTokPerSec > 50;
         const slowTok = segment.outTokPerSec < 10 && segment.outTokPerSec > 0;
         return (
           <div key={`${segment.atMs}-${index}`} className="rounded border border-bd-subtle bg-bg/40 p-2">
             <div className="mb-1 flex items-center justify-between gap-3 text-[10px] text-fg-muted">
-              <span className="mono tabular-nums">{new Date(segment.atMs).toLocaleTimeString()}</span>
+              <Timestamp ms={segment.atMs} mounted={mounted} className="mono tabular-nums" />
               <span className={clsx("mono tabular-nums font-medium", fastTok ? "text-ok" : slowTok ? "text-warn" : "text-fg-muted")}>
                 {fmt(segment.cumulativeOutput)} out · {segment.outTokPerSec.toFixed(1)} tok/s
               </span>
@@ -116,7 +136,7 @@ function UsageTimeline({ session }: { session: LiveSession }) {
       })}
     </div>
   );
-}
+});
 
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -194,6 +214,7 @@ export function SessionDrawer({
   harness: string;
 }) {
   const [turns, setTurns] = useState<LiveTranscriptTurn[] | null>(null);
+  const [transcriptTruncated, setTranscriptTruncated] = useState(false);
   const [transcriptError, setTranscriptError] = useState<string | null>(null);
   const [detailSession, setDetailSession] = useState<LiveSession | null>(null);
   const [detailStatus, setDetailStatus] = useState<"loading" | "ready" | "error" | "unavailable">("loading");
@@ -203,7 +224,28 @@ export function SessionDrawer({
   const dialogRef = useRef<HTMLDivElement>(null);
   const detailRequestRef = useRef(0);
   useFocusTrap(dialogRef, true);
-  const detailsReady = detailStatus === "ready" && detailSession?.path === listSession.path;
+  const detailsReady = detailSession?.path === listSession.path;
+  const detailRefreshing = detailsReady && detailStatus === "loading";
+  const detailRefreshFailed = detailsReady && (detailStatus === "error" || detailStatus === "unavailable");
+  // A live row changes when an append changes its byte/line or summary metrics.
+  // Refresh detail on those changes, but retain the last complete detail while
+  // the request runs so polling never replaces trustworthy evidence with a
+  // skeleton or a misleading empty placeholder.
+  const detailRefreshKey = [
+    listSession.path ?? "",
+    listSession.lastEventAt,
+    listSession.pathBytes,
+    listSession.lineCount,
+    listSession.toolCalls,
+    listSession.toolErrors,
+    listSession.hookErrors,
+    listSession.isError,
+    listSession.inputTokens,
+    listSession.outputTokens,
+    listSession.durationMs,
+  ].join("\u0000");
+  const detailRefreshKeyRef = useRef(detailRefreshKey);
+  detailRefreshKeyRef.current = detailRefreshKey;
   const session = detailsReady && detailSession ? detailSession : listSessionPlaceholder(listSession);
 
   useEffect(() => {
@@ -214,8 +256,8 @@ export function SessionDrawer({
 
   const loadDetail = useCallback(async () => {
     const requestId = ++detailRequestRef.current;
+    const requestedRefreshKey = detailRefreshKey;
     const requestedPath = listSession.path;
-    setDetailSession(null);
     setDetailError(null);
     if (!requestedPath || !getSessionDetail) {
       setDetailStatus("unavailable");
@@ -225,7 +267,7 @@ export function SessionDrawer({
     setDetailStatus("loading");
     try {
       const result = await getSessionDetail(requestedPath, harness);
-      if (requestId !== detailRequestRef.current) return;
+      if (requestId !== detailRequestRef.current || requestedRefreshKey !== detailRefreshKeyRef.current) return;
       if (result.session) {
         setDetailSession(result.session);
         setDetailStatus("ready");
@@ -234,13 +276,16 @@ export function SessionDrawer({
         setDetailError(result.error ?? "Full session detail is unavailable.");
       }
     } catch (e) {
-      if (requestId !== detailRequestRef.current) return;
+      if (requestId !== detailRequestRef.current || requestedRefreshKey !== detailRefreshKeyRef.current) return;
       setDetailStatus("error");
       setDetailError(e instanceof Error ? e.message : String(e));
     }
-  }, [getSessionDetail, harness, listSession.path]);
+  }, [detailRefreshKey, getSessionDetail, harness, listSession.path]);
 
-  useEffect(() => { void loadDetail(); }, [loadDetail]);
+  useEffect(() => {
+    void loadDetail();
+    return () => { detailRequestRef.current += 1; };
+  }, [loadDetail]);
 
   const onCloseRef = useRef(onClose);
   useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
@@ -290,9 +335,11 @@ export function SessionDrawer({
     if (!getTranscript || !listSession.path) {
       loadedPathRef.current = listSession.path ?? null;
       if (!cancelled) setTurns([]);
+      if (!cancelled) setTranscriptTruncated(false);
       return;
     }
     if (loadedPathRef.current !== listSession.path) setTurns(null);
+    setTranscriptTruncated(false);
     setTranscriptError(null);
     const requestedPath = listSession.path;
     getTranscript(listSession.path, harness)
@@ -304,6 +351,7 @@ export function SessionDrawer({
           setTurns([]);
         } else {
           setTurns(res.turns);
+          setTranscriptTruncated(Boolean(res.truncated));
         }
       })
       .catch((e) => {
@@ -311,6 +359,7 @@ export function SessionDrawer({
           loadedPathRef.current = requestedPath;
           setTranscriptError(`Failed to parse session transcript: ${e instanceof Error ? e.message : String(e)}`);
           setTurns([]);
+          setTranscriptTruncated(false);
         }
       });
     return () => { cancelled = true; };
@@ -331,7 +380,7 @@ export function SessionDrawer({
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-label="Session details"
+        aria-labelledby="session-drawer-title"
         className="relative flex h-full w-full flex-col overflow-hidden border-l border-bd bg-bg-subtle shadow-2xl md:max-w-2xl"
         style={{
           transform: visible ? "translateX(0)" : "translateX(16px)",
@@ -340,14 +389,15 @@ export function SessionDrawer({
         }}
       >
         <div className="border-b border-bd-subtle bg-bg-subtle px-5 py-4">
-          <div className="flex items-start justify-between gap-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-lg font-semibold">Session details</h2>
-                <QualityBadge value={session.dataQuality} />
-                <StatusPill session={session} />
+                <h2 id="session-drawer-title" className="text-lg font-semibold">Session details</h2>
+                <QualityBadge value={listSession.dataQuality} />
+                <StatusPill session={listSession} />
+                <IncidentBadges session={listSession} />
               </div>
-              <p className="mono mt-1 break-all text-xs text-fg-muted">{displayText(session.sessionId, redact, users)}</p>
+              <p className="mono mt-1 break-all text-xs text-fg-muted">{displayText(listSession.sessionId, redact, users)}</p>
             </div>
             {onNavigate && (
               <div className="flex shrink-0 items-center gap-1" title="Arrow keys also move between sessions">
@@ -356,7 +406,7 @@ export function SessionDrawer({
                   onClick={() => onNavigate(-1)}
                   disabled={!hasPrev}
                   aria-label="Previous session"
-                  className="flex min-h-8 min-w-8 items-center justify-center rounded border border-bd text-fg-muted transition-colors hover:bg-bg-elev hover:text-fg disabled:cursor-default disabled:opacity-35 disabled:hover:bg-transparent"
+                  className="flex min-h-10 min-w-10 items-center justify-center rounded border border-bd text-fg-muted transition-colors hover:bg-bg-elev hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-default disabled:opacity-35 disabled:hover:bg-transparent"
                 >
                   <ChevronUp className="size-4" />
                 </button>
@@ -365,7 +415,7 @@ export function SessionDrawer({
                   onClick={() => onNavigate(1)}
                   disabled={!hasNext}
                   aria-label="Next session"
-                  className="flex min-h-8 min-w-8 items-center justify-center rounded border border-bd text-fg-muted transition-colors hover:bg-bg-elev hover:text-fg disabled:cursor-default disabled:opacity-35 disabled:hover:bg-transparent"
+                  className="flex min-h-10 min-w-10 items-center justify-center rounded border border-bd text-fg-muted transition-colors hover:bg-bg-elev hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-default disabled:opacity-35 disabled:hover:bg-transparent"
                 >
                   <ChevronDown className="size-4" />
                 </button>
@@ -374,13 +424,13 @@ export function SessionDrawer({
             {transcriptHref && (
               <a
                 href={transcriptHref}
-                className="shrink-0 inline-flex items-center gap-1.5 rounded-md border border-bd px-2.5 py-1.5 text-xs text-fg-muted hover:bg-bg-elev hover:text-fg transition-colors"
+                className="order-3 inline-flex min-h-10 basis-full items-center gap-1.5 rounded-md border border-bd px-2.5 py-2 text-xs text-fg-muted hover:bg-bg-elev hover:text-fg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent md:order-none md:basis-auto"
                 title="Open the full transcript viewer for this session"
               >
                 <FileText className="size-3.5" /> Full transcript
               </a>
             )}
-            <button type="button" data-autofocus onClick={requestClose} aria-label="Close session details" className="rounded min-h-10 min-w-10 flex items-center justify-center hover:bg-bg-elev">
+            <button type="button" data-autofocus onClick={requestClose} aria-label="Close session details" className="rounded min-h-10 min-w-10 flex items-center justify-center hover:bg-bg-elev focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
               <X className="size-5 text-fg-muted" />
             </button>
           </div>
@@ -388,11 +438,28 @@ export function SessionDrawer({
 
         <div className="drawer-stagger flex-1 space-y-5 overflow-y-auto p-5">
           <section className="grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
-            <MetricCard label="Project" value={compactDisplayPath(session.project || "(unknown)", redact)} />
-            <MetricCard label="Model" value={displayText(session.model || "missing", redact, users)} source={session.metricSources.model} />
-            <MetricCard label="Duration" value={session.metricSources.duration === "missing" ? "missing" : fmtMs(session.durationMs)} source={session.metricSources.duration} />
-            <MetricCard label="Tokens" value={session.metricSources.tokens === "missing" ? "missing" : fmt(session.inputTokens + session.outputTokens)} source={session.metricSources.tokens} />
+            <MetricCard label="Project" value={compactDisplayPath(listSession.project || "(unknown)", redact)} />
+            <MetricCard label="Model" value={displayText(listSession.model || "missing", redact, users)} source={listSession.metricSources.model} />
+            <MetricCard label="Duration" value={listSession.metricSources.duration === "missing" ? "missing" : fmtMs(listSession.durationMs)} source={listSession.metricSources.duration} />
+            <MetricCard label="Tokens" value={listSession.metricSources.tokens === "missing" ? "missing" : fmt(listSession.inputTokens + listSession.outputTokens)} source={listSession.metricSources.tokens} />
           </section>
+
+          {detailRefreshing && (
+            <div role="status" aria-live="polite" className="rounded border border-accent/20 bg-accent/5 px-3 py-2 text-xs text-fg-muted">
+              Refreshing session detail; showing the last complete detail until the live trace settles.
+            </div>
+          )}
+          {detailRefreshFailed && (
+            <div role="alert" className="rounded border border-warn/30 bg-warn/10 px-3 py-2 text-xs text-warn">
+              <div>Latest session detail refresh failed; showing the last complete detail.</div>
+              {detailError ? <div className="mt-1">{displayText(detailError, redact, users)}</div> : null}
+              {detailStatus === "error" && (
+                <button type="button" onClick={() => { void loadDetail(); }} className="mt-2 inline-flex items-center gap-2 rounded border border-warn/40 px-2.5 py-1.5 text-[11px] hover:bg-warn/10">
+                  <RefreshCwIcon /> Retry detail
+                </button>
+              )}
+            </div>
+          )}
 
           {detailsReady ? <>
           <DetailPanel title="Usage">
@@ -404,14 +471,14 @@ export function SessionDrawer({
               <TinyMetric
                 label={session.metricSources.cost === "inferred" ? "Est. cost" : "Cost"}
                 value={session.metricSources.cost === "measured"
-                  ? `$${session.costUsd.toFixed(4)}`
+                  ? fmtUsd(session.costUsd)
                   : session.metricSources.cost === "inferred"
-                    ? `~$${session.costUsd.toFixed(4)}`
+                    ? `~${fmtUsd(session.costUsd)}`
                     : "missing"}
               />
             </div>
             {session.usageSegments.length > 0 ? (
-              <UsageTimeline session={session} />
+              <UsageTimeline session={session} mounted={mounted} />
             ) : (
               <div className="rounded border border-warn/30 bg-warn/10 px-3 py-2 text-xs text-warn">
                 Usage timeline unavailable because this trace did not report token segment data.
@@ -509,7 +576,7 @@ export function SessionDrawer({
               <div className="text-sm text-fg-muted">No tool calls found.</div>
             ) : (
               <>
-                <div className="mb-3 grid grid-cols-[1fr_56px_56px_56px_56px_28px] gap-2 text-[9px] uppercase tracking-wider text-fg-dim">
+                <div className="mb-3 grid grid-cols-[minmax(0,1fr)_36px_36px_36px_36px_24px] gap-1 text-[8px] uppercase tracking-wider text-fg-dim sm:grid-cols-[minmax(0,1fr)_56px_56px_56px_56px_28px] sm:gap-2 sm:text-[9px]">
                   <span>Tool</span>
                   <span className="text-right">calls</span>
                   <span className="text-right">p50</span>
@@ -521,7 +588,7 @@ export function SessionDrawer({
                   {session.toolSummaries.map((tool) => {
                     const dur = durationByName.get(tool.name);
                     return (
-                      <div key={tool.name} className="grid grid-cols-[1fr_56px_56px_56px_56px_28px] items-center gap-2 py-1.5 text-xs">
+                      <div key={tool.name} className="grid grid-cols-[minmax(0,1fr)_36px_36px_36px_36px_24px] items-center gap-1 py-2 text-[11px] sm:grid-cols-[minmax(0,1fr)_56px_56px_56px_56px_28px] sm:gap-2 sm:py-1.5 sm:text-xs">
                         <span className="truncate mono text-[11px] text-fg" title={tool.name}>{tool.name}</span>
                         <span className="mono tabular-nums text-right text-fg-muted">{tool.calls}</span>
                         <span className="mono tabular-nums text-right text-fg-muted">{dur ? fmtMs(dur.p50Ms) : "—"}</span>
@@ -561,11 +628,18 @@ export function SessionDrawer({
             ) : turns.length === 0 ? (
               <div className="rounded-lg border border-bd bg-bg/45 p-4 text-sm text-fg-muted">No warning/error timeline context found.</div>
             ) : (
-              <div className="space-y-2">
-                {turns.map((turn, i) => (
-                  <TurnRow key={`${turn.type}-${i}`} turn={turn} redact={redact} users={users} />
-                ))}
-              </div>
+              <>
+                {transcriptTruncated ? (
+                  <div className="mb-2 rounded border border-accent/20 bg-accent/5 px-3 py-2 text-[10px] text-fg-muted" role="status">
+                    Warning/error context was bounded to keep the drawer responsive; the source may contain additional turns.
+                  </div>
+                ) : null}
+                <div className="space-y-2">
+                  {turns.map((turn, i) => (
+                    <TurnRow key={`${turn.type}-${i}`} turn={turn} redact={redact} users={users} mounted={mounted} />
+                  ))}
+                </div>
+              </>
             )}
           </section>
           </> : <DetailFetchState

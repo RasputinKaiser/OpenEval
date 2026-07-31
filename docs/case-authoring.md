@@ -21,6 +21,7 @@ The schema is strict: an unknown or typo'd key anywhere in a case (top level, `s
 | `runner` | object, optional | Per-case runner settings. |
 | `budget` | object, optional | Cost and turn ceilings checked after the run. |
 | `oracle` | object, optional | Selftest oracle and baseline controls. |
+| `benchmark` | object, optional | The user-facing intent, deliverable, evidence channels, and rough usage hint for this benchmark. |
 | `visual` | object, optional | Visual task contract. |
 | `graders` | grader[], required, min 1 | Checks used to score the result. |
 | `pass_threshold` | number, default `1` | Weighted ratio required to pass. |
@@ -73,10 +74,23 @@ Oracles matter because `npm run selftest` first grades a no-op baseline and fail
 
 | Field | Type | Purpose |
 | --- | --- | --- |
-| `kind` | `svg`, `threejs`, `web_ui`, `app_ui`, or `screenshot` | Visual artifact class. |
+| `kind` | `svg`, `threejs`, `web_ui`, `app_ui`, `screenshot`, `canvas`, `data`, `diagram`, or `text` | Artifact class. Use the narrowest honest kind; an HTML/CSS scene is not automatically an SVG task. |
 | `requires_vision_input` | boolean | Marks cases that require visual input. |
 | `input_images` | string[] | Paths relative to the prepared workdir. The selected harness must declare an `imageFlag`; each path is attached to the initial prompt. Required when `requires_vision_input` is true. |
 | `expected_artifacts` | string[] | Artifact names/contracts. The accuracy audit counts these as visual evidence. |
+
+## Benchmark intent
+
+`benchmark` makes the case legible before anyone launches it. It is especially useful for the Creative lab, where an artifact format is only the medium and not the task:
+
+| Field | Type / default | Purpose |
+| --- | --- | --- |
+| `intent` | non-empty string, required inside `benchmark` | The capability question the case is designed to answer. |
+| `deliverable` | string, optional | The output the agent should leave behind. |
+| `evidence` | one or more of `deterministic`, `trace`, `artifact`, `judge`, `human` | The evidence channels the case expects. These are declarations, not proof by themselves. |
+| `usage` | `low`, `medium`, or `high`; optional | A rough launch-planning hint. It is not provider billing. |
+
+Good visual cases separate medium from meaning: a voxel scene may be HTML/CSS, a data story may be HTML, a pipeline may be Mermaid text, and a pixel-art study may be SVG. Keep byte receipts and source checks separate from rendered visual judgment; an artifact hash proves identity, not visual quality.
 
 ## Graders
 
@@ -92,6 +106,8 @@ passed_weight / total_weight >= pass_threshold
 ```
 
 The case also fails if any forbidden grader fails.
+
+For static HTML/SVG browser evidence, use the `render_evidence` grader. The browser capture side must write the versioned receipt first; the grader validates the fixed viewport, load result, console errors, horizontal-overflow facts, required selectors, artifact SHA-256, and self-contained source boundary. This is deterministic runtime-contract evidence only. Its result explicitly sets `pixelQuality` to `not_evaluated`, so it must not be described as a pixel-quality or visual-taste verdict.
 
 ## Worked Example
 

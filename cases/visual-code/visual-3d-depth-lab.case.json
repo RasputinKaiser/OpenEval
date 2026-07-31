@@ -1,0 +1,36 @@
+{
+  "id": "visual-3d-depth-lab",
+  "category": "visual-code",
+  "difficulty": "hard",
+  "name": "Build a static 3D depth lab",
+  "description": "Visual-code task: create a self-contained HTML/CSS depth study with explicit perspective and layered 3D transforms. Grading checks the deterministic structure contract rather than rendered pixel quality.",
+  "tags": ["visual-code", "web-ui", "3d", "depth", "css"],
+  "split": "public",
+  "prompt": "Create a single self-contained file named depth-scene.html. Build a static 3D depth scene using only inline HTML and CSS, with a visible heading exactly \"OpenEval Depth Lab\". Include a perspective property, transform-style: preserve-3d, and at least three distinct elements marked data-depth-layer with non-zero translateZ depth transforms. Do not use JavaScript, network requests, external stylesheets, images, fonts, or other external assets. Do not create any other files. This is graded through deterministic structural checks, not rendered pixel-level visual quality.",
+  "benchmark": { "intent": "Whether the agent can construct a layered depth relationship in CSS instead of merely placing flat boxes.", "deliverable": "depth-scene.html", "evidence": ["deterministic", "artifact"], "usage": "low" },
+  "setup": { "type": "none" },
+  "runner": { "max_turns": 16, "timeout_seconds": 240, "permission_mode": "bypassPermissions" },
+  "budget": { "max_turns": 16, "max_cost_usd": 0.65 },
+  "visual": {
+    "kind": "web_ui",
+    "requires_vision_input": false,
+    "expected_artifacts": ["depth-scene.html"]
+  },
+  "graders": [
+    { "type": "file_exists", "path": "depth-scene.html", "weight": 10 },
+    { "type": "file_contains", "path": "depth-scene.html", "pattern": "<!doctype\\s+html>", "weight": 5 },
+    { "type": "file_contains", "path": "depth-scene.html", "pattern": "<h1\\b[^>]*>OpenEval Depth Lab</h1>", "weight": 10 },
+    { "type": "file_contains", "path": "depth-scene.html", "pattern": "perspective\\s*:\\s*[0-9]+px", "weight": 15 },
+    { "type": "file_contains", "path": "depth-scene.html", "pattern": "transform-style\\s*:\\s*preserve-3d", "weight": 15 },
+    { "type": "exit_code", "command": "node -e \"const fs=require('fs'); const s=fs.readFileSync('depth-scene.html','utf8'); const n=(s.match(/data-depth-layer=['\\\"][^'\\\"]+['\\\"]/g)||[]).length; if(n<3) process.exit(1)\"", "weight": 20 },
+    { "type": "exit_code", "command": "node -e \"const fs=require('fs'); const s=fs.readFileSync('depth-scene.html','utf8'); const n=(s.match(/translateZ\\(\\s*-?[0-9]+px\\s*\\)/g)||[]).length; if(n<3) process.exit(1)\"", "weight": 10 },
+    { "type": "file_contains", "path": "depth-scene.html", "pattern": "https?://|<script\\b|<img\\b|<iframe\\b|<link\\b|@import\\b|url\\(", "negate": true, "weight": 10, "forbidden": true },
+    { "type": "file_exists", "path": "index.html", "negate": true, "weight": 5, "forbidden": true }
+  ],
+  "pass_threshold": 0.9,
+  "oracle": {
+    "solve": "oracle/visual-3d-depth-lab.sh",
+    "noop_max_score": 0.1,
+    "known_bad": ["oracle/visual-3d-depth-lab-bad.sh"]
+  }
+}

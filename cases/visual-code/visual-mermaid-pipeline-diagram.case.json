@@ -7,11 +7,12 @@
   "tags": ["visual-code", "mermaid", "diagram", "flowchart"],
   "split": "public",
   "prompt": "Create a file named pipeline.mmd containing a single Mermaid flowchart. Start it with a `flowchart TD` (or `graph TD`) header. Model the OpenEval execution pipeline with these labeled nodes: SelectCases, RunLoop, Executor, Grade, Persist. Connect them as a directed chain using `-->` edges so the flow reads SelectCases --> RunLoop --> Executor --> Grade --> Persist. Add one additional edge from Grade back to Persist labeled with a rejection path (for example `Grade -->|known-bad| Persist`). Do not create any other files.",
+  "benchmark": { "intent": "Whether the agent can express a process as a complete directed diagram with named stages and a meaningful rejection path.", "deliverable": "pipeline.mmd", "evidence": ["deterministic", "artifact"], "usage": "low" },
   "setup": { "type": "none" },
   "runner": { "max_turns": 10, "timeout_seconds": 180, "permission_mode": "bypassPermissions" },
   "budget": { "max_turns": 10, "max_cost_usd": 0.5 },
   "visual": {
-    "kind": "web_ui",
+    "kind": "diagram",
     "requires_vision_input": false,
     "expected_artifacts": ["pipeline.mmd"]
   },

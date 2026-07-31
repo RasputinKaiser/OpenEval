@@ -94,13 +94,57 @@ test("POST /api/runs: whitespace-only caseIds entries collapse to empty → 400"
   assert.equal(db.countRuns(), before);
 });
 
+test("POST /api/runs: malformed request shapes are rejected before selection", async () => {
+  const { runsRoute, db } = await importRoutes();
+  const before = db.countRuns();
+  const res = await runsRoute.POST(postRuns([]));
+  assert.equal(res.status, 400);
+  assert.match((await res.json()).error, /JSON object/);
+  assert.equal(db.countRuns(), before);
+});
+
+test("POST /api/runs: parallel and samples reject fractional or out-of-range values instead of clamping", async () => {
+  const { runsRoute, db } = await importRoutes();
+  const before = db.countRuns();
+  for (const [field, value] of [["parallel", 2.5], ["samples", 9], ["samples", "1e3"]] as const) {
+    const res = await runsRoute.POST(postRuns({ [field]: value, caseIds: ["does-not-exist"] }));
+    assert.equal(res.status, 400, `${field}=${value} should be rejected`);
+    const body = await res.json();
+    assert.equal(body.field, field);
+    assert.match(body.error, new RegExp(`${field} must be an integer between 1 and 8`));
+  }
+  assert.equal(db.countRuns(), before);
+});
+
+test("POST /api/runs: unknown runner and non-array caseIds are field-tagged errors", async () => {
+  const { runsRoute, db } = await importRoutes();
+  const before = db.countRuns();
+  const runner = await runsRoute.POST(postRuns({ runner: "bogus", caseIds: ["does-not-exist"] }));
+  assert.equal(runner.status, 400);
+  assert.equal((await runner.json()).field, "runner");
+  const caseIds = await runsRoute.POST(postRuns({ caseIds: "does-not-exist" }));
+  assert.equal(caseIds.status, 400);
+  assert.equal((await caseIds.json()).field, "caseIds");
+  assert.equal(db.countRuns(), before);
+});
+
+test("POST /api/runs: malformed filter arrays are rejected instead of becoming an unfiltered launch", async () => {
+  const { runsRoute, db } = await importRoutes();
+  const before = db.countRuns();
+  for (const [field, value] of [["categories", "reasoning"], ["tags", ["visual", 7]], ["difficulty", [" "]]] as const) {
+    const res = await runsRoute.POST(postRuns({ [field]: value }));
+    assert.equal(res.status, 400, `${field} must not be silently ignored`);
+    const body = await res.json();
+    assert.equal(body.field, field);
+    assert.match(body.error, /array of strings|only strings|blank values/);
+  }
+  assert.equal(db.countRuns(), before);
+});
+
 test("POST /api/runs: nonexistent case id fails case selection with 400 before any harness starts", async () => {
   const { runsRoute, db } = await importRoutes();
   const before = db.countRuns();
-  // Bad runner kind and absurd parallel/samples are normalized (coerced/clamped),
-  // not rejected — so the only observable guard on this path is case selection,
-  // which fails here because the temp cwd has no cases/ dir.
-  const res = await runsRoute.POST(postRuns({ runner: "bogus", parallel: 9999, samples: -5, caseIds: ["does-not-exist"] }));
+  const res = await runsRoute.POST(postRuns({ runner: "headless", parallel: 1, samples: 1, caseIds: ["does-not-exist"] }));
   assert.equal(res.status, 400);
   const body = await res.json();
   assert.match(body.error, /No cases match/);

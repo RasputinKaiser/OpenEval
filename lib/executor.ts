@@ -7,6 +7,7 @@ import { runGrader, evaluate } from "./grader";
 import { getRunner } from "./runner";
 import { getAdapter } from "./adapters/registry";
 import { discoverHarnesses } from "./adapters/discover";
+import { describeRunnerFailure } from "./runner/diagnostics";
 import type { CaseDefinition, RunCaseRecord, RunnerKind, RunnerResult } from "./types";
 import type { HarnessAdapter } from "./adapters/types";
 
@@ -351,7 +352,7 @@ export async function executeCase(
     }
     if (rec.status === "error" && !rec.error_msg) {
       rec.error_msg = runnerResult.isError && runnerResult.resultText
-        ? `Runner error: ${runnerResult.resultText.slice(0, 500)}`
+        ? describeRunnerFailure(ctx.harness, runnerResult.resultText)
         : "Runner reported error";
     }
   } catch (e: any) {

@@ -6,7 +6,7 @@ import { getRun, listRunCases } from '../db';
 import { computeSummary } from '../summary';
 import { presentSummaryCost } from '../cost-display';
 import { isTerminalCaseStatus } from '../status';
-import { listAdapters, getDefaultHarness } from '../adapters/registry';
+import { hasAdapter, listAdapters, getDefaultHarness } from '../adapters/registry';
 import { discoverHarnesses } from '../adapters/discover';
 import type { RunnerKind } from '../types';
 
@@ -35,29 +35,47 @@ function parseArgs(argv: string[]): ParsedArgs {
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     switch (arg) {
-      case '--case': a.case = argv[++i]; break;
-      case '--runner': a.runner = (argv[++i] as RunnerKind) || 'headless'; break;
-      case '--harness': a.harnesses.push(argv[++i]); break;
+      case '--case': a.case = requiredValue(argv, ++i, arg); break;
+      case '--runner': {
+        const value = requiredValue(argv, ++i, arg);
+        if (value !== 'headless' && value !== 'tmux') throw new Error('--runner must be headless or tmux');
+        a.runner = value;
+        break;
+      }
+      case '--harness': a.harnesses.push(requiredValue(argv, ++i, arg)); break;
       case '--list-harnesses': a.listHarnesses = true; break;
-      case '--parallel': a.parallel = parseInt(argv[++i] || '1', 10) || 1; break;
-      case '--samples': a.samples = parseInt(argv[++i] || '1', 10) || 1; break;
-      case '--model': a.model = argv[++i]; break;
-      case '--name': a.name = argv[++i]; break;
-      case '--category': a.categories.push(argv[++i]); break;
-      case '--tag': a.tags.push(argv[++i]); break;
-      case '--difficulty': a.difficulty.push(argv[++i]); break;
+      case '--parallel': a.parallel = parseBoundedCliInt(requiredValue(argv, ++i, arg), arg); break;
+      case '--samples': a.samples = parseBoundedCliInt(requiredValue(argv, ++i, arg), arg); break;
+      case '--model': a.model = requiredValue(argv, ++i, arg); break;
+      case '--name': a.name = requiredValue(argv, ++i, arg); break;
+      case '--category': a.categories.push(requiredValue(argv, ++i, arg)); break;
+      case '--tag': a.tags.push(requiredValue(argv, ++i, arg)); break;
+      case '--difficulty': a.difficulty.push(requiredValue(argv, ++i, arg)); break;
       case '--no-watch': a.watch = false; break;
       case '--json': a.json = true; break;
       case '--verbose': a.verbose = true; break;
       case '-h': case '--help':
         console.log(USAGE); process.exit(0);
       default:
-        if (!arg.startsWith('-')) {
-          if (!a.case) a.case = arg;
-        }
+        if (arg.startsWith('-')) throw new Error(`Unknown option "${arg}". Use --help for usage.`);
+        if (!a.case) a.case = arg;
+        else throw new Error(`Unexpected argument "${arg}". Pass only one case id.`);
     }
   }
   return a;
+}
+
+function requiredValue(argv: string[], index: number, option: string): string {
+  const value = argv[index];
+  if (!value || value.startsWith('-')) throw new Error(`${option} requires a value`);
+  return value;
+}
+
+function parseBoundedCliInt(value: string, option: string): number {
+  if (!/^\d+$/.test(value) || Number(value) < 1 || Number(value) > 8) {
+    throw new Error(`${option} must be an integer between 1 and 8`);
+  }
+  return Number(value);
 }
 
 const USAGE = `OpenEval — run evaluations against any agent CLI harness
@@ -76,7 +94,7 @@ Options:
   --category <cat>     Filter by category (repeatable)
   --tag <tag>          Filter by tag (repeatable)
   --difficulty <tier>  Filter by difficulty easy|medium|hard (repeatable)
-  --no-watch           Exit immediately after starting, don't poll status
+  --no-watch           Suppress live progress while waiting for terminal status
   --json               Output run summary as JSON and suppress human text
   --verbose            Print stack traces on errors
   -h, --help           Show this help
@@ -87,11 +105,27 @@ Examples:
   npx tsx lib/cli/run.ts --harness claude-code --harness codex --samples 3
 `;
 
-function listHarnesses(): Promise<void> {
+function listHarnesses(json = false): Promise<void> {
   const known = listAdapters();
-  console.log('Probing harnesses on PATH…');
   return discoverHarnesses(true).then((discovered) => {
     const byId = new Map(discovered.map((h) => [h.id, h]));
+    if (json) {
+      const harnesses = known.map((a) => {
+        const h = byId.get(a.id);
+        return {
+          id: a.id,
+          label: a.label,
+          status: h?.status ?? "not_found",
+          bin: h?.bin ?? null,
+          version: h?.version ?? null,
+          default: a.id === getDefaultHarness(),
+          detail: h?.detail ?? null,
+        };
+      });
+      console.log(JSON.stringify({ harnesses, availableCount: harnesses.filter((h) => h.status === "available").length }));
+      return;
+    }
+    console.log('Probing harnesses on PATH…');
     console.log('');
     for (const a of known) {
       const h = byId.get(a.id);
@@ -133,8 +167,13 @@ async function main(): Promise<number> {
   try {
   const args = parseArgs(argv);
   if (args.listHarnesses) {
-    await listHarnesses();
+    await listHarnesses(outputJson);
     return 0;
+  }
+  const harnesses = args.harnesses.length > 0 ? args.harnesses : [getDefaultHarness()];
+  const unknownHarnesses = harnesses.filter((harness) => !hasAdapter(harness));
+  if (unknownHarnesses.length > 0) {
+    throw new Error(`Unknown harness${unknownHarnesses.length === 1 ? "" : "es"} "${unknownHarnesses.join('", "')}". Registered harnesses: ${listAdapters().map((a) => a.id).join(", ")}`);
   }
   const filter: any = {};
   if (args.case) filter.caseIds = [args.case];
@@ -147,7 +186,6 @@ async function main(): Promise<number> {
     throw new Error('No cases match. Try without filters, or check lib/cases.ts.');
   }
 
-  const harnesses = args.harnesses.length > 0 ? args.harnesses : [getDefaultHarness()];
   const fanOut = harnesses.length > 1;
   if (fanOut) {
     log('Fanning across ' + harnesses.length + ' harnesses: ' + harnesses.join(', '));
@@ -215,7 +253,7 @@ async function waitForRun(id: string, live: boolean, label: string): Promise<voi
   let lastSig = '';
   while (true) {
     const run = getRun(id);
-    if (!run) break;
+    if (!run) throw new Error(`Run ${id} disappeared before reaching a terminal status.`);
     const cases = listRunCases(id);
     if (live) {
       const sig = cases.map((c) => `${c.seq}:${c.status}`).join(' ');
@@ -236,6 +274,7 @@ async function waitForRun(id: string, live: boolean, label: string): Promise<voi
 }
 
 function exitCodeForRun(status: string | null, finalCases: ReturnType<typeof listRunCases>): number {
+  if (status === null || status === 'aborted') return 2;
   if (status === 'failed') return 1;
   const graderCrash = finalCases.some((c) => c.status === 'error' && (c.error_msg ?? '').startsWith('Grader threw:'));
   if (graderCrash) return 3;

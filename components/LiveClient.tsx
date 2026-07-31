@@ -1,10 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import clsx from "clsx";
 import { Activity, AlertTriangle, Clock3, Cpu, FolderGit2, Gauge, Layers, RefreshCw, ShieldAlert, Timer } from "lucide-react";
 import HarnessPicker from "./HarnessPicker";
 import PageHeader from "./PageHeader";
-import { SectionHeader, SectionNav } from "./Section";
+import { SectionHeader } from "./Section";
+import { EvidenceComposition } from "./evidence/EvidenceComposition";
+import { ProgressiveSectionNav, sectionVisibilityClass, useProgressiveSection } from "./mobile/ProgressiveSectionNav";
 import { RedactToggle } from "./RedactToggle";
 import { useRedactedShow } from "@/lib/use-redaction";
 import type { LiveAggregateList, LiveSessionDetailResult, LiveSessionListItem, TranscriptResult } from "@/lib/live";
@@ -44,6 +47,12 @@ type LivePollResponse =
 const HARNESS_STORAGE_KEY = "openeval.live.harness";
 const POLL_VISIBLE_MS = 10000;
 const POLL_HIDDEN_MS = 30000;
+const LIVE_SECTIONS = [
+  { id: "usage", label: "Monitor", description: "Usage, cost, and throughput from the current scanned slice." },
+  { id: "quality", label: "Trust data", description: "Coverage, warnings, and parser confidence behind the totals." },
+  { id: "sessions", label: "Sessions", description: "Search and inspect individual sessions, failures, and provenance." },
+  { id: "intelligence", label: "Intelligence", description: "Compare models and trace patterns across the selected harness." },
+];
 
 export default function LiveClient({ initialData, error: initialError, getTranscript, getSessionDetail, scannedAt }: LiveClientProps) {
   const [data, setData] = useState<LiveAggregateList | null>(initialData ?? null);
@@ -66,6 +75,7 @@ export default function LiveClient({ initialData, error: initialError, getTransc
   const [sort, setSort] = useState<SortMode>("recent");
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, 200);
+  const { activeSection, selectSection, isVisible } = useProgressiveSection(LIVE_SECTIONS);
 
   const lastSigRef = useRef("");
   // The RSC just scanned; skip the immediate mount poll when initialData is
@@ -238,6 +248,7 @@ export default function LiveClient({ initialData, error: initialError, getTransc
     unscannedFiles: 0,
     archivedSessionsAdded: 0,
     truncated: false,
+    partial: false,
   };
 
   return (
@@ -263,7 +274,7 @@ export default function LiveClient({ initialData, error: initialError, getTransc
               <button
                 type="button"
                 onClick={() => window.location.reload()}
-                className="inline-flex items-center gap-2 rounded-md border border-bd bg-bg-elev px-3 py-2 text-xs text-fg-muted hover:text-fg"
+                className="inline-flex min-h-10 items-center gap-2 rounded-md border border-bd bg-bg-elev px-3 py-2 text-xs text-fg-muted hover:bg-bg-subtle hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
               >
                 <RefreshCw className="size-4" /> Refresh
               </button>
@@ -272,55 +283,53 @@ export default function LiveClient({ initialData, error: initialError, getTransc
         }
       />
 
-      <SectionNav
-        sections={[
-          { id: "usage", label: "Usage" },
-          { id: "quality", label: "Quality" },
-          { id: "sessions", label: "Sessions" },
-          { id: "intelligence", label: "Intelligence" },
-        ]}
+      <ProgressiveSectionNav
+        sections={LIVE_SECTIONS}
+        activeSection={activeSection}
+        onSelect={selectSection}
         summary={`${data.totalSessions} parsed slice · ${scanCoverage.scannedFiles}/${scanCoverage.discoveredFiles} files scanned`}
       />
 
       {data.sourceStatus !== "available" && (
-        <div className="mb-4 rounded-lg border border-warn/30 bg-warn/10 p-3 text-sm text-warn">
+        <div className="mb-4 rounded-lg border border-l-2 border-warn/30 bg-warn/10 p-3 text-sm text-warn">
           {displayText(data.sourceMessage ?? "No live trace source is available for this harness.", redact, users)}
         </div>
       )}
 
       {data.scanWarnings.length > 0 && (
-        <div className="mb-4 rounded-lg border border-warn/30 bg-warn/10 p-3 text-sm text-warn">
+        <div className="mb-4 rounded-lg border border-l-2 border-warn/30 bg-warn/10 p-3 text-sm text-warn">
           {data.scanWarnings.map((warning) => <div key={warning}>{displayText(warning, redact, users)}</div>)}
         </div>
       )}
 
-      {scanCoverage.truncated && (
-        <div role="status" className="mb-4 rounded-lg border border-accent/30 bg-accent/5 p-3 text-sm text-fg-muted">
-          <span className="font-medium text-fg">Latest-slice boundary:</span>{" "}
+      {(scanCoverage.truncated || scanCoverage.partial) && (
+        <div role="status" className="mb-4 rounded-lg border border-l-2 border-accent/30 bg-accent/5 p-3 text-sm text-fg-muted">
+          <span className="font-medium text-fg">Partial corpus boundary:</span>{" "}
           scanned <span className="mono tabular-nums">{scanCoverage.scannedFiles}</span> of{" "}
           <span className="mono tabular-nums">{scanCoverage.discoveredFiles}</span> discovered files and parsed{" "}
           <span className="mono tabular-nums">{scanCoverage.parsedFiles}</span> sessions
           {scanCoverage.droppedFiles > 0 && <> ({scanCoverage.droppedFiles} non-session files dropped)</>}.
-          {" "}<span className="mono tabular-nums">{scanCoverage.unscannedFiles}</span> older files were not scanned;
-          all usage and quality totals below describe this parsed slice.
+          {scanCoverage.truncated && <>{" "}<span className="mono tabular-nums">{scanCoverage.unscannedFiles}</span> older files were not scanned;</>}
+          {" "}usage and quality totals below describe only the evidenced parsed population.
         </div>
       )}
 
-      <LiveUsageStrip data={data} />
+      {isVisible("usage") && <div className="observe-section"><LiveUsageStrip data={data} /></div>}
 
-      <section id="quality" className="scroll-mt-16 mb-6">
+      {isVisible("quality") && <section id="quality" className={clsx("scroll-mt-16 mb-6", sectionVisibilityClass(true))}>
         <SectionHeader
           icon={Gauge}
           title="Data quality"
           desc="What the trace actually records — population, model evidence, and parse health"
           right={`${Math.round(data.avgDataQuality)}% avg quality`}
         />
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-3">
         <MetricGroup label="Population">
           <Stat label="Parsed slice" value={String(data.totalSessions)} icon={Activity} />
           <Stat label="Files scanned" value={`${scanCoverage.scannedFiles}/${scanCoverage.discoveredFiles}`} icon={FolderGit2} />
           <Stat label="Dropped" value={String(scanCoverage.droppedFiles)} icon={Layers} tone={scanCoverage.droppedFiles ? "warn" : undefined} />
           <Stat label="Measured dur" value={`${data.sessionsWithMeasuredDuration}/${data.totalSessions}`} icon={Timer} />
+          <Stat label="Child agents" value={String(data.subagentSessions)} icon={Layers} />
         </MetricGroup>
         <MetricGroup label="Quality">
           <Stat label="Quality" value={`${Math.round(data.avgDataQuality)}%`} icon={Gauge} tone={qualityTone(data.avgDataQuality)} />
@@ -329,24 +338,63 @@ export default function LiveClient({ initialData, error: initialError, getTransc
         </MetricGroup>
         <MetricGroup label="Health">
           <Stat label="Tool err rate" value={`${Math.round(toolErrorRate * 100)}%`} icon={AlertTriangle} tone={toolErrorRate ? "err" : undefined} />
-          <Stat label="Stale" value={String(staleCount)} icon={Clock3} tone={staleCount ? "warn" : undefined} />
+          <Stat label="Inactive >12h" value={String(staleCount)} icon={Clock3} tone={staleCount ? "warn" : undefined} />
           <Stat label="Malformed" value={String(data.sessionsWithMalformedLines)} icon={ShieldAlert} tone={data.sessionsWithMalformedLines ? "err" : undefined} />
         </MetricGroup>
         </div>
-      </section>
+        <div className="mt-3 grid grid-cols-1 gap-4 rounded-lg border border-bd-subtle bg-bg-subtle/30 p-4 md:grid-cols-2">
+          <EvidenceComposition
+            label="Model identity"
+            total={data.totalSessions}
+            segments={[
+              { label: "measured", value: data.sessionsWithMeasuredModel, tone: "measured" },
+              { label: "inferred", value: data.sessionsWithInferredModel, tone: "inferred" },
+              { label: "unavailable", value: Math.max(0, data.totalSessions - data.sessionsWithMeasuredModel - data.sessionsWithInferredModel), tone: "missing" },
+            ]}
+          />
+          <EvidenceComposition
+            label="Duration"
+            total={data.totalSessions}
+            segments={[
+              { label: "measured", value: data.sessionsWithMeasuredDuration, tone: "measured" },
+              { label: "inferred", value: data.sessionsWithInferredDuration, tone: "inferred" },
+              { label: "unavailable", value: Math.max(0, data.totalSessions - data.sessionsWithMeasuredDuration - data.sessionsWithInferredDuration), tone: "missing" },
+            ]}
+          />
+          <EvidenceComposition
+            label="Token usage"
+            total={data.totalSessions}
+            segments={[
+              { label: "measured", value: data.usageSummary.sessionsWithMeasuredUsage, tone: "measured" },
+              { label: "unavailable", value: Math.max(0, data.totalSessions - data.usageSummary.sessionsWithMeasuredUsage), tone: "missing" },
+            ]}
+          />
+          <EvidenceComposition
+            label="Cost"
+            total={data.totalSessions}
+            segments={[
+              { label: "measured", value: data.usageSummary.sessionsWithMeasuredCost, tone: "measured" },
+              { label: "inferred", value: data.sessionsWithInferredCost, tone: "inferred" },
+              { label: "unavailable", value: Math.max(0, data.totalSessions - data.usageSummary.sessionsWithMeasuredCost - data.sessionsWithInferredCost), tone: "missing" },
+            ]}
+            note="Measured and inferred remain separate; priced coverage is never relabeled as recorded spend."
+          />
+        </div>
+      </section>}
 
-      <section id="sessions" className="scroll-mt-16 mb-6">
+      {isVisible("sessions") && <section id="sessions" className={clsx("scroll-mt-16 mb-6", sectionVisibilityClass(true))}>
       <SectionHeader
         icon={FolderGit2}
         title="Sessions"
         desc="Model evidence and every recent session — filter, sort, click for the full drawer"
         right={`${visibleSessions.length}/${data.sessions.length} shown`}
       />
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.1fr_1.8fr]">
+      <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1.8fr)]">
         <ModelPanel data={data} />
         <SessionTable
           sessions={visibleSessions}
           totalCount={data.sessions.length}
+          viewKey={`${filter}\u0000${sort}\u0000${debouncedSearch}`}
           redact={redact}
           users={users}
           onSelect={handleSelectSession}
@@ -362,9 +410,9 @@ export default function LiveClient({ initialData, error: initialError, getTransc
           }
         />
       </div>
-      </section>
+      </section>}
 
-      <TraceIntelligencePanels data={data} redact={redact} users={users} />
+      {isVisible("intelligence") && <div className="observe-section"><TraceIntelligencePanels data={data} redact={redact} users={users} /></div>}
 
       {selected && (
         <SessionDrawer

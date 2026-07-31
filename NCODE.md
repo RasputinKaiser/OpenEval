@@ -75,4 +75,4 @@ SQLite (`data/eval.db`, better-sqlite3, WAL mode, 15s busy timeout). Tables: `ru
 - Tests target Node's built-in `node:test` + `node:assert`. No jest, no vitest.
 - The harness-under-test binary must be on `PATH` (or set `NCODE_BIN` for the ncode adapter). `npm run run:eval -- --list-harnesses` shows what's available.
 - Grader shell commands run via `bash -lc` with `cwd=workdir` and inherit `process.env` plus `spec.env`. Default 30s timeout; set `timeout_ms` for slow test suites.
-- `rubric_llm` judge routing: `judge_harness` from spec, else `JUDGE_HARNESS` env, else `claude-code`. `judge_model` similarly falls back to `JUDGE_MODEL`.
+- `rubric_llm` judge routing: `judge_harness` from spec, else `JUDGE_HARNESS` env, saved Settings, then local Codex. The default Codex judge is `gpt-5.6-luna` at high reasoning; `JUDGE_REASONING_EFFORT` may override it.

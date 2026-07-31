@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import Database from "better-sqlite3";
 import fs from "node:fs";
 import path from "node:path";
-import { defaultJudgeModel, resolveJudge, validJudgeScore } from "../lib/grader/judge";
+import { defaultJudgeModel, defaultJudgeReasoningEffort, resolveJudge, validJudgeScore } from "../lib/grader/judge";
 import { saveAppSettings } from "../lib/settings";
 import {
   _setCacheDbForTest,
@@ -43,7 +43,7 @@ test("validJudgeScore rejects out-of-range, non-numeric, and malformed scores", 
   fs.rmSync(path.join(process.cwd(), root, "data", "settings.json"), { force: true });
 }
 
-const JUDGE_ENV_KEYS = ["JUDGE_HARNESS", "JUDGE_MODEL", "OPENROUTER_API_KEY"] as const;
+const JUDGE_ENV_KEYS = ["JUDGE_HARNESS", "JUDGE_MODEL", "JUDGE_REASONING_EFFORT", "OPENROUTER_API_KEY"] as const;
 
 function withEnv(vars: Partial<Record<(typeof JUDGE_ENV_KEYS)[number], string | undefined>>, fn: () => void) {
   const saved: Record<string, string | undefined> = {};
@@ -81,11 +81,12 @@ test("resolveJudge: explicit JUDGE_HARNESS=openrouter still gets the free defaul
   });
 });
 
-test("resolveJudge: OPENROUTER_API_KEY selects the openrouter backend by default", () => {
+test("resolveJudge: an OpenRouter key does not displace the Codex subscription default", () => {
   withEnv({ OPENROUTER_API_KEY: "sk-test" }, () => {
     const r = resolveJudge();
-    assert.equal(r.harness, "openrouter");
-    assert.equal(r.model, "tencent/hy3:free");
+    assert.equal(r.harness, "codex");
+    assert.equal(r.model, "gpt-5.6-luna");
+    assert.equal(r.reasoningEffort, "high");
   });
 });
 
@@ -94,12 +95,13 @@ test("resolveJudge: Settings-page source and model are used beneath explicit env
   const settingsPath = path.join(process.cwd(), root, "data", "settings.json");
   const previous = fs.existsSync(settingsPath) ? fs.readFileSync(settingsPath, "utf8") : null;
   try {
-    saveAppSettings({ judgeSource: "codex", judgeModel: "gpt-5.5" });
+    saveAppSettings({ judgeSource: "codex", judgeModel: "gpt-5.6-luna" });
     withEnv({ JUDGE_HARNESS: undefined, JUDGE_MODEL: undefined, OPENROUTER_API_KEY: "sk-test" }, () => {
       const r = resolveJudge();
       assert.equal(r.harness, "codex");
-      assert.equal(r.model, "gpt-5.5");
-      assert.equal(r.judgeName, "codex/gpt-5.5");
+      assert.equal(r.model, "gpt-5.6-luna");
+      assert.equal(r.reasoningEffort, "high");
+      assert.equal(r.judgeName, "codex/gpt-5.6-luna (high)");
     });
   } finally {
     if (previous === null) fs.rmSync(settingsPath, { force: true });
@@ -111,17 +113,19 @@ test("resolveJudge: with no env at all, falls back to codex with a pinned model"
   withEnv({}, () => {
     const r = resolveJudge();
     assert.equal(r.harness, "codex");
-    assert.equal(r.model, "gpt-5.5");
-    assert.equal(r.judgeName, "codex/gpt-5.5");
+    assert.equal(r.model, "gpt-5.6-luna");
+    assert.equal(r.reasoningEffort, "high");
+    assert.equal(r.judgeName, "codex/gpt-5.6-luna (high)");
   });
 });
 
-test("resolveJudge: JUDGE_MODEL overrides the default model in every branch", () => {
+test("resolveJudge: JUDGE_MODEL overrides the default model without changing the Codex backend", () => {
   withEnv({ OPENROUTER_API_KEY: "sk-test", JUDGE_MODEL: "custom/model" }, () => {
     const r = resolveJudge();
-    assert.equal(r.harness, "openrouter");
+    assert.equal(r.harness, "codex");
     assert.equal(r.model, "custom/model");
-    assert.equal(r.judgeName, "openrouter/custom/model");
+    assert.equal(r.reasoningEffort, "high");
+    assert.equal(r.judgeName, "codex/custom/model (high)");
   });
   withEnv({ JUDGE_MODEL: "custom-codex-model" }, () => {
     const r = resolveJudge();
@@ -135,8 +139,10 @@ test("resolveJudge: JUDGE_MODEL overrides the default model in every branch", ()
 });
 
 test("explicit judge harness overrides retain safe per-harness model defaults", () => {
-  assert.equal(defaultJudgeModel("codex"), "gpt-5.5");
+  assert.equal(defaultJudgeModel("codex"), "gpt-5.6-luna");
+  assert.equal(defaultJudgeReasoningEffort("codex"), "high");
   assert.equal(defaultJudgeModel("openrouter"), "tencent/hy3:free");
+  assert.equal(defaultJudgeReasoningEffort("openrouter"), undefined);
   assert.equal(defaultJudgeModel("custom"), undefined);
 });
 

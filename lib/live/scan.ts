@@ -8,6 +8,59 @@ import { summarizeCodexSessionFile, summarizeHermesSessionFile, summarizeLiveSes
 import { aggregate } from "./aggregate";
 import { attributedModelUsage, estimateModelUsageCost } from "./util";
 
+type SourceFile = { file: string; project: string; mtime: number; size: number };
+type BoundaryEvidence = "match" | "complete" | "unknown";
+
+const DUPLICATE_WARNING_PREFIX = "Duplicate transcript entries";
+const DEPTH_PROBE_ENTRY_CAP = 2048;
+
+function sourceFileIdentity(file: string): string {
+  try { return fs.realpathSync(file); } catch { return path.resolve(file); }
+}
+
+function compareSourceFiles(a: SourceFile, b: SourceFile): number {
+  return a.file.localeCompare(b.file) || a.project.localeCompare(b.project);
+}
+
+/**
+ * A depth cap is an evidence boundary, not proof that the omitted subtree is
+ * empty. Probe only directory entries below that boundary, with a small shared
+ * budget, so matching files are surfaced without reading transcript contents.
+ */
+function probeForMatchingFileBelow(
+  dir: string,
+  matches: (name: string) => boolean,
+  budget: { remaining: number },
+): BoundaryEvidence {
+  if (budget.remaining <= 0) return "unknown";
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name));
+  } catch {
+    return "unknown";
+  }
+  let sawUnknown = false;
+  for (const entry of entries) {
+    if (budget.remaining <= 0) return "unknown";
+    budget.remaining--;
+    const full = path.join(dir, entry.name);
+    if (entry.isFile() && matches(entry.name)) return "match";
+    if (!entry.isDirectory()) continue;
+    const nested = probeForMatchingFileBelow(full, matches, budget);
+    if (nested === "match") return "match";
+    if (nested === "unknown") sawUnknown = true;
+  }
+  return sawUnknown ? "unknown" : "complete";
+}
+
+function addDepthBoundaryWarning(scanWarnings: string[], dir: string, evidence: BoundaryEvidence): void {
+  if (evidence === "complete") return;
+  const detail = evidence === "match"
+    ? "matching transcript files may exist below it"
+    : "the remaining subtree could not be proven empty";
+  addScanWarning(scanWarnings, `Scan depth boundary at ${dir}; ${detail}`);
+}
+
 /** Session files for a source, without parsing them — cheap discovery counts. */
 export function listSourceFiles(spec: CollectionSourceSpec): Array<{ file: string; project: string; mtime: number; size: number }> {
   return collectLiveTraceFiles(specToSource(spec), []);
@@ -97,6 +150,9 @@ export interface ResolvedLiveSessionFile {
  * admits regular directory entries only.
  */
 export function resolveLiveSessionFile(filePath: string, harness?: string): ResolvedLiveSessionFile | null {
+  // Server actions are callable from an untrusted browser. Reject malformed or
+  // absurdly long path values before path.resolve and the source walk.
+  if (typeof filePath !== "string" || filePath.length === 0 || filePath.length > 4096) return null;
   const source = resolveLiveSource(harness);
   if (source.status !== "available") return null;
   const requested = path.resolve(filePath);
@@ -125,6 +181,7 @@ export function readLiveSessionDetail(filePath: string, harness?: string): LiveS
           fields: source.fields,
           inferredModel: source.inferredModel,
           decodeProject: source.format !== "jsonl-dir",
+          sourceFormat: source.format,
           stat,
         });
   return session ? refreshInferredSessionCost(session) : null;
@@ -151,10 +208,11 @@ function parseSourceSessionList(
         unscannedFiles: 0,
         archivedSessionsAdded: 0,
         truncated: false,
+        partial: true,
       },
     };
   }
-  let files: Array<{ file: string; project: string; mtime: number; size: number }>;
+  let files: SourceFile[];
   if (preCollected) {
     // Copy before sorting — the caller may share the collected list.
     files = [...preCollected.files];
@@ -162,7 +220,9 @@ function parseSourceSessionList(
   } else {
     files = collectLiveTraceFiles(source, scanWarnings);
   }
-  files.sort((a, b) => b.mtime - a.mtime);
+  // Files written in the same millisecond are common in append-heavy traces;
+  // tie-break by path so the bounded slice and its signature are deterministic.
+  files.sort((a, b) => b.mtime - a.mtime || a.file.localeCompare(b.file));
   // Parse-dropped files (judge rollouts, stub sessions → null) must not consume
   // result slots: keep consuming older files until `limit` sessions parse.
   // Bounded at 5×limit so a source flooded with droppable files cannot force a
@@ -171,6 +231,9 @@ function parseSourceSessionList(
   // showed 0 sessions with 0 warnings).
   const maxScan = Math.min(files.length, limit * 5);
   let scanned = 0;
+  let parsedFileCount = 0;
+  let duplicateFileCount = 0;
+  const sessionIndexes = new Map<string, number>();
   for (const f of files) {
     if (sessions.length >= limit || scanned >= maxScan) break;
     scanned++;
@@ -182,19 +245,39 @@ function parseSourceSessionList(
       ? summarizeCodexSessionFile(f.file, f.project, f.mtime, stat, forceReparse)
       : source.format === "hermes-json"
         ? summarizeHermesSessionFile(f.file, f.project, f.mtime, stat, forceReparse)
-        : summarizeLiveSessionFile(f.file, f.project, f.mtime, { fields: source.fields, inferredModel: source.inferredModel, decodeProject: source.format !== "jsonl-dir", stat, forceReparse });
+        : summarizeLiveSessionFile(f.file, f.project, f.mtime, { fields: source.fields, inferredModel: source.inferredModel, decodeProject: source.format !== "jsonl-dir", sourceFormat: source.format, stat, forceReparse });
     if (s) {
       // Codex/ChatGPT rotates older rollouts into a dedicated on-disk archive.
       // Those files are still live-readable, but must retain archive provenance
       // so Collection totals and the UI do not confuse them with active-root
       // transcripts. Pruned files are marked below by appendArchivedSessions.
       const archivedOnDisk = source.format === "codex-sessions" && isUnderNamedRoot(f.file, source.roots, "archived_sessions");
-      sessions.push(archivedOnDisk ? { ...s, archived: true } : s);
+      const candidate = archivedOnDisk ? { ...s, archived: true } : s;
+      parsedFileCount++;
+      const existingIndex = sessionIndexes.get(candidate.sessionId);
+      if (existingIndex != null) {
+        duplicateFileCount++;
+        const existing = sessions[existingIndex];
+        // Prefer a current on-disk copy over an archived-root copy when both
+        // carry the same session id. Otherwise the deterministic mtime/path
+        // order above already selected the winner.
+        if (existing?.archived && !candidate.archived) sessions[existingIndex] = candidate;
+        continue;
+      }
+      sessionIndexes.set(candidate.sessionId, sessions.length);
+      sessions.push(candidate);
     }
   }
+  const parseFailureCount = scanned - parsedFileCount;
   if (sessions.length < limit && scanned >= maxScan && files.length > scanned) {
-    scanWarnings.push(`Only ${sessions.length} of the newest ${scanned} files parsed as sessions (${scanned - sessions.length} dropped, e.g. judge rollouts or stubs); ${files.length - scanned} older files were not scanned — the view may be missing older sessions`);
+    addScanWarning(scanWarnings, `Only ${sessions.length} of the newest ${scanned} files parsed as sessions (${parseFailureCount} dropped, e.g. judge rollouts or stubs); ${files.length - scanned} older files were not scanned — the view may be missing older sessions`);
+  } else if (parseFailureCount > 0 && files.length === scanned) {
+    addScanWarning(scanWarnings, `${parseFailureCount} discovered file(s) have unknown or unsupported content and were not parsed; parsed coverage is partial`);
   }
+  if (duplicateFileCount > 0) {
+    addScanWarning(scanWarnings, `${DUPLICATE_WARNING_PREFIX}: ${duplicateFileCount} file(s) shared an existing session id and were excluded from totals`);
+  }
+  const partialWarnings = scanWarnings.filter((warning) => !warning.startsWith(DUPLICATE_WARNING_PREFIX));
   const parsedFiles = sessions.length;
   const beforeArchive = sessions.length;
   if (includeArchived) appendArchivedSessions(source, sessions, new Set(files.map((f) => f.file)));
@@ -203,10 +286,11 @@ function parseSourceSessionList(
     discoveredFiles: files.length,
     scannedFiles: scanned,
     parsedFiles,
-    droppedFiles: scanned - parsedFiles,
+    droppedFiles: parseFailureCount + duplicateFileCount,
     unscannedFiles: files.length - scanned,
     archivedSessionsAdded: sessions.length - beforeArchive,
     truncated: files.length > scanned,
+    partial: partialWarnings.length > 0 || files.length > scanned,
   };
   // Inferred costs are derived data, not transcript evidence. Recompute them
   // from current list rates on every scan so persistent/archive cache rows do
@@ -254,17 +338,24 @@ function appendArchivedSessions(source: LiveTraceSource, sessions: LiveSession[]
   // Two-step read: list file paths only (skips the session_json overflow
   // pages), drop the ~97% that still exist on disk, then hydrate + JSON.parse
   // just the pruned survivors. Files the walk just stat'd trivially exist.
+  const scannedIdentities = new Set(Array.from(scannedFiles ?? []).map(sourceFileIdentity));
   const pruned: string[] = [];
   for (const file of listCachedFilesUnder(source.roots)) {
-    if (scannedFiles?.has(file)) continue;
+    if (scannedIdentities.has(sourceFileIdentity(file))) continue;
     let onDisk = false;
     try { onDisk = fs.existsSync(file); } catch {}
     if (!onDisk) pruned.push(file);
   }
-  for (const { session, parserVersion } of getCachedSessionRows(pruned)) {
+  for (const { session, parserVersion } of getCachedSessionRows(pruned.sort((a, b) => a.localeCompare(b)))) {
     if (seenIds.has(session.sessionId)) continue;
     seenIds.add(session.sessionId);
-    const parseWarnings = Array.isArray(session.parseWarnings) ? session.parseWarnings : [];
+    // Rows for pruned files intentionally survive parser-version bumps, so an
+    // archived session can still carry the old false-positive warning that
+    // interactive transcripts were truncated solely because no result event
+    // was present. Normalize that exact stale label on the archive path;
+    // malformed/runtime/actionable warnings remain untouched.
+    const parseWarnings = (Array.isArray(session.parseWarnings) ? session.parseWarnings : [])
+      .filter((warning) => warning !== "no final result event found");
     const staleParserWarning = parserVersion < PARSER_VERSION
       ? `archived parse v${parserVersion}; source was pruned before current parser v${PARSER_VERSION} could re-read it`
       : null;
@@ -277,7 +368,7 @@ function appendArchivedSessions(source: LiveTraceSource, sessions: LiveSession[]
         : parseWarnings,
     });
   }
-  sessions.sort((a, b) => b.lastEventAt - a.lastEventAt);
+  sessions.sort((a, b) => b.lastEventAt - a.lastEventAt || a.sessionId.localeCompare(b.sessionId) || (a.path ?? "").localeCompare(b.path ?? ""));
 }
 
 /**
@@ -296,57 +387,134 @@ function scanResolvedSource(source: LiveTraceSource, limit: number, includeArchi
   return aggregate(sessions, scanWarnings, source, sessionRetention, coverage);
 }
 
-function collectLiveTraceFiles(source: LiveTraceSource, scanWarnings: string[]): Array<{ file: string; project: string; mtime: number; size: number }> {
-  const files: Array<{ file: string; project: string; mtime: number; size: number }> = [];
+function collectLiveTraceFiles(source: LiveTraceSource, scanWarnings: string[]): SourceFile[] {
+  const files: SourceFile[] = [];
   // One visited-realpath set for the whole source walk, shared across roots and
   // recursion. Guards against filesystem cycles (bind mounts / hardlinked dirs
   // where isDirectory() is true and the real path repeats within maxDepth) and
   // overlapping roots (a root that is a symlink to, or a subdirectory of,
   // another root) both walking the same physical directory twice.
   const visited = new Set<string>();
+  const depthProbeBudget = { remaining: DEPTH_PROBE_ENTRY_CAP };
   for (const root of source.roots) {
     if (source.format === "claude-projects") {
       let projectDirs: string[] = [];
       try {
-        projectDirs = fs.readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
+        projectDirs = fs.readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort((a, b) => a.localeCompare(b));
       } catch (e) {
-        scanWarnings.push(`Could not read ${root}: ${e instanceof Error ? e.message : String(e)}`);
+        addScanWarning(scanWarnings, `Could not read ${root}: ${e instanceof Error ? e.message : String(e)}`);
         continue;
       }
       for (const pd of projectDirs) {
         const pdir = path.join(root, pd);
         let entries: fs.Dirent[] = [];
         try {
-          entries = fs.readdirSync(pdir, { withFileTypes: true });
-        } catch {
+          entries = fs.readdirSync(pdir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name));
+        } catch (e) {
+          if ((e as { code?: string })?.code !== "ENOENT") addScanWarning(scanWarnings, `Could not read ${pdir}: ${e instanceof Error ? e.message : String(e)}`);
           continue;
         }
         for (const ent of entries) {
-          if (!ent.isFile() || !ent.name.endsWith(".jsonl")) continue;
-          const full = path.join(pdir, ent.name);
-          try {
-            const st = fs.statSync(full);
-            files.push({ file: full, project: pd, mtime: st.mtimeMs, size: st.size });
-          } catch {}
+          if (ent.isFile() && ent.name.endsWith(".jsonl")) {
+            const full = path.join(pdir, ent.name);
+            try {
+              const st = fs.statSync(full);
+              files.push({ file: full, project: pd, mtime: st.mtimeMs, size: st.size });
+            } catch {}
+            continue;
+          }
+          if (!ent.isDirectory()) continue;
+          // Claude stores child-agent transcripts one level below each parent:
+          // <project>/<parent-session>/subagents/agent-*.jsonl, while workflow
+          // children add workflows/<workflow>/agent-*.jsonl. This bounded,
+          // format-specific lookup captures both without walking worktrees,
+          // tool artifacts, or metadata files.
+          const subagentsDir = path.join(pdir, ent.name, "subagents");
+          collectClaudeSubagentFiles(subagentsDir, 2, files, pd, visited, scanWarnings, depthProbeBudget);
         }
       }
     } else if (source.format === "hermes-json") {
       // Hermes sessions are single-JSON files; skip its request_dump_* payload logs.
-      collectJsonlRecursive(root, source.maxDepth, files, root, (name) => name.startsWith("session_") && name.endsWith(".json"), visited);
+      collectJsonlRecursive(root, source.maxDepth, files, root, (name) => name.startsWith("session_") && name.endsWith(".json"), visited, scanWarnings, depthProbeBudget);
     } else {
-      collectJsonlRecursive(root, source.maxDepth, files, root, undefined, visited);
+      collectJsonlRecursive(root, source.maxDepth, files, root, undefined, visited, scanWarnings, depthProbeBudget);
     }
   }
-  return files;
+  // A source may declare overlapping roots (or a symlinked root). Directory
+  // visitation prevents most duplication, but Claude's direct project files
+  // do not recurse through that guard. Canonicalize the final inventory so a
+  // physical transcript contributes exactly once to coverage and totals.
+  const unique = new Map<string, SourceFile>();
+  for (const entry of files) {
+    const key = sourceFileIdentity(entry.file);
+    const previous = unique.get(key);
+    if (!previous || compareSourceFiles(entry, previous) < 0) unique.set(key, entry);
+  }
+  if (files.length > unique.size) addScanWarning(scanWarnings, `${DUPLICATE_WARNING_PREFIX}: ${files.length - unique.size} filesystem entry/entries resolved to an existing transcript`);
+  return [...unique.values()].sort(compareSourceFiles);
+}
+
+const MAX_SCAN_WARNINGS = 32;
+
+function addScanWarning(scanWarnings: string[], warning: string): void {
+  if (!warning || scanWarnings.includes(warning) || scanWarnings.length >= MAX_SCAN_WARNINGS) return;
+  scanWarnings.push(warning);
+}
+
+function collectClaudeSubagentFiles(
+  dir: string,
+  depth: number,
+  files: SourceFile[],
+  project: string,
+  visited: Set<string>,
+  scanWarnings: string[],
+  depthProbeBudget: { remaining: number },
+): void {
+  if (depth < 0) return;
+  let real: string;
+  try {
+    real = fs.realpathSync(dir);
+  } catch {
+    real = path.resolve(dir);
+  }
+  if (visited.has(real)) return;
+  visited.add(real);
+  let entries: fs.Dirent[] = [];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name));
+  } catch (e) {
+    if ((e as { code?: string })?.code !== "ENOENT") addScanWarning(scanWarnings, `Could not read live trace directory ${dir}: ${e instanceof Error ? e.message : String(e)}`);
+    return;
+  }
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (depth === 0) {
+        addDepthBoundaryWarning(scanWarnings, full, probeForMatchingFileBelow(full, (name) => /^agent-.+\.jsonl$/i.test(name), depthProbeBudget));
+        continue;
+      }
+      collectClaudeSubagentFiles(full, depth - 1, files, project, visited, scanWarnings, depthProbeBudget);
+      continue;
+    }
+    if (!entry.isFile() || !/^agent-.+\.jsonl$/i.test(entry.name)) continue;
+    try {
+      const stat = fs.statSync(full);
+      files.push({ file: full, project, mtime: stat.mtimeMs, size: stat.size });
+    } catch (e) {
+      if ((e as { code?: string })?.code !== "ENOENT") addScanWarning(scanWarnings, `Could not stat live trace ${full}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
 }
 
 function collectJsonlRecursive(
   dir: string,
   depth: number,
-  files: Array<{ file: string; project: string; mtime: number; size: number }>,
+  files: SourceFile[],
   root: string,
   matches: (name: string) => boolean = (name) => name.endsWith(".jsonl"),
   visited: Set<string> = new Set<string>(),
+  scanWarnings: string[] = [],
+  depthProbeBudget: { remaining: number } = { remaining: DEPTH_PROBE_ENTRY_CAP },
 ): void {
   if (depth < 0) return;
   // Canonicalize before descending so each physical directory is walked once,
@@ -365,20 +533,27 @@ function collectJsonlRecursive(
   visited.add(real);
   let entries: fs.Dirent[] = [];
   try {
-    entries = fs.readdirSync(dir, { withFileTypes: true });
-  } catch {
+    entries = fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name));
+  } catch (e) {
+    if ((e as { code?: string })?.code !== "ENOENT") addScanWarning(scanWarnings, `Could not read live trace directory ${dir}: ${e instanceof Error ? e.message : String(e)}`);
     return;
   }
   for (const ent of entries) {
     const full = path.join(dir, ent.name);
     if (ent.isDirectory()) {
-      collectJsonlRecursive(full, depth - 1, files, root, matches, visited);
+      if (depth === 0) {
+        addDepthBoundaryWarning(scanWarnings, full, probeForMatchingFileBelow(full, matches, depthProbeBudget));
+        continue;
+      }
+      collectJsonlRecursive(full, depth - 1, files, root, matches, visited, scanWarnings, depthProbeBudget);
       continue;
     }
     if (!ent.isFile() || !matches(ent.name)) continue;
     try {
       const st = fs.statSync(full);
       files.push({ file: full, project: path.dirname(path.relative(root, full)) || path.basename(root), mtime: st.mtimeMs, size: st.size });
-    } catch {}
+    } catch (e) {
+      if ((e as { code?: string })?.code !== "ENOENT") addScanWarning(scanWarnings, `Could not stat live trace ${full}: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 }

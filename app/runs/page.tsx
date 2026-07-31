@@ -1,24 +1,36 @@
 import Link from "next/link";
 import { Activity, Plus } from "lucide-react";
-import { listRuns } from "@/lib/db";
+import { countRuns, listRuns } from "@/lib/db";
+import { loadCases } from "@/lib/cases";
 import RunsClient from "@/components/RunsClient";
 import PageHeader from "@/components/PageHeader";
+import EvaluateNav from "@/components/EvaluateNav";
+import EvaluateOverview from "@/components/EvaluateOverview";
 
 export const dynamic = "force-dynamic";
 
 export default async function Page() {
   const runs = listRuns(50);
+  const cases = await loadCases();
   return (
-    <div className="p-8 max-w-6xl mx-auto">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto">
       <PageHeader
         icon={Activity}
         title="Runs"
-        subtitle="Recent evaluation runs."
+        subtitle="Track suite executions, inspect evidence, and choose the next comparison."
         actions={
           <Link href="/runs/new" className="flex items-center gap-1.5 rounded-md border border-bd px-2.5 py-1.5 text-sm text-fg-muted hover:bg-bg-elev hover:text-fg transition-colors">
             <Plus className="size-3.5" /> New run
           </Link>
         }
+      />
+      <EvaluateNav />
+      <EvaluateOverview
+        totalRuns={countRuns()}
+        caseCount={cases.length}
+        latestRunId={runs[0]?.id ?? null}
+        latestRunName={runs[0]?.name ?? null}
+        latestRunSummary={runs[0]?.summary ?? null}
       />
       {runs.length === 0 ? (
         <div className="card p-8 text-center text-sm text-fg-muted">

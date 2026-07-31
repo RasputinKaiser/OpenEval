@@ -13,9 +13,9 @@ The project is designed for people who want to compare agent behavior on practic
 
 https://github.com/user-attachments/assets/97375fda-e019-451b-b15b-8d914792f0c7
 
-The 29.5-second v0.1.1 launch film shows the real OpenEval dashboard: live sessions, collection history, repeatable runs, comparisons, coverage, telemetry, and accuracy audits.
+The 29.5-second v0.1.1 launch film shows the real OpenEval dashboard: live sessions, collection history, repeatable runs, comparisons, coverage, telemetry, and accuracy audits. The current application release is [v0.1.4](https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.4).
 
-[Download the full-resolution MP4](https://github.com/RasputinKaiser/OpenEval/releases/download/v0.1.1/openeval-launch-v0.1.1.mp4) · [Open the v0.1.1 media release](https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.1) · [Latest release: v0.1.3](https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.3)
+[Download the full-resolution MP4](https://github.com/RasputinKaiser/OpenEval/releases/download/v0.1.1/openeval-launch-v0.1.1.mp4) · [Open the v0.1.1 media release](https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.1) · [Latest release: v0.1.4](https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.4)
 
 ### Build Credits
 
@@ -23,6 +23,59 @@ The 29.5-second v0.1.1 launch film shows the real OpenEval dashboard: live sessi
 - **Launch film:** GPT-5.6 Sol (High) led the edit, composition, visual QA, and final release pass; GPT-5.6 Luna (xhigh) contributed additional iteration passes.
 - **Production stack:** Codex, ImageGen, TouchDesigner, HyperFrames, GSAP, CDP Recorder, and FFmpeg.
 - **Acknowledgment:** huge thanks to [@KingBootoshi](https://x.com/KingBootoshi) from [righttointelligence.org](https://righttointelligence.org).
+
+## What's New in v0.1.4
+
+OpenEval v0.1.4 is the broad stability and evaluation-flow release. It ties the Evaluate pages together, makes benchmark evidence easier to watch and compare, preserves the strong local observation surfaces, and adds explicit boundaries wherever the local product does not yet have provider or human proof.
+
+### A more coherent evaluation workflow
+
+- Runs, Leaderboard, Compare, Cases, New Run, and Accuracy now read as one ordered Evaluate workflow instead of isolated pages.
+- Run diagnostics use explicit chart titles, numeric ticks, units, accessible point labels, ranked throughput bars, and honest measured/estimated/missing cost treatment.
+- Run detail has a watchable evaluation pulse with current/next case, lifecycle phase, progress, timing, connection state, bounded replay, and direct evidence navigation.
+- Compare surfaces A/B pass-rate, throughput, visual-contract, and error deltas, plus bounded side-by-side visual artifact review.
+- New Run begins with a focused Core suite and provides Visual lab, Reasoning, and Everything presets with planned execution and budget visibility.
+- Cases provides a direct Core-suite starter path and a Creative sampler route for operators who do not yet know which benchmark to choose.
+- Selected cases that disappear under a filter remain visible and recoverable; “Clear visible,” “Clear all,” and “Show selected” have distinct meanings.
+
+### A wider, more useful benchmark library
+
+- The runnable corpus now contains 35 cases across agentic SWE, reasoning, single-tool, and visual-code work.
+- Visual/code coverage includes supplied-data SVG, pixel art, 3D depth, isometric voxel worlds, data-story cards, route planners, accessible forms, dashboards, posters, diagrams, sortable tables, responsive layouts, and Markdown runbooks.
+- The catalog keeps deterministic structural checks separate from screenshot, pixel-quality, judge, and human review. Bytes, hashes, selectors, and element counts are evidence receipts, not visual-quality verdicts.
+- The ledger now includes 200 user-flow stories across brand-new, beginner, intermediate, and expert journeys, plus a 250-row UX pass covering sizing, visibility, contrast, color, responsive density, and interaction states.
+
+### Stronger accuracy and evidence posture
+
+- The strict corpus audit covers 35/35 oracle scripts and 35/35 known-bad scripts.
+- Accuracy surfaces expose evidence tiers, weaknesses, uncertainties, direct next actions, judge posture, and the distinction between configuration-only and executed proof.
+- Product-flow coverage, capability nuclei, evidence-lens rows, and runnable benchmark cases have separate manifests and denominators.
+- Unknown and pending states remain visible for unexercised provider, trace, visual, LLM-judge, assistive, and human-review evidence.
+
+### Observation remains the deepest surface
+
+- Live, Collection, and Timeline retain bounded semantic transcript and tool-call views for Codex, Claude, ncode, and other configured sources.
+- Tool calls/results are paired by identity where available, with names, status, duration, bounded arguments/results, and tool-search records.
+- Raw transcripts remain authoritative; derived windows, FTS fields, DOM projections, and API payloads stay bounded.
+- Collection and Timeline report discovered, scanned, parsed, dropped, unscanned, signal, judged, heuristic, and no-signal populations explicitly.
+- Measured, inferred, missing, malformed, stale, archived, and incomplete provenance remains visible for model, token, cost, duration, tools, and trace structure.
+- Child traces and judge sessions retain lineage and stay out of unrelated outcome denominators.
+
+### Stability, accessibility, and responsive behavior
+
+- Run cancellation now propagates through in-flight harness/grader work and closes terminal SSE streams honestly.
+- Loading, error, retry, and empty states are present across the primary evaluation and observation routes.
+- Onboarding is session-aware, route-aware, focus-contained, Escape-dismissible, and labeled for assistive technology.
+- Harness discovery reports failed probes, missing binaries, wrapper failures, and revoked authentication with a concrete recovery action.
+- API requests are bounded and field-tagged; mutation routes enforce local/same-origin safety; artifact access is server-owned and symlink-safe.
+- The sidebar release tag now comes from package metadata and links directly to the matching GitHub release tag.
+- Primary evaluation routes were checked at 390×844 with zero positive document overflow and no captured browser console warnings/errors.
+
+### Release proof
+
+The release source passed TypeScript typecheck, the full test suite, lint, production build, strict accuracy audit, doctor, public-upload audit, and diff hygiene checks. The release deliberately does not claim every harness has fresh authenticated provider success, that artifact structure proves pixel quality, or that source/browser checks replace full assistive-technology and human visual review.
+
+[Read the complete v0.1.4 release notes](https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.4) · [Compare v0.1.3...v0.1.4](https://github.com/RasputinKaiser/OpenEval/compare/v0.1.3...v0.1.4)
 
 ## What's New in v0.1.3
 

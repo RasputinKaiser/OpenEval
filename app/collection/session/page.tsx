@@ -11,10 +11,8 @@ import { RedactedPath } from "@/components/RedactToggle";
 
 export const dynamic = "force-dynamic";
 
-/** How many turns to render at once — full parse is capped upstream at 20k.
- * Turn cards use content-visibility (cv-auto), so offscreen rows cost no
- * layout/paint; the cap only bounds DOM size for truly enormous sessions. */
-const RENDER_CAP = 5_000;
+/** Keep the initial RSC/HTML payload small; later windows are user-triggered. */
+const RENDER_CAP = 240;
 
 /**
  * Read-only transcript viewer for ANY discovered session (search hits, the
@@ -57,8 +55,14 @@ export default async function SessionViewerPage({ searchParams }: { searchParams
     );
   }
 
-  const { turns, error } = parseSessionTranscript(file);
+  const { turns, error, normalization } = parseSessionTranscript(file);
   const shown = turns.slice(0, RENDER_CAP);
+  const totalCounts = {
+    all: turns.length,
+    chat: turns.filter((t) => t.role === "user" || t.role === "assistant").length,
+    tools: turns.filter((t) => t.role === "tool" || t.severity === "error").length,
+    errors: turns.filter((t) => t.severity === "error").length,
+  };
   const errorCount = turns.filter((t) => t.severity === "error").length;
   const warnCount = turns.filter((t) => t.severity === "warning").length;
 
@@ -70,7 +74,7 @@ export default async function SessionViewerPage({ searchParams }: { searchParams
         title={path.basename(file)}
         subtitle={
           <span className="mono text-[12px]">
-            <RedactedPath path={file} /> · {fmtNum(st.size)}B on disk · modified {fmtRel(st.mtimeMs)} · {fmtNum(turns.length)} turns
+            <RedactedPath path={file} /> · {fmtNum(st.size)}B on disk · modified {fmtRel(st.mtimeMs)} · {fmtNum(turns.length)} normalized turns
             {errorCount > 0 && <span className="text-err"> · {errorCount} errors</span>}
             {warnCount > 0 && <span className="text-warn"> · {warnCount} warnings</span>}
           </span>
@@ -79,11 +83,11 @@ export default async function SessionViewerPage({ searchParams }: { searchParams
 
       {error && <div className="card p-3 mb-4 text-sm text-err flex items-center gap-2"><AlertTriangle className="size-4" /> {error}</div>}
 
-      <TranscriptClient turns={shown} file={file} />
+      <TranscriptClient turns={shown} file={file} totalTurns={turns.length} totalCounts={totalCounts} normalization={normalization} />
 
       {turns.length > RENDER_CAP && (
         <p className="text-[11px] text-fg-dim mt-3">
-          Showing the first {fmtNum(RENDER_CAP)} of {fmtNum(turns.length)} turns — this session is very large.
+          Initial render is capped at {fmtNum(RENDER_CAP)} turns; use “Load next” to inspect the rest of this large session.
         </p>
       )}
     </div>

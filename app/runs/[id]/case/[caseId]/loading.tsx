@@ -1,12 +1,13 @@
 function Bar({ className }: { className: string }) {
-  return <div className={`shimmer rounded ${className}`} />;
+  return <div aria-hidden="true" className={`shimmer rounded ${className}`} />;
 }
 
 /** Mirrors CaseDetailClient: back link, title block, stat grid, then
  * collapsible tool-call / transcript section cards. */
 export default function Loading() {
   return (
-    <main className="p-8 max-w-5xl mx-auto space-y-4" aria-busy="true" aria-label="Loading case detail">
+    <main role="status" aria-live="polite" className="p-8 max-w-5xl mx-auto space-y-4" aria-busy="true" aria-label="Loading case detail">
+      <span className="sr-only">Loading case detail…</span>
       <div>
         <Bar className="h-3 w-24" />
         <Bar className="mt-2 h-7 w-72" />

@@ -16,10 +16,10 @@ import type { LiveSession } from "./live";
  * Bump PARSER_VERSION whenever parseLiveSession's output changes shape or
  * semantics; stale-version rows are ignored and overwritten.
  */
-export const PARSER_VERSION = 18; // v18: reject placeholder model ids everywhere; v17: distinct Codex/Claude child identities and cost-allocation provenance
+export const PARSER_VERSION = 23; // v23: Codex custom/tool-search call coverage; v22: thread/item rollout normalization and lineage/usage coverage
 
 /** Bump whenever transcript-to-search text extraction semantics change. */
-export const FTS_INDEX_VERSION = 2; // v2: source-aware Codex echo suppression and IDE-context normalization
+export const FTS_INDEX_VERSION = 5; // v5: semantic transcript dedupe plus per-block Claude/ncode tool evidence
 
 const CACHE_DB_PATH = path.join(ROOT, "data", "live-cache.db");
 
@@ -53,7 +53,16 @@ function openCacheDb(): Database.Database {
   conn.pragma("busy_timeout = 5000");
   try { conn.pragma("journal_mode = WAL"); } catch {}
   conn.pragma("synchronous = NORMAL");
+  // Bound sidecar growth without forcing fsync-per-row. The auto-checkpoint
+  // threshold is pages (~4 MiB at SQLite's default 4 KiB page size); the
+  // journal limit keeps a reset WAL from lingering as a large sparse file.
+  conn.pragma("wal_autocheckpoint = 1000");
+  conn.pragma("journal_size_limit = 8388608");
   conn.exec(SCHEMA);
+  // Additive migration: pre-v20 rows only keyed by file/stat. Their empty
+  // context is a safe one-time miss for context-aware reads and is overwritten
+  // after the first re-parse; no destructive table rebuild is needed.
+  try { conn.exec("ALTER TABLE session_cache ADD COLUMN context_key TEXT NOT NULL DEFAULT ''"); } catch {}
   // Additive migration for DBs created before prompt versioning existed.
   try { conn.exec("ALTER TABLE outcome_judgments ADD COLUMN prompt_version INTEGER"); } catch {}
   // Permanent means the SESSION itself is unjudgeable (missing file or no
@@ -65,6 +74,13 @@ function openCacheDb(): Database.Database {
   // Text extraction evolves independently from the live-session parser.
   // Old rows must be offered to the explicit indexer again after a change.
   try { conn.exec("ALTER TABLE fts_meta ADD COLUMN index_version INTEGER NOT NULL DEFAULT 0"); } catch {}
+  // Same-stat transcript rewrites are possible when a writer restores mtime
+  // or replaces content without changing its byte length. The search index
+  // keeps a bounded head/tail fingerprint so those rewrites are re-indexed.
+  try { conn.exec("ALTER TABLE fts_meta ADD COLUMN content_fingerprint TEXT NOT NULL DEFAULT ''"); } catch {}
+  // Source provenance is part of the search identity. Re-index legacy rows
+  // whose source_id is empty when the current registry supplies a source.
+  try { conn.exec("ALTER TABLE fts_meta ADD COLUMN source_id TEXT NOT NULL DEFAULT ''"); } catch {}
   return conn;
 }
 
@@ -120,6 +136,7 @@ CREATE TABLE IF NOT EXISTS session_cache (
   mtime_ms REAL NOT NULL,
   size INTEGER NOT NULL,
   parser_version INTEGER NOT NULL,
+  context_key TEXT NOT NULL DEFAULT '',
   session_json TEXT
 );
 CREATE TABLE IF NOT EXISTS outcome_judgments (
@@ -139,6 +156,22 @@ CREATE TABLE IF NOT EXISTS judge_failures (
   last_attempt_at INTEGER NOT NULL,
   permanent INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS judge_jobs (
+  id INTEGER PRIMARY KEY CHECK(id = 1),
+  state TEXT NOT NULL,
+  total INTEGER NOT NULL,
+  done INTEGER NOT NULL,
+  judged INTEGER NOT NULL,
+  failed INTEGER NOT NULL,
+  judge TEXT NOT NULL,
+  started_at INTEGER,
+  finished_at INTEGER,
+  last_error TEXT,
+  queue_json TEXT NOT NULL,
+  lease_id TEXT,
+  owner_pid INTEGER,
+  heartbeat_at INTEGER
+);
 CREATE VIRTUAL TABLE IF NOT EXISTS session_fts USING fts5(
   user_text, assistant_text, title,
   project UNINDEXED, source_id UNINDEXED, file UNINDEXED, at UNINDEXED
@@ -149,17 +182,22 @@ CREATE TABLE IF NOT EXISTS fts_meta (
   size INTEGER NOT NULL,
   indexed_at INTEGER NOT NULL,
   fts_rowid INTEGER,
-  index_version INTEGER NOT NULL DEFAULT 0
+  index_version INTEGER NOT NULL DEFAULT 0,
+  content_fingerprint TEXT NOT NULL DEFAULT '',
+  source_id TEXT NOT NULL DEFAULT ''
 );
 `;
 
-export function cacheGet(file: string, mtimeMs: number, size: number): { hit: boolean; session: LiveSession | null } {
+export function cacheGet(file: string, mtimeMs: number, size: number, contextKey = ""): { hit: boolean; session: LiveSession | null } {
   const conn = getCacheDb();
   if (!conn) return { hit: false, session: null };
   try {
-    const row = stmt(conn, "SELECT mtime_ms, size, parser_version, session_json FROM session_cache WHERE file = ?")
-      .get(file) as { mtime_ms: number; size: number; parser_version: number; session_json: string | null } | undefined;
-    if (!row || row.mtime_ms !== mtimeMs || row.size !== size || row.parser_version !== PARSER_VERSION) {
+    const row = stmt(conn, "SELECT mtime_ms, size, parser_version, context_key, session_json FROM session_cache WHERE file = ?")
+      .get(file) as { mtime_ms: number; size: number; parser_version: number; context_key: string | null; session_json: string | null } | undefined;
+    // An omitted context preserves the pre-v20 helper's legacy wildcard
+    // behavior for direct callers/tests. Parser call sites always provide a
+    // non-empty context and therefore enforce the full identity.
+    if (!row || row.mtime_ms !== mtimeMs || row.size !== size || row.parser_version !== PARSER_VERSION || (contextKey !== "" && (row.context_key ?? "") !== contextKey)) {
       return { hit: false, session: null };
     }
     if (row.session_json == null) return { hit: true, session: null };
@@ -171,17 +209,22 @@ export function cacheGet(file: string, mtimeMs: number, size: number): { hit: bo
   }
 }
 
-export function cachePut(file: string, mtimeMs: number, size: number, session: LiveSession | null): void {
+export function cachePut(file: string, mtimeMs: number, size: number, session: LiveSession | null, contextKey = ""): void {
   const conn = getCacheDb();
   if (!conn) return;
   try {
     stmt(
       conn,
-      `INSERT INTO session_cache (file, mtime_ms, size, parser_version, session_json)
-       VALUES (?, ?, ?, ?, ?)
+      `INSERT INTO session_cache (file, mtime_ms, size, parser_version, context_key, session_json)
+       VALUES (?, ?, ?, ?, ?, ?)
        ON CONFLICT(file) DO UPDATE SET mtime_ms = excluded.mtime_ms, size = excluded.size,
-         parser_version = excluded.parser_version, session_json = excluded.session_json`,
-    ).run(file, mtimeMs, size, PARSER_VERSION, session ? JSON.stringify(session) : null);
+         parser_version = excluded.parser_version, context_key = excluded.context_key, session_json = excluded.session_json
+       WHERE session_cache.mtime_ms IS NOT excluded.mtime_ms
+          OR session_cache.size IS NOT excluded.size
+          OR session_cache.parser_version IS NOT excluded.parser_version
+          OR session_cache.context_key IS NOT excluded.context_key
+          OR session_cache.session_json IS NOT excluded.session_json`,
+    ).run(file, mtimeMs, size, PARSER_VERSION, contextKey, session ? JSON.stringify(session) : null);
   } catch {
     // Best-effort; a failed write only costs a future re-parse.
   }
@@ -324,6 +367,202 @@ export interface JudgeFailure {
   permanent: boolean;
 }
 
+// ---------- Durable judge-all job ledger ----------
+
+/** A lease is considered detached after this interval without a heartbeat. */
+export const JUDGE_JOB_LEASE_MS = 30_000;
+
+export type StoredJudgeJobState = "running" | "finished" | "interrupted";
+
+/** Durable status for the singleton marker-window judge-all pass. */
+export interface StoredJudgeJob {
+  state: StoredJudgeJobState;
+  total: number;
+  done: number;
+  judged: number;
+  failed: number;
+  judge: string;
+  startedAt: number | null;
+  finishedAt: number | null;
+  lastError: string | null;
+  /** Session paths queued for this pass; verdicts/failures remain source of truth on resume. */
+  queue: string[];
+  leaseId: string | null;
+  ownerPid: number | null;
+  heartbeatAt: number | null;
+}
+
+type JudgeJobRow = {
+  state: string;
+  total: number;
+  done: number;
+  judged: number;
+  failed: number;
+  judge: string;
+  started_at: number | null;
+  finished_at: number | null;
+  last_error: string | null;
+  queue_json: string;
+  lease_id: string | null;
+  owner_pid: number | null;
+  heartbeat_at: number | null;
+};
+
+function parseJudgeJob(row: JudgeJobRow | undefined): StoredJudgeJob | null {
+  if (!row) return null;
+  let queue: string[] = [];
+  try {
+    const parsed = JSON.parse(row.queue_json);
+    if (Array.isArray(parsed)) queue = parsed.filter((p): p is string => typeof p === "string");
+  } catch {}
+  const state: StoredJudgeJobState = row.state === "running" || row.state === "finished" || row.state === "interrupted"
+    ? row.state
+    : "interrupted";
+  return {
+    state,
+    total: Math.max(0, Number(row.total) || 0),
+    done: Math.max(0, Number(row.done) || 0),
+    judged: Math.max(0, Number(row.judged) || 0),
+    failed: Math.max(0, Number(row.failed) || 0),
+    judge: row.judge || "",
+    startedAt: row.started_at == null ? null : Number(row.started_at),
+    finishedAt: row.finished_at == null ? null : Number(row.finished_at),
+    lastError: row.last_error ?? null,
+    queue,
+    leaseId: row.lease_id ?? null,
+    ownerPid: row.owner_pid == null ? null : Number(row.owner_pid),
+    heartbeatAt: row.heartbeat_at == null ? null : Number(row.heartbeat_at),
+  };
+}
+
+const judgeJobSelect = (conn: Database.Database): StoredJudgeJob | null => {
+  try {
+    return parseJudgeJob(conn.prepare("SELECT state, total, done, judged, failed, judge, started_at, finished_at, last_error, queue_json, lease_id, owner_pid, heartbeat_at FROM judge_jobs WHERE id = 1").get() as JudgeJobRow | undefined);
+  } catch {
+    return null;
+  }
+};
+
+/** Read the durable judge-all row, independent of any module singleton. */
+export function loadJudgeJob(): StoredJudgeJob | null {
+  const conn = getCacheDb();
+  return conn ? judgeJobSelect(conn) : null;
+}
+
+/** Test and recovery hook: replace the durable singleton row. */
+export function saveJudgeJob(job: StoredJudgeJob): void {
+  const conn = getCacheDb();
+  if (!conn) return;
+  try {
+    conn.prepare(
+      `INSERT INTO judge_jobs (id, state, total, done, judged, failed, judge, started_at, finished_at, last_error, queue_json, lease_id, owner_pid, heartbeat_at)
+       VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET state = excluded.state, total = excluded.total, done = excluded.done,
+         judged = excluded.judged, failed = excluded.failed, judge = excluded.judge, started_at = excluded.started_at,
+         finished_at = excluded.finished_at, last_error = excluded.last_error, queue_json = excluded.queue_json,
+         lease_id = excluded.lease_id, owner_pid = excluded.owner_pid, heartbeat_at = excluded.heartbeat_at`,
+    ).run(
+      job.state, job.total, job.done, job.judged, job.failed, job.judge, job.startedAt, job.finishedAt,
+      job.lastError, JSON.stringify(job.queue), job.leaseId, job.ownerPid, job.heartbeatAt,
+    );
+  } catch {}
+}
+
+/**
+ * Atomically claim the singleton row. `takeoverLeaseId` is required when a
+ * caller has proved that the prior lease is stale or belongs to a replaced
+ * HMR module; the conditional update prevents two resumptions racing.
+ */
+export function claimJudgeJob(job: StoredJudgeJob, opts: { takeoverLeaseId?: string | null } = {}): boolean {
+  const conn = getCacheDb();
+  if (!conn) return false;
+  try {
+    const tx = conn.transaction(() => {
+      const current = judgeJobSelect(conn);
+      if (current?.state === "running") {
+        const takeover = opts.takeoverLeaseId != null && current.leaseId === opts.takeoverLeaseId;
+        if (!takeover) return false;
+        const result = conn.prepare(
+          `UPDATE judge_jobs SET state = ?, total = ?, done = ?, judged = ?, failed = ?, judge = ?, started_at = ?,
+             finished_at = ?, last_error = ?, queue_json = ?, lease_id = ?, owner_pid = ?, heartbeat_at = ?
+           WHERE id = 1 AND state = 'running' AND lease_id = ?`,
+        ).run(
+          job.state, job.total, job.done, job.judged, job.failed, job.judge, job.startedAt, job.finishedAt,
+          job.lastError, JSON.stringify(job.queue), job.leaseId, job.ownerPid, job.heartbeatAt, current.leaseId,
+        );
+        return result.changes === 1;
+      }
+      const result = conn.prepare(
+        `INSERT INTO judge_jobs (id, state, total, done, judged, failed, judge, started_at, finished_at, last_error, queue_json, lease_id, owner_pid, heartbeat_at)
+         VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET state = excluded.state, total = excluded.total, done = excluded.done,
+           judged = excluded.judged, failed = excluded.failed, judge = excluded.judge, started_at = excluded.started_at,
+           finished_at = excluded.finished_at, last_error = excluded.last_error, queue_json = excluded.queue_json,
+           lease_id = excluded.lease_id, owner_pid = excluded.owner_pid, heartbeat_at = excluded.heartbeat_at`,
+      ).run(
+        job.state, job.total, job.done, job.judged, job.failed, job.judge, job.startedAt, job.finishedAt,
+        job.lastError, JSON.stringify(job.queue), job.leaseId, job.ownerPid, job.heartbeatAt,
+      );
+      return result.changes === 1;
+    });
+    return tx() === true;
+  } catch {
+    return false;
+  }
+}
+
+/** Refresh a live lease. Updates are conditional so a superseded worker is inert. */
+export function heartbeatJudgeJob(leaseId: string, heartbeatAt = Date.now()): boolean {
+  const conn = getCacheDb();
+  if (!conn) return false;
+  try {
+    return conn.prepare("UPDATE judge_jobs SET heartbeat_at = ? WHERE id = 1 AND state = 'running' AND lease_id = ?")
+      .run(heartbeatAt, leaseId).changes === 1;
+  } catch {
+    return false;
+  }
+}
+
+/** Persist one completed queue item. */
+export function updateJudgeJobProgress(leaseId: string, result: { ok: boolean; error?: string | null }): boolean {
+  const conn = getCacheDb();
+  if (!conn) return false;
+  try {
+    const now = Date.now();
+    const sql = result.ok
+      ? "UPDATE judge_jobs SET done = done + 1, judged = judged + 1, heartbeat_at = ? WHERE id = 1 AND state = 'running' AND lease_id = ?"
+      : "UPDATE judge_jobs SET done = done + 1, failed = failed + 1, heartbeat_at = ?, last_error = ? WHERE id = 1 AND state = 'running' AND lease_id = ?";
+    const params = result.ok ? [now, leaseId] : [now, (result.error ?? "judge failed").slice(0, 300), leaseId];
+    return conn.prepare(sql).run(...params).changes === 1;
+  } catch {
+    return false;
+  }
+}
+
+/** Mark a claimed job complete; a stale/superseded worker cannot finish a newer job. */
+export function finishJudgeJob(leaseId: string, finishedAt = Date.now()): boolean {
+  const conn = getCacheDb();
+  if (!conn) return false;
+  try {
+    return conn.prepare("UPDATE judge_jobs SET state = 'finished', finished_at = ?, lease_id = NULL, owner_pid = NULL, heartbeat_at = NULL WHERE id = 1 AND state = 'running' AND lease_id = ?")
+      .run(finishedAt, leaseId).changes === 1;
+  } catch {
+    return false;
+  }
+}
+
+/** Persist an interrupted state while retaining the queue for a later resume. */
+export function interruptJudgeJob(leaseId: string, error: string, finishedAt = Date.now()): boolean {
+  const conn = getCacheDb();
+  if (!conn) return false;
+  try {
+    return conn.prepare("UPDATE judge_jobs SET state = 'interrupted', finished_at = ?, last_error = ?, lease_id = NULL, owner_pid = NULL, heartbeat_at = NULL WHERE id = 1 AND state = 'running' AND lease_id = ?")
+      .run(finishedAt, error.slice(0, 300), leaseId).changes === 1;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Failed judge attempts, keyed by session file. Without this ledger, a file
  * that can never be judged (deleted, unparseable, or a judge-killing prompt)
@@ -396,24 +635,67 @@ export interface FtsHit {
   snippet: string;
 }
 
-/** Files already indexed, with the mtime+size they were indexed at (staleness check). */
-export function ftsIndexedFiles(): Map<string, { mtimeMs: number; size: number }> {
-  const out = new Map<string, { mtimeMs: number; size: number }>();
+/**
+ * Defense-in-depth bound for text entering the durable search index. The
+ * extractor already supplies head+tail excerpts, but keeping the invariant at
+ * the SQLite boundary prevents a future caller from mirroring a full
+ * transcript into the cache. This is a cache-only bound; raw files and parsed
+ * session summaries remain untouched.
+ */
+export const FTS_TEXT_CAP_PER_FIELD = 32_000;
+const FTS_TEXT_HEAD_CAP = FTS_TEXT_CAP_PER_FIELD / 2;
+const FTS_TEXT_GAP = "\n[…]\n";
+
+function boundFtsText(text: string): string {
+  if (text.length <= FTS_TEXT_CAP_PER_FIELD) return text;
+  const tailCap = FTS_TEXT_CAP_PER_FIELD - FTS_TEXT_HEAD_CAP - FTS_TEXT_GAP.length;
+  return `${text.slice(0, FTS_TEXT_HEAD_CAP)}${FTS_TEXT_GAP}${text.slice(-tailCap)}`;
+}
+
+/** Files already indexed, with stat and optional bounded content identity. */
+export function ftsIndexedFiles(): Map<string, { mtimeMs: number; size: number; contentFingerprint?: string; sourceId?: string }> {
+  const out = new Map<string, { mtimeMs: number; size: number; contentFingerprint?: string; sourceId?: string }>();
   const conn = getCacheDb();
   if (!conn) return out;
   try {
-    for (const r of conn.prepare("SELECT file, mtime_ms, size FROM fts_meta WHERE index_version = ?").all(FTS_INDEX_VERSION) as Array<{ file: string; mtime_ms: number; size: number }>) {
-      out.set(r.file, { mtimeMs: r.mtime_ms, size: r.size });
+    for (const r of conn.prepare("SELECT file, mtime_ms, size, content_fingerprint, source_id FROM fts_meta WHERE index_version = ?").all(FTS_INDEX_VERSION) as Array<{ file: string; mtime_ms: number; size: number; content_fingerprint?: string | null; source_id?: string | null }>) {
+      out.set(r.file, {
+        mtimeMs: r.mtime_ms,
+        size: r.size,
+        ...(r.content_fingerprint ? { contentFingerprint: r.content_fingerprint } : {}),
+        ...(r.source_id ? { sourceId: r.source_id } : {}),
+      });
     }
   } catch {}
   return out;
 }
 
 /** (Re-)index one file's extracted text. Replaces any previous rows for the file. */
-export function ftsUpsert(doc: FtsDoc, mtimeMs: number, size: number): void {
+export function ftsUpsert(doc: FtsDoc, mtimeMs: number, size: number, contentFingerprint?: string): void {
   const conn = getCacheDb();
   if (!conn) return;
   try {
+    const previous = conn.prepare("SELECT mtime_ms, size, index_version, content_fingerprint, source_id, fts_rowid FROM fts_meta WHERE file = ?").get(doc.file) as
+      | { mtime_ms: number; size: number; index_version: number; content_fingerprint: string | null; source_id: string | null; fts_rowid: number | null }
+      | undefined;
+    // Index passes are explicit and normally skip unchanged files before they
+    // reach this function. Keep the lower-level API idempotent too: callers
+    // that retry a batch must not delete/reinsert the same FTS row or dirty the
+    // WAL. A missing rowid falls through so legacy metadata is repaired.
+    if (
+      previous && previous.mtime_ms === mtimeMs && previous.size === size &&
+      previous.index_version === FTS_INDEX_VERSION && previous.fts_rowid != null &&
+      previous.source_id === doc.sourceId &&
+      (contentFingerprint === undefined
+        ? !previous.content_fingerprint
+        : previous.content_fingerprint === contentFingerprint) &&
+      conn.prepare("SELECT 1 FROM session_fts WHERE rowid = ?").get(previous.fts_rowid)
+    ) return;
+
+    // Enforce the excerpt bound at the durable-storage boundary as well as in
+    // the producer. Head+tail preserves both task framing and final outcomes.
+    const userText = boundFtsText(doc.userText);
+    const assistantText = boundFtsText(doc.assistantText);
     const tx = conn.transaction(() => {
       // `file` is UNINDEXED in the fts5 table, so DELETE … WHERE file = ? is a
       // full-table scan (O(N²) across an index build). Delete by the rowid
@@ -426,15 +708,16 @@ export function ftsUpsert(doc: FtsDoc, mtimeMs: number, size: number): void {
       else if (prev) conn.prepare("DELETE FROM session_fts WHERE file = ?").run(doc.file);
       const inserted = conn
         .prepare("INSERT INTO session_fts (user_text, assistant_text, title, project, source_id, file, at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-        .run(doc.userText, doc.assistantText, doc.title, doc.project, doc.sourceId, doc.file, doc.at);
+        .run(userText, assistantText, doc.title, doc.project, doc.sourceId, doc.file, doc.at);
       conn
         .prepare(
-          `INSERT INTO fts_meta (file, mtime_ms, size, indexed_at, fts_rowid, index_version) VALUES (?, ?, ?, ?, ?, ?)
+          `INSERT INTO fts_meta (file, mtime_ms, size, indexed_at, fts_rowid, index_version, content_fingerprint, source_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(file) DO UPDATE SET mtime_ms = excluded.mtime_ms, size = excluded.size,
              indexed_at = excluded.indexed_at, fts_rowid = excluded.fts_rowid,
-             index_version = excluded.index_version`,
+             index_version = excluded.index_version, content_fingerprint = excluded.content_fingerprint,
+             source_id = excluded.source_id`,
         )
-        .run(doc.file, mtimeMs, size, Date.now(), Number(inserted.lastInsertRowid), FTS_INDEX_VERSION);
+        .run(doc.file, mtimeMs, size, Date.now(), Number(inserted.lastInsertRowid), FTS_INDEX_VERSION, contentFingerprint ?? "", doc.sourceId);
     });
     tx();
   } catch {}
@@ -462,6 +745,7 @@ export function ftsSearch(q: string, limit = 50): FtsHit[] {
   const conn = getCacheDb();
   const match = toFtsMatch(q);
   if (!conn || !match) return [];
+  const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(Math.trunc(limit), 200)) : 50;
   try {
     const rows = conn
       .prepare(
@@ -470,7 +754,7 @@ export function ftsSearch(q: string, limit = 50): FtsHit[] {
                 snippet(session_fts, 1, '«', '»', ' … ', 14) AS snip_assistant
          FROM session_fts WHERE session_fts MATCH ? ORDER BY rank LIMIT ?`,
       )
-      .all(match, Math.max(1, Math.min(limit, 200))) as Array<{
+      .all(match, safeLimit) as Array<{
       file: string; source_id: string; project: string; title: string; at: number;
       snip_user: string; snip_assistant: string;
     }>;

@@ -51,6 +51,56 @@ test("transient fs error during parse is not cached as a null tombstone", () => 
   }
 });
 
+test("parser cache separates inferred-model contexts for the same file/stat", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "openeval-cache-context-"));
+  try {
+    const file = path.join(dir, "session.jsonl");
+    fs.writeFileSync(file, JSON.stringify({
+      type: "system",
+      sessionId: "context-collision",
+      timestamp: "2026-07-28T00:00:00.000Z",
+    }) + "\n");
+    const stat = fs.statSync(file);
+    const knownStat = { mtimeMs: stat.mtimeMs, size: stat.size };
+    const first = summarizeLiveSessionFile(file, "-tmp-context", Date.parse("2026-07-28T00:00:00.000Z"), {
+      inferredModel: "model-a",
+      stat: knownStat,
+    });
+    const second = summarizeLiveSessionFile(file, "-tmp-context", Date.parse("2026-07-28T00:00:00.000Z"), {
+      inferredModel: "model-b",
+      stat: knownStat,
+    });
+    assert.equal(first?.model, "model-a");
+    assert.equal(second?.model, "model-b");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("repeated parser-cache hits do not rewrite the SQLite row", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "openeval-cache-write-"));
+  try {
+    const file = path.join(dir, "session.jsonl");
+    fs.writeFileSync(file, JSON.stringify({ type: "system", sessionId: "write-once", timestamp: "2026-07-28T00:00:00.000Z" }) + "\n");
+    const stat = fs.statSync(file);
+    const opts = { inferredModel: "model-a", stat: { mtimeMs: stat.mtimeMs, size: stat.size } };
+    assert.ok(summarizeLiveSessionFile(file, "-tmp-write", Date.parse("2026-07-28T00:00:00.000Z"), opts));
+
+    conn.exec("CREATE TABLE cache_write_audit (kind TEXT NOT NULL)");
+    conn.exec("CREATE TRIGGER cache_write_audit_update AFTER UPDATE ON session_cache BEGIN INSERT INTO cache_write_audit(kind) VALUES ('update'); END");
+    try {
+      assert.ok(summarizeLiveSessionFile(file, "-tmp-write", Date.parse("2026-07-28T00:00:00.000Z"), opts));
+      const writes = conn.prepare("SELECT count(*) AS n FROM cache_write_audit").get() as { n: number };
+      assert.equal(writes.n, 0, "a parser-cache hit must not issue a SQLite UPDATE");
+    } finally {
+      conn.exec("DROP TRIGGER cache_write_audit_update");
+      conn.exec("DROP TABLE cache_write_audit");
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("torn or garbage cache rows read as misses on every read path", () => {
   const insert = conn.prepare(
     "INSERT OR REPLACE INTO session_cache (file, mtime_ms, size, parser_version, session_json) VALUES (?, ?, ?, ?, ?)",

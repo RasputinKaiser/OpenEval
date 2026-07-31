@@ -3,7 +3,7 @@ import { getPath, type FieldMapping } from "../adapters/generic";
 import { classifySentiment, isRephraseTracked, looksLikeApologyOrFailure, looksLikeTestsPassed, mcpServerFromTool, JUDGE_PROMPT_MARKER } from "../insights/signals";
 import { estimateCostUsd } from "../pricing";
 import type { LiveMetricSources, LiveModelUsage, LiveQueueSummary, LiveSession, LiveUsageSegment } from "./types";
-import { NON_WS_RE, READ_LIKE_TOOL_HINTS, WRITE_TOOL_NAMES, booleanOrNull, buildUsageSegments, buildWarnings, coalesceModel, coalesceString, decodeProjectDir, downsampleUsageSegments, ensureModelUsage, estimateModelUsageCost, extractFilePaths, increment, incrementRecord, jsonPreview, modelUsageVolume, numericOrNull, parseTimestamp, scoreQuality, summarizeToolDurations, topEntries } from "./util";
+import { MAX_TRACE_METADATA_ITEMS, NON_WS_RE, READ_LIKE_TOOL_HINTS, WRITE_TOOL_NAMES, appendUsageSegment, booleanOrNull, buildUsageSegments, buildWarnings, coalesceModel, coalesceString, decodeProjectDir, downsampleUsageSegments, ensureModelUsage, estimateModelUsageCost, extractFilePaths, increment, incrementRecord, jsonPreview, modelUsageVolume, numericOrNull, parseTimestamp, scoreQuality, summarizeToolDurations, topEntries } from "./util";
 
 export function parseLiveSession(file: string, lines: Iterable<string>, bytes: number, projectDir: string, mtime: number, fields?: FieldMapping, inferredModel?: string, decodeProject = true): LiveSession | null {
   let model: string | null = null;
@@ -56,6 +56,7 @@ export function parseLiveSession(file: string, lines: Iterable<string>, bytes: n
   let messageCount = 0;
   let userType: string | null = null;
   let sawResult = false;
+  let detailMetadataCapped = false;
   let rootMessages = 0;
   let sidechainMessages = 0;
   let gitBranch: string | null = null;
@@ -107,11 +108,23 @@ export function parseLiveSession(file: string, lines: Iterable<string>, bytes: n
         tsCount++;
       }
 
-      if (typeof obj.uuid === "string") seenUuids.add(obj.uuid);
-      if (typeof obj.parentUuid === "string" && obj.parentUuid) parentUuids.add(obj.parentUuid);
+      if (typeof obj.uuid === "string") {
+        if (seenUuids.has(obj.uuid)) { /* already retained */ }
+        else if (seenUuids.size < MAX_TRACE_METADATA_ITEMS) seenUuids.add(obj.uuid);
+        else detailMetadataCapped = true;
+      }
+      if (typeof obj.parentUuid === "string" && obj.parentUuid) {
+        if (parentUuids.has(obj.parentUuid)) { /* already retained */ }
+        else if (parentUuids.size < MAX_TRACE_METADATA_ITEMS) parentUuids.add(obj.parentUuid);
+        else detailMetadataCapped = true;
+      }
       if (obj.isSidechain === true) sidechainMessages++;
       if (obj.isSidechain === false) rootMessages++;
-      if (typeof obj.agentId === "string") agentIds.add(obj.agentId);
+      if (typeof obj.agentId === "string") {
+        if (agentIds.has(obj.agentId)) { /* already retained */ }
+        else if (agentIds.size < MAX_TRACE_METADATA_ITEMS) agentIds.add(obj.agentId);
+        else detailMetadataCapped = true;
+      }
       if (typeof obj.gitBranch === "string" && obj.gitBranch) gitBranch = obj.gitBranch;
       if (typeof obj.entrypoint === "string" && obj.entrypoint) entrypoint = obj.entrypoint;
       if (typeof obj.permissionMode === "string") incrementRecord(permissionModes, obj.permissionMode);
@@ -200,14 +213,14 @@ export function parseLiveSession(file: string, lines: Iterable<string>, bytes: n
           metricSources.tokens = "measured";
           if (at) {
             const elapsedSec = Math.max((at - startedAt) / 1000, 0.001);
-            usageSegments.push({
+            appendUsageSegment(usageSegments, {
               atMs: at,
               cumulativeInput: inputTokens,
               cumulativeOutput: outputTokens,
               deltaInput,
               deltaOutput,
               outTokPerSec: outputTokens / elapsedSec,
-            });
+              });
           }
         }
         let assistantText = "";
@@ -231,10 +244,18 @@ export function parseLiveSession(file: string, lines: Iterable<string>, bytes: n
             if (rawName === "Task" || rawName === "Agent") subagentSpawns++;
             if (rawName === "Skill") {
               const s = (b.input as any)?.skill ?? (b.input as any)?.command ?? (b.input as any)?.name;
-              if (typeof s === "string" && s) skillsUsed.add(s);
+              if (typeof s === "string" && s) {
+                if (skillsUsed.has(s)) { /* already retained */ }
+                else if (skillsUsed.size < MAX_TRACE_METADATA_ITEMS) skillsUsed.add(s);
+                else detailMetadataCapped = true;
+              }
             }
             const server = mcpServerFromTool(rawName);
-            if (server) mcpServersUsed.add(server);
+            if (server) {
+              if (mcpServersUsed.has(server)) { /* already retained */ }
+              else if (mcpServersUsed.size < MAX_TRACE_METADATA_ITEMS) mcpServersUsed.add(server);
+              else detailMetadataCapped = true;
+            }
             // --- rework: count writes per file (a file rewritten 2+ times = churn) ---
             if (isWrite) {
               const fp = (b.input as any)?.file_path ?? (b.input as any)?.path;
@@ -411,6 +432,7 @@ export function parseLiveSession(file: string, lines: Iterable<string>, bytes: n
   }
 
   const parseWarnings = buildWarnings(metricSources, malformedLineCount, lineCount, hookErrors, sawResult, model, turnInferenceSource);
+  if (detailMetadataCapped) parseWarnings.push(`trace metadata capped at ${MAX_TRACE_METADATA_ITEMS} unique values; graph/detail counts are partial`);
   const subagentId = rootMessages === 0 && sidechainMessages > 0 && agentIds.size === 1
     ? [...agentIds][0]
     : null;
@@ -437,6 +459,9 @@ export function parseLiveSession(file: string, lines: Iterable<string>, bytes: n
     sessionId: subagentId
       ? `${sessionId ?? path.basename(file, ".jsonl")}/agent-${subagentId}`
       : sessionId ?? path.basename(file, ".jsonl"),
+    isSubagent: Boolean(subagentId),
+    parentSessionId: subagentId ? sessionId : null,
+    agentLabel: subagentId ? `agent-${subagentId}` : null,
     displayTitle,
     lastPromptPreview,
     project,

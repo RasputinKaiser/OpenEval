@@ -64,6 +64,14 @@ export function checkNodeVersion(
   const label = "Node version";
   const currentMajor = Number.parseInt(currentVersion.split(".")[0] ?? "", 10);
 
+  if (!Number.isFinite(currentMajor)) {
+    return {
+      id, label, status: "fail",
+      detail: `Could not parse the active Node version (${currentVersion || "empty version"}).`,
+      hint: "Use a supported Node runtime, then rerun `npm run doctor`.",
+    };
+  }
+
   let enginesMin: number | null = null;
   try {
     const pkg = JSON.parse(

@@ -17,7 +17,10 @@ else
   scan_engine="grep -E (ripgrep not installed)"
 fi
 
-tracked_local_patterns='(^|/)(data|\.codex|\.ncode|\.next|node_modules)(/|$)|(^|/)state\.yaml$|(^|/)tsconfig\.tsbuildinfo$|(^|/)\.DS_Store$'
+# Runtime state lives in the repository-root `data/` directory. Fixture-owned
+# input directories such as `fixtures/supplied-data-svg/data/` are public test
+# content and must remain publishable.
+tracked_local_patterns='^data(/|$)|(^|/)(\.codex|\.ncode|\.next|node_modules)(/|$)|(^|/)state\.yaml$|(^|/)tsconfig\.tsbuildinfo$|(^|/)\.DS_Store$'
 
 echo "== OpenEval public upload audit =="
 echo "repo: $root"

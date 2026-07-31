@@ -1,0 +1,8 @@
+{
+  "name": "accessible-filter-form",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "node --test verify.test.mjs"
+  }
+}

@@ -2,9 +2,26 @@ import path from "node:path";
 import { classifySentiment, isRephraseTracked, looksLikeApologyOrFailure, looksLikeTestsPassed, JUDGE_PROMPT_MARKER } from "../insights/signals";
 import { estimateCostUsd } from "../pricing";
 import type { LiveMetricSources, LiveModelUsage, LiveSession, LiveUsageSegment } from "./types";
-import { NON_WS_RE, buildWarnings, coalesceModel, codexToolOutputError, downsampleUsageSegments, ensureModelUsage, estimateModelUsageCost, extractFilePaths, increment, jsonPreview, modelUsageVolume, parseTimestamp, scoreQuality, summarizeToolDurations, topEntries } from "./util";
+import { NON_WS_RE, appendUsageSegment, buildWarnings, coalesceModel, codexToolOutputError, downsampleUsageSegments, ensureModelUsage, estimateModelUsageCost, extractFilePaths, increment, jsonPreview, modelUsageVolume, parseTimestamp, scoreQuality, summarizeToolDurations, topEntries } from "./util";
 
 const ORCHESTRATION_MARKERS = /\b(team of agents|coordinator|orchestrat\w*|primary agent|worker \d|subagent|multi-agent)\b/i;
+const CODEX_TOOL_CALL_TYPES = new Set(["function_call", "custom_tool_call", "tool_call", "tool_search_call"]);
+const CODEX_TOOL_OUTPUT_TYPES = new Set(["function_call_output", "custom_tool_call_output", "tool_result", "tool_output", "tool_search_output"]);
+
+function normalizedCodexToolCall(payload: any): any {
+  return {
+    ...payload,
+    name: payload?.name ?? (payload?.type === "tool_search_call" ? "tool_search" : "(unknown)"),
+    arguments: payload?.arguments ?? payload?.input,
+  };
+}
+
+function normalizedCodexToolOutput(payload: any): any {
+  return {
+    ...payload,
+    output: payload?.output ?? payload?.result ?? payload?.tools ?? payload?.content ?? "",
+  };
+}
 
 /**
  * Orchestrator-injected preambles are plumbing, not the user's ask — using
@@ -37,11 +54,102 @@ export function stripIdeContextWrapper(text: string): string {
   return idx >= 0 ? text.slice(idx + marker.length) : text;
 }
 
+export interface CodexConversationMessage {
+  role: "user" | "assistant";
+  text: string;
+  source: "event_msg" | "response_item" | "item_completed" | "legacy";
+}
+
+function codexContentText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((block: any) => typeof block === "string" ? block : typeof block?.text === "string" ? block.text : "")
+    .filter(Boolean)
+    .join(" ");
+}
+
+function normalizeCodexConversationText(value: unknown, role: "user" | "assistant"): string {
+  if (typeof value !== "string") return "";
+  const text = role === "user" ? stripIdeContextWrapper(value).trim() : value.trim();
+  return text && !text.startsWith("<") ? text : "";
+}
+
+function conversationMessagesFromCodexRecord(obj: any): CodexConversationMessage[] {
+  if (!obj || typeof obj !== "object" || obj.isSidechain === true) return [];
+  const type = obj.type;
+  if (type === "event_msg") {
+    const payload = obj.payload ?? {};
+    const role = payload.type === "user_message" ? "user" : payload.type === "agent_message" ? "assistant" : null;
+    if (!role) return [];
+    const text = normalizeCodexConversationText(payload.message, role);
+    return text ? [{ role, text, source: "event_msg" }] : [];
+  }
+  if (type === "response_item") {
+    const payload = obj.payload ?? {};
+    if (payload.type !== "message") return [];
+    const role = payload.role === "user" ? "user" : payload.role === "assistant" ? "assistant" : null;
+    if (!role) return [];
+    const text = normalizeCodexConversationText(codexContentText(payload.content), role);
+    return text ? [{ role, text, source: "response_item" }] : [];
+  }
+  if (type === "item.completed" || type === "item") {
+    const item = obj.item ?? obj.payload ?? {};
+    const role = item.type === "user_message" || item.role === "user"
+      ? "user"
+      : item.type === "message" || item.type === "agent_message" || item.role === "assistant"
+      ? "assistant"
+        : null;
+    if (!role) return [];
+    const text = normalizeCodexConversationText(typeof item.text === "string" ? item.text : codexContentText(item.content), role);
+    return text ? [{ role, text, source: "item_completed" }] : [];
+  }
+  if (type === "user_msg" || type === "user_message") {
+    const payload = obj.payload ?? {};
+    const raw = payload.message ?? payload.text ?? obj.message ?? obj.text;
+    const text = normalizeCodexConversationText(raw, "user");
+    return text ? [{ role: "user", text, source: "legacy" }] : [];
+  }
+  if (type === "user" && obj.message) {
+    const text = normalizeCodexConversationText(codexContentText(obj.message.content), "user");
+    return text ? [{ role: "user", text, source: "legacy" }] : [];
+  }
+  if (type === "assistant" && obj.message) {
+    const text = normalizeCodexConversationText(codexContentText(obj.message.content), "assistant");
+    return text ? [{ role: "assistant", text, source: "legacy" }] : [];
+  }
+  return [];
+}
+
+/** Stream Codex prose across both the legacy rollout and thread/item JSONL shapes. */
+export function* readCodexConversationMessages(records: Iterable<string>): Generator<CodexConversationMessage> {
+  let previous: CodexConversationMessage | null = null;
+  for (const line of records) {
+    if (!NON_WS_RE.test(line)) continue;
+    let obj: any;
+    try { obj = JSON.parse(line); } catch { continue; }
+    for (const message of conversationMessagesFromCodexRecord(obj)) {
+      const isProtocolPair = previous && (
+        (previous.source === "event_msg" && message.source === "response_item") ||
+        (previous.source === "response_item" && message.source === "event_msg")
+      );
+      if (previous && isProtocolPair && previous.role === message.role && previous.text === message.text) {
+        previous = message;
+        continue;
+      }
+      yield message;
+      previous = message;
+    }
+  }
+}
+
 export function parseCodexSession(file: string, lines: Iterable<string>, bytes: number, projectDir: string, mtime: number): LiveSession | null {
   let sessionId: string | null = null;
   let displayTitle: string | null = null;
   let lastPromptPreview: string | null = null;
   let isSubagent = false;
+  let parentSessionId: string | null = null;
+  let agentLabel: string | null = null;
   let project = projectDir;
   let model: string | null = null;
   let inputTokens = 0;
@@ -61,6 +169,7 @@ export function parseCodexSession(file: string, lines: Iterable<string>, bytes: 
   let toolErrors = 0;
   let messageCount = 0;
   let turnContextCount = 0;
+  let completedTurnCount = 0;
   let eventUserMessageCount = 0;
   let responseUserMessageCount = 0;
   let textBlocks = 0;
@@ -70,10 +179,15 @@ export function parseCodexSession(file: string, lines: Iterable<string>, bytes: 
   let pathBytes = 0;
   let lineCount = 0;
   let malformedLineCount = 0;
+  let detailMetadataCapped = false;
   let sawSessionMeta = false;
   let originator: string | null = null;
   let source: string | null = null;
   let cliVersion: string | null = null;
+  let stopReason: string | null = null;
+  let isError = false;
+  let measuredDurationMs = 0;
+  let hasMeasuredDuration = false;
   const toolCallsByName = new Map<string, number>();
   const toolErrorsByName = new Map<string, number>();
   const toolStartByCallIdMs = new Map<string, number>();
@@ -81,6 +195,7 @@ export function parseCodexSession(file: string, lines: Iterable<string>, bytes: 
   const toolModelByCallId = new Map<string, string>();
   const toolDurationMs = new Map<string, number[]>();
   const modelUsageByModel = new Map<string, LiveModelUsage>();
+  const seenItemIds = new Set<string>();
   const touchedFiles = new Set<string>();
   const usageSegments: LiveUsageSegment[] = [];
   const metricSources: LiveMetricSources = {
@@ -89,6 +204,166 @@ export function parseCodexSession(file: string, lines: Iterable<string>, bytes: 
     cost: "missing",
     duration: "inferred",
     turns: "inferred",
+  };
+
+  const incrementToolMap = (map: Map<string, number>, key: string): void => {
+    if (map.has(key) || map.size < 256) increment(map, key);
+    else detailMetadataCapped = true;
+  };
+  const recordToolDuration = (name: string, durationMs: number): void => {
+    const samples = toolDurationMs.get(name);
+    if (samples) {
+      if (samples.length < 256) samples.push(durationMs);
+      else detailMetadataCapped = true;
+    } else if (toolDurationMs.size < 256) {
+      toolDurationMs.set(name, [durationMs]);
+    } else {
+      detailMetadataCapped = true;
+    }
+  };
+  const recordLineage = (payload: any): void => {
+    const sourceValue = payload?.source;
+    source = typeof sourceValue === "string"
+      ? sourceValue
+      : typeof payload?.thread_source === "string"
+        ? payload.thread_source
+        : sourceValue?.subagent
+          ? "subagent"
+          : source;
+    const subagent = sourceValue?.subagent;
+    if (!subagent && payload?.thread_source !== "subagent" && sourceValue !== "subagent") return;
+    isSubagent = true;
+    if (typeof subagent === "string") {
+      agentLabel ??= subagent;
+    } else if (subagent && typeof subagent === "object") {
+      parentSessionId ??= subagent.thread_spawn?.parent_thread_id ?? subagent.parent_thread_id;
+      agentLabel ??= subagent.thread_spawn?.agent_nickname ?? subagent.agent_nickname;
+    }
+    parentSessionId ??= payload?.parent_thread_id ?? payload?.parentSessionId ?? null;
+    agentLabel ??= payload?.agent_nickname ?? payload?.agentLabel ?? null;
+  };
+
+  let previousTotalInput = 0;
+  let previousTotalOutput = 0;
+  let previousTotalCached = 0;
+  let previousTotalCacheCreate = 0;
+  let segmentInput = 0;
+  let segmentOutput = 0;
+  let sumCacheCreate = 0;
+  const recordCodexUsage = (rawUsage: any, at: number | null): void => {
+    const usage = rawUsage ?? {};
+    const last = usage.last_token_usage ?? usage.lastTokenUsage;
+    const total = usage.total_token_usage ?? usage.totalTokenUsage;
+    const hasDirect = ["input_tokens", "inputTokens", "output_tokens", "outputTokens", "cached_input_tokens", "cache_read_input_tokens", "cacheReadTokens", "cache_creation_input_tokens", "cacheCreateTokens"]
+      .some((key) => usage[key] != null);
+    const perTurn = last ?? (hasDirect ? usage : null);
+    if (!perTurn && !total) return;
+    const number = (value: unknown): number => {
+      const n = Number(value);
+      return Number.isFinite(n) ? Math.max(0, n) : 0;
+    };
+    const input = perTurn ? number(perTurn.input_tokens ?? perTurn.inputTokens) : 0;
+    const output = perTurn ? number(perTurn.output_tokens ?? perTurn.outputTokens) : 0;
+    const cached = perTurn ? number(perTurn.cached_input_tokens ?? perTurn.cache_read_input_tokens ?? perTurn.cacheReadTokens) : 0;
+    const cacheCreate = perTurn ? number(perTurn.cache_creation_input_tokens ?? perTurn.cacheCreateTokens) : 0;
+    let deltaInput = 0;
+    let deltaOutput = 0;
+    let deltaCached = 0;
+    let deltaCacheCreate = 0;
+    if (perTurn) {
+      sumIn += input;
+      sumOut += output;
+      sumCached += cached;
+      sumCacheCreate += cacheCreate;
+      deltaInput = Math.max(0, input - cached);
+      deltaOutput = output;
+      deltaCached = cached;
+      deltaCacheCreate = cacheCreate;
+    } else if (total) {
+      const totalInput = number(total.input_tokens ?? total.inputTokens);
+      const totalOutput = number(total.output_tokens ?? total.outputTokens);
+      const totalCached = number(total.cached_input_tokens ?? total.cache_read_input_tokens ?? total.cacheReadTokens);
+      const totalCacheCreate = number(total.cache_creation_input_tokens ?? total.cacheCreateTokens);
+      const inputDelta = totalInput >= previousTotalInput ? totalInput - previousTotalInput : totalInput;
+      const outputDelta = totalOutput >= previousTotalOutput ? totalOutput - previousTotalOutput : totalOutput;
+      const cachedDelta = totalCached >= previousTotalCached ? totalCached - previousTotalCached : totalCached;
+      const cacheCreateDelta = totalCacheCreate >= previousTotalCacheCreate ? totalCacheCreate - previousTotalCacheCreate : totalCacheCreate;
+      sumIn += inputDelta;
+      sumOut += outputDelta;
+      sumCached += cachedDelta;
+      sumCacheCreate += cacheCreateDelta;
+      deltaInput = Math.max(0, inputDelta - cachedDelta);
+      deltaOutput = outputDelta;
+      deltaCached = cachedDelta;
+      deltaCacheCreate = cacheCreateDelta;
+      previousTotalInput = totalInput;
+      previousTotalOutput = totalOutput;
+      previousTotalCached = totalCached;
+      previousTotalCacheCreate = totalCacheCreate;
+    }
+    const activeUsage = ensureModelUsage(modelUsageByModel, coalesceModel(usage.model, usage.model_slug, model));
+    if (activeUsage) {
+      activeUsage.inputTokens += deltaInput;
+      activeUsage.outputTokens += deltaOutput;
+      activeUsage.cacheReadTokens += deltaCached;
+      activeUsage.cacheCreateTokens += deltaCacheCreate;
+    }
+    metricSources.tokens = "measured";
+    if (at != null) {
+      segmentInput += deltaInput;
+      segmentOutput += deltaOutput;
+      const elapsedSec = Math.max((at - startedAt) / 1000, 0.001);
+      appendUsageSegment(usageSegments, {
+        atMs: at,
+        cumulativeInput: segmentInput,
+        cumulativeOutput: segmentOutput,
+        deltaInput,
+        deltaOutput,
+        outTokPerSec: segmentOutput / elapsedSec,
+      });
+    }
+  };
+  const recordToolCall = (payload: any, at: number | null): void => {
+    toolCalls++;
+    const name = String(payload.name ?? "(unknown)");
+    incrementToolMap(toolCallsByName, name);
+    const activeUsage = ensureModelUsage(modelUsageByModel, model);
+    if (activeUsage) activeUsage.toolCalls++;
+    extractFilePaths(payload.arguments ?? payload.input, touchedFiles);
+    if (typeof payload.call_id === "string" || typeof payload.id === "string") {
+      const callId = payload.call_id ?? payload.id;
+      if (toolNameByCallIdMs.size < 256 || toolNameByCallIdMs.has(callId)) {
+        toolNameByCallIdMs.set(callId, name);
+        if (activeUsage) toolModelByCallId.set(callId, activeUsage.model);
+        if (at != null) toolStartByCallIdMs.set(callId, at);
+      } else {
+        detailMetadataCapped = true;
+      }
+    }
+  };
+  const recordToolOutput = (payload: any, at: number | null): void => {
+    const output = typeof payload.output === "string" ? payload.output : JSON.stringify(payload.output ?? "");
+    extractFilePaths(output, touchedFiles);
+    const errored = payload.is_error === true || payload.isError === true
+      || /error|fail|abort/i.test(String(payload.status ?? ""))
+      || codexToolOutputError(output);
+    const callId = typeof payload.call_id === "string" ? payload.call_id : typeof payload.id === "string" ? payload.id : null;
+    if (callId) {
+      const startMs = toolStartByCallIdMs.get(callId);
+      if (startMs != null && at != null) recordToolDuration(toolNameByCallIdMs.get(callId) ?? "(unknown)", Math.max(0, at - startMs));
+      if (errored) {
+        toolErrors++;
+        incrementToolMap(toolErrorsByName, toolNameByCallIdMs.get(callId) ?? "(unknown)");
+        const errorUsage = ensureModelUsage(modelUsageByModel, toolModelByCallId.get(callId));
+        if (errorUsage) errorUsage.toolErrors++;
+      }
+      toolStartByCallIdMs.delete(callId);
+      toolNameByCallIdMs.delete(callId);
+      toolModelByCallId.delete(callId);
+    } else if (errored) {
+      toolErrors++;
+      incrementToolMap(toolErrorsByName, "(unknown)");
+    }
   };
 
   const recordCodexUserText = (raw: string): "judge" | "recorded" | "ignored" => {
@@ -109,11 +384,6 @@ export function parseCodexSession(file: string, lines: Iterable<string>, bytes: 
 
   try {
     pathBytes = bytes;
-    let previousTotalInput = 0;
-    let previousTotalOutput = 0;
-    let previousTotalCached = 0;
-    let segmentInput = 0;
-    let segmentOutput = 0;
     for (const line of lines) {
       if (!NON_WS_RE.test(line)) continue;
       lineCount++;
@@ -125,10 +395,24 @@ export function parseCodexSession(file: string, lines: Iterable<string>, bytes: 
         continue;
       }
 
-      const at = parseTimestamp(obj.timestamp) ?? parseTimestamp(obj.payload?.timestamp) ?? null;
+      const at = parseTimestamp(obj.timestamp) ?? parseTimestamp(obj.created_at) ?? parseTimestamp(obj.payload?.timestamp) ?? null;
       if (at) {
         startedAt = Math.min(startedAt, at);
         lastEventAt = Math.max(lastEventAt, at);
+      }
+
+      const recordedModel = coalesceModel(
+        obj.model,
+        obj.model_slug,
+        obj.payload?.model,
+        obj.payload?.model_slug,
+        obj.item?.model,
+        obj.item?.model_slug,
+        obj.item?.metadata?.model,
+      );
+      if (recordedModel) {
+        model = recordedModel;
+        metricSources.model = "measured";
       }
 
       if (obj.type === "session_meta") {
@@ -142,22 +426,17 @@ export function parseCodexSession(file: string, lines: Iterable<string>, bytes: 
           sessionId = payload.id ?? payload.session_id ?? sessionId;
           project = payload.cwd ?? project;
           originator = payload.originator ?? originator;
-          source = typeof payload.source === "string"
-            ? payload.source
-            : typeof payload.thread_source === "string"
-              ? payload.thread_source
-              : payload.source?.subagent
-                ? "subagent"
-                : source;
-          if (payload.source?.subagent || payload.thread_source === "subagent") isSubagent = true;
+          recordLineage(payload);
           cliVersion = payload.cli_version ?? cliVersion;
-          const recordedModel = coalesceModel(payload.model, payload.model_slug);
-          if (recordedModel) {
-            model = recordedModel;
-            metricSources.model = "measured";
-          }
           displayTitle = displayTitle ?? payload.thread_name ?? null;
         }
+      } else if (obj.type === "thread.started") {
+        sessionId = obj.thread_id ?? obj.session_id ?? sessionId;
+        project = obj.cwd ?? obj.project ?? project;
+        originator = obj.originator ?? originator;
+        cliVersion = obj.cli_version ?? obj.version ?? cliVersion;
+        recordLineage(obj);
+        displayTitle = displayTitle ?? obj.thread_name ?? obj.title ?? null;
       } else if (obj.type === "turn_context") {
         turnContextCount++;
         const payload = obj.payload ?? {};
@@ -169,6 +448,39 @@ export function parseCodexSession(file: string, lines: Iterable<string>, bytes: 
         if (recordedModel) {
           model = recordedModel;
           metricSources.model = "measured";
+        }
+      } else if (obj.type === "turn.completed" || obj.type === "turn_complete") {
+        completedTurnCount++;
+        const payload = obj.payload ?? obj;
+        stopReason = payload.stop_reason ?? payload.stopReason ?? payload.status ?? stopReason;
+        if (payload.is_error === true || payload.isError === true || /error|fail|abort/i.test(String(payload.status ?? ""))) isError = true;
+        const duration = Number(payload.duration_ms ?? payload.durationMs);
+        if (Number.isFinite(duration) && duration >= 0) {
+          measuredDurationMs = duration;
+          hasMeasuredDuration = true;
+          metricSources.duration = "measured";
+        }
+      } else if (obj.type === "item.completed" || obj.type === "item") {
+        const item = obj.item ?? obj.payload ?? {};
+        const itemId = typeof item.id === "string" ? item.id : typeof obj.id === "string" ? obj.id : null;
+        if (itemId && seenItemIds.has(itemId)) continue;
+        if (itemId && seenItemIds.size < 512) seenItemIds.add(itemId);
+        if (itemId && seenItemIds.size >= 512) detailMetadataCapped = true;
+        recordCodexUsage(obj.usage ?? obj.payload?.usage ?? item.usage, at);
+        if (item.type === "reasoning") thinkingBlocks++;
+        if (CODEX_TOOL_CALL_TYPES.has(item.type)) recordToolCall(normalizedCodexToolCall(item), at);
+        if (CODEX_TOOL_OUTPUT_TYPES.has(item.type)) recordToolOutput(normalizedCodexToolOutput(item), at);
+        for (const message of conversationMessagesFromCodexRecord(obj)) {
+          if (message.role === "user") {
+            const recorded = recordCodexUserText(message.text);
+            if (recorded === "judge") return null;
+            if (recorded === "recorded") responseUserMessageCount++;
+          } else {
+            textBlocks++;
+            messageCount++;
+            lastAgentText = message.text;
+            displayTitle = displayTitle ?? jsonPreview(message.text, 80);
+          }
         }
       } else if (obj.type === "event_msg") {
         const payload = obj.payload ?? {};
@@ -252,7 +564,7 @@ export function parseCodexSession(file: string, lines: Iterable<string>, bytes: 
             segmentInput += deltaInput;
             segmentOutput += deltaOutput;
             const elapsedSec = Math.max((at - startedAt) / 1000, 0.001);
-            usageSegments.push({
+            appendUsageSegment(usageSegments, {
               atMs: at,
               cumulativeInput: segmentInput,
               cumulativeOutput: segmentOutput,
@@ -291,46 +603,8 @@ export function parseCodexSession(file: string, lines: Iterable<string>, bytes: 
           // the first real message.
           if (displayTitle == null && text && !text.trim().startsWith("<") && !isInjectedPreamble(text, isSubagent)) displayTitle = jsonPreview(text, 80);
         }
-        if (payload.type === "function_call") {
-          toolCalls++;
-          const name = String(payload.name ?? "(unknown)");
-          increment(toolCallsByName, name);
-          const activeUsage = ensureModelUsage(modelUsageByModel, model);
-          if (activeUsage) activeUsage.toolCalls++;
-          extractFilePaths(payload.arguments, touchedFiles);
-          if (typeof payload.call_id === "string") {
-            toolNameByCallIdMs.set(payload.call_id, name);
-            if (activeUsage) toolModelByCallId.set(payload.call_id, activeUsage.model);
-            if (at != null) toolStartByCallIdMs.set(payload.call_id, at);
-          }
-        }
-        if (payload.type === "function_call_output") {
-          const output = String(payload.output ?? "");
-          extractFilePaths(output, touchedFiles);
-          const errored = codexToolOutputError(output);
-          if (typeof payload.call_id === "string") {
-            const startMs = toolStartByCallIdMs.get(payload.call_id);
-            if (startMs != null && at != null) {
-              const delta = Math.max(0, at - startMs);
-              const nm = toolNameByCallIdMs.get(payload.call_id) ?? "(unknown)";
-              const list = toolDurationMs.get(nm) ?? [];
-              list.push(delta);
-              toolDurationMs.set(nm, list);
-            }
-            if (errored) {
-              toolErrors++;
-              increment(toolErrorsByName, toolNameByCallIdMs.get(payload.call_id) ?? "(unknown)");
-              const errorUsage = ensureModelUsage(modelUsageByModel, toolModelByCallId.get(payload.call_id));
-              if (errorUsage) errorUsage.toolErrors++;
-            }
-            toolStartByCallIdMs.delete(payload.call_id);
-            toolNameByCallIdMs.delete(payload.call_id);
-            toolModelByCallId.delete(payload.call_id);
-          } else if (errored) {
-            toolErrors++;
-            increment(toolErrorsByName, "(unknown)");
-          }
-        }
+        if (CODEX_TOOL_CALL_TYPES.has(payload.type)) recordToolCall(normalizedCodexToolCall(payload), at);
+        if (CODEX_TOOL_OUTPUT_TYPES.has(payload.type)) recordToolOutput(normalizedCodexToolOutput(payload), at);
       } else if (obj.type === "user_msg" || obj.type === "user_message") {
         const text = String(obj.payload?.message ?? obj.payload?.text ?? obj.message ?? obj.text ?? "");
         if (recordCodexUserText(text) === "judge") return null;
@@ -351,6 +625,7 @@ export function parseCodexSession(file: string, lines: Iterable<string>, bytes: 
     const totOut = sumOut;
     const cached = sumCached;
     cacheReadTokens = cached;
+    cacheCreateTokens = sumCacheCreate;
     inputTokens = Math.max(0, totIn - cached);
     outputTokens = totOut;
   }
@@ -365,7 +640,7 @@ export function parseCodexSession(file: string, lines: Iterable<string>, bytes: 
     )[0].model;
   }
 
-  const durationMs = Math.max(0, lastEventAt - startedAt);
+  const durationMs = hasMeasuredDuration ? measuredDurationMs : Math.max(0, lastEventAt - startedAt);
   const totalTokens = inputTokens + outputTokens + cacheReadTokens + cacheCreateTokens;
   const toolSummaries = topEntries(toolCallsByName, 8).map(({ key, count }) => ({
     name: key,
@@ -389,12 +664,16 @@ export function parseCodexSession(file: string, lines: Iterable<string>, bytes: 
       ? "userMessages"
       : "messageCount";
   const parseWarnings = buildWarnings(metricSources, malformedLineCount, lineCount, 0, true, model, turnInferenceSource);
+  if (detailMetadataCapped) parseWarnings.push("trace metadata capped at 512 unique values; graph/detail counts are partial");
   if (modelUsage.length > 1) parseWarnings.push(`mixed models: ${modelUsage.map((usage) => usage.model).join(", ")}`);
   if (originator) parseWarnings.push(`source: ${originator}${source ? ` / ${source}` : ""}${cliVersion ? ` ${cliVersion}` : ""}`);
   const toolErrorRate = toolCalls > 0 ? toolErrors / toolCalls : 0;
 
   return {
     sessionId: sessionId ?? path.basename(file, ".jsonl"),
+    isSubagent,
+    parentSessionId,
+    agentLabel,
     displayTitle,
     lastPromptPreview,
     project,
@@ -413,13 +692,13 @@ export function parseCodexSession(file: string, lines: Iterable<string>, bytes: 
     toolCalls,
     toolErrors,
     numTurns: Math.max(
-      turnContextCount > 0
-        ? turnContextCount
+      Math.max(turnContextCount, completedTurnCount) > 0
+        ? Math.max(turnContextCount, completedTurnCount)
         : Math.max(responseUserMessageCount, eventUserMessageCount),
       1,
     ),
-    stopReason: null,
-    isError: toolErrors > 0,
+    stopReason,
+    isError: isError || toolErrors > 0,
     pathBytes,
     path: file,
     lineCount,

@@ -131,6 +131,66 @@ Hashes file text and compares the digest. Passing proves exact content identity 
 { "type": "checksum", "path": "dist/artifact.svg", "algorithm": "sha256", "expected": "..." }
 ```
 
+## `render_evidence`
+
+`render_evidence` validates a bounded browser/render receipt for one static, self-contained `.html`, `.htm`, or `.svg` artifact. It is deliberately a receipt validator, not a browser launcher: a browser adapter captures the page at the declared fixed viewport, writes the receipt, and this grader checks the receipt deterministically against the artifact.
+
+Parameters:
+
+- `artifact_path` — the artifact under the prepared workdir.
+- `receipt_path` — the JSON receipt under the prepared workdir.
+- `artifact_kind` — optional `html` or `svg` expectation.
+- `viewport` — required `width`, `height`, and optional `device_scale_factor` (default `1`); all must match exactly.
+- `selectors` — optional required selectors, each with `selector`, optional `min_count` (default `1`), and optional `visible` boolean.
+- `weight` — optional score weight.
+
+The receipt schema is versioned and must include the artifact path/kind/SHA-256, viewport and device scale factor, `loaded`, `consoleErrors`, `horizontalOverflow`, `clientWidth`, `scrollWidth`, and bounded selector counts. The validator rejects external or relative resource references, CSS `url()` dependencies, imports, network APIs, and other non-self-contained runtime hooks. It also requires the overflow flag to agree with the reported widths and requires an empty console-error list.
+
+The command-line validator is:
+
+```bash
+npm run render:evidence -- \
+  --artifact index.html \
+  --receipt evidence/render.json \
+  --viewport 1280x720 \
+  --selector '[data-testid="eval-dashboard"]'
+```
+
+It emits a JSON result with `status: "pass" | "fail" | "blocked"`, check-level details, the artifact digest, and `claims.pixelQuality: "not_evaluated"`. A passing result means the declared receipt facts are valid and bound to the artifact; it is not a screenshot comparison, aesthetic judgment, or attestation that the receipt was produced by a particular browser. Missing or malformed receipts are `blocked`, while observed runtime/source mismatches are `fail`.
+
+The browser-side receipt has this shape (the SHA-256 is computed from the exact artifact bytes):
+
+```json
+{
+  "version": 1,
+  "artifact": { "path": "index.html", "kind": "html", "sha256": "<64 lowercase hex characters>" },
+  "viewport": { "width": 1280, "height": 720, "deviceScaleFactor": 1 },
+  "runtime": {
+    "loaded": true,
+    "consoleErrors": [],
+    "horizontalOverflow": false,
+    "clientWidth": 1280,
+    "scrollWidth": 1280,
+    "selectors": [{ "selector": "[data-testid=eval-dashboard]", "count": 1, "visible": true }]
+  }
+}
+```
+
+Example case grader:
+
+```json
+{
+  "type": "render_evidence",
+  "artifact_path": "index.html",
+  "receipt_path": "evidence/render.json",
+  "artifact_kind": "html",
+  "viewport": { "width": 1280, "height": 720 },
+  "selectors": [
+    { "selector": "[data-testid=eval-dashboard]", "min_count": 1, "visible": true }
+  ]
+}
+```
+
 ## `step`
 
 Parameters: optional `tool`, `input_includes`, `input_includes_any`, `at_index`, `min_count`, `before_tool`, `negate`, `weight`.
@@ -149,8 +209,9 @@ Calls a separate judge backend with the final output and a transcript excerpt (e
 
 Judge backend resolution (`resolveJudge()` in `lib/grader/judge.ts` — the same chain the Timeline's session-outcome judge uses):
 
-1. `judge_harness` on the spec, else `JUDGE_HARNESS`, else the judge source selected on `/settings`, else `openrouter` when `OPENROUTER_API_KEY` is set, else `codex`.
-2. Model: `judge_model` on the spec, else `model` on the spec, else `JUDGE_MODEL`, else the model selected on `/settings`, else the backend default (`tencent/hy3:free` for `openrouter`, `gpt-5.5` for `codex`).
+1. `judge_harness` on the spec, else `JUDGE_HARNESS`, else the judge source selected on `/settings`, else the local Codex subscription backend. OpenRouter is explicit rather than inferred from a merely-present API key.
+2. Model: `judge_model` on the spec, else `model` on the spec, else `JUDGE_MODEL`, else the model selected on `/settings`, else the backend default (`tencent/hy3:free` for explicit `openrouter`, `gpt-5.6-luna` for Codex).
+3. Codex judging pins `model_reasoning_effort=high` unless `JUDGE_REASONING_EFFORT` explicitly overrides it. This is independent of the model under test.
 
 The Settings page persists its local selection in `data/settings.json`; explicit environment variables always win, which makes CI and deployment configuration deterministic while still allowing a convenient dashboard default for local runs.
 
@@ -161,7 +222,8 @@ Judge failure is an infrastructure error, not evidence about the agent. A timed-
 ```json
 {
   "type": "rubric_llm",
-  "judge_harness": "claude-code",
+  "judge_harness": "codex",
+  "judge_model": "gpt-5.6-luna",
   "min_score": 0.8,
   "rubric": "Pass only if the answer identifies the bug and explains the fix."
 }
@@ -183,7 +245,7 @@ Always returns failed with a pending manual-review detail. Passing proves nothin
 
 | Tier | Graders |
 | --- | --- |
-| `deterministic` | `exit_code`, `tests_pass`, `file_contains`, `file_exists`, `file_eq`, `regex_match`, `json_path`, `files_unchanged`, `file_deleted`, `git_diff_contains`, `checksum` |
+| `deterministic` | `exit_code`, `tests_pass`, `file_contains`, `file_exists`, `file_eq`, `regex_match`, `json_path`, `files_unchanged`, `file_deleted`, `git_diff_contains`, `checksum`, `render_evidence` |
 | `trace` | `step` |
 | `llm_judge` | `rubric_llm` |
 | `manual` | `manual` |

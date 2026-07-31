@@ -7,6 +7,7 @@
   "tags": ["visual-code", "web-ui", "responsive", "css", "media-query"],
   "split": "public",
   "prompt": "Create two files: pricing.html and pricing.css. Build a responsive pricing section for a product called \"OpenEval\". The page must include a root element with data-testid=\"pricing\", an h1 containing \"Choose your plan\", and exactly three plan cards each with data-testid=\"plan-card\" and a visible plan name from \"Free\", \"Team\", and \"Enterprise\". Lay the three cards out with CSS grid using three columns on desktop in pricing.css. Add a CSS @media query with a max-width breakpoint (max-width: 640px or narrower) that collapses the grid to a single column (grid-template-columns: 1fr). Do not use external assets, scripts, or network imports.",
+  "benchmark": { "intent": "Whether the agent can make a comparison interface readable on both a wide and narrow layout with semantic plan structure.", "deliverable": "pricing.html and pricing.css", "evidence": ["deterministic", "artifact"], "usage": "low" },
   "setup": { "type": "none" },
   "runner": { "max_turns": 16, "timeout_seconds": 240, "permission_mode": "bypassPermissions" },
   "budget": { "max_turns": 16, "max_cost_usd": 0.6 },

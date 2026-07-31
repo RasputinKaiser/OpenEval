@@ -35,6 +35,10 @@ export default function ArtifactStage({
   const { redact } = useRedaction();
 
   useEffect(() => {
+    setSelected((current) => artifacts.includes(current) ? current : artifacts[0] ?? "");
+  }, [artifacts]);
+
+  useEffect(() => {
     if (!selected || collapsed) return;
     let cancelled = false;
     async function load() {
@@ -76,6 +80,7 @@ export default function ArtifactStage({
           type="button"
           onClick={onToggle}
           aria-expanded={!collapsed}
+          aria-controls="artifact-preview-content"
           className="flex min-w-0 items-center gap-2 text-left"
         >
           <ChevronRight className={clsx("size-3 shrink-0 text-fg-dim transition-transform", !collapsed && "rotate-90")} />
@@ -90,9 +95,12 @@ export default function ArtifactStage({
             {artifacts.map((artifact) => (
               <button
                 key={artifact}
+                type="button"
                 onClick={() => setSelected(artifact)}
+                aria-pressed={selected === artifact}
+                aria-label={`Preview ${artifact}`}
                 className={clsx(
-                  "inline-flex items-center gap-1 rounded border px-2.5 py-1.5 text-[11px] mono",
+                  "inline-flex min-h-9 items-center gap-1 rounded border px-2.5 py-1.5 text-[11px] mono focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
                   selected === artifact
                     ? "border-accent-soft bg-accent-soft/10 text-accent-soft"
                     : "border-bd-subtle bg-bg text-fg-muted hover:text-fg"
@@ -106,7 +114,7 @@ export default function ArtifactStage({
         )}
       </div>
       {!collapsed && (
-        <div className="space-y-2 bg-[#f6f7fb] p-3">
+        <div id="artifact-preview-content" className="space-y-2 bg-[#f6f7fb] p-3">
           {preview && !loading ? (
             <div className="flex flex-wrap items-center justify-between gap-2 rounded border border-[#dce1ea] bg-white px-3 py-2 text-[10px] text-[#687182]">
               <span className="font-medium text-[#303642]">

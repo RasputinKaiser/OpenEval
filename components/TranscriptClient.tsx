@@ -1,10 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
-import { MessageSquare, Wrench, AlertTriangle, ListFilter, Search, X } from "lucide-react";
-import type { LiveTranscriptTurn } from "@/lib/live";
-import { fmtNum } from "@/lib/format";
+import { Loader2, MessageSquare, Wrench, AlertTriangle, ListFilter, Search, X, ScanLine, ImageIcon, FileIcon } from "lucide-react";
+import type { LiveTranscriptTurn, TranscriptNormalization } from "@/lib/live";
+import { fmtDateTime, fmtNum, fmtStableDateTime, fmtTime } from "@/lib/format";
 import { useRedactedShow } from "@/lib/use-redaction";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import ErrorHopper from "./ErrorHopper";
@@ -34,25 +34,98 @@ function roleTone(t: LiveTranscriptTurn): string {
   }
 }
 
-export default function TranscriptClient({ turns, file }: { turns: LiveTranscriptTurn[]; file?: string }) {
+type TurnCounts = Record<Filter, number>;
+
+const PAGE_SIZE = 240;
+
+function countTurns(turns: LiveTranscriptTurn[]): TurnCounts {
+  return {
+    all: turns.length,
+    chat: turns.filter((t) => t.role === "user" || t.role === "assistant").length,
+    tools: turns.filter((t) => t.role === "tool" || t.severity === "error").length,
+    errors: turns.filter((t) => t.severity === "error").length,
+  };
+}
+
+function isCount(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+function initialCounts(turns: LiveTranscriptTurn[], total: number, supplied?: Partial<TurnCounts>): TurnCounts {
+  const loaded = countTurns(turns);
+  return {
+    all: isCount(supplied?.all) ? Math.max(supplied.all, turns.length) : Math.max(total, turns.length),
+    chat: isCount(supplied?.chat) ? supplied.chat : loaded.chat,
+    tools: isCount(supplied?.tools) ? supplied.tools : loaded.tools,
+    errors: isCount(supplied?.errors) ? supplied.errors : loaded.errors,
+  };
+}
+
+type TranscriptPage = {
+  turns?: LiveTranscriptTurn[];
+  error?: string;
+  offset?: number;
+  total?: number;
+  counts?: Partial<TurnCounts>;
+  normalization?: TranscriptNormalization;
+  revision?: string;
+};
+
+export default function TranscriptClient({
+  turns,
+  file,
+  totalTurns = turns.length,
+  totalCounts,
+  normalization,
+}: {
+  turns: LiveTranscriptTurn[];
+  file?: string;
+  totalTurns?: number;
+  totalCounts?: Partial<TurnCounts>;
+  normalization?: TranscriptNormalization;
+}) {
+  const [loadedTurns, setLoadedTurns] = useState(turns);
+  const [knownTotal, setKnownTotal] = useState(() => Math.max(totalTurns, turns.length));
+  const [knownCounts, setKnownCounts] = useState<TurnCounts>(() => initialCounts(turns, totalTurns, totalCounts));
   const [filter, setFilter] = useState<Filter>("all");
   const [q, setQ] = useState("");
+  const [mounted, setMounted] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [sourceNotice, setSourceNotice] = useState<string | null>(null);
+  const [sourceRevision, setSourceRevision] = useState<string | null>(null);
+  const [knownNormalization, setKnownNormalization] = useState(normalization);
+  const requestGeneration = useRef(0);
+  const requestInFlight = useRef(false);
+  const loadedTurnsRef = useRef(turns);
+  const knownTotalRef = useRef(Math.max(totalTurns, turns.length));
   const dq = useDebouncedValue(q, 150).trim().toLowerCase();
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    requestGeneration.current += 1;
+    requestInFlight.current = false;
+    loadedTurnsRef.current = turns;
+    knownTotalRef.current = Math.max(totalTurns, turns.length);
+    setLoadedTurns(turns);
+    setKnownTotal(Math.max(totalTurns, turns.length));
+    setKnownCounts(initialCounts(turns, totalTurns, totalCounts));
+    setLoadError(null);
+    setSourceNotice(null);
+    setSourceRevision(null);
+    setKnownNormalization(normalization);
+  }, [file, turns, totalTurns, totalCounts, normalization]);
 
   // Harvest from the file path and the transcript itself so bare mentions in
   // prompts/output get scrubbed; secrets on — session logs are exactly where
   // pasted keys and tokens end up.
-  const harvestFrom = useMemo(() => [file, ...turns.flatMap((t) => [t.preview, t.label])], [turns, file]);
+  const harvestFrom = useMemo(() => [file, ...loadedTurns.flatMap((t) => [t.preview, t.label])], [loadedTurns, file]);
   const { redact, setRedact, show } = useRedactedShow(harvestFrom, { secrets: true });
 
-  const counts = useMemo(() => ({
-    all: turns.length,
-    chat: turns.filter((t) => t.role === "user" || t.role === "assistant").length,
-    // Must match the filter predicate below — the tools view includes error
-    // turns of any role, so its chip count does too.
-    tools: turns.filter((t) => t.role === "tool" || t.severity === "error").length,
-    errors: turns.filter((t) => t.severity === "error").length,
-  }), [turns]);
+  const counts = knownCounts;
 
   const visible = useMemo(() => {
     const pass = (t: LiveTranscriptTurn) => {
@@ -64,9 +137,13 @@ export default function TranscriptClient({ turns, file }: { turns: LiveTranscrip
       }
     };
     const matches = (t: LiveTranscriptTurn) =>
-      !dq || t.preview.toLowerCase().includes(dq) || t.label.toLowerCase().includes(dq);
-    return turns.map((t, i) => ({ t, i })).filter(({ t }) => pass(t) && matches(t));
-  }, [turns, filter, dq]);
+      !dq
+      || t.preview.toLowerCase().includes(dq)
+      || t.label.toLowerCase().includes(dq)
+      || t.tool?.name.toLowerCase().includes(dq)
+      || t.tool?.callId?.toLowerCase().includes(dq);
+    return loadedTurns.map((t, i) => ({ t, i })).filter(({ t }) => pass(t) && matches(t));
+  }, [loadedTurns, filter, dq]);
 
   const visibleErrorIdx = useMemo(
     () => visible.filter(({ t }) => t.severity === "error").map(({ i }) => i),
@@ -86,6 +163,68 @@ export default function TranscriptClient({ turns, file }: { turns: LiveTranscrip
     { key: "tools", label: "Tools", icon: Wrench, n: counts.tools },
     { key: "errors", label: "Errors", icon: AlertTriangle, n: counts.errors },
   ];
+
+  async function loadMore() {
+    const sourceFile = file;
+    const currentTurns = loadedTurnsRef.current;
+    if (!sourceFile || requestInFlight.current || currentTurns.length >= knownTotalRef.current) return;
+    requestInFlight.current = true;
+    const generation = requestGeneration.current + 1;
+    requestGeneration.current = generation;
+    const offset = currentTurns.length;
+    setLoadingMore(true);
+    setLoadError(null);
+    try {
+      const params = new URLSearchParams({ file: sourceFile, offset: String(offset), limit: String(PAGE_SIZE) });
+      const response = await fetch(`/api/collection/transcript?${params.toString()}`, { cache: "no-store" });
+      const result = await response.json() as TranscriptPage;
+      if (generation !== requestGeneration.current) return;
+      if (!response.ok) throw new Error(result.error ?? "Transcript window could not be loaded.");
+      const nextTurns = result.turns ?? [];
+      if (result.offset !== undefined && result.offset !== offset) {
+        throw new Error("Transcript window offset changed; reload the transcript.");
+      }
+      const previousTotal = knownTotalRef.current;
+      if (result.total !== undefined && (!isCount(result.total) || result.total < offset || result.total < previousTotal)) {
+        throw new Error("Transcript changed on disk; reload the transcript.");
+      }
+      if (nextTurns.length === 0 && (result.total ?? offset) > offset) {
+        throw new Error("Transcript window made no progress; reload the transcript.");
+      }
+      const current = loadedTurnsRef.current;
+      if (current.length !== offset) {
+        throw new Error("Transcript window changed while loading; reload the transcript.");
+      }
+      const next = [...current, ...nextTurns];
+      const nextTotal = Math.max(result.total ?? next.length, next.length);
+      loadedTurnsRef.current = next;
+      knownTotalRef.current = nextTotal;
+      setLoadedTurns(next);
+      setKnownTotal(nextTotal);
+      setKnownCounts({
+        ...countTurns(next),
+        all: nextTotal,
+        ...(result.counts?.chat !== undefined && isCount(result.counts.chat) ? { chat: result.counts.chat } : {}),
+        ...(result.counts?.tools !== undefined && isCount(result.counts.tools) ? { tools: result.counts.tools } : {}),
+        ...(result.counts?.errors !== undefined && isCount(result.counts.errors) ? { errors: result.counts.errors } : {}),
+      });
+      if (result.normalization) setKnownNormalization(result.normalization);
+      if (result.revision && sourceRevision && result.revision !== sourceRevision) {
+        setSourceNotice("Transcript changed while open; counts updated from the current file.");
+      } else if (result.total !== undefined && result.total > previousTotal) {
+        setSourceNotice("Transcript grew while open; counts updated from the current file.");
+      }
+      if (result.revision) setSourceRevision(result.revision);
+    } catch (error) {
+      if (generation !== requestGeneration.current) return;
+      setLoadError(error instanceof Error ? error.message : "Transcript window could not be loaded.");
+    } finally {
+      if (generation === requestGeneration.current) {
+        requestInFlight.current = false;
+        setLoadingMore(false);
+      }
+    }
+  }
 
   return (
     <div>
@@ -129,12 +268,24 @@ export default function TranscriptClient({ turns, file }: { turns: LiveTranscrip
         </div>
         {dq && (
           <span className="text-[10px] text-fg-dim mono tabular-nums whitespace-nowrap">
-            {fmtNum(visible.length)} match{visible.length === 1 ? "" : "es"}
+            {fmtNum(visible.length)} match{visible.length === 1 ? "" : "es"} in shown turns
           </span>
         )}
         <RedactToggle compact redact={redact} onToggle={() => setRedact((v) => !v)} />
       </div>
       </div>
+
+      {knownNormalization && (knownNormalization.suppressedMirrors > 0 || knownNormalization.compoundRecords > 0) && (
+        <div className="mb-3 flex items-start gap-2 rounded-md border border-bd bg-bg-elev px-3 py-2 text-[11px] text-fg-muted" role="status">
+          <ScanLine className="mt-0.5 size-3.5 shrink-0 text-accent-soft" />
+          <span>
+            Normalized view
+            {knownNormalization.suppressedMirrors > 0 && <> · {fmtNum(knownNormalization.suppressedMirrors)} mirrored protocol cop{knownNormalization.suppressedMirrors === 1 ? "y" : "ies"} hidden</>}
+            {knownNormalization.compoundRecords > 0 && <> · {fmtNum(knownNormalization.compoundRecords)} compound record{knownNormalization.compoundRecords === 1 ? "" : "s"} split into individual turns</>}
+            {" · "}raw transcript unchanged
+          </span>
+        </div>
+      )}
 
       {/* Hops over the errors VISIBLE under the current filter/search — ids keep
           original indexes, so anchors always exist. Key resets its cursor when
@@ -143,7 +294,9 @@ export default function TranscriptClient({ turns, file }: { turns: LiveTranscrip
 
       <div className="space-y-1">
         {rendered.length === 0 && (
-          <div className="card p-6 text-center text-sm text-fg-dim">{dq ? "No turns match your search." : "Nothing matches this filter."}</div>
+          <div className="card p-6 text-center text-sm text-fg-dim">
+            {dq ? "No matches in the shown turns." : counts[filter] > 0 ? "No matching turns in the shown window." : "Nothing matches this filter."}
+          </div>
         )}
         {rendered.map(({ t, i, label, preview }) => {
           const meta = t.role === "meta" && t.severity === "info";
@@ -163,7 +316,39 @@ export default function TranscriptClient({ turns, file }: { turns: LiveTranscrip
                 >
                   {label}
                 </span>
-                <span className="text-[10px] text-fg-dim mono shrink-0 tabular-nums">{t.at ? new Date(t.at).toLocaleTimeString() : ""}</span>
+                <span className="flex items-center gap-1.5 shrink-0">
+                  {t.tool?.status && (
+                    <span className="rounded border border-bd px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-fg-dim">
+                      {show(t.tool.status)}
+                    </span>
+                  )}
+                  {(t.media?.images ?? 0) > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded border border-bd px-1.5 py-0.5 text-[9px] text-fg-dim">
+                      <ImageIcon className="size-2.5" />
+                      {fmtNum(t.media?.images ?? 0)} image{t.media?.images === 1 ? "" : "s"}
+                    </span>
+                  )}
+                  {(t.media?.files ?? 0) > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded border border-bd px-1.5 py-0.5 text-[9px] text-fg-dim">
+                      <FileIcon className="size-2.5" />
+                      {fmtNum(t.media?.files ?? 0)} file{t.media?.files === 1 ? "" : "s"}
+                    </span>
+                  )}
+                  {t.tool?.durationMs != null && (
+                    <span className="text-[10px] text-fg-dim mono tabular-nums" title={t.tool.callId ? `Call ${show(t.tool.callId)}` : undefined}>
+                      {t.tool.durationMs < 1000 ? `${t.tool.durationMs}ms` : `${(t.tool.durationMs / 1000).toFixed(1)}s`}
+                    </span>
+                  )}
+                  {t.at ? (
+                    <time
+                      className="text-[10px] text-fg-dim mono tabular-nums"
+                      dateTime={fmtStableDateTime(t.at)}
+                      title={fmtDateTime(t.at)}
+                    >
+                      {mounted ? fmtTime(t.at) : fmtStableDateTime(t.at)}
+                    </time>
+                  ) : null}
+                </span>
               </div>
               {preview && (meta ? (
                 <div className="text-[11px] mono text-fg-dim truncate">{preview}</div>
@@ -177,6 +362,22 @@ export default function TranscriptClient({ turns, file }: { turns: LiveTranscrip
           );
         })}
       </div>
+      {file && loadedTurns.length < knownTotal && (
+        <div className="mt-4 flex flex-col items-center gap-2">
+          <button
+            type="button"
+            onClick={loadMore}
+            disabled={loadingMore}
+            className="inline-flex items-center gap-2 rounded-md border border-bd px-3 py-1.5 text-xs text-fg-muted hover:bg-bg-elev hover:text-fg disabled:opacity-60"
+          >
+            {loadingMore && <Loader2 className="size-3.5 animate-spin" />}
+            {loadingMore ? "Loading transcript…" : `Load next ${fmtNum(Math.min(PAGE_SIZE, knownTotal - loadedTurns.length))} turns`}
+          </button>
+          <p className="text-[10px] text-fg-dim mono tabular-nums">Showing {fmtNum(loadedTurns.length)} of {fmtNum(knownTotal)} parsed turns</p>
+          {loadError && <p className="text-[11px] text-err" role="alert">{show(loadError)}</p>}
+        </div>
+      )}
+      {sourceNotice && <p className="mt-3 text-center text-[11px] text-fg-dim" role="status">{show(sourceNotice)}</p>}
     </div>
   );
 }

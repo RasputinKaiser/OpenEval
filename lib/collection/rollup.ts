@@ -11,16 +11,24 @@ export interface RollupBucket {
   startMs: number;
   label: string; // e.g. "Jun 23"
   sessions: number;
+  topLevelSessions: number;
+  childSessions: number;
   costUsd: number;
   inputTokens: number;
   outputTokens: number;
   toolCalls: number;
+  /** Sessions in this bucket whose cost came from inferred token/rate evidence. */
+  estimatedCostSessions: number;
 }
 
 export interface ProjectRollup {
   project: string;
   sessions: number;
+  topLevelSessions: number;
+  childSessions: number;
   costUsd: number;
+  /** Sessions whose project cost came from inferred token/rate evidence. */
+  estimatedCostSessions: number;
   tokens: number;
   lastActiveMs: number;
 }
@@ -32,6 +40,10 @@ export interface RollupReport {
   /** Session starts by [weekday][hour], Monday-first, over the full history. */
   heatmap: number[][];
   heatmapSessions: number;
+  topLevelSessions: number;
+  childSessions: number;
+  heatmapTopLevelSessions: number;
+  heatmapChildSessions: number;
 }
 
 /** Monday 00:00 local time of the week containing `ms`. */
@@ -77,7 +89,8 @@ export function buildRollup(sessionsIn?: Array<LiveSession>, opts: { weeks?: num
     buckets.set(w, {
       startMs: w,
       label: new Date(w).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
-      sessions: 0, costUsd: 0, inputTokens: 0, outputTokens: 0, toolCalls: 0,
+      sessions: 0, topLevelSessions: 0, childSessions: 0, costUsd: 0, inputTokens: 0, outputTokens: 0, toolCalls: 0,
+      estimatedCostSessions: 0,
     });
   }
 
@@ -85,29 +98,45 @@ export function buildRollup(sessionsIn?: Array<LiveSession>, opts: { weeks?: num
   let anyEstimatedCost = false;
   const heatmap: number[][] = Array.from({ length: 7 }, () => new Array<number>(24).fill(0));
   let heatmapSessions = 0;
+  let topLevelSessions = 0;
+  let childSessions = 0;
+  let heatmapTopLevelSessions = 0;
+  let heatmapChildSessions = 0;
 
   for (const s of sessions) {
     if (!Number.isFinite(s.startedAt) || s.startedAt <= 0) continue;
     if (s.metricSources.cost === "inferred" && s.costUsd > 0) anyEstimatedCost = true;
 
     const d = new Date(s.startedAt);
+    const child = Boolean(s.isSubagent || s.parentSessionId);
     heatmap[(d.getDay() + 6) % 7][d.getHours()]++;
     heatmapSessions++;
+    if (child) {
+      childSessions++;
+      heatmapChildSessions++;
+    } else {
+      topLevelSessions++;
+      heatmapTopLevelSessions++;
+    }
 
     const w = weekStart(s.startedAt);
     const b = buckets.get(w);
     if (b) {
       b.sessions++;
+      if (child) b.childSessions++; else b.topLevelSessions++;
       b.costUsd += s.costUsd || 0;
       b.inputTokens += s.inputTokens || 0;
       b.outputTokens += s.outputTokens || 0;
       b.toolCalls += s.toolCalls || 0;
+      if (s.metricSources.cost === "inferred" && s.costUsd > 0) b.estimatedCostSessions++;
     }
 
     const key = s.project || "(unknown)";
-    const p = projects.get(key) ?? { project: key, sessions: 0, costUsd: 0, tokens: 0, lastActiveMs: 0 };
+    const p = projects.get(key) ?? { project: key, sessions: 0, topLevelSessions: 0, childSessions: 0, costUsd: 0, estimatedCostSessions: 0, tokens: 0, lastActiveMs: 0 };
     p.sessions++;
+    if (child) p.childSessions++; else p.topLevelSessions++;
     p.costUsd += s.costUsd || 0;
+    if (s.metricSources.cost === "inferred" && s.costUsd > 0) p.estimatedCostSessions++;
     p.tokens += (s.inputTokens || 0) + (s.outputTokens || 0);
     p.lastActiveMs = Math.max(p.lastActiveMs, s.lastEventAt || 0);
     projects.set(key, p);
@@ -119,5 +148,9 @@ export function buildRollup(sessionsIn?: Array<LiveSession>, opts: { weeks?: num
     anyEstimatedCost,
     heatmap,
     heatmapSessions,
+    topLevelSessions,
+    childSessions,
+    heatmapTopLevelSessions,
+    heatmapChildSessions,
   };
 }

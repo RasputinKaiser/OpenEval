@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useMemo } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
 import type { RunCaseRecord } from "@/lib/types";
 
@@ -30,41 +30,50 @@ function fmtDur(ms: number): string {
 }
 
 function RunTimelineImpl({ cases, selectedIndex, onSelect, live }: Props) {
-  const segments = useMemo(() => {
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => {
+    if (!live) return;
+    const tick = () => setNow(Date.now());
+    tick();
+    const timer = window.setInterval(tick, 1000);
+    return () => window.clearInterval(timer);
+  }, [live]);
+
+  const timeline = useMemo(() => {
     const withTimes = cases
       .map((c, i) => ({ c, i, start: c.started_at, end: c.ended_at }))
       .filter((s) => s.start != null);
     if (withTimes.length === 0) return null;
 
     const minStart = Math.min(...withTimes.map((s) => s.start!));
-    const maxEnd = Math.max(...withTimes.map((s) => s.end ?? Date.now()));
+    const maxEnd = Math.max(...withTimes.map((s) => s.end ?? (now ?? Date.now())));
     const totalSpan = Math.max(maxEnd - minStart, 1);
 
-    return withTimes.map((s) => {
+    const segments = withTimes.map((s) => {
       const start = s.start!;
-      const end = s.end ?? Date.now();
+      const end = s.end ?? (now ?? Date.now());
       const left = ((start - minStart) / totalSpan) * 100;
       const width = Math.max(((end - start) / totalSpan) * 100, 0.4);
       return { c: s.c, i: s.i, left, width, durMs: end - start };
     });
-  }, [cases]);
+    return { segments, elapsedMs: Math.max(0, maxEnd - minStart) };
+  }, [cases, now]);
 
-  if (!segments || segments.length === 0) return null;
+  if (!timeline || timeline.segments.length === 0) return null;
+  const { segments } = timeline;
 
-  const totalDur = (() => {
-    if (segments.length === 0) return 0;
-    return segments.reduce((sum, s) => sum + s.durMs, 0);
-  })();
+  const workDuration = segments.reduce((sum, s) => sum + s.durMs, 0);
 
   return (
-    <div className="mb-4 rounded-lg border border-bd bg-card p-3">
-      <div className="mb-2 flex items-center justify-between text-[11px] text-fg-muted">
+    <div className="mb-4 rounded-xl border border-bd bg-bg-subtle p-3" data-testid="run-execution-timeline">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-1 text-[11px] text-fg-muted">
         <span className="inline-flex items-center gap-1.5 font-medium">
           <span className="size-1.5 rounded-full bg-accent" />
-          Timeline · {segments.length} case{segments.length === 1 ? "" : "s"}
+          Execution timeline · {segments.length} case{segments.length === 1 ? "" : "s"}
         </span>
-        <span className="tabular-nums">
-          wall: <span className="text-fg">{fmtDur(totalDur)}</span>
+        <span className="flex flex-wrap items-center gap-x-3 gap-y-1 tabular-nums">
+          <span>elapsed: <span className="text-fg">{fmtDur(timeline.elapsedMs)}</span> <span className="text-fg-dim">(case span)</span></span>
+          <span>work: <span className="text-fg">{fmtDur(workDuration)}</span> <span className="text-fg-dim">(overlap summed)</span></span>
           {live && <span className="ml-2 inline-flex items-center gap-1 text-sky-400"><span className="size-1.5 animate-pulse rounded-full bg-sky-400" />live</span>}
         </span>
       </div>
@@ -87,7 +96,7 @@ function RunTimelineImpl({ cases, selectedIndex, onSelect, live }: Props) {
             className={clsx(
               "absolute top-1 bottom-1 rounded-sm border-x border-black/20 transition-[left,width,box-shadow] duration-150",
               STATUS_FILL[s.c.status] ?? STATUS_FILL.pending,
-              selectedIndex === s.i && "ring-2 ring-white/80 ring-offset-1 ring-offset-card z-10",
+              selectedIndex === s.i && "ring-2 ring-white/80 ring-offset-1 ring-offset-bg-subtle z-10",
             )}
           />
         ))}
@@ -106,10 +115,17 @@ function RunTimelineImpl({ cases, selectedIndex, onSelect, live }: Props) {
           return (
             <span key={x.k} className="inline-flex items-center gap-1">
               <span className={clsx("size-1.5 rounded-sm", STATUS_FILL[x.k]?.split(" ")[0])} />
-              {x.lbl} <span className="tabular-nums text-fg">{n}</span>
+          {x.lbl} <span className="tabular-nums text-fg">{n}</span>
             </span>
           );
         })}
+        {cases.some((c) => c.status === "skipped") && (
+          <span className="inline-flex items-center gap-1">
+            <span className="size-1.5 rounded-sm bg-fg-dim/40" />
+            skipped <span className="tabular-nums text-fg">{cases.filter((c) => c.status === "skipped").length}</span>
+            <span className="text-fg-dim">not plotted</span>
+          </span>
+        )}
       </div>
     </div>
   );

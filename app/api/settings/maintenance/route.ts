@@ -2,9 +2,11 @@ import { NextResponse } from "next/server";
 import {
   checkDbIntegrity,
   getDbStats,
+  getStorageInventory,
   vacuumDb,
   walCheckpointTruncate,
   type DbStats,
+  type StorageInventory,
 } from "@/lib/db";
 import { redactSensitiveText } from "@/lib/redaction";
 
@@ -47,10 +49,27 @@ function redactStats(stats: DbStats) {
   };
 }
 
+function redactInventory(inventory: StorageInventory) {
+  return {
+    ...inventory,
+    entries: inventory.entries.map((entry) => ({
+      ...entry,
+      path: redactSensitiveText(entry.path),
+    })),
+    warnings: inventory.warnings.map((warning) => redactSensitiveText(warning)),
+  };
+}
+
+function snapshot() {
+  return {
+    db: redactStats(getDbStats()),
+    inventory: redactInventory(getStorageInventory()),
+  };
+}
+
 export async function GET(req: Request) {
   if (!allowedHost(req)) return forbidden();
-  const stats = redactStats(getDbStats());
-  return NextResponse.json({ db: stats }, { headers: { "Cache-Control": "private, no-store" } });
+  return NextResponse.json(snapshot(), { headers: { "Cache-Control": "private, no-store" } });
 }
 
 const ACTIONS = new Set(["integrity_check", "quick_check", "checkpoint", "vacuum"]);
@@ -68,17 +87,17 @@ export async function POST(req: Request) {
 
   if (action === "integrity_check" || action === "quick_check") {
     const result = checkDbIntegrity(action === "integrity_check");
-    return NextResponse.json({ action, ok: result.ok, messages: result.messages, checkedAt: result.checkedAt });
+    return NextResponse.json({ action, ok: result.ok, messages: result.messages, checkedAt: result.checkedAt, ...snapshot() });
   }
 
   if (action === "checkpoint") {
     const result = walCheckpointTruncate();
-    return NextResponse.json({ action, ok: true, result, db: redactStats(getDbStats()) });
+    return NextResponse.json({ action, ok: true, result, ...snapshot() });
   }
 
   // vacuum
   const before = getDbStats().sizeBytes;
   vacuumDb();
   const stats = getDbStats();
-  return NextResponse.json({ action, ok: true, sizeBefore: before, sizeAfter: stats.sizeBytes, db: redactStats(stats) });
+  return NextResponse.json({ action, ok: true, sizeBefore: before, sizeAfter: stats.sizeBytes, ...snapshot() });
 }

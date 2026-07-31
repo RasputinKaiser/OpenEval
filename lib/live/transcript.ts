@@ -1,21 +1,52 @@
 import fs from "node:fs";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { hermesJsonToRecords } from "../adapters/hermes";
-import type { LiveTraceFormat, LiveTranscriptTurn, TranscriptResult } from "./types";
+import type { LiveTraceFormat, LiveTranscriptTurn, TranscriptNormalization, TranscriptResult } from "./types";
 import { NON_WS_RE, codexToolOutputError, jsonPreview, parseTimestamp, readFileLines } from "./util";
 
 const TRANSCRIPT_TURN_CAP = 20_000;
+/** Error context is useful only as a bounded drawer timeline, not a transcript dump. */
+export const ERRORING_TURN_CAP = 240;
 
 const HERMES_TRANSCRIPT_MAX_BYTES = 32 * 1024 * 1024;
 
+interface TranscriptParseState {
+  calls: Map<string, { name: string; at?: number }>;
+  lastCodexMessage?: {
+    envelope: "event_msg" | "response_item";
+    fingerprint: string;
+    recordIndex: number;
+    role: "user" | "assistant";
+  };
+}
+
 function parseTranscriptRecords(records: Iterable<string>): TranscriptResult {
   const turns: LiveTranscriptTurn[] = [];
+  const state: TranscriptParseState = { calls: new Map() };
+  const normalization: TranscriptNormalization = {
+    rawRecords: 0,
+    suppressedMirrors: 0,
+    compoundRecords: 0,
+  };
   let index = 0;
   for (const line of records) {
     if (!NON_WS_RE.test(line)) continue;
     index++;
+    normalization.rawRecords++;
     try {
-      turns.push(toTranscriptTurn(JSON.parse(line), index));
+      const obj = JSON.parse(line);
+      const expanded = expandCompoundTranscriptRecord(obj, state);
+      const candidates = expanded ?? [toTranscriptTurn(obj, index, state)];
+      if (expanded && expanded.length > 1) normalization.compoundRecords++;
+      for (const turn of candidates) {
+        if (suppressCodexMirror(obj, turn, index, state)) {
+          normalization.suppressedMirrors++;
+          continue;
+        }
+        turns.push(turn);
+        if (turns.length >= TRANSCRIPT_TURN_CAP) break;
+      }
     } catch {
       turns.push({
         type: "malformed",
@@ -34,7 +65,11 @@ function parseTranscriptRecords(records: Iterable<string>): TranscriptResult {
       break;
     }
   }
-  return { turns };
+  return {
+    turns,
+    truncated: turns.some((turn) => turn.type === "truncated"),
+    normalization,
+  };
 }
 
 export function parseSessionTranscript(filePath: string, format?: LiveTraceFormat): TranscriptResult {
@@ -73,7 +108,12 @@ export function getErroringTurns(filePath: string, format?: LiveTraceFormat): Tr
     keep.add(index);
     keep.add(Math.min(parsed.turns.length - 1, index + 1));
   });
-  return { turns: [...keep].sort((a, b) => a - b).map((index) => parsed.turns[index]) };
+  const indexes = [...keep].sort((a, b) => a - b);
+  const bounded = indexes.length > ERRORING_TURN_CAP ? indexes.slice(-ERRORING_TURN_CAP) : indexes;
+  return {
+    turns: bounded.map((index) => parsed.turns[index]),
+    truncated: Boolean(parsed.truncated || indexes.length > bounded.length),
+  };
 }
 
 /** Joined text of an OpenAI/Anthropic-style content array (input_text / output_text / text blocks). */
@@ -86,13 +126,270 @@ function contentText(content: unknown): string {
     .join("\n");
 }
 
+function codexMessageProjection(payload: any): { text: string; images: number; files: number } {
+  const content = payload?.content;
+  if (!Array.isArray(content)) return { text: contentText(content), images: 0, files: 0 };
+  const images = content.filter((block: any) => block?.type === "input_image" || block?.type === "output_image").length;
+  const files = content.filter((block: any) => block?.type === "input_file" || block?.type === "file").length;
+  const textBlocks = content
+    .filter((block: any) => typeof block?.text === "string")
+    .map((block: any) => block.text as string)
+    .filter((text: string) => text.trim() && !/^<\/?(?:image|file)\b/i.test(text.trim()));
+  // Multimodal Codex records repeat the human prompt as the longest text block
+  // and add paths/tags around image payloads. Keep that semantic prompt once;
+  // image/file counts preserve the omitted attachment evidence explicitly.
+  const text = images > 0 || files > 0
+    ? textBlocks.reduce((longest, candidate) => candidate.length > longest.length ? candidate : longest, "")
+    : textBlocks.join("\n");
+  return { text, images, files };
+}
+
 /** Tool-call arguments as a compact one-liner (parsed when JSON, verbatim otherwise). */
 function argsPreview(args: unknown, max = 420): string {
   if (typeof args !== "string") return jsonPreview(args ?? {}, max);
   try { return jsonPreview(JSON.parse(args), max); } catch { return jsonPreview(args, max); }
 }
 
-function toTranscriptTurn(obj: any, index: number): LiveTranscriptTurn {
+const CODEX_TOOL_CALL_TYPES = new Set(["function_call", "custom_tool_call", "tool_call", "tool_search_call"]);
+const CODEX_TOOL_OUTPUT_TYPES = new Set(["function_call_output", "custom_tool_call_output", "tool_result", "tool_output", "tool_search_output"]);
+
+function callId(payload: any): string | undefined {
+  return typeof payload?.call_id === "string"
+    ? payload.call_id
+    : typeof payload?.tool_use_id === "string"
+      ? payload.tool_use_id
+      : typeof payload?.id === "string"
+        ? payload.id
+        : undefined;
+}
+
+function toolName(payload: any): string {
+  return String(payload?.name ?? (payload?.type === "tool_search_call" ? "tool_search" : "(unknown)"));
+}
+
+function toolOutputPreview(payload: any, max = 420): string {
+  if (payload?.type === "tool_search_output" && Array.isArray(payload.tools)) {
+    const names: string[] = [];
+    const visit = (value: unknown): void => {
+      if (!value || names.length >= 24) return;
+      if (Array.isArray(value)) {
+        for (const item of value) visit(item);
+        return;
+      }
+      if (typeof value !== "object") return;
+      const record = value as Record<string, unknown>;
+      if (record.type === "function" && typeof record.name === "string") names.push(record.name);
+      if (Array.isArray(record.tools)) visit(record.tools);
+    };
+    visit(payload.tools);
+    return names.length > 0
+      ? jsonPreview(`Discovered ${names.length}${names.length >= 24 ? "+" : ""} tools: ${names.join(", ")}`, max)
+      : jsonPreview(payload.tools, max);
+  }
+  const value = payload?.output ?? payload?.result ?? payload?.content ?? payload?.tools ?? "";
+  if (Array.isArray(value)) {
+    const text = value
+      .map((block: any) => typeof block === "string" ? block : typeof block?.text === "string" ? block.text : "")
+      .filter(Boolean)
+      .join("\n");
+    if (text) return jsonPreview(text, max);
+  }
+  return jsonPreview(value, max);
+}
+
+function rawToolOutput(payload: any): string {
+  const value = payload?.output ?? payload?.result ?? payload?.content ?? payload?.tools ?? "";
+  if (typeof value === "string") return value;
+  try { return JSON.stringify(value); } catch { return String(value); }
+}
+
+function messageFingerprint(text: string): string {
+  return `${text.length}:${createHash("sha1").update(text).digest("hex")}`;
+}
+
+function codexConversationRecord(obj: any): {
+  envelope: "event_msg" | "response_item";
+  role: "user" | "assistant";
+  text: string;
+} | null {
+  if (obj?.type === "event_msg") {
+    const payload = obj.payload ?? {};
+    if (payload.type === "user_message" || payload.type === "agent_message") {
+      return {
+        envelope: "event_msg",
+        role: payload.type === "user_message" ? "user" : "assistant",
+        text: typeof payload.message === "string" ? payload.message : "",
+      };
+    }
+  }
+  if (obj?.type === "response_item") {
+    const payload = obj.payload ?? {};
+    if (payload.type === "message" && (payload.role === "user" || payload.role === "assistant")) {
+      return {
+        envelope: "response_item",
+        role: payload.role,
+        text: codexMessageProjection(payload).text,
+      };
+    }
+  }
+  return null;
+}
+
+function suppressCodexMirror(
+  obj: any,
+  turn: LiveTranscriptTurn,
+  recordIndex: number,
+  state: TranscriptParseState,
+): boolean {
+  const message = codexConversationRecord(obj);
+  if (!message || turn.role !== message.role) return false;
+  const fingerprint = messageFingerprint(message.text);
+  const previous = state.lastCodexMessage;
+  const mirrored = Boolean(
+    previous
+    && previous.envelope !== message.envelope
+    && previous.role === message.role
+    && previous.fingerprint === fingerprint
+    && recordIndex - previous.recordIndex <= 3,
+  );
+  if (!mirrored) {
+    state.lastCodexMessage = {
+      envelope: message.envelope,
+      fingerprint,
+      recordIndex,
+      role: message.role,
+    };
+  }
+  return mirrored;
+}
+
+function toolCallTurn(payload: any, type: string, at: number | undefined, state: TranscriptParseState): LiveTranscriptTurn {
+  const id = callId(payload);
+  const name = toolName(payload);
+  if (id && (state.calls.size < 512 || state.calls.has(id))) state.calls.set(id, { name, at });
+  return {
+    type,
+    subtype: payload.type,
+    severity: /error|fail|abort/i.test(String(payload.status ?? "")) ? "error" : "info",
+    at,
+    role: "tool",
+    label: `Tool: ${name}`,
+    preview: argsPreview(payload.arguments ?? payload.input),
+    tool: {
+      ...(id ? { callId: id } : {}),
+      name,
+      phase: "call",
+      ...(typeof payload.status === "string" ? { status: payload.status } : {}),
+    },
+  };
+}
+
+function toolResultTurn(payload: any, type: string, at: number | undefined, state: TranscriptParseState): LiveTranscriptTurn {
+  const id = callId(payload);
+  const pending = id ? state.calls.get(id) : undefined;
+  const name = pending?.name ?? (typeof payload?.name === "string" ? toolName(payload) : "Tool");
+  const preview = toolOutputPreview(payload);
+  const errored = payload.is_error === true || payload.isError === true
+    || /error|fail|abort/i.test(String(payload.status ?? ""))
+    || codexToolOutputError(rawToolOutput(payload));
+  const durationMs = pending?.at != null && at != null ? Math.max(0, at - pending.at) : undefined;
+  if (id) state.calls.delete(id);
+  return {
+    type,
+    subtype: payload.type,
+    severity: errored ? "error" : "info",
+    at,
+    role: "tool",
+    label: `${name} result${errored ? " — error" : ""}`,
+    preview,
+    tool: {
+      ...(id ? { callId: id } : {}),
+      name,
+      phase: "result",
+      ...(typeof payload.status === "string" ? { status: payload.status } : {}),
+      ...(durationMs != null ? { durationMs } : {}),
+    },
+  };
+}
+
+/**
+ * Claude/ncode stores prose, thinking, and one or more tool blocks inside one
+ * JSONL record. Expand that compound envelope into semantic viewer turns so
+ * each call/result keeps its own ID, name, status, duration, and searchable
+ * bounded preview. Raw transcript files remain untouched.
+ */
+function expandCompoundTranscriptRecord(obj: any, state: TranscriptParseState): LiveTranscriptTurn[] | null {
+  const type = String(obj?.type ?? "");
+  const content = obj?.message?.content;
+  if ((type !== "assistant" && type !== "user") || !Array.isArray(content)) return null;
+  const at = parseTimestamp(obj?.timestamp) ?? undefined;
+  const blocks = content.filter((block: unknown): block is Record<string, any> => Boolean(block && typeof block === "object"));
+  const turns: LiveTranscriptTurn[] = [];
+
+  if (type === "assistant") {
+    const thinking = blocks
+      .filter((block) => block.type === "thinking")
+      .map((block) => typeof block.thinking === "string" ? block.thinking : typeof block.text === "string" ? block.text : "")
+      .filter(Boolean)
+      .join("\n");
+    if (thinking) {
+      turns.push({
+        type,
+        subtype: "thinking",
+        severity: "info",
+        at,
+        role: "assistant",
+        label: "Thinking",
+        preview: jsonPreview(thinking),
+      });
+    }
+
+    const prose = blocks
+      .filter((block) => block.type === "text")
+      .map((block) => typeof block.text === "string" ? block.text : "")
+      .filter(Boolean)
+      .join("\n");
+    if (prose) {
+      turns.push({
+        type,
+        subtype: "text",
+        severity: "info",
+        at,
+        role: "assistant",
+        label: "Assistant",
+        preview: jsonPreview(prose),
+      });
+    }
+
+    for (const block of blocks.filter((candidate) => candidate.type === "tool_use")) {
+      turns.push(toolCallTurn(block, type, at, state));
+    }
+  } else {
+    const prose = blocks
+      .filter((block) => block.type === "text" || block.type === "input_text")
+      .map((block) => typeof block.text === "string" ? block.text : "")
+      .filter(Boolean)
+      .join("\n");
+    if (prose) {
+      turns.push({
+        type,
+        subtype: "text",
+        severity: "info",
+        at,
+        role: "user",
+        label: "You",
+        preview: jsonPreview(prose),
+      });
+    }
+    for (const block of blocks.filter((candidate) => candidate.type === "tool_result")) {
+      turns.push(toolResultTurn(block, type, at, state));
+    }
+  }
+
+  return turns.length > 0 ? turns : null;
+}
+
+function toTranscriptTurn(obj: any, index: number, state: TranscriptParseState): LiveTranscriptTurn {
   const type = typeof obj?.type === "string" ? obj.type : "unknown";
   const subtype = typeof obj?.subtype === "string" ? obj.subtype : undefined;
   const at = parseTimestamp(obj?.timestamp) ?? undefined;
@@ -140,28 +437,92 @@ function toTranscriptTurn(obj: any, index: number): LiveTranscriptTurn {
     };
   }
 
+  // New Codex thread/item rollouts use flat lifecycle records instead of the
+  // legacy response_item envelope. Keep the viewer faithful to the same
+  // user/assistant/tool evidence that the summary parser sees, while still
+  // returning bounded previews rather than raw record bodies.
+  if (type === "thread.started") {
+    return {
+      type,
+      subtype,
+      severity: "info",
+      at,
+      role: "meta",
+      label: "Codex thread",
+      preview: jsonPreview({
+        id: obj.thread_id ?? obj.session_id,
+        cwd: obj.cwd,
+        source: obj.source,
+        version: obj.cli_version ?? obj.version,
+      }),
+    };
+  }
+
+  if (type === "turn.completed" || type === "turn_complete") {
+    const payload = obj.payload ?? obj;
+    const failed = payload.is_error === true || payload.isError === true || /error|fail|abort/i.test(String(payload.status ?? ""));
+    return {
+      type,
+      subtype,
+      severity: failed ? "error" : "info",
+      at,
+      role: "meta",
+      label: failed ? "Turn completed — error" : "Turn completed",
+      preview: jsonPreview({
+        status: payload.status,
+        stopReason: payload.stop_reason ?? payload.stopReason,
+        durationMs: payload.duration_ms ?? payload.durationMs,
+      }),
+    };
+  }
+
+  if (type === "item.completed" || type === "item") {
+    const item = obj.item ?? obj.payload ?? {};
+    const itemType = String(item.type ?? "");
+    const itemAt = parseTimestamp(item.timestamp) ?? at;
+    if (itemType === "user_message" || item.role === "user") {
+      return { type, subtype: itemType || subtype, severity: "info", at: itemAt, role: "user", label: "You", preview: jsonPreview(item.text ?? contentText(item.content) ?? "") };
+    }
+    if (itemType === "agent_message" || itemType === "message" || item.role === "assistant") {
+      const text = typeof item.text === "string" ? item.text : contentText(item.content);
+      return { type, subtype: itemType || subtype, severity: "info", at: itemAt, role: "assistant", label: "Assistant", preview: jsonPreview(text) };
+    }
+    if (itemType === "reasoning") {
+      const summary = contentText(item.summary) || contentText(item.content);
+      return { type, subtype: itemType, severity: "info", at: itemAt, role: "assistant", label: "Reasoning", preview: jsonPreview(summary || "(encrypted reasoning)") };
+    }
+    if (CODEX_TOOL_CALL_TYPES.has(itemType)) return toolCallTurn(item, type, itemAt, state);
+    if (CODEX_TOOL_OUTPUT_TYPES.has(itemType)) return toolResultTurn(item, type, itemAt, state);
+    return { type, subtype: itemType || subtype, severity: "info", at: itemAt, role: "meta", label: `Item: ${itemType || "record"}`, preview: jsonPreview(item) };
+  }
+
   if (type === "response_item") {
     const payload = obj.payload ?? {};
     if (payload.type === "message") {
       const role = String(payload.role ?? "");
-      const text = contentText(payload.content);
+      const projection = codexMessageProjection(payload);
+      const text = projection.text;
       if (role === "assistant") return { type, subtype: "message", severity: "info", at, role: "assistant", label: "Assistant", preview: jsonPreview(text) };
-      if (role === "user") return { type, subtype: "message", severity: "info", at, role: "user", label: "You", preview: jsonPreview(text) };
+      if (role === "user") return {
+        type,
+        subtype: "message",
+        severity: "info",
+        at,
+        role: "user",
+        label: "You",
+        preview: jsonPreview(text),
+        ...((projection.images > 0 || projection.files > 0) ? {
+          media: {
+            ...(projection.images > 0 ? { images: projection.images } : {}),
+            ...(projection.files > 0 ? { files: projection.files } : {}),
+          },
+        } : {}),
+      };
       // developer/system prompts are plumbing, not conversation
       return { type, subtype: "message", severity: "info", at, role: "meta", label: `${role || "message"} prompt`, preview: jsonPreview(text) };
     }
-    if (payload.type === "function_call") {
-      return {
-        type, subtype: payload.type, severity: "info", at, role: "tool",
-        label: `Tool: ${payload.name ?? "(unknown)"}`,
-        preview: argsPreview(payload.arguments),
-      };
-    }
-    if (payload.type === "function_call_output") {
-      const out = String(payload.output ?? "");
-      const errored = codexToolOutputError(out);
-      return { type, subtype: payload.type, severity: errored ? "error" : "info", at, role: "tool", label: errored ? "Tool output — error" : "Tool output", preview: jsonPreview(out) };
-    }
+    if (CODEX_TOOL_CALL_TYPES.has(payload.type)) return toolCallTurn(payload, type, at, state);
+    if (CODEX_TOOL_OUTPUT_TYPES.has(payload.type)) return toolResultTurn(payload, type, at, state);
     if (payload.type === "reasoning") {
       const summary = contentText(payload.summary) || contentText(payload.content);
       return { type, subtype: payload.type, severity: "info", at, role: "assistant", label: "Reasoning", preview: jsonPreview(summary || "(encrypted reasoning)") };

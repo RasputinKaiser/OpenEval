@@ -190,3 +190,199 @@ accept only measured performance changes.
   not counted as a green gate or as an OpenEval failure.
   The post-review hard-cap regression was followed by another complete
   `npm test` pass and the 102-test focused suite above.
+
+## Run 7 — 2026-07-28 (Observe UX+data+runtime, dirty tree)
+Focus: make Live, Collection, and Timeline task-focused, responsive, explicit
+about evidence quality, and complete across parent and child-agent storage.
+- Applied: bounded Claude child discovery for direct subagents and nested
+  workflow `agent-*.jsonl` files, plus Codex parent/child linkage and ncode
+  sidechain preservation. The exact machine snapshot contains 2,278 parsed
+  sessions and 1,188 child traces: Codex 313, Claude 576, ncode 299. Timeline
+  excludes those children from human-outcome denominators while still using the
+  complete corpus for first-seen adoption markers.
+- Applied: full-population measured/inferred/missing provenance and categorized
+  parser-warning counts. Live and Collection render accessible patterned
+  evidence-composition bars; Timeline separates judged, heuristic, and no-signal
+  populations instead of presenting one blended confidence number.
+- Applied: task-focused progressive navigation on all viewports. Inactive heavy
+  panels are unmounted and restored for print/All mode. Exact production desktop
+  DOM changed from Live 3,197 → 304, Collection 2,761 → 320, and Timeline
+  2,797 → 325 elements. All three pages remained free of horizontal overflow at
+  1,280px and 390px; narrow dense panels rendered 428/441/333 total elements.
+- Applied: generation-bound Collection cursors reject reordered snapshots with
+  409 and trigger an atomic client refetch. Snapshot freshness is stamped after
+  rollup/timeline derivation completes, analytics reuse matches the API's
+  30-second window instead of rescanning every five seconds, and Timeline
+  retries bypass cached stale responses. Browser proof observed stale → fresh
+  automatically with Retry removed.
+- Gates: production build completed with type/lint validation; standalone
+  typecheck and lint passed; the 70-test focused data/UI suite and a serial full
+  suite passed. One earlier parallel full-suite sample had a load-sensitive
+  process-group timeout fixture miss while load average exceeded 120; its
+  complete 33-test file passed immediately in isolation, then the full suite
+  passed with test concurrency 1. `git diff --check` passed. Wall-clock build
+  and suite timings are not attributed performance results because machine load
+  reached 264. No commit, push, deploy, tag, or media mutation.
+
+## Run 8 — 2026-07-28 (Observe accuracy+durability+density, dirty tree)
+Focus: retain truthful parent/child history, prevent cache-context corruption
+and write amplification, and keep dense Live/Timeline views responsive.
+- Applied: Collection now asks every parseable source for its archived view
+  even when the physical root is empty or absent. The source status remains
+  truthful while pruned session summaries continue to contribute to Collection
+  and Timeline. Parser cache identity now includes stable parser/source/project/
+  field/inferred-model context through an additive SQLite migration; a same-file
+  model-A/model-B fixture proves the second parse cannot receive model A.
+- Applied: normal interactive Claude/ncode transcripts no longer become
+  "incomplete" solely because they have no final result record. Old archived
+  cache rows normalize that exact stale warning. The production Collection
+  fidelity view changed from roughly 1.4k false incomplete traces to 0 while
+  leaving malformed/runtime categories intact.
+- Applied: durable, low-write storage. Parsed summaries survive source pruning;
+  parser cache hits and identical puts are read-only SQL paths. WAL mode remains
+  synchronous=NORMAL, explicitly auto-checkpoints at about 4 MiB, and limits a
+  reset journal to 8 MiB. The observed cache is 32.85 MB for 3,510 rows with
+  28.32 MB of summary JSON. Three individually warmed production API reads
+  left both DB and WAL size/mtime unchanged. Optional FTS now retains a bounded
+  32k-character head+tail per side (task framing plus eventual result) instead
+  of the first 100k characters per side.
+- Applied: Live zero values use evidence coverage rather than numeric
+  truthiness, anomaly search includes child lineage/branch/provenance/warnings,
+  actionable warnings sort first with an omitted-count affordance, drawer
+  metric cards surface provenance, mobile rows have field labels, Collection
+  keeps the session identity sticky, and unmounted section buttons no longer
+  expose broken aria-controls references. Timeline labels adoption filters
+  separately from global shifts and derives its legend from visible kinds.
+- Applied: progressive row windows preserve access with Show-more controls.
+  Exact optimized-production DOM changed: Live Sessions 3,032 → 1,718 elements
+  (-43.3%, 50 → 25 rows), Timeline Impact 1,333 → 839 (-37.1%, 37 → 20),
+  and Timeline Adoptions 1,717 → 632 (-63.2%, 130 → 30). The inspected routes
+  had no page-level horizontal overflow. Collection now follows a background
+  snapshot refresh so its amber banner clears without a second manual rescan.
+- Probes before → final: types 3.783s → 2.770s; full-test median 11.650s →
+  8.790s across three green 563-test runs; lint 2.411s → 2.800s; live-bench
+  median 2.087s → 2.240s. Wall-clock deltas are health receipts, not attributed
+  speedups; the post benchmark's direct parser medians remained strong
+  (Claude 372ms cold, Codex 239ms cold, both 0.1ms warm).
+- Gates: 105 focused accuracy/cache/UI tests, three full 563-test passes,
+  standalone typecheck, lint, live benchmark, diff check, two optimized
+  production builds, production API write-stability probe, and direct browser
+  proof on Live, Collection fidelity/sessions, and Timeline impact/adoptions.
+  No commit, push, deploy, tag, or user-media mutation.
+
+## Run 9 — 2026-07-28 (Collection visualization system, dirty tree)
+Focus: materially improve the six user-marked Collection visualization surfaces
+without adding a charting dependency or weakening the data's evidence labels.
+- Applied: Overview groups now use one readable headline metric plus two
+  supporting metrics instead of three cramped equal cells. Weekly Usage adds
+  four metric modes, selected-week/prior/window context, scale lines,
+  focus/tap selection, exact tooltips, and per-week inferred-cost provenance.
+  The rollup now retains `estimatedCostSessions` per bucket so an estimate in
+  one week no longer marks every week's displayed value.
+- Applied: the project ranking states its all-time scope, exposes rank,
+  sessions, I/O tokens, recency, and value share, and progressively expands
+  from four to eight selectable rows. This fixes the visual mismatch between a
+  16-week chart and an all-history ranking without changing aggregation scope.
+- Applied: Rhythm adds an exact selected-hour summary, larger interactive heat
+  cells, intensity legend, keyboard-persistent selection, selectable day-part
+  composition, and readable busiest-day/peak-hour/weekend context. Zero-value
+  day-part and project bars now remain zero-width.
+- Applied: Models adds three leader summaries, live model search, six sort
+  modes, semantic table/row headers, explicit "tool error rate" wording,
+  larger share bars, and complete recorded/allocated/listed/family/fallback
+  estimate provenance. Allocated costs now retain the estimated `~` marker.
+- Applied: grid items align to their own content height, avoiding the large
+  false-empty regions caused by CSS Grid stretch. Chart canvases collapse to
+  the card width at desktop while keeping intentional internal scrolling below
+  the desktop breakpoint. All marks remain bounded DOM/CSS; dependencies and
+  collection payload cardinality are unchanged.
+- Browser proof: project expansion exposed 8/8 rows and project selection
+  persisted; model search reduced 35 → 3 rows and session sort promoted
+  `gpt-5.6-luna`; heatmap and day-part controls both retained pressed state.
+  At the desktop proof width, Usage and Rhythm scrollers each measured
+  515px/515px scroll/client width. Page-level overflow was false, and the
+  inspected production console log was empty. The narrower final capture
+  stacked the project card and retained chart-only horizontal scrolling.
+- Gates: full `npm test`, focused 18-test rollup/visualization suite,
+  standalone typecheck, warning-free lint, `git diff --check`, and the final
+  optimized production build passed. `/collection` is 21.8 kB route JS and
+  131 kB first-load JS. Build wall time varied from 77 seconds to 2.5 minutes
+  under machine load and is treated only as a health receipt.
+- Auxiliary SIPS homebase verification was not applicable: OpenEval does not
+  contain `scripts/validate_harness.py` or `scripts/validate_v2.py`. Its rc=2
+  result is recorded, not counted as a green product gate. Production server
+  restored on port 3000; no commit, push, deploy, tag, or media mutation.
+
+## Run 10 — 2026-07-28 (System Harnesses + Settings, dirty tree)
+Focus: turn the two System routes into responsive operational tools while
+making capability, persistence, override, and storage evidence explicit.
+- Applied: Harnesses now consumes every field already promised by its API:
+  available/default counts and invalid descriptor issues are visible, errors
+  are retryable, refresh bypasses both client and HTTP caches, selection is
+  URL-restorable and keyboard navigable, and per-harness probes cannot replace
+  valid state with an error envelope. Missing executables still receive a
+  descriptor-built sample command.
+- Applied: discovery exposes a bounded integration contract (parser, prompt
+  transport, model aliases/default/discovery, and live-trace roots/format/
+  depth/inferred model). The UI separates descriptor declarations from safe
+  version/help probe evidence, distinguishes declared image support from a
+  help-observed flag, redacts displayed local paths, and explains that nested
+  child traces are eligible without claiming every file parsed successfully.
+- Applied: Settings separates browser-local run defaults, machine-persisted
+  global judge fallback, immediate privacy state, and local SQLite storage.
+  Saved, environment, and effective fallback values are visualized as a
+  resolution chain and correctly caveated because per-rubric overrides still
+  win. The settings GET is now local-host gated and custom judge model ids
+  reject control characters/unbounded values.
+- Applied: localStorage defaults are validated and integer-clamped before New
+  Run consumes them; the small defaults module no longer pulls the Settings
+  page bundle into New Run. Settings and harness registry fetches fail
+  independently. Save writes the server first and reports any browser-local
+  partial failure, reset requires confirmation, and dirty scopes are explicit.
+- Applied: the prior one-line truncated database JSON is replaced by DB/WAL/
+  reclaimable/record metrics, a storage composition bar, and explicit Quick
+  check, Full check, WAL checkpoint, and confirmed Vacuum actions. None runs on
+  a timer; the production quick integrity check passed. A shared System local
+  nav makes Harnesses and Settings mutually reachable at every breakpoint.
+- Browser proof: production keyboard selection updated
+  `?harness=codex` to `?harness=ncode`; ncode probe and uncached four-harness
+  refresh completed; Settings dirty/save/restore and reset confirmation worked;
+  the database quick check passed. At an exact 390x844 Chrome viewport, both
+  documents measured 379px scroll/client width (no horizontal overflow), the
+  mobile Settings action bar remained above normal page flow instead of
+  covering the fixed mobile nav, and browser error/warning logs were empty.
+  Intermediate 805px proof also had equal scroll/client width.
+- Gates: final 56-test System/API/storage/harness suite, earlier 75-test expanded
+  focused suite, full `npm test`, standalone typecheck, warning-free lint,
+  `git diff --check`, and an optimized production build passed. Final route
+  sizes are 9.24 kB for Harnesses, 11.2 kB for Settings, and 7.6 kB for New Run;
+  no visualization dependency was added. Auxiliary SIPS homebase verification
+  remained not applicable because OpenEval does not ship the SIPS harness
+  validator scripts. Production server restored on port 3000; no commit, push,
+  deploy, tag, or media mutation.
+
+## Run 11 — 2026-07-30 (tokens + devloop, dirty tree)
+Focus: measure the current development loop and context sinks without changing
+OpenEval behavior or treating dirty-checkout timings as clean-release claims.
+- Baseline probes from `.optimize/runs/20260730T204612.json`: types 1.868s,
+  full-test median 11.447s across three green runs, lint 2.707s, production
+  build 113.854s with the dev server stopped, and live benchmark median 2.160s
+  across three green runs. The build is the dominant measured devloop cost.
+- Token baseline from `.optimize/runs/20260730T204612-tokens.json` used the
+  same frozen parent Codex transcript plus eight project Claude transcripts:
+  surfaces 3,561 tokens, probe output 1,112, refetch waste 471 tokens across
+  52 repeated calls, and 3,627,026 tool-result tokens. Repo context measured
+  255,236,501 tokens, but that is not a target; 104/105 generated paths are
+  already ignored and the remaining unignored text is the required tracked
+  `package-lock.json`.
+- Ranked candidates: the warm-build item is now measured but lacks a safe
+  behavior-preserving fix; the token sinks are below the acceptance threshold
+  or would remove useful/reproducibility-critical content. No fix was applied,
+  because forcing one would manufacture a win or weaken the project.
+- Verification: all baseline probes passed and the build ran with no dev server
+  attached. No source files, public APIs, tests, or user WIP were changed. The
+  existing `.optimize/` changes remain uncommitted because this checkout
+  already contained optimization-ledger edits unrelated to this run.
+- Next run: measure a warm build once more on a comparably idle machine, then
+  revisit backlog #4; do not pursue token changes unless a named sink exceeds
+  the 2,000-token / 10% threshold.

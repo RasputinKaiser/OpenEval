@@ -7,15 +7,26 @@ import { parseLiveSession } from "./parse-claude";
 import { parseCodexSession } from "./parse-codex";
 import { readFileLines } from "./util";
 
-export function summarizeLiveSessionFile(file: string, projectDir: string, mtime: number, opts: { fields?: FieldMapping; inferredModel?: string; decodeProject?: boolean; stat?: KnownFileStat; forceReparse?: boolean } = {}): LiveSession | null {
-  return summarizeWithCache(file, projectDir, mtime, (f, lines, bytes, pd, mt) => parseLiveSession(f, lines, bytes, pd, mt, opts.fields, opts.inferredModel, opts.decodeProject), opts.stat, opts.forceReparse);
+export function summarizeLiveSessionFile(file: string, projectDir: string, mtime: number, opts: { fields?: FieldMapping; inferredModel?: string; decodeProject?: boolean; sourceFormat?: string; stat?: KnownFileStat; forceReparse?: boolean } = {}): LiveSession | null {
+  const decodeProject = opts.decodeProject !== false;
+  const contextKey = makeContextKey({
+    parser: "claude-stream-json",
+    sourceFormat: opts.sourceFormat ?? (decodeProject ? "claude-projects" : "jsonl-dir"),
+    projectDir,
+    fields: opts.fields,
+    inferredModel: opts.inferredModel,
+    decodeProject,
+    mtime,
+  });
+  return summarizeWithCache(file, projectDir, mtime, contextKey, (f, lines, bytes, pd, mt) => parseLiveSession(f, lines, bytes, pd, mt, opts.fields, opts.inferredModel, decodeProject), opts.stat, opts.forceReparse);
 }
 
 const HERMES_MAX_BYTES = 32 * 1024 * 1024; // whole-file JSON parse; real sessions are ≤ a few MB
 
 /** Hermes single-JSON sessions, re-emitted as Claude-style records (see adapters/hermes). */
 export function summarizeHermesSessionFile(file: string, projectDir: string, mtime: number, stat?: KnownFileStat, forceReparse?: boolean): LiveSession | null {
-  return summarizeWithCache(file, projectDir, mtime, (f, lines, bytes, pd, mt) => {
+  const contextKey = makeContextKey({ parser: "hermes-json", sourceFormat: "hermes-json", projectDir, mtime });
+  return summarizeWithCache(file, projectDir, mtime, contextKey, (f, lines, bytes, pd, mt) => {
     if (bytes > HERMES_MAX_BYTES) return null;
     // Consume the streaming line reader into an array and join ONCE rather than
     // `raw += line + "\n"` per line: the old accumulator allocated a fresh
@@ -41,14 +52,31 @@ const sessionCache = new Map<string, { mtimeMs: number; size: number; session: L
 // (~30-60MB heap at 4,000) — acceptable for a local dashboard server.
 const SESSION_CACHE_LIMIT = 4000;
 
+/** Stable serialization keeps object key order from changing cache identity. */
+function stableContextValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stableContextValue);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.keys(value as Record<string, unknown>).sort().map((key) => [key, stableContextValue((value as Record<string, unknown>)[key])]));
+  }
+  return value ?? null;
+}
+
+function makeContextKey(context: Record<string, unknown>): string {
+  return JSON.stringify(stableContextValue(context));
+}
+
 function summarizeWithCache(
   file: string,
   projectDir: string,
   mtime: number,
+  contextKey: string,
   parser: (file: string, lines: Iterable<string>, bytes: number, projectDir: string, mtime: number) => LiveSession | null,
   knownStat?: KnownFileStat,
   forceReparse = false,
 ): LiveSession | null {
+  // The same file/stat tuple can be parsed under different descriptor defaults
+  // (notably inferred models). Keep each context distinct in both cache tiers.
+  const cacheIdentity = `${file}\u0000${contextKey}`;
   // Callers coming from the directory walk already stat'd the file; their
   // values are the same ones the mtime sort trusted, so reuse them as the
   // cache key instead of a second syscall per file.
@@ -71,18 +99,18 @@ function summarizeWithCache(
   // (mtime, size) tuple — both cache tiers key on that tuple, so their rows
   // are stale. Skip them, parse the file, and overwrite both entries below.
   if (!forceReparse) {
-    const cached = sessionCache.get(file);
+    const cached = sessionCache.get(cacheIdentity);
     if (cached && cached.mtimeMs === st.mtimeMs && cached.size === st.size) {
       // Re-insert on hit: Map iteration is insertion-ordered, so this turns the
       // FIFO eviction below into LRU (hits survive a scan that overflows the cap).
-      sessionCache.delete(file);
-      sessionCache.set(file, cached);
+      sessionCache.delete(cacheIdentity);
+      sessionCache.set(cacheIdentity, cached);
       return refresh(cached.session);
     }
   }
   // Second tier: the persistent SQLite cache survives restarts, so cold
   // full-history scans don't re-parse hundreds of MB of unchanged files.
-  const persisted = forceReparse ? null : cacheGet(file, st.mtimeMs, st.size);
+  const persisted = forceReparse ? null : cacheGet(file, st.mtimeMs, st.size, contextKey);
   let session: LiveSession | null;
   if (persisted?.hit) {
     session = persisted.session;
@@ -94,16 +122,17 @@ function summarizeWithCache(
     } catch {
       return null;
     }
-    cachePut(file, st.mtimeMs, st.size, session);
+    cachePut(file, st.mtimeMs, st.size, session, contextKey);
   }
   if (sessionCache.size >= SESSION_CACHE_LIMIT) {
     const oldest = sessionCache.keys().next().value;
     if (oldest !== undefined) sessionCache.delete(oldest);
   }
-  sessionCache.set(file, { mtimeMs: st.mtimeMs, size: st.size, session });
+  sessionCache.set(cacheIdentity, { mtimeMs: st.mtimeMs, size: st.size, session });
   return refresh(session);
 }
 
 export function summarizeCodexSessionFile(file: string, projectDir: string, mtime: number, stat?: KnownFileStat, forceReparse?: boolean): LiveSession | null {
-  return summarizeWithCache(file, projectDir, mtime, parseCodexSession, stat, forceReparse);
+  const contextKey = makeContextKey({ parser: "codex-jsonl", sourceFormat: "codex-sessions", projectDir, mtime });
+  return summarizeWithCache(file, projectDir, mtime, contextKey, parseCodexSession, stat, forceReparse);
 }

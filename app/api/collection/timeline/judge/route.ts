@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/api-http";
 import { collectAllPoints } from "@/lib/insights/collect";
 import { judgePoints, startJudgeAll, judgeJobStatus } from "@/lib/insights/judge";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 600;
+
+const NO_STORE_HEADERS = { "Cache-Control": "private, no-store, max-age=0" };
 
 /**
  * LLM-judge passes over sampled sessions. Each judgment is a real CLI
@@ -25,15 +28,29 @@ export async function POST(req: Request) {
   } catch {
     // empty body → defaults
   }
-  const { points, markers } = collectAllPoints();
-  if (all) {
-    const { started, status } = startJudgeAll(points, markers);
-    return NextResponse.json({ mode: "all", started, status });
+  try {
+    const { points, markers } = collectAllPoints();
+    if (all) {
+      const { started, status } = startJudgeAll(points, markers);
+      return NextResponse.json({ mode: "all", started, status }, { headers: NO_STORE_HEADERS });
+    }
+    const result = await judgePoints(points, markers, { max });
+    return NextResponse.json(result, { headers: NO_STORE_HEADERS });
+  } catch (error) {
+    return apiError(500, "Timeline judge unavailable", {
+      detail: error instanceof Error ? error.message : String(error),
+      headers: NO_STORE_HEADERS,
+    });
   }
-  const result = await judgePoints(points, markers, { max });
-  return NextResponse.json(result);
 }
 
 export async function GET() {
-  return NextResponse.json(judgeJobStatus());
+  try {
+    return NextResponse.json(judgeJobStatus(), { headers: NO_STORE_HEADERS });
+  } catch (error) {
+    return apiError(500, "Timeline judge status unavailable", {
+      detail: error instanceof Error ? error.message : String(error),
+      headers: NO_STORE_HEADERS,
+    });
+  }
 }

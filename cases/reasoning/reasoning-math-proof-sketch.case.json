@@ -8,7 +8,7 @@
     "math",
     "proof"
   ],
-  "prompt": "Give a short informal proof that the sum 1 + 2 + 3 + ... + n equals a simple closed-form expression. State the formula and briefly explain why it holds.",
+  "prompt": "Give a short informal proof that the sum 1 + 2 + 3 + ... + n equals a simple closed-form expression. State the formula and briefly explain why it holds. Include the proof in your final answer, and also save the same proof as plain text in proof.txt. Do not create any other files.",
   "setup": {
     "type": "none"
   },
@@ -37,6 +37,24 @@
       "type": "regex_match",
       "pattern": "(?:n\\s*\\(\\s*n\\s*\\+\\s*1\\s*\\)\\s*/\\s*2|\\\\frac\\s*\\{\\s*n\\s*\\(\\s*n\\s*\\+\\s*1\\s*\\)\\s*\\}\\s*\\{\\s*2\\s*\\})",
       "source": "final_text"
+    },
+    {
+      "type": "file_contains",
+      "path": "proof.txt",
+      "pattern": "n\\s*\\(\\s*n\\s*\\+\\s*1\\s*\\)\\s*/\\s*2",
+      "weight": 1
+    },
+    {
+      "type": "file_contains",
+      "path": "proof.txt",
+      "pattern": "forwards[\\s\\S]*backwards|backwards[\\s\\S]*forwards|pair(?:ing|s)",
+      "weight": 1
+    },
+    {
+      "type": "file_contains",
+      "path": "proof.txt",
+      "pattern": "2S\\s*=\\s*n\\s*\\(\\s*n\\s*\\+\\s*1\\s*\\)[\\s\\S]*(?:divid|divide)\\w*\\s+by\\s+2",
+      "weight": 1
     }
   ],
   "pass_threshold": 1

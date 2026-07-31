@@ -1,8 +1,11 @@
+import fs from "node:fs";
 import Link from "next/link";
 import clsx from "clsx";
 import { countRuns, listRuns } from "@/lib/db";
-import { loadCases } from "@/lib/cases";
-import { loadDashboardObservation } from "@/lib/dashboard-observation";
+import { formatCaseLoadErrors, loadCasesWithErrors } from "@/lib/cases";
+import { CASES_DIR } from "@/lib/config";
+import { auditCases } from "@/lib/accuracy";
+import { loadDashboardObservationSnapshot } from "@/lib/dashboard-observation";
 import StatusBadge from "@/components/StatusBadge";
 import HarnessBadge from "@/components/HarnessBadge";
 import RecentSessions from "@/components/RecentSessions";
@@ -12,8 +15,10 @@ import { Sparkline } from "@/components/Sparkline";
 import { fmtNum, fmtNumFull, fmtUsd, fmtUsdFull, fmtDuration, fmtSigned, fmtPct } from "@/lib/format";
 import { presentSummaryCost } from "@/lib/cost-display";
 import {
-  Activity, AlertTriangle, ArrowRight, BarChart3, Boxes, Cpu, DollarSign, FileText, Gavel, Radio, RefreshCw, Search, Timer, TrendingDown, TrendingUp,
+  Activity, AlertTriangle, ArrowRight, BarChart3, Boxes, CircleHelp, Clock3, Cpu, DollarSign, FileText, Gavel, LayoutDashboard, Radio, RefreshCw, Search, Timer, TrendingDown, TrendingUp,
 } from "lucide-react";
+import type { AllSourcesResult } from "@/lib/collection/aggregate";
+import type { TimelineReport } from "@/lib/insights/collect";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +33,13 @@ const CAT_COLORS: Record<string, string> = {
 export default async function Page() {
   const runs = listRuns(5);
   const totalRuns = countRuns();
-  const cases = await loadCases();
+  const loadedCases = await loadCasesWithErrors();
+  const cases = loadedCases.cases;
+  const accuracy = auditCases(cases, {
+    casesDir: CASES_DIR,
+    fileExists: (candidate) => fs.existsSync(candidate),
+    corpusErrors: formatCaseLoadErrors(loadedCases.errors),
+  });
   const lastRun = runs[0];
   const summary = lastRun?.summary;
   const lastRunCost = summary
@@ -38,7 +49,7 @@ export default async function Page() {
   // The dashboard unifies both halves of the product: eval runs (Evaluate) and
   // real-session analytics (Observe). Either half failing must not blank the
   // page — but it must remain visibly unavailable rather than looking empty.
-  const { collection, timeline, collectionError, timelineError } = loadDashboardObservation();
+  const { collection, timeline, collectionError, timelineError } = await loadDashboardObservationSnapshot();
 
   const byCat = cases.reduce<Record<string, number>>((a, c) => { a[c.category] = (a[c.category] || 0) + 1; return a; }, {});
   const recentSessions = collection?.sessions.slice(0, 6) ?? [];
@@ -51,16 +62,36 @@ export default async function Page() {
   const trend = timeline?.overall.trend ?? 0;
   const TrendIcon = trend >= 0 ? TrendingUp : TrendingDown;
   const topImpacts = (timeline?.impacts ?? []).filter((im) => !im.lowConfidence).slice(0, 3);
+  const trendAvailable = Boolean(timeline && timeline.signalSessions >= 2 && timeline.overall.comparable !== false);
+  const recentFailedRuns = runs.filter((run) => run.status === "failed").length;
+  const inferredCostSessions = collection?.totalInferredCostSessions ?? (collection?.anyEstimatedCost ? 1 : 0);
+  const missingCostSessions = collection
+    ? Math.max(0, collection.totalParsedSessions - collection.totalMeasuredCostSessions - inferredCostSessions)
+    : 0;
+  const attention = buildDashboardAttention({
+    collection,
+    timeline,
+    collectionError,
+    timelineError,
+    accuracyUnknownCases: accuracy.unknownCases,
+    accuracyUnknownSurfaces: Object.values(accuracy.surfaces).filter((surface) => surface.status === "unknown").length,
+    failedRuns: recentFailedRuns,
+  });
 
   return (
     <div className="p-6 md:p-8 max-w-7xl mx-auto">
       <header className="mb-6 -mx-6 md:-mx-8 -mt-6 md:-mt-8 px-6 md:px-8 py-6 border-b border-bd-subtle bg-gradient-to-b from-bg-subtle/50 to-transparent">
         <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-            <p className="text-sm text-fg-muted mt-1">Benchmark agent CLIs — and learn from every real session they&apos;ve ever run on this machine.</p>
+          <div className="flex min-w-0 items-start gap-3">
+            <span aria-hidden="true" className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-xl bg-accent/10 text-accent-soft">
+              <LayoutDashboard className="size-[18px]" />
+            </span>
+            <div className="min-w-0">
+              <h1 className="text-2xl font-semibold tracking-tight text-balance">Dashboard</h1>
+              <p className="mt-1 max-w-[64ch] text-sm leading-5 text-fg-muted">Benchmark agent CLIs — and learn from every real session they&apos;ve ever run on this machine.</p>
+            </div>
           </div>
-          <form action="/collection" method="get" className="flex items-center gap-2 rounded-lg border border-bd bg-bg-subtle px-3 py-2 w-full sm:w-auto sm:min-w-[320px] focus-within:border-accent/60 transition-colors">
+          <form action="/collection" method="get" className="dashboard-search flex min-h-11 w-full items-center gap-2 rounded-xl border border-bd bg-bg-subtle px-3 py-2 sm:w-auto sm:min-w-[320px]">
             <Search className="size-4 text-fg-dim shrink-0" />
             <input
               name="q"
@@ -100,6 +131,8 @@ export default async function Page() {
         </section>
       )}
 
+      {attention.length > 0 && <AttentionPanel items={attention} />}
+
       {firstRun ? (
         <FirstRunGuide />
       ) : (
@@ -110,9 +143,10 @@ export default async function Page() {
           label="Sessions collected"
           value={collection ? fmtNum(collection.totalParsedSessions) : "—"}
           sub={collection
-            ? collection.totalArchivedSessions > 0
-              ? `incl. ${fmtNum(collection.totalArchivedSessions)} archived`
-              : `${collection.presentSources} sources`
+            ? [
+              collection.partial || collection.inventoryPartial ? "coverage partial" : null,
+              collection.totalArchivedSessions > 0 ? `incl. ${fmtNum(collection.totalArchivedSessions)} archived` : `${collection.presentSources} sources`,
+            ].filter(Boolean).join(" · ")
             : collectionError ? "scan unavailable" : "not scanned"}
           href="/collection"
         />
@@ -120,28 +154,32 @@ export default async function Page() {
           icon={DollarSign}
           label="API equivalent (all time)"
           value={collection ? (collection.anyEstimatedCost ? "~" : "") + fmtUsd(collection.totalCostUsd) : "—"}
-          title={collection ? `${fmtUsdFull(collection.totalCostUsd)} at API list rates; not actual subscription or provider spend` : undefined}
-          sub={collection ? `${fmtNum(collection.totalInputTokens + collection.totalOutputTokens)} processed I/O tokens` : undefined}
+          title={collection ? `${fmtUsdFull(collection.totalCostUsd)} at API list rates; not actual subscription or provider spend. ${fmtNum(inferredCostSessions)} session costs are inferred and ${fmtNum(missingCostSessions)} are unavailable.` : undefined}
+          sub={collection ? [
+            `${fmtNum(collection.totalInputTokens + collection.totalOutputTokens)} processed I/O tokens`,
+            inferredCostSessions > 0 ? `${fmtNum(inferredCostSessions)} estimated` : null,
+            missingCostSessions > 0 ? `${fmtNum(missingCostSessions)} unavailable` : null,
+          ].filter(Boolean).join(" · ") : undefined}
           href="/collection"
         />
         <Stat
           icon={trend >= 0 ? TrendingUp : TrendingDown}
           label="Outcome trend"
-          value={timeline ? fmtSigned(trend) : "—"}
-          tone={trend > 0 ? "ok" : trend < 0 ? "err" : undefined}
-          sub={timeline
+          value={trendAvailable ? fmtSigned(trend) : "—"}
+          tone={trendAvailable ? (trend > 0 ? "ok" : trend < 0 ? "err" : undefined) : undefined}
+          sub={timeline && trendAvailable
             ? `${timeline.overall.firstHalfOutcome.toFixed(2)} → ${timeline.overall.secondHalfOutcome.toFixed(2)}`
-            : timelineError ? "analysis unavailable" : undefined}
+            : timelineError ? "analysis unavailable" : "no comparable outcome evidence"}
           href="/collection/timeline"
         />
         <Stat
           icon={Gavel}
           label="LLM-judged"
-          value={timeline ? fmtPct(timeline.judgedCoverage) : "—"}
-          sub={timeline ? `signal ${fmtPct(timeline.signalCoverage)}` : timelineError ? "coverage unavailable" : undefined}
+          value={timeline && timeline.totalSessions > 0 ? fmtPct(timeline.judgedCoverage) : "—"}
+          sub={timeline && timeline.totalSessions > 0 ? `signal ${fmtPct(timeline.signalCoverage)}` : timelineError ? "coverage unavailable" : "no session evidence"}
           href="/collection/timeline"
         />
-        <Stat icon={Activity} label="Eval runs" value={String(totalRuns)} sub={summary ? `last: ${(summary.passRate * 100).toFixed(0)}% pass` : "none yet"} href="/runs" />
+        <Stat icon={Activity} label="Eval runs" value={String(totalRuns)} sub={recentFailedRuns > 0 ? `${recentFailedRuns} recent failed` : summary ? `last: ${(summary.passRate * 100).toFixed(0)}% pass` : "none yet"} href="/runs" />
         <Stat icon={FileText} label="Test cases" value={String(cases.length)} sub={`${Object.keys(byCat).length} categories`} href="/cases" />
       </section>
 
@@ -307,6 +345,175 @@ export default async function Page() {
   );
 }
 
+type AttentionTone = "warn" | "err" | "info";
+
+interface DashboardAttention {
+  id: string;
+  title: string;
+  detail: string;
+  action: string;
+  href: string;
+  tone: AttentionTone;
+}
+
+function buildDashboardAttention({
+  collection,
+  timeline: _timeline,
+  collectionError,
+  timelineError,
+  accuracyUnknownCases,
+  accuracyUnknownSurfaces,
+  failedRuns,
+}: {
+  collection: AllSourcesResult | null;
+  timeline: TimelineReport | null;
+  collectionError: string | null;
+  timelineError: string | null;
+  accuracyUnknownCases: number;
+  accuracyUnknownSurfaces: number;
+  failedRuns: number;
+}): DashboardAttention[] {
+  const items: DashboardAttention[] = [];
+  const add = (item: DashboardAttention) => items.push(item);
+
+  if (collectionError) {
+    add({
+      id: "collection-error",
+      title: "Collection scan failed",
+      detail: "Session metrics are unavailable; the dashboard is not treating the failure as an empty history.",
+      action: "Open Collection diagnostics",
+      href: "/collection",
+      tone: "err",
+    });
+  } else if (collection && (collection.partial || collection.inventoryPartial)) {
+    add({
+      id: "partial-scan",
+      title: "Collection coverage is partial",
+      detail: "The displayed totals are a lower bound because discovery or parsing stopped before the corpus was proven complete.",
+      action: "Review scan coverage",
+      href: "/collection",
+      tone: "warn",
+    });
+  }
+
+  if (timelineError) {
+    add({
+      id: "timeline-error",
+      title: "Timeline analysis failed",
+      detail: "Outcome and impact metrics are unavailable until the analysis cache is readable again.",
+      action: "Open Timeline diagnostics",
+      href: "/collection/timeline",
+      tone: "err",
+    });
+  }
+
+  if (collection && collection.totalParsedSessions > 0) {
+    const inferred = collection.totalInferredCostSessions ?? (collection.anyEstimatedCost ? 1 : 0);
+    const missing = Math.max(0, collection.totalParsedSessions - collection.totalMeasuredCostSessions - inferred);
+    if (inferred > 0 || missing > 0) {
+      add({
+        id: "cost-evidence",
+        title: "Cost evidence needs review",
+        detail: `${inferred} session cost${inferred === 1 ? " is" : "s are"} estimated and ${missing} ${missing === 1 ? "is" : "are"} unavailable; the API-equivalent total is not provider spend.`,
+        action: "Review cost provenance",
+        href: "/collection",
+        tone: "warn",
+      });
+    }
+  }
+
+  if (accuracyUnknownCases > 0 || accuracyUnknownSurfaces > 0) {
+    add({
+      id: "accuracy-unknown",
+      title: "Accuracy evidence is incomplete",
+      detail: `${accuracyUnknownCases} case${accuracyUnknownCases === 1 ? "" : "s"} and ${accuracyUnknownSurfaces} evidence surface${accuracyUnknownSurfaces === 1 ? "" : "s"} remain unknown because runtime or human proof is not attached.`,
+      action: "Review Accuracy evidence",
+      href: "/accuracy",
+      tone: "warn",
+    });
+  }
+
+  if (collection && (collection.stale === true || collection.refreshing === true || (collection.totalStaleSessions ?? 0) > 0)) {
+    const aged = collection.totalStaleSessions ?? 0;
+    add({
+      id: "stale-evidence",
+      title: collection.refreshing ? "Collection refresh is in progress" : "Evidence freshness needs review",
+      detail: collection.stale
+        ? "Collection is serving a last-known snapshot while a refresh completes."
+        : aged > 0
+          ? `${aged} session summaries have aged beyond the freshness window; inspect their source and timestamp.`
+          : "The current Collection snapshot is marked stale.",
+      action: "Check Collection freshness",
+      href: "/collection",
+      tone: "info",
+    });
+  } else if (collection && (collection.totalFiles > 0 || collection.totalParsedSessions > 0) && collection.stale === undefined) {
+    add({
+      id: "freshness-unavailable",
+      title: "Freshness status is unavailable here",
+      detail: "The Dashboard loader does not expose snapshot freshness. Collection has the authoritative scan timestamp and refresh state.",
+      action: "Check Collection timestamp",
+      href: "/collection",
+      tone: "info",
+    });
+  }
+
+  if (failedRuns > 0) {
+    add({
+      id: "failed-runs",
+      title: `${failedRuns} recent evaluation${failedRuns === 1 ? "" : "s"} failed`,
+      detail: "Open the run history to inspect the failing cases and their retained error details.",
+      action: "Inspect failed runs",
+      href: "/runs",
+      tone: "err",
+    });
+  }
+
+  // Keep the dashboard scan concise; the destination pages retain the full
+  // source-level evidence and diagnostics.
+  return items.slice(0, 6);
+}
+
+function AttentionPanel({ items }: { items: DashboardAttention[] }) {
+  return (
+    <section className="mb-6 rounded-lg border border-bd bg-bg-subtle/60 p-4" aria-labelledby="dashboard-attention-title">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <div>
+          <h2 id="dashboard-attention-title" className="flex items-center gap-2 text-sm font-semibold">
+            <CircleHelp className="size-4 text-warn" aria-hidden="true" />
+            Attention
+          </h2>
+          <p className="mt-1 text-xs text-fg-muted">Signals with a next action. A warning here is not a zero.</p>
+        </div>
+        <span className="text-[10px] uppercase tracking-wider text-fg-dim">{items.length} item{items.length === 1 ? "" : "s"}</span>
+      </div>
+      <ul className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(min(100%,18rem),1fr))] gap-2">
+        {items.map((item) => {
+          const Icon = item.tone === "err" ? AlertTriangle : item.tone === "info" ? Clock3 : CircleHelp;
+          const tone = item.tone === "err" ? "border-err/30 bg-err/5" : item.tone === "info" ? "border-accent/30 bg-accent/5" : "border-warn/30 bg-warn/5";
+          const iconTone = item.tone === "err" ? "text-err" : item.tone === "info" ? "text-accent-soft" : "text-warn";
+          return (
+            <li key={item.id}>
+              <Link href={item.href} className={clsx("attention-card group block h-full rounded-lg border p-3", tone)}>
+                <div className="flex items-start gap-2.5">
+                  <Icon className={clsx("mt-0.5 size-4 shrink-0", iconTone)} aria-hidden="true" />
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-xs font-medium">{item.title}</h3>
+                    <p className="mt-1 text-[11px] leading-5 text-fg-muted">{item.detail}</p>
+                    <span className="mt-2 inline-flex items-center gap-1 text-[11px] text-accent-soft">
+                      {item.action} <ArrowRight className="size-3" aria-hidden="true" />
+                    </span>
+                  </div>
+                </div>
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
 function Stat({ icon: Icon, label, value, sub, href, tone, title }: {
   icon: typeof Activity;
   label: string;
@@ -317,7 +524,7 @@ function Stat({ icon: Icon, label, value, sub, href, tone, title }: {
   title?: string;
 }) {
   return (
-    <Link href={href} className="card p-4 block transition-colors hover:border-accent/40 group">
+    <Link href={href} className="card interactive-card group block p-4">
       <div className="flex items-center justify-between">
         <span className="text-xs text-fg-muted truncate">{label}</span>
         <div className="grid place-items-center size-7 rounded-md bg-accent/10 shrink-0">

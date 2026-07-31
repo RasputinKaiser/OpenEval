@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { AlertTriangle, RefreshCw, ClipboardCopy, Check } from "lucide-react";
+import { redactSecrets, redactSensitiveText } from "@/lib/redaction";
 
 interface Props {
   error: Error & { digest?: string };
@@ -10,21 +11,49 @@ interface Props {
   title: string;
 }
 
+function safeErrorMessage(value: unknown): string {
+  return redactSecrets(redactSensitiveText(value));
+}
+
 export default function ErrorBoundaryClient({ error, reset, title }: Props) {
   const pathname = usePathname();
   const [copied, setCopied] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+  const retryingRef = useRef(false);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    // Next's reset can reuse this client boundary for a fresh error. Clear the
+    // guard so a failed retry never permanently disables recovery for the new
+    // error instance.
+    retryingRef.current = false;
+    setRetrying(false);
+    setCopied(false);
+  }, [error, pathname]);
+
+  useEffect(() => () => {
+    if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+  }, []);
+
+  function retry() {
+    if (retryingRef.current) return;
+    retryingRef.current = true;
+    setRetrying(true);
+    reset();
+  }
 
   async function copyDiagnostics() {
     const details = [
       `route: ${pathname}`,
-      `digest: ${error.digest ?? "(none)"}`,
-      `error: ${error.name}: ${error.message}`,
+      `digest: ${safeErrorMessage(error.digest ?? "(none)")}`,
+      `error: ${safeErrorMessage(error.name)}: ${safeErrorMessage(error.message)}`,
       `time: ${new Date().toISOString()}`,
     ].join("\n");
     try {
       await navigator.clipboard.writeText(details);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
     } catch {
       // Clipboard API unavailable (e.g. insecure context) — surface the
       // details via prompt so they can still be copied manually.
@@ -32,32 +61,38 @@ export default function ErrorBoundaryClient({ error, reset, title }: Props) {
     }
   }
 
+  const safeMessage = safeErrorMessage(error.message).slice(0, 500);
+
   return (
-    <div className="min-h-[50vh] flex items-center justify-center p-8">
-      <div className="card p-8 max-w-md text-center">
-        <AlertTriangle className="size-8 text-warn mx-auto mb-4" />
-        <h2 className="text-lg font-semibold mb-2">{title}</h2>
-        <p className="text-sm text-fg-muted mb-4">
-          {error.message.slice(0, 500)}
+    <div role="alert" aria-labelledby="route-error-title" aria-describedby="route-error-message" className="min-h-[50vh] flex items-center justify-center p-4 md:p-8">
+      <div className="card p-6 md:p-8 max-w-md text-center">
+        <AlertTriangle aria-hidden="true" className="size-8 text-warn mx-auto mb-4" />
+        <h2 id="route-error-title" className="text-lg font-semibold mb-2">{title}</h2>
+        <p id="route-error-message" className="text-sm text-fg-muted mb-4 break-words">
+          {safeMessage || "The page could not be loaded."}
         </p>
         {error.digest && (
           <div className="text-xs text-fg-dim mono mb-4">
-            digest: {error.digest}
+            digest: {safeErrorMessage(error.digest)}
           </div>
         )}
         <div className="flex flex-wrap items-center justify-center gap-2">
           <button
-            onClick={reset}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-bg-elev hover:bg-bg-subtle transition-colors text-sm font-medium"
+            type="button"
+            onClick={retry}
+            disabled={retrying}
+            aria-busy={retrying}
+            className="inline-flex items-center gap-2 rounded-lg bg-bg-elev px-4 py-2.5 text-sm font-medium transition-colors hover:bg-bg-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-wait disabled:opacity-60"
           >
-            <RefreshCw className="size-4" />
-            Reload
+            <RefreshCw aria-hidden="true" className="size-4" />
+            {retrying ? "Retrying…" : "Retry"}
           </button>
           <button
+            type="button"
             onClick={copyDiagnostics}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-bd hover:bg-bg-elev transition-colors text-sm font-medium text-fg-muted hover:text-fg"
+            className="inline-flex items-center gap-2 rounded-lg border border-bd px-4 py-2.5 text-sm font-medium text-fg-muted transition-colors hover:bg-bg-elev hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
-            {copied ? <Check className="size-4 text-ok" /> : <ClipboardCopy className="size-4" />}
+            {copied ? <Check aria-hidden="true" className="size-4 text-ok" /> : <ClipboardCopy aria-hidden="true" className="size-4" />}
             {copied ? "Copied" : "Copy diagnostic details"}
           </button>
         </div>
