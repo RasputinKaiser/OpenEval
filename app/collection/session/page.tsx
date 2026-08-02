@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import Link from "next/link";
-import { ArrowLeft, FileText, AlertTriangle, Archive } from "lucide-react";
+import { ArrowLeft, FileText, AlertTriangle, Archive, MessageSquare, Wrench } from "lucide-react";
 import { parseSessionTranscript } from "@/lib/live";
 import { isPathInAnyCollectionSource } from "@/lib/collection/sources";
 import { fmtNum, fmtRel } from "@/lib/format";
@@ -83,6 +83,8 @@ export default async function SessionViewerPage({ searchParams }: { searchParams
 
       {error && <div className="card p-3 mb-4 text-sm text-err flex items-center gap-2"><AlertTriangle className="size-4" /> {error}</div>}
 
+      <TranscriptReadingGuide counts={totalCounts} totalTurns={turns.length} />
+
       <TranscriptClient turns={shown} file={file} totalTurns={turns.length} totalCounts={totalCounts} normalization={normalization} />
 
       {turns.length > RENDER_CAP && (
@@ -91,5 +93,43 @@ export default async function SessionViewerPage({ searchParams }: { searchParams
         </p>
       )}
     </div>
+  );
+}
+
+function TranscriptReadingGuide({
+  counts,
+  totalTurns,
+}: {
+  counts: { all: number; chat: number; tools: number; errors: number };
+  totalTurns: number;
+}) {
+  return (
+    <section className="mb-4 rounded-lg border border-accent/25 bg-accent/[0.04] p-3.5" aria-labelledby="transcript-reading-title">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 id="transcript-reading-title" className="text-sm font-semibold">Read the conversation first</h2>
+          <p className="mt-1 max-w-3xl text-[11px] leading-5 text-fg-muted">
+            OpenEval starts with user and assistant messages so the task and result are easy to follow. Agent reasoning is labeled separately and stays collapsed until requested; tool calls, protocol events, and errors remain available in the filters below without changing the raw transcript.
+          </p>
+        </div>
+        <span className="shrink-0 rounded-full border border-accent/25 bg-bg px-2 py-1 text-[10px] text-accent-soft mono">
+          {fmtNum(totalTurns)} normalized turns
+        </span>
+      </div>
+      <dl className="mt-3 grid grid-cols-3 gap-2 sm:max-w-xl">
+        <div className="rounded-md border border-bd-subtle bg-bg/70 px-2.5 py-2">
+          <dt className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-fg-dim"><MessageSquare className="size-3" /> Conversation</dt>
+          <dd className="mt-1 text-sm font-semibold tabular-nums">{fmtNum(counts.chat)}</dd>
+        </div>
+        <div className="rounded-md border border-bd-subtle bg-bg/70 px-2.5 py-2">
+          <dt className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-fg-dim"><Wrench className="size-3" /> Tool events</dt>
+          <dd className="mt-1 text-sm font-semibold tabular-nums">{fmtNum(counts.tools)}</dd>
+        </div>
+        <div className="rounded-md border border-bd-subtle bg-bg/70 px-2.5 py-2">
+          <dt className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-fg-dim"><AlertTriangle className="size-3" /> Error signals</dt>
+          <dd className={counts.errors > 0 ? "mt-1 text-sm font-semibold tabular-nums text-err" : "mt-1 text-sm font-semibold tabular-nums"}>{fmtNum(counts.errors)}</dd>
+        </div>
+      </dl>
+    </section>
   );
 }

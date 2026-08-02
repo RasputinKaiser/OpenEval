@@ -59,7 +59,7 @@ test("Codex thread/item rollouts preserve lineage, prose, measured usage, tools,
   ]);
   const session = summarizeCodexSessionFile(file, "2026/07/01", Date.parse("2026-07-01T00:00:00.000Z"));
   assert.ok(session);
-  assert.equal(PARSER_VERSION, 23);
+  assert.equal(PARSER_VERSION, 24);
   assert.equal(session.sessionId, "thread-new");
   assert.equal(session.isSubagent, true);
   assert.equal(session.parentSessionId, "parent");

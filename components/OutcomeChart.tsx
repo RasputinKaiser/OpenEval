@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { ZoomIn, ZoomOut, Shrink } from "lucide-react";
-import type { SeriesPoint, Marker, MarkerKind } from "@/lib/insights/timeline";
+import type { SeriesPoint, Marker, MarkerKind, OutcomeSeriesEvidence } from "@/lib/insights/timeline";
 import type { ChangePoint } from "@/lib/insights/changepoints";
-import { fmtDate, fmtSigned } from "@/lib/format";
+import { fmtDate, fmtPct, fmtSigned } from "@/lib/format";
 import { ChartTooltip, useChartTooltip } from "./ChartTooltip";
 import { KIND_COLOR, KIND_LABEL } from "./markerKinds";
 
@@ -51,10 +51,12 @@ export default function OutcomeChart({
   series,
   markers,
   changePoints,
+  evidence,
 }: {
   series: SeriesPoint[];
   markers: Marker[];
   changePoints: ChangePoint[];
+  evidence?: OutcomeSeriesEvidence;
 }) {
   const { tip, pinned, show, showAt, hide, togglePin } = useChartTooltip();
   const [cross, setCross] = useState<number | null>(null);
@@ -65,6 +67,20 @@ export default function OutcomeChart({
   const descriptionId = useId();
   const scrollHintId = useId();
   const areaGradientId = `outcome-area-${useId().replace(/:/g, "")}`;
+  const evidenceBasis = evidence?.pool === "judged"
+    ? "LLM-judged sessions only"
+    : evidence?.provenance === "mixed"
+      ? "mixed judged + heuristic signal"
+      : evidence?.provenance === "heuristic"
+        ? "heuristic signal"
+        : evidence?.provenance === "judged"
+          ? "judged signal"
+        : evidence?.provenance === "unavailable"
+          ? "no usable outcome signal"
+          : "outcome signal";
+  const evidenceCopy = evidence
+    ? `${evidenceBasis} · source n=${evidence.n}/${evidence.denominator} top-level (${fmtPct(evidence.coverage)}) · ${series.length} plotted points`
+    : `${series.length} plotted points · source denominator unavailable in this snapshot`;
   // Time position to keep fixed across a zoom change: {frac of content, px offset in viewport}.
   const pendingAnchor = useRef<{ frac: number; offset: number } | null>(null);
 
@@ -126,7 +142,7 @@ export default function OutcomeChart({
     return (
       <div className="timeline-chart-empty" role="status">
         <strong>{series.length === 0 ? "No outcome history yet" : "Not enough history to chart yet"}</strong>
-        <span>{series.length === 0 ? "The trend appears after at least two signal sessions are available." : "One signal point is not enough to show a trend without implying a change."}</span>
+        <span>{series.length === 0 ? `The trend appears after at least two observations with usable outcome evidence. ${evidenceCopy}.` : `One signal point is not enough to show a trend without implying a change. ${evidenceCopy}.`}</span>
       </div>
     );
   }
@@ -248,7 +264,7 @@ export default function OutcomeChart({
       <div className="timeline-chart-toolbar flex items-center justify-between gap-3 mb-2">
         <div className="timeline-chart-toolbar-copy min-w-0">
           <span className="text-[10px] uppercase tracking-[0.12em] text-fg-dim">Observed outcome trend</span>
-          <span className="timeline-chart-toolbar-subcopy">Trailing median · outcome 0–1 · {series.length} plotted points</span>
+          <span className="timeline-chart-toolbar-subcopy">Trailing median · outcome 0–1 · {evidenceCopy}</span>
         </div>
         <div className="timeline-chart-toolbar-actions">
           <div className="timeline-chart-kpi" title={`Latest observed trailing median on ${fmtDate(latest.at)}`}>
@@ -347,7 +363,7 @@ export default function OutcomeChart({
           className="timeline-chart-context-surface"
         />
         <title id={titleId}>Outcome trend timeline</title>
-        <desc id={descriptionId}>Observed trailing median outcome points from {fmtDate(t0)} to {fmtDate(t1)}. Straight segments connect observed points; values between observations are not measured.</desc>
+        <desc id={descriptionId}>Observed trailing median outcome points from {fmtDate(t0)} to {fmtDate(t1)}. Evidence basis: {evidenceCopy}. Straight segments connect observed points; values between observations are not measured.</desc>
         {/* y gridlines at 0 / .5 / 1 — labels live in the pinned overlay so they survive panning */}
         {[0, 0.5, 1].map((v) => (
           <line key={v} x1={PAD_L} y1={y(v)} x2={W - PAD_R} y2={y(v)} stroke="var(--color-bd)" strokeWidth={v === 0.5 ? 1 : 0.5} strokeDasharray={v === 0.5 ? "3 4" : undefined} />

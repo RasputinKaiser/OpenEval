@@ -22,6 +22,7 @@ import { fmtDateTime, fmtStableDateTime, fmtTime } from "@/lib/format";
 import { useFocusTrap } from "@/lib/use-focus-trap";
 import type { LiveSession, LiveSessionDetailResult, LiveSessionListItem, LiveTranscriptTurn, MetricSource, TranscriptResult } from "@/lib/live";
 import { collectionTranscriptHref, decimateUsageSegments, displayText, fmt, fmtBytes, fmtMs, fmtUsd } from "./live-shared";
+import { AgentReasoningBlock, isAgentReasoningTurn } from "./AgentReasoningBlock";
 import { IncidentBadges, ListStack, LoadingSkeletonRows, MetricGroup, QualityBadge, SourceChip, StatusPill, TinyMetric } from "./LivePrimitives";
 
 function DetailPanel({ title, children }: { title: string; children: React.ReactNode }) {
@@ -81,20 +82,27 @@ function Timestamp({ ms, mounted, className }: { ms: number; mounted: boolean; c
   );
 }
 
-const TurnRow = React.memo(function TurnRow({ turn, redact, users, mounted }: { turn: LiveTranscriptTurn; redact: boolean; users: ReadonlySet<string>; mounted: boolean }) {
+const TurnRow = React.memo(function TurnRow({ turn, redact, users, mounted, model }: { turn: LiveTranscriptTurn; redact: boolean; users: ReadonlySet<string>; mounted: boolean; model?: string | null }) {
+  const agentReasoning = isAgentReasoningTurn(turn);
   return (
     <div className={clsx(
       "rounded-lg border p-3",
       turn.severity === "error" ? "border-err/40 bg-err/10" : turn.severity === "warning" ? "border-warn/40 bg-warn/10" : "border-bd bg-bg/45"
     )}>
-      <div className="mb-1 flex flex-wrap items-center gap-2">
-        <span className="text-[10px] uppercase tracking-wider text-fg-muted">{turn.label}</span>
-        <span className="rounded bg-bg-elev px-1.5 py-0.5 text-[10px] text-fg-dim">{turn.type}</span>
-        {turn.at ? <Timestamp ms={turn.at} mounted={mounted} className="mono text-[10px] text-fg-dim" /> : null}
-      </div>
-      <pre className="mono max-h-40 overflow-auto whitespace-pre-wrap text-[11px] leading-5 text-fg-muted">
-        {displayText(turn.preview, redact, users)}
-      </pre>
+      {agentReasoning ? (
+        <AgentReasoningBlock preview={displayText(turn.preview, redact, users)} model={model} at={turn.at} mounted={mounted} className="-m-3 rounded-lg border-0 bg-transparent" />
+      ) : (
+        <>
+          <div className="mb-1 flex flex-wrap items-center gap-2">
+            <span className="text-[10px] uppercase tracking-wider text-fg-muted">{turn.label}</span>
+            <span className="rounded bg-bg-elev px-1.5 py-0.5 text-[10px] text-fg-dim">{turn.type}</span>
+            {turn.at ? <Timestamp ms={turn.at} mounted={mounted} className="mono text-[10px] text-fg-dim" /> : null}
+          </div>
+          <pre className="mono max-h-40 overflow-auto whitespace-pre-wrap text-[11px] leading-5 text-fg-muted">
+            {displayText(turn.preview, redact, users)}
+          </pre>
+        </>
+      )}
     </div>
   );
 });
@@ -617,26 +625,27 @@ export function SessionDrawer({
           </DetailPanel>
 
           <section>
-            <div className="mb-3 flex items-center gap-2 text-sm font-medium">
-              Timeline context
+            <div className="mb-3 flex flex-wrap items-center gap-2 text-sm font-medium">
+              Timeline context · errors and agent reasoning
               {turns === null && <Loader2 className="size-4 animate-spin text-fg-muted" />}
             </div>
+            <p className="mb-3 text-[11px] leading-5 text-fg-dim">This is a bounded context window from the raw transcript. Open Full transcript for the complete conversation and all normalized events.</p>
             {transcriptError ? (
               <div className="rounded-lg border border-warn/30 bg-warn/10 p-4 text-sm text-warn">{displayText(transcriptError, redact, users)}</div>
             ) : turns === null ? (
               <LoadingSkeletonRows />
             ) : turns.length === 0 ? (
-              <div className="rounded-lg border border-bd bg-bg/45 p-4 text-sm text-fg-muted">No warning/error timeline context found.</div>
+              <div className="rounded-lg border border-bd bg-bg/45 p-4 text-sm text-fg-muted">No warning, error, or agent reasoning context found.</div>
             ) : (
               <>
                 {transcriptTruncated ? (
                   <div className="mb-2 rounded border border-accent/20 bg-accent/5 px-3 py-2 text-[10px] text-fg-muted" role="status">
-                    Warning/error context was bounded to keep the drawer responsive; the source may contain additional turns.
+                    Warning/error/reasoning context was bounded to keep the drawer responsive; the source may contain additional turns.
                   </div>
                 ) : null}
                 <div className="space-y-2">
                   {turns.map((turn, i) => (
-                    <TurnRow key={`${turn.type}-${i}`} turn={turn} redact={redact} users={users} mounted={mounted} />
+                    <TurnRow key={`${turn.type}-${i}`} turn={turn} redact={redact} users={users} mounted={mounted} model={session.model ? displayText(session.model, redact, users) : null} />
                   ))}
                 </div>
               </>

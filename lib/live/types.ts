@@ -331,6 +331,11 @@ export interface LiveTranscriptTurn {
     images?: number;
     files?: number;
   };
+  /** Bounded provenance for an agent-reasoning/thinking projection. */
+  reasoning?: {
+    kind: "summary" | "thinking" | "encrypted" | "truncated";
+    source: "codex" | "claude" | "generic";
+  };
 }
 
 export interface TranscriptNormalization {

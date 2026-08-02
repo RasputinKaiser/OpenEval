@@ -1,0 +1,130 @@
+- generic [active] [ref=f1e1]:
+  - link "Skip to content" [ref=f1e2] [cursor=pointer]:
+    - /url: "#main"
+  - generic [ref=f1e3]:
+    - complementary [ref=f1e4]:
+      - generic [ref=f1e10]:
+        - generic [ref=f1e11]: OpenEval
+        - generic [ref=f1e12]: OpenEval Suite
+      - navigation "Primary" [ref=f1e13]:
+        - link "Dashboard" [ref=f1e15] [cursor=pointer]:
+          - /url: /
+        - generic [ref=f1e22]:
+          - generic [ref=f1e23]: Evaluate
+          - link "Runs" [ref=f1e24] [cursor=pointer]:
+            - /url: /runs
+          - link "Leaderboard" [ref=f1e28] [cursor=pointer]:
+            - /url: /runs/leaderboard
+          - link "Compare" [ref=f1e36] [cursor=pointer]:
+            - /url: /runs/compare
+          - link "Cases" [ref=f1e45] [cursor=pointer]:
+            - /url: /cases
+          - link "New Run" [ref=f1e50] [cursor=pointer]:
+            - /url: /runs/new
+          - link "Accuracy" [ref=f1e53] [cursor=pointer]:
+            - /url: /accuracy
+        - generic [ref=f1e58]:
+          - generic [ref=f1e59]: Observe
+          - link "Live" [ref=f1e60] [cursor=pointer]:
+            - /url: /live
+          - link "Collection" [ref=f1e68] [cursor=pointer]:
+            - /url: /collection
+          - link "Timeline" [ref=f1e81] [cursor=pointer]:
+            - /url: /collection/timeline
+        - generic [ref=f1e86]:
+          - generic [ref=f1e87]: System
+          - link "Harnesses" [ref=f1e88] [cursor=pointer]:
+            - /url: /harnesses
+          - link "Settings" [ref=f1e92] [cursor=pointer]:
+            - /url: /settings
+      - generic [ref=f1e97]:
+        - link "OpenEval release v0.1.4" [ref=f1e98] [cursor=pointer]:
+          - /url: https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.4
+          - text: v0.1.4
+        - generic [ref=f1e99]:
+          - button "Switch to dark mode" [ref=f1e100] [cursor=pointer]
+          - button "Collapse sidebar" [ref=f1e103] [cursor=pointer]
+    - main [ref=f1e107]:
+      - generic [ref=f1e108]:
+        - generic [ref=f1e109]:
+          - generic [ref=f1e110]:
+            - heading "Collection" [level=1] [ref=f1e111]
+            - generic [ref=f1e124]:
+              - generic "Scan generated 2026-08-01T23:29:04.614Z" [ref=f1e125]: scanned just now
+              - button "Redact on" [pressed] [ref=f1e126] [cursor=pointer]
+              - link "Timeline & Impact" [ref=f1e130] [cursor=pointer]:
+                - /url: /collection/timeline
+              - button "Rescan" [ref=f1e133] [cursor=pointer]
+          - paragraph [ref=f1e139]: Live & archived transcripts discovered across every agent harness on this machine. Archived sessions outlive their pruned files.
+        - navigation "Page sections" [ref=f1e140]:
+          - generic [ref=f1e141]:
+            - generic [ref=f1e142]: Showing Start here
+            - button "Show all page sections" [ref=f1e143] [cursor=pointer]: All
+            - button "Start here" [pressed] [ref=f1e144] [cursor=pointer]
+            - button "Trust data" [ref=f1e145] [cursor=pointer]
+            - button "Spend & usage" [ref=f1e146] [cursor=pointer]
+            - button "When you work" [ref=f1e147] [cursor=pointer]
+            - button "Model mix" [ref=f1e148] [cursor=pointer]
+            - button "Tool health" [ref=f1e149] [cursor=pointer]
+            - button "Sources" [ref=f1e150] [cursor=pointer]
+            - button "Find a session" [ref=f1e151] [cursor=pointer]
+          - generic [ref=f1e152]:
+            - generic [ref=f1e153]: 01 / 08
+            - generic [ref=f1e154]: Corpus size, API-equivalent spend, work volume, and a direct transcript search.
+            - generic [ref=f1e155]: 2.5k sessions · ~$32.7k API eq.
+        - status [ref=f1e156]:
+          - generic [ref=f1e159]:
+            - generic [ref=f1e160]: Parsed coverage has caveats
+            - generic [ref=f1e161]: One or more discovered transcript files were unsupported, unreadable, or otherwise excluded from parsed totals for Codex CLI + ChatGPT app. Parser warnings below describe the retained sessions.
+        - generic [ref=f1e163]:
+          - generic [ref=f1e164]:
+            - generic [ref=f1e165]: Inventory
+            - generic [ref=f1e171]:
+              - generic "2,549" [ref=f1e172]:
+                - generic [ref=f1e173]: Sessions
+                - generic [ref=f1e174]: 2.5k
+                - generic [ref=f1e175]: 1.4k child traces
+              - generic [ref=f1e176]:
+                - generic [ref=f1e177]: Sources
+                - generic [ref=f1e178]: "10"
+                - generic [ref=f1e179]: of 15 known
+              - generic "3,682 session files on disk" [ref=f1e180]:
+                - generic [ref=f1e181]: Files
+                - generic [ref=f1e182]: 3.7k
+                - generic [ref=f1e183]: on-disk inventory
+          - generic [ref=f1e184]:
+            - generic [ref=f1e185]: API equivalent
+            - generic [ref=f1e192]:
+              - generic "$32,664.77 API-equivalent estimate from recorded token classes and OpenRouter /api/v1/models rates checked 2026-07-30. Not actual subscription/provider spend. Aggregate estimates exclude request-level long-context surcharges when the transcript does not preserve enough threshold evidence." [ref=f1e193]:
+                - generic [ref=f1e194]: List estimate
+                - generic [ref=f1e195]: ~$32.7k
+                - generic [ref=f1e196]: 86% coverage · 2.2k priced
+              - generic "5,113,336,980 input + output usage reported across model calls. This is processed usage, not unique text; separately reported cache reads are excluded." [ref=f1e197]:
+                - generic [ref=f1e198]: Input + output
+                - generic [ref=f1e199]: 5.11B
+                - generic [ref=f1e200]: ↑4.98B ↓130M
+              - generic "30,643,073,016 cache-read tokens — context re-read across turns (billed at cache rates), plus 588,134,536 written to cache" [ref=f1e201]:
+                - generic [ref=f1e202]: Cached ctx
+                - generic [ref=f1e203]: 31B
+                - generic [ref=f1e204]: 6.0× input+output
+          - generic [ref=f1e205]:
+            - generic [ref=f1e206]: Work
+            - generic [ref=f1e212]:
+              - generic "201,993 tool calls" [ref=f1e213]:
+                - generic [ref=f1e214]: Calls
+                - generic [ref=f1e215]: 202k
+                - generic [ref=f1e216]: tool invocations
+              - generic "10,505 failed calls of 201,993" [ref=f1e217]:
+                - generic [ref=f1e218]: Errors
+                - generic [ref=f1e219]: 5.2%
+                - generic [ref=f1e220]: 11k failed
+              - generic [ref=f1e221]:
+                - generic [ref=f1e222]: Peak hour
+                - generic [ref=f1e223]: Tue 21:00
+                - generic [ref=f1e224]: 73 sessions
+        - generic [ref=f1e226]:
+          - searchbox "Search sessions" [ref=f1e230]
+          - button "Search" [disabled] [ref=f1e231]
+        - paragraph [ref=f1e232]: ~ Dollar values are API-equivalent list estimates, not subscription/provider spend. They use token evidence plus OpenRouter /api/v1/models rates checked 2026-07-30; family and fallback mappings remain visibly labeled. Request-level long-context surcharges may be absent when the transcript lacks threshold evidence.
+  - region "Notifications"
+  - alert [ref=f1e233]

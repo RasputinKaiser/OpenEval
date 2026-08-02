@@ -1,0 +1,83 @@
+- generic [active] [ref=f6e1]:
+  - link "Skip to content" [ref=f6e2] [cursor=pointer]:
+    - /url: "#main"
+  - generic [ref=f6e3]:
+    - complementary [ref=f6e4]:
+      - generic [ref=f6e10]:
+        - generic [ref=f6e11]: OpenEval
+        - generic [ref=f6e12]: OpenEval Suite
+      - navigation "Primary" [ref=f6e13]:
+        - link "Dashboard" [ref=f6e15] [cursor=pointer]:
+          - /url: /
+        - generic [ref=f6e22]:
+          - generic [ref=f6e23]: Evaluate
+          - link "Runs" [ref=f6e24] [cursor=pointer]:
+            - /url: /runs
+          - link "Leaderboard" [ref=f6e29] [cursor=pointer]:
+            - /url: /runs/leaderboard
+          - link "Compare" [ref=f6e37] [cursor=pointer]:
+            - /url: /runs/compare
+          - link "Cases" [ref=f6e46] [cursor=pointer]:
+            - /url: /cases
+          - link "New Run" [ref=f6e51] [cursor=pointer]:
+            - /url: /runs/new
+          - link "Accuracy" [ref=f6e54] [cursor=pointer]:
+            - /url: /accuracy
+        - generic [ref=f6e59]:
+          - generic [ref=f6e60]: Observe
+          - link "Live" [ref=f6e61] [cursor=pointer]:
+            - /url: /live
+          - link "Collection" [ref=f6e69] [cursor=pointer]:
+            - /url: /collection
+          - link "Timeline" [ref=f6e81] [cursor=pointer]:
+            - /url: /collection/timeline
+        - generic [ref=f6e86]:
+          - generic [ref=f6e87]: System
+          - link "Harnesses" [ref=f6e88] [cursor=pointer]:
+            - /url: /harnesses
+          - link "Settings" [ref=f6e92] [cursor=pointer]:
+            - /url: /settings
+      - generic [ref=f6e97]:
+        - generic [ref=f6e98]: v0.1.3
+        - generic [ref=f6e99]:
+          - button "Switch to light mode" [ref=f6e100] [cursor=pointer]
+          - button "Collapse sidebar" [ref=f6e107] [cursor=pointer]
+    - main [ref=f6e111]:
+      - region "Evaluate workflow" [ref=f6e113]:
+        - generic [ref=f6e114]:
+          - generic [ref=f6e115]:
+            - generic [ref=f6e116]: Evaluate workflow
+            - paragraph [ref=f6e117]: Run a suite, inspect evidence, then compare what changed.
+          - generic [ref=f6e118]: Track evaluations
+        - navigation "Evaluate pages" [ref=f6e119]:
+          - link "01 · Runs Track evaluations" [ref=f6e120] [cursor=pointer]:
+            - /url: /runs
+            - generic [ref=f6e124]:
+              - generic [ref=f6e125]: 01 · Runs
+              - generic [ref=f6e126]: Track evaluations
+          - link "02 · Leaderboard Rank harnesses" [ref=f6e127] [cursor=pointer]:
+            - /url: /runs/leaderboard
+            - generic [ref=f6e135]:
+              - generic [ref=f6e136]: 02 · Leaderboard
+              - generic [ref=f6e137]: Rank harnesses
+          - link "03 · Compare Find regressions" [ref=f6e138] [cursor=pointer]:
+            - /url: /runs/compare
+            - generic [ref=f6e147]:
+              - generic [ref=f6e148]: 03 · Compare
+              - generic [ref=f6e149]: Find regressions
+          - link "04 · Cases Curate the suite" [ref=f6e150] [cursor=pointer]:
+            - /url: /cases
+            - generic [ref=f6e155]:
+              - generic [ref=f6e156]: 04 · Cases
+              - generic [ref=f6e157]: Curate the suite
+          - link "05 · New run Launch an experiment" [ref=f6e158] [cursor=pointer]:
+            - /url: /runs/new
+            - generic [ref=f6e162]:
+              - generic [ref=f6e163]: 05 · New run
+              - generic [ref=f6e164]: Launch an experiment
+          - link "06 · Accuracy Audit evidence" [ref=f6e165] [cursor=pointer]:
+            - /url: /accuracy
+            - generic [ref=f6e170]:
+              - generic [ref=f6e171]: 06 · Accuracy
+              - generic [ref=f6e172]: Audit evidence
+  - region "Notifications"

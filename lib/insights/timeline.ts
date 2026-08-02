@@ -266,6 +266,20 @@ const MIN_JUDGED_FOR_MEDIAN = 5;
 
 export type OutcomePool = "judged" | "signal";
 
+/**
+ * Evidence basis for the plotted outcome series. `n` is the number of source
+ * observations before the chart is downsampled; `denominator` is the complete
+ * top-level session population in the report. Keeping both prevents a chart
+ * with 80 plotted points from looking like an 80-session population report.
+ */
+export interface OutcomeSeriesEvidence {
+  n: number;
+  denominator: number;
+  coverage: number;
+  pool: OutcomePool;
+  provenance: OutcomeProvenance | "mixed";
+}
+
 const emptyEvidence = (): MetricEvidence => ({ n: 0, provenance: "unavailable" });
 
 function outcomeEvidence(points: SessionPoint[]): MetricEvidence {

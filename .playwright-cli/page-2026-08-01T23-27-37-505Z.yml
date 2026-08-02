@@ -1,0 +1,186 @@
+- generic [ref=e1]:
+  - link "Skip to content" [ref=e2] [cursor=pointer]:
+    - /url: "#main"
+  - generic [ref=e3]:
+    - complementary [ref=e4]:
+      - generic [ref=e10]:
+        - generic [ref=e11]: OpenEval
+        - generic [ref=e12]: OpenEval Suite
+      - navigation "Primary" [ref=e13]:
+        - link "Dashboard" [ref=e15] [cursor=pointer]:
+          - /url: /
+        - generic [ref=e22]:
+          - generic [ref=e23]: Evaluate
+          - link "Runs" [ref=e24] [cursor=pointer]:
+            - /url: /runs
+          - link "Leaderboard" [ref=e28] [cursor=pointer]:
+            - /url: /runs/leaderboard
+          - link "Compare" [ref=e36] [cursor=pointer]:
+            - /url: /runs/compare
+          - link "Cases" [ref=e45] [cursor=pointer]:
+            - /url: /cases
+          - link "New Run" [ref=e50] [cursor=pointer]:
+            - /url: /runs/new
+          - link "Accuracy" [ref=e53] [cursor=pointer]:
+            - /url: /accuracy
+        - generic [ref=e58]:
+          - generic [ref=e59]: Observe
+          - link "Live" [ref=e60] [cursor=pointer]:
+            - /url: /live
+          - link "Collection" [ref=e69] [cursor=pointer]:
+            - /url: /collection
+          - link "Timeline" [ref=e81] [cursor=pointer]:
+            - /url: /collection/timeline
+        - generic [ref=e86]:
+          - generic [ref=e87]: System
+          - link "Harnesses" [ref=e88] [cursor=pointer]:
+            - /url: /harnesses
+          - link "Settings" [ref=e92] [cursor=pointer]:
+            - /url: /settings
+      - generic [ref=e97]:
+        - link "OpenEval release v0.1.4" [ref=e98] [cursor=pointer]:
+          - /url: https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.4
+          - text: v0.1.4
+        - generic [ref=e99]:
+          - button "Switch to dark mode" [ref=e207] [cursor=pointer]
+          - button "Collapse sidebar" [ref=e107] [cursor=pointer]
+    - main [ref=e111]:
+      - generic [ref=e112]:
+        - generic [ref=e113]:
+          - generic [ref=e114]:
+            - heading "Live sessions" [level=1] [ref=e115]
+            - generic [ref=e121]:
+              - button "Claude Code 2.1.179 (Claude Code) installed" [ref=e210] [cursor=pointer]:
+                - generic [ref=e124]:
+                  - generic [ref=e129]: Claude Code
+                  - generic [ref=e211]: 2.1.179 (Claude Code)
+                  - generic [ref=e212]: installed
+              - generic [ref=e132]:
+                - status "Time since the last successful live poll" [ref=e133]: updated 7s ago
+                - button "Redact on" [pressed] [ref=e135] [cursor=pointer]
+                - button "Refresh" [ref=e139] [cursor=pointer]
+          - paragraph [ref=e145]:
+            - text: Live trace sessions from
+            - code [ref=e146]: /Users/[redacted]/.claude/projects
+            - text: ", with usage provenance, parser confidence, and copy-safe redaction for local usernames."
+        - navigation "Page sections" [ref=e147]:
+          - generic [ref=e148]:
+            - generic [ref=e149]: Showing Trust data
+            - button "Show all page sections" [ref=e150] [cursor=pointer]: All
+            - button "Monitor" [ref=e151] [cursor=pointer]
+            - button "Trust data" [active] [pressed] [ref=e152] [cursor=pointer]
+            - button "Sessions" [ref=e153] [cursor=pointer]
+            - button "Intelligence" [ref=e154] [cursor=pointer]
+          - generic [ref=e155]:
+            - generic [ref=e156]: 02 / 04
+            - generic [ref=e157]: Coverage, warnings, and parser confidence behind the totals.
+            - generic [ref=e158]: 200 parsed slice · 200/739 files scanned
+        - status [ref=e159]: "Partial corpus boundary: scanned 200 of 739 discovered files and parsed 200 sessions. 539 older files were not scanned; usage and quality totals below describe only the evidenced parsed population."
+        - generic [ref=e223]:
+          - generic [ref=e224]:
+            - generic [ref=e230]:
+              - heading "Data quality" [level=2] [ref=e231]
+              - paragraph [ref=e232]: What the trace actually records — population, model evidence, and parse health
+            - generic [ref=e233]: 91% avg quality
+          - generic [ref=e234]:
+            - generic [ref=e235]:
+              - generic [ref=e236]: Population
+              - generic [ref=e237]:
+                - generic [ref=e238]: Parsed slice
+                - generic [ref=e241]: "200"
+              - generic [ref=e242]:
+                - generic [ref=e243]: Files scanned
+                - generic [ref=e249]: 200/739
+              - generic [ref=e250]:
+                - generic [ref=e251]: Dropped
+                - generic [ref=e256]: "0"
+              - generic [ref=e257]:
+                - generic [ref=e258]: Measured dur
+                - generic [ref=e262]: 0/200
+              - generic [ref=e263]:
+                - generic [ref=e264]: Child agents
+                - generic [ref=e269]: "162"
+            - generic [ref=e270]:
+              - generic [ref=e271]: Quality
+              - generic [ref=e272]:
+                - generic [ref=e273]: Quality
+                - generic [ref=e277]: 91%
+              - generic [ref=e278]:
+                - generic [ref=e279]: Unknown model
+                - generic [ref=e283]: "17"
+              - generic [ref=e284]:
+                - generic [ref=e285]: Tokens missing
+                - generic [ref=e290]: "2"
+            - generic [ref=e291]:
+              - generic [ref=e292]: Health
+              - generic [ref=e293]:
+                - generic [ref=e294]: Tool err rate
+                - generic [ref=e297]: 3%
+              - generic [ref=e298]:
+                - generic [ref=e299]: Inactive >12h
+                - generic [ref=e303]: "100"
+              - generic [ref=e304]:
+                - generic [ref=e305]: Malformed
+                - generic [ref=e308]: "0"
+          - generic [ref=e309]:
+            - generic [ref=e310]:
+              - generic [ref=e311]:
+                - generic [ref=e312]: Model identity
+                - generic [ref=e313]: 200 total
+              - 'img "Model identity: 183 measured, 0 inferred, 17 unavailable; 200 total" [ref=e314]'
+              - generic [ref=e317]:
+                - generic [ref=e318]:
+                  - generic [ref=e320]: measured
+                  - generic [ref=e321]: "183"
+                - generic [ref=e322]:
+                  - generic [ref=e324]: inferred
+                  - generic [ref=e325]: "0"
+                - generic [ref=e326]:
+                  - generic [ref=e328]: unavailable
+                  - generic [ref=e329]: "17"
+            - generic [ref=e330]:
+              - generic [ref=e331]:
+                - generic [ref=e332]: Duration
+                - generic [ref=e333]: 200 total
+              - 'img "Duration: 0 measured, 200 inferred, 0 unavailable; 200 total" [ref=e334]'
+              - generic [ref=e336]:
+                - generic [ref=e337]:
+                  - generic [ref=e339]: measured
+                  - generic [ref=e340]: "0"
+                - generic [ref=e341]:
+                  - generic [ref=e343]: inferred
+                  - generic [ref=e344]: "200"
+                - generic [ref=e345]:
+                  - generic [ref=e347]: unavailable
+                  - generic [ref=e348]: "0"
+            - generic [ref=e349]:
+              - generic [ref=e350]:
+                - generic [ref=e351]: Token usage
+                - generic [ref=e352]: 200 total
+              - 'img "Token usage: 198 measured, 2 unavailable; 200 total" [ref=e353]'
+              - generic [ref=e356]:
+                - generic [ref=e357]:
+                  - generic [ref=e359]: measured
+                  - generic [ref=e360]: "198"
+                - generic [ref=e361]:
+                  - generic [ref=e363]: unavailable
+                  - generic [ref=e364]: "2"
+            - generic [ref=e365]:
+              - generic [ref=e366]:
+                - generic [ref=e367]: Cost
+                - generic [ref=e368]: 200 total
+              - 'img "Cost: 0 measured, 183 inferred, 17 unavailable; 200 total" [ref=e369]'
+              - generic [ref=e372]:
+                - generic [ref=e373]:
+                  - generic [ref=e375]: measured
+                  - generic [ref=e376]: "0"
+                - generic [ref=e377]:
+                  - generic [ref=e379]: inferred
+                  - generic [ref=e380]: "183"
+                - generic [ref=e381]:
+                  - generic [ref=e383]: unavailable
+                  - generic [ref=e384]: "17"
+              - paragraph [ref=e385]: Measured and inferred remain separate; priced coverage is never relabeled as recorded spend.
+  - region "Notifications"
+  - button "Open Next.js Dev Tools" [ref=e218] [cursor=pointer]
+  - alert [ref=e222]

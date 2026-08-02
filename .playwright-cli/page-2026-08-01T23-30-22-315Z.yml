@@ -1,0 +1,174 @@
+- generic [active] [ref=f3e1]:
+  - link "Skip to content" [ref=f3e2] [cursor=pointer]:
+    - /url: "#main"
+  - generic [ref=f3e3]:
+    - complementary [ref=f3e4]:
+      - generic [ref=f3e10]:
+        - generic [ref=f3e11]: OpenEval
+        - generic [ref=f3e12]: OpenEval Suite
+      - navigation "Primary" [ref=f3e13]:
+        - link "Dashboard" [ref=f3e15] [cursor=pointer]:
+          - /url: /
+        - generic [ref=f3e22]:
+          - generic [ref=f3e23]: Evaluate
+          - link "Runs" [ref=f3e24] [cursor=pointer]:
+            - /url: /runs
+          - link "Leaderboard" [ref=f3e28] [cursor=pointer]:
+            - /url: /runs/leaderboard
+          - link "Compare" [ref=f3e36] [cursor=pointer]:
+            - /url: /runs/compare
+          - link "Cases" [ref=f3e45] [cursor=pointer]:
+            - /url: /cases
+          - link "New Run" [ref=f3e50] [cursor=pointer]:
+            - /url: /runs/new
+          - link "Accuracy" [ref=f3e53] [cursor=pointer]:
+            - /url: /accuracy
+        - generic [ref=f3e58]:
+          - generic [ref=f3e59]: Observe
+          - link "Live" [ref=f3e60] [cursor=pointer]:
+            - /url: /live
+          - link "Collection" [ref=f3e68] [cursor=pointer]:
+            - /url: /collection
+          - link "Timeline" [ref=f3e80] [cursor=pointer]:
+            - /url: /collection/timeline
+        - generic [ref=f3e86]:
+          - generic [ref=f3e87]: System
+          - link "Harnesses" [ref=f3e88] [cursor=pointer]:
+            - /url: /harnesses
+          - link "Settings" [ref=f3e92] [cursor=pointer]:
+            - /url: /settings
+      - generic [ref=f3e97]:
+        - link "OpenEval release v0.1.4" [ref=f3e98] [cursor=pointer]:
+          - /url: https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.4
+          - text: v0.1.4
+        - generic [ref=f3e99]:
+          - button "Switch to light mode" [ref=f3e100] [cursor=pointer]
+          - button "Collapse sidebar" [ref=f3e107] [cursor=pointer]
+    - main [ref=f3e111]:
+      - generic [ref=f3e112]:
+        - link "Collection" [ref=f3e113] [cursor=pointer]:
+          - /url: /collection
+        - generic [ref=f3e116]:
+          - generic [ref=f3e117]:
+            - heading "Timeline & Impact" [level=1] [ref=f3e118]
+            - generic "Timeline actions" [ref=f3e124]:
+              - button "Refresh" [ref=f3e125] [cursor=pointer]
+              - group [ref=f3e131]:
+                - generic "Evidence tools" [ref=f3e132] [cursor=pointer]
+          - paragraph [ref=f3e141]: A longitudinal evidence view for what changed around adoption — descriptive, windowed, and not causal.
+          - generic "How to read this page" [ref=f3e142]:
+            - generic [ref=f3e143]:
+              - generic [ref=f3e144]: "01"
+              - paragraph [ref=f3e145]: Start with outcome. Check whether the inferred trend is comparable before reading deltas.
+            - generic [ref=f3e146]:
+              - generic [ref=f3e147]: "02"
+              - paragraph [ref=f3e148]: Compare windows. Adoption rows show before/after medians with exact usable n.
+            - generic [ref=f3e149]:
+              - generic [ref=f3e150]: "03"
+              - paragraph [ref=f3e151]: Check context. Global shifts are population signals, not attribution.
+        - navigation "Page sections" [ref=f3e152]:
+          - generic [ref=f3e153]:
+            - generic [ref=f3e154]: Showing Start here
+            - button "Show all page sections" [ref=f3e155] [cursor=pointer]: All
+            - button "Start here" [pressed] [ref=f3e156] [cursor=pointer]
+            - button "Outcome trend" [ref=f3e157] [cursor=pointer]
+            - button "Measure impact" [ref=f3e158] [cursor=pointer]
+            - button "Explain shifts" [ref=f3e159] [cursor=pointer]
+            - button "Adoption history" [ref=f3e160] [cursor=pointer]
+          - generic [ref=f3e161]:
+            - generic [ref=f3e162]: 01 / 05
+            - generic [ref=f3e163]: Confirm corpus size, signal coverage, and outcome provenance.
+            - generic [ref=f3e164]: 1191 top-level sessions · 74% signal · 1358 child traces retained
+        - status [ref=f3e165]:
+          - generic [ref=f3e169]: Timeline evidence fresh · updated 7:30:21 PM.
+        - region "Timeline evidence overview" [ref=f3e170]:
+          - generic [ref=f3e171]:
+            - generic [ref=f3e172]:
+              - generic [ref=f3e173]: Decision snapshot
+              - heading "How much evidence is usable?" [level=2] [ref=f3e174]
+              - paragraph [ref=f3e175]: Observed adoption, inferred outcomes, and judge provenance stay separate so a strong-looking delta is never mistaken for a causal result.
+            - generic [ref=f3e176]:
+              - generic [ref=f3e177]: Observed window
+              - generic [ref=f3e178]: 2025-08-29 → 2026-08-01
+          - generic [ref=f3e179]:
+            - generic [ref=f3e180]: Corpus
+            - generic [ref=f3e181]: "1191"
+            - generic [ref=f3e182]: top-level sessions · 131 adoption markers
+            - generic [ref=f3e183]: 1358 child-agent traces retained in Collection, excluded here to avoid parent/child outcome double-counting
+            - generic [ref=f3e184]:
+              - generic [ref=f3e185]:
+                - generic [ref=f3e187]: "75"
+                - text: skills
+              - generic [ref=f3e188]:
+                - generic [ref=f3e190]: "21"
+                - text: plugins
+              - generic [ref=f3e191]:
+                - generic [ref=f3e193]: "1"
+                - text: subagent
+              - generic [ref=f3e194]:
+                - generic [ref=f3e196]: "34"
+                - text: models
+          - generic [ref=f3e197]:
+            - generic [ref=f3e198]: Outcome movement
+            - generic [ref=f3e199]:
+              - generic [ref=f3e200]: "+0.30"
+              - generic [ref=f3e204]: 0.50 → 0.80
+            - generic [ref=f3e205]: Median · n=179 / 180 signal sessions
+          - generic [ref=f3e210]:
+            - generic [ref=f3e211]: Evidence posture
+            - generic [ref=f3e212]: 74%
+            - generic [ref=f3e213]:
+              - text: 884 of 1191 sessions with outcome signal
+              - generic [ref=f3e214]: · 359 LLM-judged
+            - generic [ref=f3e215]:
+              - generic [ref=f3e216]:
+                - generic [ref=f3e217]: Outcome provenance
+                - generic [ref=f3e218]: 1,191 total
+              - 'img "Outcome provenance: 359 judged, 525 heuristic, 307 no signal; 1,191 total" [ref=f3e219]'
+              - generic [ref=f3e223]:
+                - generic [ref=f3e224]:
+                  - generic [ref=f3e226]: judged
+                  - generic [ref=f3e227]: "359"
+                - generic [ref=f3e228]:
+                  - generic [ref=f3e230]: heuristic
+                  - generic [ref=f3e231]: "525"
+                - generic [ref=f3e232]:
+                  - generic [ref=f3e234]: no signal
+                  - generic [ref=f3e235]: "307"
+              - paragraph [ref=f3e236]: Judged and heuristic scores are different evidence sources.
+          - generic [ref=f3e237]:
+            - generic [ref=f3e238]: Impact candidates
+            - generic [ref=f3e239]: "33"
+            - generic [ref=f3e240]: adoptions with comparison history
+            - generic [ref=f3e241]:
+              - generic [ref=f3e242]:
+                - generic [ref=f3e243]: Low-confidence rows
+                - generic [ref=f3e244]: "0"
+              - generic [ref=f3e245]:
+                - generic [ref=f3e246]: LLM-judged coverage
+                - generic [ref=f3e247]: 30%
+              - generic [ref=f3e248]:
+                - generic [ref=f3e249]: Window basis
+                - generic [ref=f3e250]: 20 / 20
+            - paragraph [ref=f3e251]: Rows without enough outcome evidence stay visible as not comparable.
+        - region [ref=f3e252]:
+          - generic [ref=f3e253]:
+            - generic [ref=f3e254]:
+              - heading "Adoption scope" [level=2] [ref=f3e258]
+              - paragraph [ref=f3e259]: Filter adoption overlays, comparison rows, and history by marker kind. Global shifts remain visible and are never attributed by this control.
+            - generic [ref=f3e260]: 131 markers · 33 comparisons
+          - group "Filter markers by kind" [ref=f3e261]:
+            - button "All 131" [pressed] [ref=f3e262] [cursor=pointer]
+            - button "skills 75" [ref=f3e263] [cursor=pointer]:
+              - text: skills
+              - generic [ref=f3e265]: "75"
+            - button "plugins 21" [ref=f3e266] [cursor=pointer]:
+              - text: plugins
+              - generic [ref=f3e268]: "21"
+            - button "subagents 1" [ref=f3e269] [cursor=pointer]:
+              - text: subagents
+              - generic [ref=f3e271]: "1"
+            - button "models 34" [ref=f3e272] [cursor=pointer]:
+              - text: models
+              - generic [ref=f3e274]: "34"
+  - region "Notifications"

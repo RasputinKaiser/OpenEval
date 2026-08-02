@@ -79,16 +79,25 @@ export function extractSearchText(file: string): SessionSearchText {
     }
     const transcript = parseSessionTranscript(file);
     for (const turn of transcript.turns) {
-      if (turn.role !== "tool") continue;
-      const metadata = [
-        turn.tool?.callId ? `call:${turn.tool.callId}` : "",
-        turn.tool?.status ? `status:${turn.tool.status}` : "",
-        turn.tool?.durationMs != null ? `duration:${turn.tool.durationMs}ms` : "",
-      ].filter(Boolean).join(" ");
-      appendBoundedText(
-        assistant,
-        `[${turn.label}]${metadata ? ` ${metadata}` : ""}${turn.preview ? ` ${turn.preview}` : ""}`,
-      );
+      if (turn.role === "tool") {
+        const metadata = [
+          turn.tool?.callId ? `call:${turn.tool.callId}` : "",
+          turn.tool?.status ? `status:${turn.tool.status}` : "",
+          turn.tool?.durationMs != null ? `duration:${turn.tool.durationMs}ms` : "",
+        ].filter(Boolean).join(" ");
+        appendBoundedText(
+          assistant,
+          `[${turn.label}]${metadata ? ` ${metadata}` : ""}${turn.preview ? ` ${turn.preview}` : ""}`,
+        );
+        continue;
+      }
+      // Reasoning summaries and Claude thinking blocks are useful retrieval
+      // evidence when the user-facing prose is sparse. The transcript parser
+      // already exposes a bounded preview (or an encrypted placeholder), so
+      // index only the useful projection and never copy the raw block.
+      if (turn.role === "assistant" && (turn.label === "Reasoning" || turn.label === "Thinking") && turn.preview !== "(encrypted reasoning)") {
+        appendBoundedText(assistant, `[${turn.label}] ${turn.preview}`);
+      }
     }
   } catch {
     // Unreadable file → index whatever was collected (possibly nothing).
@@ -166,10 +175,15 @@ function pendingFiles(): { pending: PendingFile[]; total: number } {
       const meta = indexed.get(f.file);
       const sameStat = meta && meta.mtimeMs === st.mtimeMs && meta.size === st.size;
       const fingerprint = sameStat ? contentFingerprint(f.file, st.size) : null;
-      // A legacy row without a fingerprint is deliberately treated as a miss
-      // when the bounded read succeeds, so every existing index gets upgraded
-      // once without changing raw transcript retention.
-      if (sameStat && (!fingerprint || meta.contentFingerprint === fingerprint)) continue;
+      // A legacy row without a fingerprint, or a row whose bounded identity
+      // cannot be read now, remains a miss so every existing index gets
+      // upgraded without treating an unreadable transcript as complete.
+      // Source provenance is part of a search row's identity. A registry
+      // change can reassign the same physical transcript to another source
+      // without changing its bytes; that must still replace the FTS row.
+      // A failed bounded fingerprint read is also a miss: we cannot claim
+      // the existing derived text is current when the source is unreadable.
+      if (sameStat && fingerprint !== null && meta.sourceId === def.id && meta.contentFingerprint === fingerprint) continue;
       pending.push({
         file: f.file,
         project: f.project,

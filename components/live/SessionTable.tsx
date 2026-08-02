@@ -195,7 +195,14 @@ export function SessionTable({
           />
         ))}
         {sessions.length === 0 && (
-          <div className="p-8 text-center text-sm text-fg-muted">No sessions match the current filter.</div>
+          <div role="status" className="p-8 text-center text-sm text-fg-muted">
+            {totalCount === 0 ? (
+              <>
+                <div className="font-medium text-fg">No sessions were parsed in this scan.</div>
+                <div className="mx-auto mt-1 max-w-md text-xs leading-5">Check the source and coverage notices above; this list is bounded to the evidenced scanned population.</div>
+              </>
+            ) : "No sessions match the current filter."}
+          </div>
         )}
       </div>
       {hasMore && (

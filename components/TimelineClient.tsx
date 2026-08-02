@@ -11,7 +11,7 @@ import { ProgressiveSectionNav, sectionVisibilityClass, useProgressiveSection } 
 import OutcomeChart from "./OutcomeChart";
 import { fmtDate, fmtPct as pct, fmtSigned as signed } from "@/lib/format";
 import type { TimelineReport } from "@/lib/insights/collect";
-import type { MarkerKind } from "@/lib/insights/timeline";
+import type { MarkerKind, OutcomeSeriesEvidence } from "@/lib/insights/timeline";
 import type { JudgeJobStatus } from "@/lib/insights/judge";
 import { shouldPollJudgeStatus, timelinePollError, timelineRefreshPhase } from "@/lib/timeline-poll-state";
 import { EvidenceComposition } from "./evidence/EvidenceComposition";
@@ -324,6 +324,31 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
     error: timelineError ?? jobStatusError,
   });
   const timelineStatusError = timelineError ?? jobStatusError;
+  const seriesEvidence: OutcomeSeriesEvidence = data.outcomeSeriesEvidence ?? {
+    n: data.signalSessions,
+    denominator: data.totalSessions,
+    coverage: data.signalCoverage,
+    // Older payloads do not expose whether the series switched to a judged-only
+    // pool, so the compatibility fallback stays conservative and calls it signal.
+    pool: "signal",
+    provenance: data.signalSessions === 0
+      ? "unavailable"
+      : data.judgedSessions > 0 && data.heuristicSignalSessions > 0
+        ? "mixed"
+        : data.judgedSessions > 0
+          ? "judged"
+          : "heuristic",
+  };
+  const seriesBasis = seriesEvidence.pool === "judged"
+    ? "LLM-judged"
+    : seriesEvidence.provenance === "mixed"
+      ? "mixed signal"
+      : seriesEvidence.provenance === "judged"
+        ? "judged signal"
+      : "signal";
+  const seriesN = seriesEvidence.n;
+  const seriesDenominator = seriesEvidence.denominator;
+  const seriesCoverage = seriesEvidence.coverage;
 
   return (
     <div className="min-w-0 p-4 md:p-6 max-w-6xl mx-auto">
@@ -589,14 +614,14 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
           icon={LineChart}
           title="Outcome trend"
           desc="Inferred outcome over time; adoption markers and global shifts are context, not proof of cause"
-          right={`${data.signalSessions}/${data.totalSessions} signal sessions · ${data.outcomeSeries.length} plotted`}
+          right={`${seriesN}/${seriesDenominator} ${seriesBasis} sessions · ${data.outcomeSeries.length} plotted`}
         />
         <div className="card min-w-0 p-4">
           <div className="mb-3 flex items-start gap-2 rounded-md border border-bd-subtle bg-bg-elev p-2.5 text-[11px] leading-snug text-fg-muted" role="note">
             <Info className="mt-0.5 size-3.5 shrink-0 text-accent-soft" aria-hidden />
-            <span><span className="font-medium text-fg">Read the line as inferred evidence.</span> The series is a trailing median over sessions with outcome signal; missing-signal sessions are not silently treated as zero.</span>
+            <span><span className="font-medium text-fg">Read the line as bounded evidence.</span> The series is a trailing median over {seriesBasis === "LLM-judged" ? "LLM-judged sessions only" : seriesBasis === "mixed signal" ? "sessions with mixed judged and heuristic signal" : seriesBasis === "judged signal" ? "sessions with judged outcome signal (the legacy report does not identify a judged-only pool)" : "sessions with outcome signal"}; source n={seriesN}/{seriesDenominator} top-level ({pct(seriesCoverage)}). {data.outcomeSeries.length} points are plotted after downsampling; missing-signal sessions are not silently treated as zero.</span>
           </div>
-          <OutcomeChart series={data.outcomeSeries} markers={visibleMarkers} changePoints={data.changePoints ?? []} />
+          <OutcomeChart series={data.outcomeSeries} markers={visibleMarkers} changePoints={data.changePoints ?? []} evidence={seriesEvidence} />
         </div>
       </section>}
 

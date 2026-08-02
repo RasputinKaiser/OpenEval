@@ -1,0 +1,127 @@
+- generic [active] [ref=f3e1]:
+  - link "Skip to content" [ref=f3e2] [cursor=pointer]:
+    - /url: "#main"
+  - generic [ref=f3e3]:
+    - complementary [ref=f3e4]:
+      - generic [ref=f3e10]:
+        - generic [ref=f3e11]: OpenEval
+        - generic [ref=f3e12]: OpenEval Suite
+      - navigation "Primary" [ref=f3e13]:
+        - link "Dashboard" [ref=f3e15] [cursor=pointer]:
+          - /url: /
+        - generic [ref=f3e22]:
+          - link "Runs" [ref=f3e23] [cursor=pointer]:
+            - /url: /runs
+          - link "Leaderboard" [ref=f3e27] [cursor=pointer]:
+            - /url: /runs/leaderboard
+          - link "Compare" [ref=f3e35] [cursor=pointer]:
+            - /url: /runs/compare
+          - link "Cases" [ref=f3e45] [cursor=pointer]:
+            - /url: /cases
+          - link "New Run" [ref=f3e50] [cursor=pointer]:
+            - /url: /runs/new
+          - link "Accuracy" [ref=f3e53] [cursor=pointer]:
+            - /url: /accuracy
+        - generic [ref=f3e58]:
+          - link "Live" [ref=f3e59] [cursor=pointer]:
+            - /url: /live
+          - link "Collection" [ref=f3e67] [cursor=pointer]:
+            - /url: /collection
+          - link "Timeline" [ref=f3e79] [cursor=pointer]:
+            - /url: /collection/timeline
+        - generic [ref=f3e84]:
+          - link "Harnesses" [ref=f3e85] [cursor=pointer]:
+            - /url: /harnesses
+          - link "Settings" [ref=f3e89] [cursor=pointer]:
+            - /url: /settings
+    - main [ref=f3e94]:
+      - generic [ref=f3e95]:
+        - generic [ref=f3e96]:
+          - heading "Evaluation lab" [level=1] [ref=f3e98]
+          - paragraph [ref=f3e108]: Compare outcomes, inspect evidence posture, and watch visual outputs side by side.
+        - region "Evaluate workflow" [ref=f3e109]:
+          - generic [ref=f3e111]:
+            - generic [ref=f3e112]: Evaluate workflow
+            - paragraph [ref=f3e113]: Run a suite, inspect evidence, then compare what changed.
+          - navigation "Evaluate pages" [ref=f3e114]:
+            - link "01 · Runs Track evaluations" [ref=f3e115] [cursor=pointer]:
+              - /url: /runs
+              - generic [ref=f3e119]:
+                - generic [ref=f3e120]: 01 · Runs
+                - generic [ref=f3e121]: Track evaluations
+            - link "02 · Leaderboard Rank harnesses" [ref=f3e122] [cursor=pointer]:
+              - /url: /runs/leaderboard
+              - generic [ref=f3e130]:
+                - generic [ref=f3e131]: 02 · Leaderboard
+                - generic [ref=f3e132]: Rank harnesses
+            - link "03 · Compare Find regressions" [ref=f3e133] [cursor=pointer]:
+              - /url: /runs/compare
+              - generic [ref=f3e142]:
+                - generic [ref=f3e143]: 03 · Compare
+                - generic [ref=f3e144]: Find regressions
+            - link "04 · Cases Curate the suite" [ref=f3e145] [cursor=pointer]:
+              - /url: /cases
+              - generic [ref=f3e150]:
+                - generic [ref=f3e151]: 04 · Cases
+                - generic [ref=f3e152]: Curate the suite
+            - link "05 · New run Launch an experiment" [ref=f3e153] [cursor=pointer]:
+              - /url: /runs/new
+              - generic [ref=f3e157]:
+                - generic [ref=f3e158]: 05 · New run
+                - generic [ref=f3e159]: Launch an experiment
+            - link "06 · Accuracy Audit evidence" [ref=f3e160] [cursor=pointer]:
+              - /url: /accuracy
+              - generic [ref=f3e165]:
+                - generic [ref=f3e166]: 06 · Accuracy
+                - generic [ref=f3e167]: Audit evidence
+        - generic [ref=f3e169]:
+          - generic [ref=f3e170]:
+            - text: Baseline A
+            - combobox "Baseline A" [ref=f3e171]:
+              - option "Select run…"
+              - option "Run 2026-07-30 23:52:11 (f5c15c33) · gpt-5.6-luna · 25%" [selected]
+              - option "Run 2026-07-30 23:05:44 (c4663fff) · opus · 0%"
+              - option "Run 2026-07-30 22:54:19 (30ce6001) · opus · 0%"
+              - option "Run 2026-07-30 21:15:38 (16f7bc71) · gpt-5.6-luna · 63%"
+              - option "Opus Run (d722f1cb) · opus[1m] · 0%"
+              - option "Run 2026-06-28 02:13:57 (782d3c9d) · glm-5.2 · 100%"
+              - option "Run 2026-06-28 00:55:27 (aa5bb76e) · glm-5.2 · 100%"
+              - option "Run 2026-06-28 00:47:35 (bcddbdc3) · glm-5.2 · 100%"
+              - option "Run 2026-06-28 00:43:47 (6fbaf317) · glm-5.2 · 0%"
+              - option "Run 2026-06-28 00:04:09 (39e17453) · glm-5.2 · 75%"
+              - option "Run 2026-06-27 23:17:50 (41373ca8) · glm-5.2 · 100%"
+              - option "Run 2026-06-27 23:17:13 (133d4df2) · glm-5.2 · 0%"
+              - option "Run 2026-06-27 23:15:53 (5b230ffa) · glm-5.2 · 100%"
+              - option "First Test By User (71012704) · glm-5.2[1m] · 0%"
+          - generic [ref=f3e172]:
+            - text: Comparison B
+            - combobox "Comparison B" [ref=f3e173]:
+              - option "Select run…"
+              - option "Run 2026-07-30 23:52:11 (f5c15c33) · gpt-5.6-luna · 25%"
+              - option "Run 2026-07-30 23:05:44 (c4663fff) · opus · 0%" [selected]
+              - option "Run 2026-07-30 22:54:19 (30ce6001) · opus · 0%"
+              - option "Run 2026-07-30 21:15:38 (16f7bc71) · gpt-5.6-luna · 63%"
+              - option "Opus Run (d722f1cb) · opus[1m] · 0%"
+              - option "Run 2026-06-28 02:13:57 (782d3c9d) · glm-5.2 · 100%"
+              - option "Run 2026-06-28 00:55:27 (aa5bb76e) · glm-5.2 · 100%"
+              - option "Run 2026-06-28 00:47:35 (bcddbdc3) · glm-5.2 · 100%"
+              - option "Run 2026-06-28 00:43:47 (6fbaf317) · glm-5.2 · 0%"
+              - option "Run 2026-06-28 00:04:09 (39e17453) · glm-5.2 · 75%"
+              - option "Run 2026-06-27 23:17:50 (41373ca8) · glm-5.2 · 100%"
+              - option "Run 2026-06-27 23:17:13 (133d4df2) · glm-5.2 · 0%"
+              - option "Run 2026-06-27 23:15:53 (5b230ffa) · glm-5.2 · 100%"
+              - option "First Test By User (71012704) · glm-5.2[1m] · 0%"
+        - generic [ref=f3e174]: Loading diff…
+  - navigation "Mobile navigation" [ref=f3e177]:
+    - generic [ref=f3e178]:
+      - link "Dashboard" [ref=f3e179] [cursor=pointer]:
+        - /url: /
+      - link "Live" [ref=f3e186] [cursor=pointer]:
+        - /url: /live
+      - link "Runs" [ref=f3e194] [cursor=pointer]:
+        - /url: /runs
+      - button "More navigation" [ref=f3e198] [cursor=pointer]:
+        - generic [ref=f3e203]: More
+  - region "Notifications"
+  - button "Open Next.js Dev Tools" [ref=f3e210] [cursor=pointer]
+  - alert [ref=f3e214]

@@ -1,0 +1,21 @@
+OpenEval
+
+One message: OpenEval turns scattered real-world agent activity into trustworthy operating evidence.
+
+Audience: developers and operators who run agent CLIs and need to understand what happened, what changed, and whether an agent actually earned trust.
+
+Proof surfaces available in the current product:
+- 1.2k collected sessions across 10 sources
+- live token, cache, model, tool, queue, and file-impact visibility
+- data-quality provenance that distinguishes measured, inferred, missing, and malformed evidence
+- configurable evaluation runs and a searchable case library
+- side-by-side run comparison and harness leaderboard
+- per-run confidence, deterministic proof, known-bad coverage, and weakness radar
+- telemetry integrity and cost/performance views
+- accuracy auditing with evidence-mix and case-quality diagnostics
+
+Draft angle: from scattered runs to trustworthy operating evidence.
+Language: English.
+Destination: desktop embed / YouTube, 16:9.
+Target length: approximately 42 seconds.
+Narration: none in the v3 draft; kinetic copy, real product footage, local music, and restrained transition effects carry the story.

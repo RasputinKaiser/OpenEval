@@ -1,0 +1,118 @@
+- generic [active] [ref=e1]:
+  - link "Skip to content" [ref=e2] [cursor=pointer]:
+    - /url: "#main"
+  - generic [ref=e3]:
+    - complementary [ref=e4]:
+      - generic [ref=e10]:
+        - generic [ref=e11]: OpenEval
+        - generic [ref=e12]: OpenEval Suite
+      - navigation "Primary" [ref=e13]:
+        - link "Dashboard" [ref=e15] [cursor=pointer]:
+          - /url: /
+        - generic [ref=e22]:
+          - generic [ref=e23]: Evaluate
+          - link "Runs" [ref=e24] [cursor=pointer]:
+            - /url: /runs
+          - link "Leaderboard" [ref=e28] [cursor=pointer]:
+            - /url: /runs/leaderboard
+          - link "Compare" [ref=e36] [cursor=pointer]:
+            - /url: /runs/compare
+          - link "Cases" [ref=e45] [cursor=pointer]:
+            - /url: /cases
+          - link "New Run" [ref=e50] [cursor=pointer]:
+            - /url: /runs/new
+          - link "Accuracy" [ref=e53] [cursor=pointer]:
+            - /url: /accuracy
+        - generic [ref=e58]:
+          - generic [ref=e59]: Observe
+          - link "Live" [ref=e60] [cursor=pointer]:
+            - /url: /live
+          - link "Collection" [ref=e69] [cursor=pointer]:
+            - /url: /collection
+          - link "Timeline" [ref=e81] [cursor=pointer]:
+            - /url: /collection/timeline
+        - generic [ref=e86]:
+          - generic [ref=e87]: System
+          - link "Harnesses" [ref=e88] [cursor=pointer]:
+            - /url: /harnesses
+          - link "Settings" [ref=e92] [cursor=pointer]:
+            - /url: /settings
+      - generic [ref=e97]:
+        - link "OpenEval release v0.1.4" [ref=e98] [cursor=pointer]:
+          - /url: https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.4
+          - text: v0.1.4
+        - generic [ref=e99]:
+          - button "Switch to light mode" [ref=e100] [cursor=pointer]
+          - button "Collapse sidebar" [ref=e107] [cursor=pointer]
+    - main [ref=e111]:
+      - generic [ref=e112]:
+        - generic [ref=e113]:
+          - generic [ref=e114]:
+            - heading "Live sessions" [level=1] [ref=e115]
+            - generic [ref=e121]:
+              - button "claude-code" [ref=e123] [cursor=pointer]
+              - generic [ref=e132]:
+                - status "Time since the last successful live poll" [ref=e133]: updated just now
+                - button "Redact on" [pressed] [ref=e135] [cursor=pointer]
+                - button "Refresh" [ref=e139] [cursor=pointer]
+          - paragraph [ref=e145]:
+            - text: Live trace sessions from
+            - code [ref=e146]: /Users/[redacted]/.claude/projects
+            - text: ", with usage provenance, parser confidence, and copy-safe redaction for local usernames."
+        - navigation "Page sections" [ref=e147]:
+          - generic [ref=e148]:
+            - generic [ref=e149]: Showing Monitor
+            - button "Show all page sections" [ref=e150] [cursor=pointer]: All
+            - button "Monitor" [pressed] [ref=e151] [cursor=pointer]
+            - button "Trust data" [ref=e152] [cursor=pointer]
+            - button "Sessions" [ref=e153] [cursor=pointer]
+            - button "Intelligence" [ref=e154] [cursor=pointer]
+          - generic [ref=e155]:
+            - generic [ref=e156]: 01 / 04
+            - generic [ref=e157]: Usage, cost, and throughput from the current scanned slice.
+            - generic [ref=e158]: 200 parsed slice · 200/739 files scanned
+        - status [ref=e159]: "Partial corpus boundary: scanned 200 of 739 discovered files and parsed 200 sessions. 539 older files were not scanned; usage and quality totals below describe only the evidenced parsed population."
+        - generic [ref=e161]:
+          - generic [ref=e162]:
+            - generic [ref=e163]:
+              - generic [ref=e164]: Usage
+              - generic [ref=e168]: Tokens and cost are shown only when the selected trace source reports them; totals cover the parsed latest-session slice shown above.
+            - generic [ref=e169]: 198/200 usage measured
+          - generic [ref=e170]:
+            - generic [ref=e171]:
+              - generic [ref=e172]: Volume
+              - generic [ref=e173]:
+                - generic [ref=e174]: Total tok
+                - generic [ref=e175]: 8.64B
+              - generic [ref=e176]:
+                - generic [ref=e177]: Input
+                - generic [ref=e178]: 878k
+              - generic [ref=e179]:
+                - generic [ref=e180]: Output
+                - generic [ref=e181]: 26M
+            - generic [ref=e182]:
+              - generic [ref=e183]: Cache
+              - generic [ref=e184]:
+                - generic [ref=e185]: Cache read
+                - generic [ref=e186]: 8.37B
+              - generic [ref=e187]:
+                - generic [ref=e188]: Cache create
+                - generic [ref=e189]: 243M
+              - generic [ref=e190]:
+                - generic [ref=e191]: Coverage
+                - generic [ref=e192]: 99%
+            - generic [ref=e193]:
+              - generic [ref=e194]: Cost & rate
+              - generic [ref=e195]:
+                - generic [ref=e196]: Est. cost
+                - generic [ref=e197]: ~$8,061
+              - generic [ref=e198]:
+                - generic [ref=e199]: Cost evidence
+                - generic [ref=e200]: 0 recorded · 183 estimated · 17 missing
+              - generic [ref=e201]:
+                - generic [ref=e202]: Cost coverage
+                - generic [ref=e203]: 92%
+              - generic [ref=e204]:
+                - generic [ref=e205]: Out tok/s
+                - generic [ref=e206]: "41.9"
+  - region "Notifications"

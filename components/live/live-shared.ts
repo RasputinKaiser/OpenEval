@@ -1,4 +1,4 @@
-import type { LiveAggregate, LiveAggregateList, LiveSessionListItem } from "../../lib/live";
+import type { LiveAggregate, LiveAggregateList, LiveSessionListItem, LiveTranscriptTurn } from "../../lib/live";
 import { classifyParseWarning } from "../../lib/live/warning-taxonomy";
 import { redactNamedUsers, redactSensitiveText } from "../../lib/redaction";
 import { fmtDuration, fmtNum, fmtRel, fmtUsd } from "@/lib/format";
@@ -21,6 +21,14 @@ export const SORT_MODES: ReadonlyArray<[SortMode, string]> = [
 
 export const DEFAULT_FILTER: FilterMode = "all";
 export const DEFAULT_SORT: SortMode = "recent";
+
+/** The parser keeps reasoning as an assistant-role turn; classify it by its semantic tag. */
+export function isAgentReasoningTurn(turn: Pick<LiveTranscriptTurn, "type" | "subtype" | "label">): boolean {
+  return [turn.type, turn.subtype, turn.label].some((value) => {
+    const tag = String(value ?? "").trim().toLowerCase().replace(/[-\s]+/g, "_");
+    return tag === "reasoning" || tag === "agent_reasoning" || tag === "thinking" || tag === "agent_thinking" || tag.endsWith("_reasoning");
+  });
+}
 
 export interface LiveViewState {
   filter: FilterMode;

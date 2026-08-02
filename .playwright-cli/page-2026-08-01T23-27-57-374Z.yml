@@ -1,0 +1,887 @@
+- generic [ref=e1]:
+  - link "Skip to content" [ref=e2] [cursor=pointer]:
+    - /url: "#main"
+  - generic [ref=e3]:
+    - complementary [ref=e4]:
+      - generic [ref=e10]:
+        - generic [ref=e11]: OpenEval
+        - generic [ref=e12]: OpenEval Suite
+      - navigation "Primary" [ref=e13]:
+        - link "Dashboard" [ref=e15] [cursor=pointer]:
+          - /url: /
+        - generic [ref=e22]:
+          - generic [ref=e23]: Evaluate
+          - link "Runs" [ref=e24] [cursor=pointer]:
+            - /url: /runs
+          - link "Leaderboard" [ref=e28] [cursor=pointer]:
+            - /url: /runs/leaderboard
+          - link "Compare" [ref=e36] [cursor=pointer]:
+            - /url: /runs/compare
+          - link "Cases" [ref=e45] [cursor=pointer]:
+            - /url: /cases
+          - link "New Run" [ref=e50] [cursor=pointer]:
+            - /url: /runs/new
+          - link "Accuracy" [ref=e53] [cursor=pointer]:
+            - /url: /accuracy
+        - generic [ref=e58]:
+          - generic [ref=e59]: Observe
+          - link "Live" [ref=e60] [cursor=pointer]:
+            - /url: /live
+          - link "Collection" [ref=e69] [cursor=pointer]:
+            - /url: /collection
+          - link "Timeline" [ref=e81] [cursor=pointer]:
+            - /url: /collection/timeline
+        - generic [ref=e86]:
+          - generic [ref=e87]: System
+          - link "Harnesses" [ref=e88] [cursor=pointer]:
+            - /url: /harnesses
+          - link "Settings" [ref=e92] [cursor=pointer]:
+            - /url: /settings
+      - generic [ref=e97]:
+        - link "OpenEval release v0.1.4" [ref=e98] [cursor=pointer]:
+          - /url: https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.4
+          - text: v0.1.4
+        - generic [ref=e99]:
+          - button "Switch to dark mode" [ref=e207] [cursor=pointer]
+          - button "Collapse sidebar" [ref=e107] [cursor=pointer]
+    - main [ref=e111]:
+      - generic [ref=e112]:
+        - generic [ref=e113]:
+          - generic [ref=e114]:
+            - heading "Live sessions" [level=1] [ref=e115]
+            - generic [ref=e121]:
+              - button "Claude Code 2.1.179 (Claude Code) installed" [ref=e210] [cursor=pointer]:
+                - generic [ref=e124]:
+                  - generic [ref=e129]: Claude Code
+                  - generic [ref=e211]: 2.1.179 (Claude Code)
+                  - generic [ref=e212]: installed
+              - generic [ref=e132]:
+                - status "Time since the last successful live poll" [ref=e133]: updated 7s ago
+                - button "Redact on" [pressed] [ref=e135] [cursor=pointer]
+                - button "Refresh" [ref=e139] [cursor=pointer]
+          - paragraph [ref=e145]:
+            - text: Live trace sessions from
+            - code [ref=e146]: /Users/[redacted]/.claude/projects
+            - text: ", with usage provenance, parser confidence, and copy-safe redaction for local usernames."
+        - navigation "Page sections" [ref=e147]:
+          - generic [ref=e148]:
+            - generic [ref=e149]: Showing Sessions
+            - button "Show all page sections" [ref=e150] [cursor=pointer]: All
+            - button "Monitor" [ref=e151] [cursor=pointer]
+            - button "Trust data" [ref=e152] [cursor=pointer]
+            - button "Sessions" [active] [pressed] [ref=e153] [cursor=pointer]
+            - button "Intelligence" [ref=e154] [cursor=pointer]
+          - generic [ref=e155]:
+            - generic [ref=e156]: 03 / 04
+            - generic [ref=e157]: Search and inspect individual sessions, failures, and provenance.
+            - generic [ref=e158]: 200 parsed slice · 200/739 files scanned
+        - status [ref=e159]: "Partial corpus boundary: scanned 200 of 739 discovered files and parsed 200 sessions. 539 older files were not scanned; usage and quality totals below describe only the evidenced parsed population."
+        - generic [ref=e386]:
+          - generic [ref=e387]:
+            - generic [ref=e395]:
+              - heading "Sessions" [level=2] [ref=e396]
+              - paragraph [ref=e397]: Model evidence and every recent session — filter, sort, click for the full drawer
+            - generic [ref=e398]: 100/100 shown
+          - generic [ref=e399]:
+            - generic [ref=e400]:
+              - generic [ref=e401]:
+                - generic [ref=e402]: Model evidence
+                - generic [ref=e405]: Inferred rows use the harness descriptor's declared default model; unknown rows mean the trace did not report model metadata.
+              - table [ref=e407]:
+                - rowgroup [ref=e408]:
+                  - row [ref=e409]:
+                    - columnheader "Model" [ref=e410]
+                    - columnheader "Sessions" [ref=e411]
+                    - columnheader "Quality" [ref=e412]
+                    - columnheader "Missing" [ref=e413]
+                    - columnheader "Errors" [ref=e414]
+                - rowgroup [ref=e415]:
+                  - row [ref=e416]:
+                    - cell "claude-opus-5" [ref=e417]
+                    - cell "90" [ref=e418]
+                    - cell [ref=e419]
+                    - cell "—" [ref=e424]
+                    - cell "379" [ref=e425]
+                  - row [ref=e426]:
+                    - cell "claude-fable-5" [ref=e427]
+                    - cell "16" [ref=e428]
+                    - cell [ref=e429]
+                    - cell "—" [ref=e434]
+                    - cell "121" [ref=e435]
+                  - row [ref=e436]:
+                    - cell "claude-opus-4-8" [ref=e437]
+                    - cell "40" [ref=e438]
+                    - cell [ref=e439]
+                    - cell "—" [ref=e444]
+                    - cell "57" [ref=e445]
+                  - row [ref=e446]:
+                    - cell "claude-sonnet-5" [ref=e447]
+                    - cell "36" [ref=e448]
+                    - cell [ref=e449]
+                    - cell "—" [ref=e454]
+                    - cell "53" [ref=e455]
+                  - row [ref=e456]:
+                    - cell "unknown" [ref=e457]
+                    - cell "17" [ref=e458]
+                    - cell [ref=e459]
+                    - cell "2 token / 17 cost" [ref=e464]
+                    - cell "0" [ref=e465]
+                  - row [ref=e466]:
+                    - cell "claude-haiku-4-5" [ref=e467]
+                    - cell "1" [ref=e468]
+                    - cell [ref=e469]
+                    - cell "—" [ref=e474]
+                    - cell "0" [ref=e475]
+            - generic [ref=e476]:
+              - generic [ref=e477]:
+                - generic [ref=e478]:
+                  - generic [ref=e479]: Recent sessions
+                  - generic [ref=e485]: 25/100 filtered · 100 total · values marked missing are not treated as zero-confidence measurements
+                - generic [ref=e486]:
+                  - combobox "Filter sessions" [ref=e490]:
+                    - option "All" [selected]
+                    - option "Attention"
+                    - option "Inactive >12h"
+                    - option "Missing"
+                  - combobox "Sort sessions" [ref=e494]:
+                    - option "Recent" [selected]
+                    - option "Quality"
+                    - option "Errors"
+                  - textbox "Search sessions" [ref=e499]:
+                    - /placeholder: Search…
+              - generic [ref=e500]:
+                - generic [ref=e501]: Session / project
+                - generic [ref=e502]: Freshness
+                - generic [ref=e503]: Quality
+                - generic [ref=e504]: Sources
+                - generic [ref=e505]: Tools
+                - generic [ref=e506]: Status
+              - generic [ref=e507]:
+                - generic [ref=e508]:
+                  - button "Open session 8208d618...420be details" [ref=e510] [cursor=pointer]:
+                    - generic [ref=e511]: ~/Code/VibeCode-Games/.claude/worktrees/game-design-priorities-5bdefa
+                    - generic [ref=e515]:
+                      - generic [ref=e516]: 8208d618...420be
+                      - generic [ref=e517]: ·
+                      - generic [ref=e518]: Soil physics and village maintenance
+                      - generic [ref=e519]: ·
+                      - generic [ref=e520]: claude-fable-5
+                      - generic [ref=e521]: claude/soil-physics-village-maintenance-e481e1
+                      - generic [ref=e522]: 28M tok
+                      - generic [ref=e525]: trace metadata capped at 256 unique values; graph/detail counts are partial
+                      - generic [ref=e526]: turn count inferred from user messages
+                  - generic [ref=e527]:
+                    - generic [ref=e528]: 1d ago
+                    - generic [ref=e529]: 2h 29m
+                  - generic [ref=e530]: 97%
+                  - generic [ref=e535]:
+                    - generic [ref=e536]: model
+                    - generic [ref=e537]: tok
+                    - generic [ref=e538]: dur
+                  - generic [ref=e539]:
+                    - generic [ref=e540]: "73"
+                    - generic [ref=e543]: "2"
+                  - generic [ref=e546]:
+                    - generic "No session event for more than 12 hours; live polling may still be healthy." [ref=e547]: inactive >12h
+                    - generic "Recoverable session incidents" [ref=e548]: 2 tool incidents
+                    - link "Open transcript in Collection" [ref=e550] [cursor=pointer]:
+                      - /url: /collection/session?file=%2FUsers%2Fianzvirbulis%2F.claude%2Fprojects%2F-Users-ianzvirbulis-Code-VibeCode-Games--claude-worktrees-game-design-priorities-5bdefa%2F8208d618-b7ae-4318-83c5-9e538a1420be.jsonl
+                - generic [ref=e554]:
+                  - button "Open session 8208d618...fc009 details" [ref=e556] [cursor=pointer]:
+                    - generic [ref=e557]: ~/Code/VibeCode-Games/.claude/worktrees/game-design-priorities-5bdefa
+                    - generic [ref=e561]:
+                      - generic [ref=e562]: 8208d618...fc009
+                      - generic [ref=e563]: ·
+                      - generic [ref=e564]: claude-sonnet-5
+                      - generic "Child trace of 8208d618-b7ae-4318-83c5-9e538a1420be" [ref=e565]: child agent · agent-ae65c0b6fd70fc009
+                      - generic [ref=e566]: 150 side
+                      - generic [ref=e567]: 1 agent
+                      - generic [ref=e568]: claude/soil-physics-village-maintenance-e481e1
+                      - generic [ref=e569]: 5.2M tok
+                      - generic [ref=e572]: "source: subagent"
+                  - generic [ref=e573]:
+                    - generic [ref=e574]: 1d ago
+                    - generic [ref=e575]: 1h 8m
+                  - generic [ref=e576]: 92%
+                  - generic [ref=e581]:
+                    - generic [ref=e582]: model
+                    - generic [ref=e583]: tok
+                    - generic [ref=e584]: dur
+                  - generic [ref=e585]:
+                    - generic [ref=e586]: "50"
+                    - generic [ref=e589]: "1"
+                  - generic [ref=e592]:
+                    - generic "No session event for more than 12 hours; live polling may still be healthy." [ref=e593]: inactive >12h
+                    - generic "Recoverable session incidents" [ref=e594]: 1 tool incident
+                    - link "Open transcript in Collection" [ref=e596] [cursor=pointer]:
+                      - /url: /collection/session?file=%2FUsers%2Fianzvirbulis%2F.claude%2Fprojects%2F-Users-ianzvirbulis-Code-VibeCode-Games--claude-worktrees-game-design-priorities-5bdefa%2F8208d618-b7ae-4318-83c5-9e538a1420be%2Fsubagents%2Fagent-ae65c0b6fd70fc009.jsonl
+                - generic [ref=e600]:
+                  - button "Open session 8208d618...0a6eb details" [ref=e602] [cursor=pointer]:
+                    - generic [ref=e603]: ~/Code/VibeCode-Games/.claude/worktrees/game-design-priorities-5bdefa
+                    - generic [ref=e607]:
+                      - generic [ref=e608]: 8208d618...0a6eb
+                      - generic [ref=e609]: ·
+                      - generic [ref=e610]: claude-sonnet-5
+                      - generic "Child trace of 8208d618-b7ae-4318-83c5-9e538a1420be" [ref=e611]: child agent · agent-a3bb82852d620a6eb
+                      - generic [ref=e612]: 205 side
+                      - generic [ref=e613]: 1 agent
+                      - generic [ref=e614]: claude/soil-physics-village-maintenance-e481e1
+                      - generic [ref=e615]: 7.9M tok
+                      - generic [ref=e618]: "source: subagent"
+                  - generic [ref=e619]:
+                    - generic [ref=e620]: 1d ago
+                    - generic [ref=e621]: 39m 51s
+                  - generic [ref=e622]: 92%
+                  - generic [ref=e627]:
+                    - generic [ref=e628]: model
+                    - generic [ref=e629]: tok
+                    - generic [ref=e630]: dur
+                  - generic [ref=e631]:
+                    - generic [ref=e632]: "63"
+                    - generic [ref=e635]: "7"
+                  - generic [ref=e638]:
+                    - generic "No session event for more than 12 hours; live polling may still be healthy." [ref=e639]: inactive >12h
+                    - generic "Recoverable session incidents" [ref=e640]: 7 tool incidents
+                    - link "Open transcript in Collection" [ref=e642] [cursor=pointer]:
+                      - /url: /collection/session?file=%2FUsers%2Fianzvirbulis%2F.claude%2Fprojects%2F-Users-ianzvirbulis-Code-VibeCode-Games--claude-worktrees-game-design-priorities-5bdefa%2F8208d618-b7ae-4318-83c5-9e538a1420be%2Fsubagents%2Fagent-a3bb82852d620a6eb.jsonl
+                - generic [ref=e646]:
+                  - button "Open session 8208d618...3eb73 details" [ref=e648] [cursor=pointer]:
+                    - generic [ref=e649]: ~/Code/VibeCode-Games/.claude/worktrees/game-design-priorities-5bdefa
+                    - generic [ref=e653]:
+                      - generic [ref=e654]: 8208d618...3eb73
+                      - generic [ref=e655]: ·
+                      - generic [ref=e656]: claude-sonnet-5
+                      - generic "Child trace of 8208d618-b7ae-4318-83c5-9e538a1420be" [ref=e657]: child agent · agent-ad108bdf545d3eb73
+                      - generic [ref=e658]: 134 side
+                      - generic [ref=e659]: 1 agent
+                      - generic [ref=e660]: claude/soil-physics-village-maintenance-e481e1
+                      - generic [ref=e661]: 5.1M tok
+                      - generic [ref=e664]: "source: subagent"
+                  - generic [ref=e665]:
+                    - generic [ref=e666]: 1d ago
+                    - generic [ref=e667]: 33m 19s
+                  - generic [ref=e668]: 92%
+                  - generic [ref=e673]:
+                    - generic [ref=e674]: model
+                    - generic [ref=e675]: tok
+                    - generic [ref=e676]: dur
+                  - generic [ref=e677]:
+                    - generic [ref=e678]: "45"
+                    - generic [ref=e681]: "2"
+                  - generic [ref=e684]:
+                    - generic "No session event for more than 12 hours; live polling may still be healthy." [ref=e685]: inactive >12h
+                    - generic "Recoverable session incidents" [ref=e686]: 2 tool incidents
+                    - link "Open transcript in Collection" [ref=e688] [cursor=pointer]:
+                      - /url: /collection/session?file=%2FUsers%2Fianzvirbulis%2F.claude%2Fprojects%2F-Users-ianzvirbulis-Code-VibeCode-Games--claude-worktrees-game-design-priorities-5bdefa%2F8208d618-b7ae-4318-83c5-9e538a1420be%2Fsubagents%2Fagent-ad108bdf545d3eb73.jsonl
+                - generic [ref=e692]:
+                  - button "Open session 8208d618...039de details" [ref=e694] [cursor=pointer]:
+                    - generic [ref=e695]: ~/Code/VibeCode-Games/.claude/worktrees/game-design-priorities-5bdefa
+                    - generic [ref=e699]:
+                      - generic [ref=e700]: 8208d618...039de
+                      - generic [ref=e701]: ·
+                      - generic [ref=e702]: claude-sonnet-5
+                      - generic "Child trace of 8208d618-b7ae-4318-83c5-9e538a1420be" [ref=e703]: child agent · agent-a86e5f868722039de
+                      - generic [ref=e704]: 151 side
+                      - generic [ref=e705]: 1 agent
+                      - generic [ref=e706]: claude/soil-physics-village-maintenance-e481e1
+                      - generic [ref=e707]: 5.5M tok
+                      - generic [ref=e710]: "source: subagent"
+                  - generic [ref=e711]:
+                    - generic [ref=e712]: 1d ago
+                    - generic [ref=e713]: 26m 46s
+                  - generic [ref=e714]: 92%
+                  - generic [ref=e719]:
+                    - generic [ref=e720]: model
+                    - generic [ref=e721]: tok
+                    - generic [ref=e722]: dur
+                  - generic [ref=e723]:
+                    - generic [ref=e724]: "51"
+                    - generic [ref=e727]: "2"
+                  - generic [ref=e730]:
+                    - generic "No session event for more than 12 hours; live polling may still be healthy." [ref=e731]: inactive >12h
+                    - generic "Recoverable session incidents" [ref=e732]: 2 tool incidents
+                    - link "Open transcript in Collection" [ref=e734] [cursor=pointer]:
+                      - /url: /collection/session?file=%2FUsers%2Fianzvirbulis%2F.claude%2Fprojects%2F-Users-ianzvirbulis-Code-VibeCode-Games--claude-worktrees-game-design-priorities-5bdefa%2F8208d618-b7ae-4318-83c5-9e538a1420be%2Fsubagents%2Fagent-a86e5f868722039de.jsonl
+                - generic [ref=e738]:
+                  - button "Open session 8208d618...47f97 details" [ref=e740] [cursor=pointer]:
+                    - generic [ref=e741]: ~/Code/VibeCode-Games/.claude/worktrees/game-design-priorities-5bdefa
+                    - generic [ref=e745]:
+                      - generic [ref=e746]: 8208d618...47f97
+                      - generic [ref=e747]: ·
+                      - generic [ref=e748]: claude-sonnet-5
+                      - generic "Child trace of 8208d618-b7ae-4318-83c5-9e538a1420be" [ref=e749]: child agent · agent-a471dcbb7b8547f97
+                      - generic [ref=e750]: 71 side
+                      - generic [ref=e751]: 1 agent
+                      - generic [ref=e752]: claude/soil-physics-village-maintenance-e481e1
+                      - generic [ref=e753]: 2.1M tok
+                      - generic [ref=e756]: "source: subagent"
+                  - generic [ref=e757]:
+                    - generic [ref=e758]: 1d ago
+                    - generic [ref=e759]: 25m 47s
+                  - generic [ref=e760]: 92%
+                  - generic [ref=e765]:
+                    - generic [ref=e766]: model
+                    - generic [ref=e767]: tok
+                    - generic [ref=e768]: dur
+                  - generic [ref=e769]:
+                    - generic [ref=e770]: "21"
+                    - generic [ref=e773]: "3"
+                  - generic [ref=e776]:
+                    - generic "No session event for more than 12 hours; live polling may still be healthy." [ref=e777]: inactive >12h
+                    - generic "Recoverable session incidents" [ref=e778]: 3 tool incidents
+                    - link "Open transcript in Collection" [ref=e780] [cursor=pointer]:
+                      - /url: /collection/session?file=%2FUsers%2Fianzvirbulis%2F.claude%2Fprojects%2F-Users-ianzvirbulis-Code-VibeCode-Games--claude-worktrees-game-design-priorities-5bdefa%2F8208d618-b7ae-4318-83c5-9e538a1420be%2Fsubagents%2Fagent-a471dcbb7b8547f97.jsonl
+                - generic [ref=e784]:
+                  - button "Open session ea1d7be9...d1599 details" [ref=e786] [cursor=pointer]:
+                    - generic [ref=e787]: ~/Code/VibeCode-Games/.claude/worktrees/new-session-01e6cf
+                    - generic [ref=e791]:
+                      - generic [ref=e792]: ea1d7be9...d1599
+                      - generic [ref=e793]: ·
+                      - generic [ref=e794]: World generation diversity and biome controls
+                      - generic [ref=e795]: ·
+                      - generic [ref=e796]: claude-fable-5
+                      - generic [ref=e797]: claude/world-gen-biome-diversity-bb67d6
+                      - generic [ref=e798]: 130M tok
+                      - generic [ref=e801]: trace metadata capped at 256 unique values; graph/detail counts are partial
+                      - generic [ref=e802]: turn count inferred from user messages
+                  - generic [ref=e803]:
+                    - generic [ref=e804]: 1d ago
+                    - generic [ref=e805]: 3h 29m
+                  - generic [ref=e806]: 97%
+                  - generic [ref=e811]:
+                    - generic [ref=e812]: model
+                    - generic [ref=e813]: tok
+                    - generic [ref=e814]: dur
+                  - generic [ref=e815]:
+                    - generic [ref=e816]: "242"
+                    - generic [ref=e819]: "5"
+                  - generic [ref=e822]:
+                    - generic "No session event for more than 12 hours; live polling may still be healthy." [ref=e823]: inactive >12h
+                    - generic "Recoverable session incidents" [ref=e824]: 5 tool incidents
+                    - link "Open transcript in Collection" [ref=e826] [cursor=pointer]:
+                      - /url: /collection/session?file=%2FUsers%2Fianzvirbulis%2F.claude%2Fprojects%2F-Users-ianzvirbulis-Code-VibeCode-Games--claude-worktrees-new-session-01e6cf%2Fea1d7be9-daf9-4a82-af98-e34e5bcd1599.jsonl
+                - generic [ref=e830]:
+                  - button "Open session 8208d618...a96dc details" [ref=e832] [cursor=pointer]:
+                    - generic [ref=e833]: ~/Code/VibeCode-Games/.claude/worktrees/game-design-priorities-5bdefa
+                    - generic [ref=e837]:
+                      - generic [ref=e838]: 8208d618...a96dc
+                      - generic [ref=e839]: ·
+                      - generic [ref=e840]: claude-opus-5
+                      - generic "Child trace of 8208d618-b7ae-4318-83c5-9e538a1420be" [ref=e841]: child agent · agent-a2b752f0941da96dc
+                      - generic [ref=e842]: 130 side
+                      - generic [ref=e843]: 1 agent
+                      - generic [ref=e844]: claude/soil-physics-village-maintenance-e481e1
+                      - generic [ref=e845]: 9.4M tok
+                      - generic [ref=e848]: "source: subagent"
+                  - generic [ref=e849]:
+                    - generic [ref=e850]: 1d ago
+                    - generic [ref=e851]: 5m 56s
+                  - generic [ref=e852]: 92%
+                  - generic [ref=e857]:
+                    - generic [ref=e858]: model
+                    - generic [ref=e859]: tok
+                    - generic [ref=e860]: dur
+                  - generic [ref=e861]:
+                    - generic [ref=e862]: "49"
+                    - generic [ref=e865]: "3"
+                  - generic [ref=e868]:
+                    - generic "No session event for more than 12 hours; live polling may still be healthy." [ref=e869]: inactive >12h
+                    - generic "Recoverable session incidents" [ref=e870]: 3 tool incidents
+                    - link "Open transcript in Collection" [ref=e872] [cursor=pointer]:
+                      - /url: /collection/session?file=%2FUsers%2Fianzvirbulis%2F.claude%2Fprojects%2F-Users-ianzvirbulis-Code-VibeCode-Games--claude-worktrees-game-design-priorities-5bdefa%2F8208d618-b7ae-4318-83c5-9e538a1420be%2Fsubagents%2Fagent-a2b752f0941da96dc.jsonl
+                - generic [ref=e876]:
+                  - button "Open session 8208d618...c2152 details" [ref=e878] [cursor=pointer]:
+                    - generic [ref=e879]: ~/Code/VibeCode-Games/.claude/worktrees/game-design-priorities-5bdefa
+                    - generic [ref=e884]:
+                      - generic [ref=e885]: 8208d618...c2152
+                      - generic [ref=e886]: ·
+                      - generic [ref=e887]: claude-opus-5
+                      - generic "Child trace of 8208d618-b7ae-4318-83c5-9e538a1420be" [ref=e888]: child agent · agent-a29a6124f119c2152
+                      - generic [ref=e889]: 125 side
+                      - generic [ref=e890]: 1 agent
+                      - generic [ref=e891]: claude/soil-physics-village-maintenance-e481e1
+                      - generic [ref=e892]: 7.8M tok
+                      - generic [ref=e895]: "source: subagent"
+                  - generic [ref=e896]:
+                    - generic [ref=e897]: 1d ago
+                    - generic [ref=e898]: 5m 17s
+                  - generic [ref=e899]: 92%
+                  - generic [ref=e904]:
+                    - generic [ref=e905]: model
+                    - generic [ref=e906]: tok
+                    - generic [ref=e907]: dur
+                  - generic [ref=e908]:
+                    - generic [ref=e909]: "46"
+                    - generic [ref=e912]: "0"
+                  - generic [ref=e915]:
+                    - generic "No session event for more than 12 hours; live polling may still be healthy." [ref=e916]: inactive >12h
+                    - link "Open transcript in Collection" [ref=e917] [cursor=pointer]:
+                      - /url: /collection/session?file=%2FUsers%2Fianzvirbulis%2F.claude%2Fprojects%2F-Users-ianzvirbulis-Code-VibeCode-Games--claude-worktrees-game-design-priorities-5bdefa%2F8208d618-b7ae-4318-83c5-9e538a1420be%2Fsubagents%2Fagent-a29a6124f119c2152.jsonl
+                - generic [ref=e921]:
+                  - button "Open session 8208d618...97bdf details" [ref=e923] [cursor=pointer]:
+                    - generic [ref=e924]: ~/Code/VibeCode-Games/.claude/worktrees/game-design-priorities-5bdefa
+                    - generic [ref=e929]:
+                      - generic [ref=e930]: 8208d618...97bdf
+                      - generic [ref=e931]: ·
+                      - generic [ref=e932]: claude-opus-5
+                      - generic "Child trace of 8208d618-b7ae-4318-83c5-9e538a1420be" [ref=e933]: child agent · agent-a4eda8f7f43a97bdf
+                      - generic [ref=e934]: 97 side
+                      - generic [ref=e935]: 1 agent
+                      - generic [ref=e936]: claude/soil-physics-village-maintenance-e481e1
+                      - generic [ref=e937]: 4.5M tok
+                      - generic [ref=e940]: "source: subagent"
+                  - generic [ref=e941]:
+                    - generic [ref=e942]: 1d ago
+                    - generic [ref=e943]: 5m 28s
+                  - generic [ref=e944]: 92%
+                  - generic [ref=e949]:
+                    - generic [ref=e950]: model
+                    - generic [ref=e951]: tok
+                    - generic [ref=e952]: dur
+                  - generic [ref=e953]:
+                    - generic [ref=e954]: "37"
+                    - generic [ref=e957]: "0"
+                  - generic [ref=e960]:
+                    - generic "No session event for more than 12 hours; live polling may still be healthy." [ref=e961]: inactive >12h
+                    - link "Open transcript in Collection" [ref=e962] [cursor=pointer]:
+                      - /url: /collection/session?file=%2FUsers%2Fianzvirbulis%2F.claude%2Fprojects%2F-Users-ianzvirbulis-Code-VibeCode-Games--claude-worktrees-game-design-priorities-5bdefa%2F8208d618-b7ae-4318-83c5-9e538a1420be%2Fsubagents%2Fagent-a4eda8f7f43a97bdf.jsonl
+                - generic [ref=e966]:
+                  - button "Open session ea1d7be9...35662 details" [ref=e968] [cursor=pointer]:
+                    - generic [ref=e969]: ~/Code/VibeCode-Games/.claude/worktrees/new-session-01e6cf
+                    - generic [ref=e973]:
+                      - generic [ref=e974]: ea1d7be9...35662
+                      - generic [ref=e975]: ·
+                      - generic [ref=e976]: claude-sonnet-5
+                      - generic "Child trace of ea1d7be9-daf9-4a82-af98-e34e5bcd1599" [ref=e977]: child agent · agent-aacc53927e6d35662
+                      - generic [ref=e978]: 143 side
+                      - generic [ref=e979]: 1 agent
+                      - generic [ref=e980]: claude/world-gen-biome-diversity-bb67d6
+                      - generic [ref=e981]: 6.4M tok
+                      - generic [ref=e984]: "source: subagent"
+                  - generic [ref=e985]:
+                    - generic [ref=e986]: 1d ago
+                    - generic [ref=e987]: 25m 25s
+                  - generic [ref=e988]: 92%
+                  - generic [ref=e993]:
+                    - generic [ref=e994]: model
+                    - generic [ref=e995]: tok
+                    - generic [ref=e996]: dur
+                  - generic [ref=e997]:
+                    - generic [ref=e998]: "45"
+                    - generic [ref=e1001]: "1"
+                  - generic [ref=e1004]:
+                    - generic "No session event for more than 12 hours; live polling may still be healthy." [ref=e1005]: inactive >12h
+                    - generic "Recoverable session incidents" [ref=e1006]: 1 tool incident
+                    - link "Open transcript in Collection" [ref=e1008] [cursor=pointer]:
+                      - /url: /collection/session?file=%2FUsers%2Fianzvirbulis%2F.claude%2Fprojects%2F-Users-ianzvirbulis-Code-VibeCode-Games--claude-worktrees-new-session-01e6cf%2Fea1d7be9-daf9-4a82-af98-e34e5bcd1599%2Fsubagents%2Fagent-aacc53927e6d35662.jsonl
+                - generic [ref=e1012]:
+                  - button "Open session ea1d7be9...caff8 details" [ref=e1014] [cursor=pointer]:
+                    - generic [ref=e1015]: ~/Code/VibeCode-Games/.claude/worktrees/new-session-01e6cf
+                    - generic [ref=e1019]:
+                      - generic [ref=e1020]: ea1d7be9...caff8
+                      - generic [ref=e1021]: ·
+                      - generic [ref=e1022]: claude-sonnet-5
+                      - generic "Child trace of ea1d7be9-daf9-4a82-af98-e34e5bcd1599" [ref=e1023]: child agent · agent-ab28039630edcaff8
+                      - generic [ref=e1024]: 115 side
+                      - generic [ref=e1025]: 1 agent
+                      - generic [ref=e1026]: claude/world-gen-biome-diversity-bb67d6
+                      - generic [ref=e1027]: 4.8M tok
+                      - generic [ref=e1030]: "source: subagent"
+                  - generic [ref=e1031]:
+                    - generic [ref=e1032]: 1d ago
+                    - generic [ref=e1033]: 19m 16s
+                  - generic [ref=e1034]: 92%
+                  - generic [ref=e1039]:
+                    - generic [ref=e1040]: model
+                    - generic [ref=e1041]: tok
+                    - generic [ref=e1042]: dur
+                  - generic [ref=e1043]:
+                    - generic [ref=e1044]: "39"
+                    - generic [ref=e1047]: "3"
+                  - generic [ref=e1050]:
+                    - generic "No session event for more than 12 hours; live polling may still be healthy." [ref=e1051]: inactive >12h
+                    - generic "Recoverable session incidents" [ref=e1052]: 3 tool incidents
+                    - link "Open transcript in Collection" [ref=e1054] [cursor=pointer]:
+                      - /url: /collection/session?file=%2FUsers%2Fianzvirbulis%2F.claude%2Fprojects%2F-Users-ianzvirbulis-Code-VibeCode-Games--claude-worktrees-new-session-01e6cf%2Fea1d7be9-daf9-4a82-af98-e34e5bcd1599%2Fsubagents%2Fagent-ab28039630edcaff8.jsonl
+                - generic [ref=e1058]:
+                  - button "Open session ea1d7be9...b4b9c details" [ref=e1060] [cursor=pointer]:
+                    - generic [ref=e1061]: ~/Code/VibeCode-Games/.claude/worktrees/new-session-01e6cf
+                    - generic [ref=e1066]:
+                      - generic [ref=e1067]: ea1d7be9...b4b9c
+                      - generic [ref=e1068]: ·
+                      - generic [ref=e1069]: claude-sonnet-5
+                      - generic "Child trace of ea1d7be9-daf9-4a82-af98-e34e5bcd1599" [ref=e1070]: child agent · agent-af876bfad8cfb4b9c
+                      - generic [ref=e1071]: 116 side
+                      - generic [ref=e1072]: 1 agent
+                      - generic [ref=e1073]: claude/world-gen-biome-diversity-bb67d6
+                      - generic [ref=e1074]: 4.2M tok
+                      - generic [ref=e1077]: "source: subagent"
+                  - generic [ref=e1078]:
+                    - generic [ref=e1079]: 1d ago
+                    - generic [ref=e1080]: 16m 39s
+                  - generic [ref=e1081]: 92%
+                  - generic [ref=e1086]:
+                    - generic [ref=e1087]: model
+                    - generic [ref=e1088]: tok
+                    - generic [ref=e1089]: dur
+                  - generic [ref=e1090]:
+                    - generic [ref=e1091]: "39"
+                    - generic [ref=e1094]: "0"
+                  - generic [ref=e1097]:
+                    - generic "No session event for more than 12 hours; live polling may still be healthy." [ref=e1098]: inactive >12h
+                    - link "Open transcript in Collection" [ref=e1099] [cursor=pointer]:
+                      - /url: /collection/session?file=%2FUsers%2Fianzvirbulis%2F.claude%2Fprojects%2F-Users-ianzvirbulis-Code-VibeCode-Games--claude-worktrees-new-session-01e6cf%2Fea1d7be9-daf9-4a82-af98-e34e5bcd1599%2Fsubagents%2Fagent-af876bfad8cfb4b9c.jsonl
+                - generic [ref=e1103]:
+                  - button "Open session ea1d7be9...1f9dc details" [ref=e1105] [cursor=pointer]:
+                    - generic [ref=e1106]: ~/Code/VibeCode-Games/.claude/worktrees/new-session-01e6cf
+                    - generic [ref=e1110]:
+                      - generic [ref=e1111]: ea1d7be9...1f9dc
+                      - generic [ref=e1112]: ·
+                      - generic [ref=e1113]: claude-sonnet-5
+                      - generic "Child trace of ea1d7be9-daf9-4a82-af98-e34e5bcd1599" [ref=e1114]: child agent · agent-aa61e09ece731f9dc
+                      - generic [ref=e1115]: 68 side
+                      - generic [ref=e1116]: 1 agent
+                      - generic [ref=e1117]: claude/world-gen-biome-diversity-bb67d6
+                      - generic [ref=e1118]: 1.6M tok
+                      - generic [ref=e1121]: "source: subagent"
+                  - generic [ref=e1122]:
+                    - generic [ref=e1123]: 1d ago
+                    - generic [ref=e1124]: 12m 41s
+                  - generic [ref=e1125]: 92%
+                  - generic [ref=e1130]:
+                    - generic [ref=e1131]: model
+                    - generic [ref=e1132]: tok
+                    - generic [ref=e1133]: dur
+                  - generic [ref=e1134]:
+                    - generic [ref=e1135]: "23"
+                    - generic [ref=e1138]: "1"
+                  - generic [ref=e1141]:
+                    - generic "No session event for more than 12 hours; live polling may still be healthy." [ref=e1142]: inactive >12h
+                    - generic "Recoverable session incidents" [ref=e1143]: 1 tool incident
+                    - link "Open transcript in Collection" [ref=e1145] [cursor=pointer]:
+                      - /url: /collection/session?file=%2FUsers%2Fianzvirbulis%2F.claude%2Fprojects%2F-Users-ianzvirbulis-Code-VibeCode-Games--claude-worktrees-new-session-01e6cf%2Fea1d7be9-daf9-4a82-af98-e34e5bcd1599%2Fsubagents%2Fagent-aa61e09ece731f9dc.jsonl
+                - generic [ref=e1149]:
+                  - button "Open session ea1d7be9...1b9e9 details" [ref=e1151] [cursor=pointer]:
+                    - generic [ref=e1152]: ~/Code/VibeCode-Games/.claude/worktrees/new-session-01e6cf
+                    - generic [ref=e1156]:
+                      - generic [ref=e1157]: ea1d7be9...1b9e9
+                      - generic [ref=e1158]: ·
+                      - generic [ref=e1159]: claude-sonnet-5
+                      - generic "Child trace of ea1d7be9-daf9-4a82-af98-e34e5bcd1599" [ref=e1160]: child agent · agent-a4a91aa44cb81b9e9
+                      - generic [ref=e1161]: 80 side
+                      - generic [ref=e1162]: 1 agent
+                      - generic [ref=e1163]: claude/world-gen-biome-diversity-bb67d6
+                      - generic [ref=e1164]: 2.1M tok
+                      - generic [ref=e1167]: "source: subagent"
+                  - generic [ref=e1168]:
+                    - generic [ref=e1169]: 1d ago
+                    - generic [ref=e1170]: 42m 22s
+                  - generic [ref=e1171]: 92%
+                  - generic [ref=e1176]:
+                    - generic [ref=e1177]: model
+                    - generic [ref=e1178]: tok
+                    - generic [ref=e1179]: dur
+                  - generic [ref=e1180]:
+                    - generic [ref=e1181]: "27"
+                    - generic [ref=e1184]: "1"
+                  - generic [ref=e1187]:
+                    - generic "No session event for more than 12 hours; live polling may still be healthy." [ref=e1188]: inactive >12h
+                    - generic "Recoverable session incidents" [ref=e1189]: 1 tool incident
+                    - link "Open transcript in Collection" [ref=e1191] [cursor=pointer]:
+                      - /url: /collection/session?file=%2FUsers%2Fianzvirbulis%2F.claude%2Fprojects%2F-Users-ianzvirbulis-Code-VibeCode-Games--claude-worktrees-new-session-01e6cf%2Fea1d7be9-daf9-4a82-af98-e34e5bcd1599%2Fsubagents%2Fagent-a4a91aa44cb81b9e9.jsonl
+                - generic [ref=e1195]:
+                  - button "Open session ea1d7be9...38123 details" [ref=e1197] [cursor=pointer]:
+                    - generic [ref=e1198]: ~/Code/VibeCode-Games/.claude/worktrees/new-session-01e6cf
+                    - generic [ref=e1202]:
+                      - generic [ref=e1203]: ea1d7be9...38123
+                      - generic [ref=e1204]: ·
+                      - generic [ref=e1205]: claude-sonnet-5
+                      - generic "Child trace of ea1d7be9-daf9-4a82-af98-e34e5bcd1599" [ref=e1206]: child agent · agent-a62ac0c11e5338123
+                      - generic [ref=e1207]: 84 side
+                      - generic [ref=e1208]: 1 agent
+                      - generic [ref=e1209]: claude/world-gen-biome-diversity-bb67d6
+                      - generic [ref=e1210]: 2.5M tok
+                      - generic [ref=e1213]: "source: subagent"
+                  - generic [ref=e1214]:
+                    - generic [ref=e1215]: 1d ago
+                    - generic [ref=e1216]: 20m 39s
+                  - generic [ref=e1217]: 92%
+                  - generic [ref=e1222]:
+                    - generic [ref=e1223]: model
+                    - generic [ref=e1224]: tok
+                    - generic [ref=e1225]: dur
+                  - generic [ref=e1226]:
+                    - generic [ref=e1227]: "28"
+                    - generic [ref=e1230]: "1"
+                  - generic [ref=e1233]:
+                    - generic "No session event for more than 12 hours; live polling may still be healthy." [ref=e1234]: inactive >12h
+                    - generic "Recoverable session incidents" [ref=e1235]: 1 tool incident
+                    - link "Open transcript in Collection" [ref=e1237] [cursor=pointer]:
+                      - /url: /collection/session?file=%2FUsers%2Fianzvirbulis%2F.claude%2Fprojects%2F-Users-ianzvirbulis-Code-VibeCode-Games--claude-worktrees-new-session-01e6cf%2Fea1d7be9-daf9-4a82-af98-e34e5bcd1599%2Fsubagents%2Fagent-a62ac0c11e5338123.jsonl
+                - generic [ref=e1241]:
+                  - button "Open session ea1d7be9...7c60e details" [ref=e1243] [cursor=pointer]:
+                    - generic [ref=e1244]: ~/Code/VibeCode-Games/.claude/worktrees/new-session-01e6cf
+                    - generic [ref=e1248]:
+                      - generic [ref=e1249]: ea1d7be9...7c60e
+                      - generic [ref=e1250]: ·
+                      - generic [ref=e1251]: claude-sonnet-5
+                      - generic "Child trace of ea1d7be9-daf9-4a82-af98-e34e5bcd1599" [ref=e1252]: child agent · agent-aad0e8a0d4cc7c60e
+                      - generic [ref=e1253]: 94 side
+                      - generic [ref=e1254]: 1 agent
+                      - generic [ref=e1255]: claude/world-gen-biome-diversity-bb67d6
+                      - generic [ref=e1256]: 2.6M tok
+                      - generic [ref=e1259]: "source: subagent"
+                  - generic [ref=e1260]:
+                    - generic [ref=e1261]: 1d ago
+                    - generic [ref=e1262]: 14m 36s
+                  - generic [ref=e1263]: 92%
+                  - generic [ref=e1268]:
+                    - generic [ref=e1269]: model
+                    - generic [ref=e1270]: tok
+                    - generic [ref=e1271]: dur
+                  - generic [ref=e1272]:
+                    - generic [ref=e1273]: "32"
+                    - generic [ref=e1276]: "1"
+                  - generic [ref=e1279]:
+                    - generic "No session event for more than 12 hours; live polling may still be healthy." [ref=e1280]: inactive >12h
+                    - generic "Recoverable session incidents" [ref=e1281]: 1 tool incident
+                    - link "Open transcript in Collection" [ref=e1283] [cursor=pointer]:
+                      - /url: /collection/session?file=%2FUsers%2Fianzvirbulis%2F.claude%2Fprojects%2F-Users-ianzvirbulis-Code-VibeCode-Games--claude-worktrees-new-session-01e6cf%2Fea1d7be9-daf9-4a82-af98-e34e5bcd1599%2Fsubagents%2Fagent-aad0e8a0d4cc7c60e.jsonl
+                - generic [ref=e1287]:
+                  - button "Open session ea1d7be9...6ce87 details" [ref=e1289] [cursor=pointer]:
+                    - generic [ref=e1290]: ~/Code/VibeCode-Games/.claude/worktrees/new-session-01e6cf
+                    - generic [ref=e1294]:
+                      - generic [ref=e1295]: ea1d7be9...6ce87
+                      - generic [ref=e1296]: ·
+                      - generic [ref=e1297]: claude-sonnet-5
+                      - generic "Child trace of ea1d7be9-daf9-4a82-af98-e34e5bcd1599" [ref=e1298]: child agent · agent-a82ccc2ab5b36ce87
+                      - generic [ref=e1299]: 111 side
+                      - generic [ref=e1300]: 1 agent
+                      - generic [ref=e1301]: claude/world-gen-biome-diversity-bb67d6
+                      - generic [ref=e1302]: 4.0M tok
+                      - generic [ref=e1305]: "source: subagent"
+                  - generic [ref=e1306]:
+                    - generic [ref=e1307]: 1d ago
+                    - generic [ref=e1308]: 37m 59s
+                  - generic [ref=e1309]: 92%
+                  - generic [ref=e1314]:
+                    - generic [ref=e1315]: model
+                    - generic [ref=e1316]: tok
+                    - generic [ref=e1317]: dur
+                  - generic [ref=e1318]:
+                    - generic [ref=e1319]: "37"
+                    - generic [ref=e1322]: "5"
+                  - generic [ref=e1325]:
+                    - generic "No session event for more than 12 hours; live polling may still be healthy." [ref=e1326]: inactive >12h
+                    - generic "Recoverable session incidents" [ref=e1327]: 5 tool incidents
+                    - link "Open transcript in Collection" [ref=e1329] [cursor=pointer]:
+                      - /url: /collection/session?file=%2FUsers%2Fianzvirbulis%2F.claude%2Fprojects%2F-Users-ianzvirbulis-Code-VibeCode-Games--claude-worktrees-new-session-01e6cf%2Fea1d7be9-daf9-4a82-af98-e34e5bcd1599%2Fsubagents%2Fagent-a82ccc2ab5b36ce87.jsonl
+                - generic [ref=e1333]:
+                  - button "Open session ea1d7be9...36826 details" [ref=e1335] [cursor=pointer]:
+                    - generic [ref=e1336]: ~/Code/VibeCode-Games/.claude/worktrees/new-session-01e6cf
+                    - generic [ref=e1340]:
+                      - generic [ref=e1341]: ea1d7be9...36826
+                      - generic [ref=e1342]: ·
+                      - generic [ref=e1343]: claude-sonnet-5
+                      - generic "Child trace of ea1d7be9-daf9-4a82-af98-e34e5bcd1599" [ref=e1344]: child agent · agent-a47d40199e4536826
+                      - generic [ref=e1345]: 82 side
+                      - generic [ref=e1346]: 1 agent
+                      - generic [ref=e1347]: claude/world-gen-biome-diversity-bb67d6
+                      - generic [ref=e1348]: 2.4M tok
+                      - generic [ref=e1351]: "source: subagent"
+                  - generic [ref=e1352]:
+                    - generic [ref=e1353]: 1d ago
+                    - generic [ref=e1354]: 21m 13s
+                  - generic [ref=e1355]: 92%
+                  - generic [ref=e1360]:
+                    - generic [ref=e1361]: model
+                    - generic [ref=e1362]: tok
+                    - generic [ref=e1363]: dur
+                  - generic [ref=e1364]:
+                    - generic [ref=e1365]: "27"
+                    - generic [ref=e1368]: "1"
+                  - generic [ref=e1371]:
+                    - generic "No session event for more than 12 hours; live polling may still be healthy." [ref=e1372]: inactive >12h
+                    - generic "Recoverable session incidents" [ref=e1373]: 1 tool incident
+                    - link "Open transcript in Collection" [ref=e1375] [cursor=pointer]:
+                      - /url: /collection/session?file=%2FUsers%2Fianzvirbulis%2F.claude%2Fprojects%2F-Users-ianzvirbulis-Code-VibeCode-Games--claude-worktrees-new-session-01e6cf%2Fea1d7be9-daf9-4a82-af98-e34e5bcd1599%2Fsubagents%2Fagent-a47d40199e4536826.jsonl
+                - generic [ref=e1379]:
+                  - button "Open session ea1d7be9...b6b5e details" [ref=e1381] [cursor=pointer]:
+                    - generic [ref=e1382]: ~/Code/VibeCode-Games/.claude/worktrees/new-session-01e6cf
+                    - generic [ref=e1386]:
+                      - generic [ref=e1387]: ea1d7be9...b6b5e
+                      - generic [ref=e1388]: ·
+                      - generic [ref=e1389]: claude-sonnet-5
+                      - generic "Child trace of ea1d7be9-daf9-4a82-af98-e34e5bcd1599" [ref=e1390]: child agent · agent-a7e4d8d89ea9b6b5e
+                      - generic [ref=e1391]: 110 side
+                      - generic [ref=e1392]: 1 agent
+                      - generic [ref=e1393]: claude/world-gen-biome-diversity-bb67d6
+                      - generic [ref=e1394]: 5.1M tok
+                      - generic [ref=e1397]: "source: subagent"
+                  - generic [ref=e1398]:
+                    - generic [ref=e1399]: 1d ago
+                    - generic [ref=e1400]: 18m 7s
+                  - generic [ref=e1401]: 92%
+                  - generic [ref=e1406]:
+                    - generic [ref=e1407]: model
+                    - generic [ref=e1408]: tok
+                    - generic [ref=e1409]: dur
+                  - generic [ref=e1410]:
+                    - generic [ref=e1411]: "33"
+                    - generic [ref=e1414]: "2"
+                  - generic [ref=e1417]:
+                    - generic "No session event for more than 12 hours; live polling may still be healthy." [ref=e1418]: inactive >12h
+                    - generic "Recoverable session incidents" [ref=e1419]: 2 tool incidents
+                    - link "Open transcript in Collection" [ref=e1421] [cursor=pointer]:
+                      - /url: /collection/session?file=%2FUsers%2Fianzvirbulis%2F.claude%2Fprojects%2F-Users-ianzvirbulis-Code-VibeCode-Games--claude-worktrees-new-session-01e6cf%2Fea1d7be9-daf9-4a82-af98-e34e5bcd1599%2Fsubagents%2Fagent-a7e4d8d89ea9b6b5e.jsonl
+                - generic [ref=e1425]:
+                  - button "Open session ea1d7be9...678ba details" [ref=e1427] [cursor=pointer]:
+                    - generic [ref=e1428]: ~/Code/VibeCode-Games/.claude/worktrees/new-session-01e6cf
+                    - generic [ref=e1432]:
+                      - generic [ref=e1433]: ea1d7be9...678ba
+                      - generic [ref=e1434]: ·
+                      - generic [ref=e1435]: claude-sonnet-5
+                      - generic "Child trace of ea1d7be9-daf9-4a82-af98-e34e5bcd1599" [ref=e1436]: child agent · agent-acc22b06a759678ba
+                      - generic [ref=e1437]: 83 side
+                      - generic [ref=e1438]: 1 agent
+                      - generic [ref=e1439]: claude/world-gen-biome-diversity-bb67d6
+                      - generic [ref=e1440]: 3.0M tok
+                      - generic [ref=e1443]: "source: subagent"
+                  - generic [ref=e1444]:
+                    - generic [ref=e1445]: 1d ago
+                    - generic [ref=e1446]: 16m 50s
+                  - generic [ref=e1447]: 92%
+                  - generic [ref=e1452]:
+                    - generic [ref=e1453]: model
+                    - generic [ref=e1454]: tok
+                    - generic [ref=e1455]: dur
+                  - generic [ref=e1456]:
+                    - generic [ref=e1457]: "27"
+                    - generic [ref=e1460]: "2"
+                  - generic [ref=e1463]:
+                    - generic "No session event for more than 12 hours; live polling may still be healthy." [ref=e1464]: inactive >12h
+                    - generic "Recoverable session incidents" [ref=e1465]: 2 tool incidents
+                    - link "Open transcript in Collection" [ref=e1467] [cursor=pointer]:
+                      - /url: /collection/session?file=%2FUsers%2Fianzvirbulis%2F.claude%2Fprojects%2F-Users-ianzvirbulis-Code-VibeCode-Games--claude-worktrees-new-session-01e6cf%2Fea1d7be9-daf9-4a82-af98-e34e5bcd1599%2Fsubagents%2Fagent-acc22b06a759678ba.jsonl
+                - generic [ref=e1471]:
+                  - button "Open session ea1d7be9...89281 details" [ref=e1473] [cursor=pointer]:
+                    - generic [ref=e1474]: ~/Code/VibeCode-Games/.claude/worktrees/new-session-01e6cf
+                    - generic [ref=e1478]:
+                      - generic [ref=e1479]: ea1d7be9...89281
+                      - generic [ref=e1480]: ·
+                      - generic [ref=e1481]: claude-sonnet-5
+                      - generic "Child trace of ea1d7be9-daf9-4a82-af98-e34e5bcd1599" [ref=e1482]: child agent · agent-aadaddd3719789281
+                      - generic [ref=e1483]: 156 side
+                      - generic [ref=e1484]: 1 agent
+                      - generic [ref=e1485]: claude/world-gen-biome-diversity-bb67d6
+                      - generic [ref=e1486]: 7.4M tok
+                      - generic [ref=e1489]: "source: subagent"
+                  - generic [ref=e1490]:
+                    - generic [ref=e1491]: 1d ago
+                    - generic [ref=e1492]: 22m 45s
+                  - generic [ref=e1493]: 92%
+                  - generic [ref=e1498]:
+                    - generic [ref=e1499]: model
+                    - generic [ref=e1500]: tok
+                    - generic [ref=e1501]: dur
+                  - generic [ref=e1502]:
+                    - generic [ref=e1503]: "49"
+                    - generic [ref=e1506]: "2"
+                  - generic [ref=e1509]:
+                    - generic "No session event for more than 12 hours; live polling may still be healthy." [ref=e1510]: inactive >12h
+                    - generic "Recoverable session incidents" [ref=e1511]: 2 tool incidents
+                    - link "Open transcript in Collection" [ref=e1513] [cursor=pointer]:
+                      - /url: /collection/session?file=%2FUsers%2Fianzvirbulis%2F.claude%2Fprojects%2F-Users-ianzvirbulis-Code-VibeCode-Games--claude-worktrees-new-session-01e6cf%2Fea1d7be9-daf9-4a82-af98-e34e5bcd1599%2Fsubagents%2Fagent-aadaddd3719789281.jsonl
+                - generic [ref=e1517]:
+                  - button "Open session ea1d7be9...1be6b details" [ref=e1519] [cursor=pointer]:
+                    - generic [ref=e1520]: ~/Code/VibeCode-Games/.claude/worktrees/new-session-01e6cf
+                    - generic [ref=e1524]:
+                      - generic [ref=e1525]: ea1d7be9...1be6b
+                      - generic [ref=e1526]: ·
+                      - generic [ref=e1527]: claude-sonnet-5
+                      - generic "Child trace of ea1d7be9-daf9-4a82-af98-e34e5bcd1599" [ref=e1528]: child agent · agent-af41d501e2fd1be6b
+                      - generic [ref=e1529]: 134 side
+                      - generic [ref=e1530]: 1 agent
+                      - generic [ref=e1531]: claude/world-gen-biome-diversity-bb67d6
+                      - generic [ref=e1532]: 5.8M tok
+                      - generic [ref=e1535]: "source: subagent"
+                  - generic [ref=e1536]:
+                    - generic [ref=e1537]: 1d ago
+                    - generic [ref=e1538]: 19m 33s
+                  - generic [ref=e1539]: 92%
+                  - generic [ref=e1544]:
+                    - generic [ref=e1545]: model
+                    - generic [ref=e1546]: tok
+                    - generic [ref=e1547]: dur
+                  - generic [ref=e1548]:
+                    - generic [ref=e1549]: "45"
+                    - generic [ref=e1552]: "1"
+                  - generic [ref=e1555]:
+                    - generic "No session event for more than 12 hours; live polling may still be healthy." [ref=e1556]: inactive >12h
+                    - generic "Recoverable session incidents" [ref=e1557]: 1 tool incident
+                    - link "Open transcript in Collection" [ref=e1559] [cursor=pointer]:
+                      - /url: /collection/session?file=%2FUsers%2Fianzvirbulis%2F.claude%2Fprojects%2F-Users-ianzvirbulis-Code-VibeCode-Games--claude-worktrees-new-session-01e6cf%2Fea1d7be9-daf9-4a82-af98-e34e5bcd1599%2Fsubagents%2Fagent-af41d501e2fd1be6b.jsonl
+                - generic [ref=e1563]:
+                  - button "Open session ea1d7be9...0dd66 details" [ref=e1565] [cursor=pointer]:
+                    - generic [ref=e1566]: ~/Code/VibeCode-Games/.claude/worktrees/new-session-01e6cf
+                    - generic [ref=e1570]:
+                      - generic [ref=e1571]: ea1d7be9...0dd66
+                      - generic [ref=e1572]: ·
+                      - generic [ref=e1573]: claude-sonnet-5
+                      - generic "Child trace of ea1d7be9-daf9-4a82-af98-e34e5bcd1599" [ref=e1574]: child agent · agent-a2a31c969e5d0dd66
+                      - generic [ref=e1575]: 103 side
+                      - generic [ref=e1576]: 1 agent
+                      - generic [ref=e1577]: claude/world-gen-biome-diversity-bb67d6
+                      - generic [ref=e1578]: 3.3M tok
+                      - generic [ref=e1581]: "source: subagent"
+                  - generic [ref=e1582]:
+                    - generic [ref=e1583]: 1d ago
+                    - generic [ref=e1584]: 18m 22s
+                  - generic [ref=e1585]: 92%
+                  - generic [ref=e1590]:
+                    - generic [ref=e1591]: model
+                    - generic [ref=e1592]: tok
+                    - generic [ref=e1593]: dur
+                  - generic [ref=e1594]:
+                    - generic [ref=e1595]: "36"
+                    - generic [ref=e1598]: "1"
+                  - generic [ref=e1601]:
+                    - generic "No session event for more than 12 hours; live polling may still be healthy." [ref=e1602]: inactive >12h
+                    - generic "Recoverable session incidents" [ref=e1603]: 1 tool incident
+                    - link "Open transcript in Collection" [ref=e1605] [cursor=pointer]:
+                      - /url: /collection/session?file=%2FUsers%2Fianzvirbulis%2F.claude%2Fprojects%2F-Users-ianzvirbulis-Code-VibeCode-Games--claude-worktrees-new-session-01e6cf%2Fea1d7be9-daf9-4a82-af98-e34e5bcd1599%2Fsubagents%2Fagent-a2a31c969e5d0dd66.jsonl
+                - generic [ref=e1609]:
+                  - button "Open session ea1d7be9...7d549 details" [ref=e1611] [cursor=pointer]:
+                    - generic [ref=e1612]: ~/Code/VibeCode-Games/.claude/worktrees/new-session-01e6cf
+                    - generic [ref=e1616]:
+                      - generic [ref=e1617]: ea1d7be9...7d549
+                      - generic [ref=e1618]: ·
+                      - generic [ref=e1619]: claude-sonnet-5
+                      - generic "Child trace of ea1d7be9-daf9-4a82-af98-e34e5bcd1599" [ref=e1620]: child agent · agent-aefc62ccf81d7d549
+                      - generic [ref=e1621]: 49 side
+                      - generic [ref=e1622]: 1 agent
+                      - generic [ref=e1623]: claude/world-gen-biome-diversity-bb67d6
+                      - generic [ref=e1624]: 1.2M tok
+                      - generic [ref=e1627]: "source: subagent"
+                  - generic [ref=e1628]:
+                    - generic [ref=e1629]: 1d ago
+                    - generic [ref=e1630]: 13m 5s
+                  - generic [ref=e1631]: 92%
+                  - generic [ref=e1636]:
+                    - generic [ref=e1637]: model
+                    - generic [ref=e1638]: tok
+                    - generic [ref=e1639]: dur
+                  - generic [ref=e1640]:
+                    - generic [ref=e1641]: "17"
+                    - generic [ref=e1644]: "1"
+                  - generic [ref=e1647]:
+                    - generic "No session event for more than 12 hours; live polling may still be healthy." [ref=e1648]: inactive >12h
+                    - generic "Recoverable session incidents" [ref=e1649]: 1 tool incident
+                    - link "Open transcript in Collection" [ref=e1651] [cursor=pointer]:
+                      - /url: /collection/session?file=%2FUsers%2Fianzvirbulis%2F.claude%2Fprojects%2F-Users-ianzvirbulis-Code-VibeCode-Games--claude-worktrees-new-session-01e6cf%2Fea1d7be9-daf9-4a82-af98-e34e5bcd1599%2Fsubagents%2Fagent-aefc62ccf81d7d549.jsonl
+              - generic [ref=e1655]:
+                - generic [ref=e1656]: Showing the newest 25 filtered sessions.
+                - button "Show 25 more" [ref=e1657] [cursor=pointer]
+  - region "Notifications"
+  - button "Open Next.js Dev Tools" [ref=e218] [cursor=pointer]
+  - alert [ref=e222]

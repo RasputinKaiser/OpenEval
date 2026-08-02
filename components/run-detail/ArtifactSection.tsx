@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import clsx from "clsx";
 import { ChevronRight, Eye, FileCode, Loader2, Sparkles } from "lucide-react";
 import type { RunCaseRecord } from "@/lib/types";
-import { redactSensitiveText } from "@/lib/redaction";
+import { redactDisplay, redactSensitiveText } from "@/lib/redaction";
 import { useRedaction } from "@/lib/use-redaction";
 import ArtifactPreview, { artifactKind } from "../ArtifactPreview";
 import { fetchArtifact, inlineStyles, type ArtifactReceipt } from "./artifact-utils";
@@ -20,6 +20,7 @@ export default function ArtifactStage({
   status,
   collapsed,
   onToggle,
+  usernames,
 }: {
   artifacts: string[];
   caseId: string;
@@ -27,6 +28,7 @@ export default function ArtifactStage({
   status: RunCaseRecord["status"];
   collapsed: boolean;
   onToggle: () => void;
+  usernames?: ReadonlySet<string>;
 }) {
   const [selected, setSelected] = useState(artifacts[0] ?? "");
   const [preview, setPreview] = useState<ArtifactReceipt | null>(null);
@@ -130,7 +132,10 @@ export default function ArtifactStage({
               Loading observed artifact
             </div>
           ) : preview ? (
-            <ArtifactPreview path={preview.path} content={preview.content} />
+            <ArtifactPreview
+              path={redact ? redactSensitiveText(preview.path) : preview.path}
+              content={redact ? redactDisplay(preview.content, { usernames, secrets: true }) : preview.content}
+            />
           ) : (
             <div role="status" className="flex min-h-[280px] flex-col items-center justify-center rounded-md border border-dashed border-[#cbd2df] bg-white px-6 text-center">
               <Sparkles className="mb-2 size-6 text-[#7c5cff]" />

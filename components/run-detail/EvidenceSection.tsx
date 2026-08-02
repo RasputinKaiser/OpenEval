@@ -67,7 +67,7 @@ const GRADER_TIER_COLOR: Record<string, string> = {
   manual: "bg-bg-elev text-fg-dim",
 };
 
-export const GraderRow = memo(function GraderRow({ g }: { g: GraderResult }) {
+export const GraderRow = memo(function GraderRow({ g, showText = (value) => String(value ?? "") }: { g: GraderResult; showText?: (value: unknown) => string }) {
   const summary = g.detail.length > 120 ? `${g.detail.slice(0, 120)}…` : g.detail;
   const expected = g.spec.type === "file_eq" ? g.spec.expected : g.spec.type === "file_contains" ? g.spec.pattern : undefined;
   const actual = g.output ?? "";
@@ -86,20 +86,20 @@ export const GraderRow = memo(function GraderRow({ g }: { g: GraderResult }) {
             </span>
             <span className="text-[10px] text-fg-dim mono tabular-nums">{g.durationMs}ms</span>
           </div>
-          <div className={clsx("text-[11px] mt-1 break-words", g.passed ? "text-fg-muted" : "text-fg")}>{summary}</div>
+          <div className={clsx("text-[11px] mt-1 break-words", g.passed ? "text-fg-muted" : "text-fg")}>{showText(summary)}</div>
         </div>
       </summary>
       <div className="px-4 py-3 space-y-3 bg-bg-subtle/30 border-t border-bd-subtle">
         <div>
           <div className="text-[10px] uppercase text-fg-dim mb-1">Detail</div>
-          <pre className="text-[11px] mono text-fg-muted whitespace-pre-wrap break-words">{g.detail}</pre>
+          <pre className="text-[11px] mono text-fg-muted whitespace-pre-wrap break-words">{showText(g.detail)}</pre>
         </div>
         {showDiff ? (
-          <DiffView expected={expected !== undefined ? String(expected) : ""} actual={actual} />
+          <DiffView expected={expected !== undefined ? String(expected) : ""} actual={actual} showText={showText} />
         ) : g.output ? (
           <div>
             <div className="text-[10px] uppercase text-fg-dim mb-1">Output</div>
-            <pre className="text-[11px] mono text-fg-dim bg-bg p-2 rounded border border-bd-subtle overflow-auto max-h-96 whitespace-pre-wrap break-words">{g.output}</pre>
+            <pre className="text-[11px] mono text-fg-dim bg-bg p-2 rounded border border-bd-subtle overflow-auto max-h-96 whitespace-pre-wrap break-words">{showText(g.output)}</pre>
           </div>
         ) : null}
       </div>
@@ -107,18 +107,18 @@ export const GraderRow = memo(function GraderRow({ g }: { g: GraderResult }) {
   );
 });
 
-function DiffView({ expected, actual }: { expected: string; actual: string }) {
+function DiffView({ expected, actual, showText }: { expected: string; actual: string; showText: (value: unknown) => string }) {
   const expLines = expected.split("\n");
   const actLines = actual.split("\n");
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-      <DiffColumn label="Expected" lines={expLines} other={actLines} />
-      <DiffColumn label="Actual" lines={actLines} other={expLines} />
+      <DiffColumn label="Expected" lines={expLines} other={actLines} showText={showText} />
+      <DiffColumn label="Actual" lines={actLines} other={expLines} showText={showText} />
     </div>
   );
 }
 
-function DiffColumn({ label, lines, other }: { label: string; lines: string[]; other: string[] }) {
+function DiffColumn({ label, lines, other, showText }: { label: string; lines: string[]; other: string[]; showText: (value: unknown) => string }) {
   return (
     <div>
       <div className="text-[10px] uppercase text-fg-dim mb-1">{label}</div>
@@ -128,7 +128,7 @@ function DiffColumn({ label, lines, other }: { label: string; lines: string[]; o
           return (
             <div key={i} className={clsx("flex", changed && "bg-err/5")}>
               <span className="text-fg-dim mono text-[9px] w-6 shrink-0 text-right pr-2 select-none">{i + 1}</span>
-              <span className={clsx("text-[10px] mono whitespace-pre-wrap break-all flex-1", changed ? "text-err/80" : "text-fg-muted")}>{line || " "}</span>
+              <span className={clsx("text-[10px] mono whitespace-pre-wrap break-all flex-1", changed ? "text-err/80" : "text-fg-muted")}>{showText(line || " ")}</span>
             </div>
           );
         })}

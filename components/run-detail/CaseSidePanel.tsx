@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useMemo } from "react";
 import clsx from "clsx";
 import StatusBadge from "../StatusBadge";
 import CopyButton from "./CopyButton";
@@ -15,8 +16,10 @@ import {
 import type { LucideIcon } from "lucide-react";
 import type { RunCaseRecord } from "@/lib/types";
 import { presentRunnerCost } from "@/lib/cost-display";
+import { useRedactedShow } from "@/lib/use-redaction";
 import { summarizeCaseTrust, type CaseTrustSummary } from "./trust";
 import type { CollapsedMap } from "./collapse";
+import { RedactToggle } from "../RedactToggle";
 
 /** Right-hand reading panel for the selected case: trust, evidence, artifact, transcript, answer, tools. */
 export default function CaseSidePanel({
@@ -31,6 +34,8 @@ export default function CaseSidePanel({
   onToggleSection: (section: string) => void;
 }) {
   const runner = rc.runner_result;
+  const redactionSeed = useMemo(() => [JSON.stringify(rc)], [rc]);
+  const { redact, setRedact, show, users } = useRedactedShow(redactionSeed, { secrets: true });
   const cost = runner ? presentRunnerCost(runner.usage) : null;
   const grader = rc.grader_result;
   const trust = summarizeCaseTrust(rc);
@@ -54,13 +59,16 @@ export default function CaseSidePanel({
       <div className="card p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="text-base font-semibold">{rc.case_name}</div>
+            <div className="text-base font-semibold">{show(rc.case_name)}</div>
             <div className="mt-0.5 flex items-center gap-0.5 text-[11px] text-fg-dim mono">
               <span className="truncate">{rc.case_id}</span>
               <CopyButton text={rc.case_id} label="Copy case id" />
             </div>
           </div>
-          <StatusBadge status={rc.status} size="md" />
+          <div className="flex items-center gap-2">
+            <RedactToggle compact redact={redact} onToggle={() => setRedact((value) => !value)} />
+            <StatusBadge status={rc.status} size="md" />
+          </div>
         </div>
         {jumps.length > 1 && (
           <div className="mt-3 flex flex-wrap items-center gap-1.5">
@@ -84,7 +92,7 @@ export default function CaseSidePanel({
             <AlertCircle className="size-4 text-warn shrink-0 mt-0.5" />
             <div className="min-w-0 flex-1">
               <div className="text-sm font-medium text-warn">Error</div>
-              <pre className="mt-2 text-xs mono text-warn whitespace-pre-wrap break-words">{rc.error_msg || "An error occurred while running this case."}</pre>
+              <pre className="mt-2 text-xs mono text-warn whitespace-pre-wrap break-words">{show(rc.error_msg || "An error occurred while running this case.")}</pre>
             </div>
           </div>
         </div>
@@ -121,7 +129,7 @@ export default function CaseSidePanel({
           />
           <div className="divide-y divide-bd-subtle">
             {grader.results.map((g, i) => (
-              <GraderRow key={i} g={g} />
+              <GraderRow key={i} g={g} showText={show} />
             ))}
           </div>
         </CollapsibleCard>
@@ -136,6 +144,7 @@ export default function CaseSidePanel({
             status={rc.status}
             collapsed={!!collapsed["artifact"]}
             onToggle={() => onToggleSection("artifact")}
+            usernames={users}
           />
         </div>
       ) : null}
@@ -147,7 +156,7 @@ export default function CaseSidePanel({
           collapsed={!!collapsed["transcript"]}
           onToggle={() => onToggleSection("transcript")}
         >
-          <Transcript transcript={runner.transcript} />
+          <Transcript transcript={runner.transcript} showText={show} />
         </CollapsibleCard>
       )}
 
@@ -159,7 +168,7 @@ export default function CaseSidePanel({
           onToggle={() => onToggleSection("answer")}
           right={<CopyButton text={runner.finalText} label="Copy final answer" />}
         >
-          <pre className="p-4 text-[12px] mono text-fg whitespace-pre-wrap max-h-64 overflow-y-auto">{runner.finalText}</pre>
+          <pre className="p-4 text-[12px] mono text-fg whitespace-pre-wrap max-h-64 overflow-y-auto">{show(runner.finalText)}</pre>
         </CollapsibleCard>
       )}
 
@@ -180,8 +189,8 @@ export default function CaseSidePanel({
                   {tc.isError && <span className="text-[10px] text-err px-1 rounded bg-err/10">err</span>}
                 </summary>
                 <div className="px-4 py-2 space-y-2 bg-bg-subtle/30">
-                  {tc.input !== undefined && <pre className="text-[10px] mono text-fg-muted overflow-x-auto">{JSON.stringify(tc.input, null, 2).slice(0, 2000)}</pre>}
-                  {tc.output && <pre className="text-[10px] mono text-fg-dim overflow-x-auto">{tc.output.slice(0, 2000)}</pre>}
+                  {tc.input !== undefined && <pre className="text-[10px] mono text-fg-muted overflow-x-auto">{show(JSON.stringify(tc.input, null, 2).slice(0, 2000))}</pre>}
+                  {tc.output && <pre className="text-[10px] mono text-fg-dim overflow-x-auto">{show(tc.output.slice(0, 2000))}</pre>}
                 </div>
               </details>
             ))}

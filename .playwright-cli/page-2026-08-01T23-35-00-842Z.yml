@@ -1,0 +1,95 @@
+- generic [active] [ref=f6e1]:
+  - link "Skip to content" [ref=f6e2] [cursor=pointer]:
+    - /url: "#main"
+  - main [ref=f6e4]:
+    - generic [ref=f6e5]:
+      - generic [ref=f6e6]:
+        - generic [ref=f6e7]:
+          - heading "Collection" [level=1] [ref=f6e8]
+          - generic [ref=f6e21]:
+            - generic "Scan generated 2026-08-01T23:34:59.794Z" [ref=f6e22]: scanned just now
+            - button "Redact on" [pressed] [ref=f6e23] [cursor=pointer]
+            - link "Timeline & Impact" [ref=f6e27] [cursor=pointer]:
+              - /url: /collection/timeline
+            - button "Rescan" [ref=f6e30] [cursor=pointer]
+        - paragraph [ref=f6e36]: Live & archived transcripts discovered across every agent harness on this machine. Archived sessions outlive their pruned files.
+      - navigation "Page sections" [ref=f6e37]:
+        - generic [ref=f6e38]:
+          - generic [ref=f6e39]: Showing Start here
+          - button "Show all page sections" [ref=f6e40] [cursor=pointer]: All
+          - button "Start here" [pressed] [ref=f6e41] [cursor=pointer]
+          - button "Trust data" [ref=f6e42] [cursor=pointer]
+          - button "Spend & usage" [ref=f6e43] [cursor=pointer]
+          - button "When you work" [ref=f6e44] [cursor=pointer]
+          - button "Model mix" [ref=f6e45] [cursor=pointer]
+          - button "Tool health" [ref=f6e46] [cursor=pointer]
+          - button "Sources" [ref=f6e47] [cursor=pointer]
+          - button "Find a session" [ref=f6e48] [cursor=pointer]
+        - generic [ref=f6e49]:
+          - generic [ref=f6e50]: 01 / 08
+          - generic [ref=f6e51]: Corpus size, API-equivalent spend, work volume, and a direct transcript search.
+      - status [ref=f6e52]:
+        - generic [ref=f6e55]:
+          - generic [ref=f6e56]: Parsed coverage has caveats
+          - generic [ref=f6e57]: One or more discovered transcript files were unsupported, unreadable, or otherwise excluded from parsed totals for Codex CLI + ChatGPT app. Parser warnings below describe the retained sessions.
+      - generic [ref=f6e59]:
+        - generic [ref=f6e60]:
+          - generic [ref=f6e61]: Inventory
+          - generic [ref=f6e67]:
+            - generic "2,549" [ref=f6e68]:
+              - generic [ref=f6e69]: Sessions
+              - generic [ref=f6e70]: 2.5k
+              - generic [ref=f6e71]: 1.4k child traces
+            - generic [ref=f6e72]:
+              - generic [ref=f6e73]: Sources
+              - generic [ref=f6e74]: "10"
+              - generic [ref=f6e75]: of 15 known
+            - generic "3,682 session files on disk" [ref=f6e76]:
+              - generic [ref=f6e77]: Files
+              - generic [ref=f6e78]: 3.7k
+              - generic [ref=f6e79]: on-disk inventory
+        - generic [ref=f6e80]:
+          - generic [ref=f6e81]: API equivalent
+          - generic [ref=f6e88]:
+            - generic "$32,664.92 API-equivalent estimate from recorded token classes and OpenRouter /api/v1/models rates checked 2026-07-30. Not actual subscription/provider spend. Aggregate estimates exclude request-level long-context surcharges when the transcript does not preserve enough threshold evidence." [ref=f6e89]:
+              - generic [ref=f6e90]: List estimate
+              - generic [ref=f6e91]: ~$32.7k
+              - generic [ref=f6e92]: 86% coverage · 2.2k priced
+            - generic "5,113,590,607 input + output usage reported across model calls. This is processed usage, not unique text; separately reported cache reads are excluded." [ref=f6e93]:
+              - generic [ref=f6e94]: Input + output
+              - generic [ref=f6e95]: 5.11B
+              - generic [ref=f6e96]: ↑4.98B ↓130M
+            - generic "30,654,402,808 cache-read tokens — context re-read across turns (billed at cache rates), plus 588,134,536 written to cache" [ref=f6e97]:
+              - generic [ref=f6e98]: Cached ctx
+              - generic [ref=f6e99]: 31B
+              - generic [ref=f6e100]: 6.0× input+output
+        - generic [ref=f6e101]:
+          - generic [ref=f6e102]: Work
+          - generic [ref=f6e108]:
+            - generic "202,068 tool calls" [ref=f6e109]:
+              - generic [ref=f6e110]: Calls
+              - generic [ref=f6e111]: 202k
+              - generic [ref=f6e112]: tool invocations
+            - generic "10,505 failed calls of 202,068" [ref=f6e113]:
+              - generic [ref=f6e114]: Errors
+              - generic [ref=f6e115]: 5.2%
+              - generic [ref=f6e116]: 11k failed
+            - generic [ref=f6e117]:
+              - generic [ref=f6e118]: Peak hour
+              - generic [ref=f6e119]: Tue 21:00
+              - generic [ref=f6e120]: 73 sessions
+      - generic [ref=f6e122]:
+        - searchbox "Search sessions" [ref=f6e126]
+        - button "Search" [disabled] [ref=f6e127]
+      - paragraph [ref=f6e128]: ~ Dollar values are API-equivalent list estimates, not subscription/provider spend. They use token evidence plus OpenRouter /api/v1/models rates checked 2026-07-30; family and fallback mappings remain visibly labeled. Request-level long-context surcharges may be absent when the transcript lacks threshold evidence.
+  - navigation "Mobile navigation" [ref=f6e129]:
+    - generic [ref=f6e130]:
+      - link "Dashboard" [ref=f6e131] [cursor=pointer]:
+        - /url: /
+      - link "Live" [ref=f6e138] [cursor=pointer]:
+        - /url: /live
+      - link "Runs" [ref=f6e146] [cursor=pointer]:
+        - /url: /runs
+      - button "More navigation" [ref=f6e150] [cursor=pointer]:
+        - generic [ref=f6e155]: More
+  - region "Notifications"

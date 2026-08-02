@@ -47,6 +47,7 @@ export function WeeklyUsageChart({ rollup }: { rollup: RollupReport }) {
   const [selected, setSelected] = useState(Math.max(0, (rollup.weekly?.length ?? 1) - 1));
 
   const weekly = rollup.weekly ?? [];
+  const hasWeeklyEvidence = weekly.some((week) => week.sessions > 0);
   const max = Math.max(...weekly.map((w) => weekValue(w, metric)), 1e-9);
   const total = weekly.reduce((sum, week) => sum + weekValue(week, metric), 0);
   const activeIndex = hovered ?? Math.min(selected, Math.max(0, weekly.length - 1));
@@ -72,12 +73,26 @@ export function WeeklyUsageChart({ rollup }: { rollup: RollupReport }) {
     </div>
   );
 
+  if (!hasWeeklyEvidence) {
+    return (
+      <section className="card overflow-hidden lg:col-span-2" aria-labelledby={headingId}>
+        <div className="px-4 pt-4">
+          <h2 id={headingId} className="text-[11px] uppercase tracking-[0.12em] text-fg-muted">Usage by week</h2>
+        </div>
+        <div className="m-4 rounded-lg border border-dashed border-bd-subtle bg-bg-elev px-4 py-5 text-sm" role="status">
+          <strong className="block text-fg">No weekly usage evidence in this snapshot</strong>
+          <span className="mt-1 block text-[11px] leading-snug text-fg-dim">The report contains zero observed session starts in the visible window, so the zero-filled calendar buckets are not drawn as measured usage.</span>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="card overflow-hidden lg:col-span-2" aria-labelledby={headingId}>
       <div className="flex items-start justify-between gap-3 px-4 pt-4 flex-wrap">
         <div>
           <h2 id={headingId} className="text-[11px] uppercase tracking-[0.12em] text-fg-muted">
-            Usage by week{metric === "cost" && rollup.anyEstimatedCost ? " — API-list equivalent" : ""}
+            Usage by week{metric === "cost" && windowEstimated ? " — API-list equivalent" : ""}
           </h2>
           <p className="mt-1 text-[11px] text-fg-dim">
             Scale: <span className="mono text-fg-muted">{metric === "cost" ? "USD · API equivalent" : metric === "sessions" ? "sessions" : metric === "tokens" ? "tokens" : "tool calls"}</span> · select a week for its complete usage mix.
@@ -193,6 +208,21 @@ export function ActivityHeatmap({ heatmap, totalSessions }: { heatmap: number[][
   const headingId = useId();
   const [hovered, setHovered] = useState<{ d: number; h: number } | null>(null);
   const [selected, setSelected] = useState<{ d: number; h: number } | null>(null);
+  const hasActivityEvidence = totalSessions > 0 && heatmap.some((row) => row.some((value) => Number.isFinite(value) && value > 0));
+
+  if (!hasActivityEvidence) {
+    return (
+      <section className="card overflow-hidden lg:col-span-2" aria-labelledby={headingId}>
+        <div className="px-4 pt-4">
+          <h2 id={headingId} className="text-[11px] uppercase tracking-[0.12em] text-fg-muted">When you work — session starts</h2>
+        </div>
+        <div className="m-4 rounded-lg border border-dashed border-bd-subtle bg-bg-elev px-4 py-5 text-sm" role="status">
+          <strong className="block text-fg">No session-start evidence in this snapshot</strong>
+          <span className="mt-1 block text-[11px] leading-snug text-fg-dim">The heatmap stays empty until at least one observed session start is available; an empty grid is not a claim that every hour was measured.</span>
+        </div>
+      </section>
+    );
+  }
 
   const maxCell = Math.max(1, ...heatmap.map((row) => Math.max(...row)));
   let peak = { d: 0, h: 0, v: 0 };
@@ -308,6 +338,18 @@ export function ToolHealthList({ tools, fullWidth, hideHeading }: { tools: ToolR
   const headingId = useId();
   const [hovered, setHovered] = useState<string | null>(null);
   const maxCalls = tools[0]?.calls || 1;
+
+  if (tools.length === 0) {
+    return (
+      <section className={clsx("card p-4", fullWidth && "lg:col-span-3")} aria-labelledby={hideHeading ? undefined : headingId} aria-label={hideHeading ? "Tool health" : undefined}>
+        {!hideHeading && <h2 id={headingId} className="mb-2 text-[11px] uppercase tracking-wider text-fg-muted">Tool health — top tools</h2>}
+        <div className="rounded-lg border border-dashed border-bd-subtle bg-bg-elev px-3 py-4 text-sm" role="status">
+          <strong className="block text-fg">No tool-call evidence in this snapshot</strong>
+          <span className="mt-1 block text-[11px] leading-snug text-fg-dim">Tool health is unavailable until a retained session contains an observed tool call.</span>
+        </div>
+      </section>
+    );
+  }
 
   const tipFor = (t: ToolRollup) => {
     const errPct = t.calls ? (t.errors / t.calls) * 100 : 0;

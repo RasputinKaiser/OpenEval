@@ -1,0 +1,480 @@
+- generic [active] [ref=f7e1]:
+  - link "Skip to content" [ref=f7e2] [cursor=pointer]:
+    - /url: "#main"
+  - generic [ref=f7e3]:
+    - complementary [ref=f7e4]:
+      - generic [ref=f7e10]:
+        - generic [ref=f7e11]: OpenEval
+        - generic [ref=f7e12]: OpenEval Suite
+      - navigation "Primary" [ref=f7e13]:
+        - link "Dashboard" [ref=f7e15] [cursor=pointer]:
+          - /url: /
+        - generic [ref=f7e22]:
+          - link "Runs" [ref=f7e23] [cursor=pointer]:
+            - /url: /runs
+          - link "Leaderboard" [ref=f7e28] [cursor=pointer]:
+            - /url: /runs/leaderboard
+          - link "Compare" [ref=f7e36] [cursor=pointer]:
+            - /url: /runs/compare
+          - link "Cases" [ref=f7e45] [cursor=pointer]:
+            - /url: /cases
+          - link "New Run" [ref=f7e50] [cursor=pointer]:
+            - /url: /runs/new
+          - link "Accuracy" [ref=f7e53] [cursor=pointer]:
+            - /url: /accuracy
+        - generic [ref=f7e58]:
+          - link "Live" [ref=f7e59] [cursor=pointer]:
+            - /url: /live
+          - link "Collection" [ref=f7e67] [cursor=pointer]:
+            - /url: /collection
+          - link "Timeline" [ref=f7e79] [cursor=pointer]:
+            - /url: /collection/timeline
+        - generic [ref=f7e84]:
+          - link "Harnesses" [ref=f7e85] [cursor=pointer]:
+            - /url: /harnesses
+          - link "Settings" [ref=f7e89] [cursor=pointer]:
+            - /url: /settings
+    - main [ref=f7e94]:
+      - main [ref=f7e95]:
+        - region "Evaluate workflow" [ref=f7e96]:
+          - generic [ref=f7e98]:
+            - generic [ref=f7e99]: Evaluate workflow
+            - paragraph [ref=f7e100]: Run a suite, inspect evidence, then compare what changed.
+          - navigation "Evaluate pages" [ref=f7e101]:
+            - link "01 · Runs Track evaluations" [ref=f7e102] [cursor=pointer]:
+              - /url: /runs
+              - generic [ref=f7e106]:
+                - generic [ref=f7e107]: 01 · Runs
+                - generic [ref=f7e108]: Track evaluations
+            - link "02 · Leaderboard Rank harnesses" [ref=f7e109] [cursor=pointer]:
+              - /url: /runs/leaderboard
+              - generic [ref=f7e117]:
+                - generic [ref=f7e118]: 02 · Leaderboard
+                - generic [ref=f7e119]: Rank harnesses
+            - link "03 · Compare Find regressions" [ref=f7e120] [cursor=pointer]:
+              - /url: /runs/compare
+              - generic [ref=f7e129]:
+                - generic [ref=f7e130]: 03 · Compare
+                - generic [ref=f7e131]: Find regressions
+            - link "04 · Cases Curate the suite" [ref=f7e132] [cursor=pointer]:
+              - /url: /cases
+              - generic [ref=f7e137]:
+                - generic [ref=f7e138]: 04 · Cases
+                - generic [ref=f7e139]: Curate the suite
+            - link "05 · New run Launch an experiment" [ref=f7e140] [cursor=pointer]:
+              - /url: /runs/new
+              - generic [ref=f7e144]:
+                - generic [ref=f7e145]: 05 · New run
+                - generic [ref=f7e146]: Launch an experiment
+            - link "06 · Accuracy Audit evidence" [ref=f7e147] [cursor=pointer]:
+              - /url: /accuracy
+              - generic [ref=f7e152]:
+                - generic [ref=f7e153]: 06 · Accuracy
+                - generic [ref=f7e154]: Audit evidence
+        - generic [ref=f7e155]:
+          - generic [ref=f7e157]:
+            - generic [ref=f7e158]:
+              - generic [ref=f7e159]:
+                - generic [ref=f7e160]: Eval complete
+                - generic "codex" [ref=f7e167]
+                - generic [ref=f7e168]:
+                  - generic [ref=f7e169]: f5c15c33
+                  - button "Copy run id" [ref=f7e170] [cursor=pointer]
+                - generic [ref=f7e174]: gpt-5.6-luna
+                - link "Report .md" [ref=f7e175] [cursor=pointer]:
+                  - /url: /api/runs/f5c15c33/report?redact=1
+                - button "Export CSV" [ref=f7e176] [cursor=pointer]
+                - button "Export JSON" [ref=f7e177] [cursor=pointer]
+              - heading "Run 2026-07-30 23:52:11" [level=1] [ref=f7e178]
+              - paragraph [ref=f7e179]: Watch cases resolve, inspect grader evidence, preview artifacts, and see how much proof backs the score.
+            - generic [ref=f7e180]:
+              - generic [ref=f7e181]:
+                - generic [ref=f7e182]: Progress
+                - generic [ref=f7e183]: 4/4
+              - generic [ref=f7e186]:
+                - generic [ref=f7e187]:
+                  - generic [ref=f7e188]: "1"
+                  - generic [ref=f7e189]: Pass
+                - generic [ref=f7e190]:
+                  - generic [ref=f7e191]: "3"
+                  - generic [ref=f7e192]: Fail
+                - generic [ref=f7e193]:
+                  - generic [ref=f7e194]: "0"
+                  - generic [ref=f7e195]: Live
+                - generic [ref=f7e196]:
+                  - generic [ref=f7e197]: "4"
+                  - generic [ref=f7e198]: Visual
+          - region [ref=f7e199]:
+            - status [ref=f7e200]: Run settled. 4 of 4 cases resolved. Event stream inactive.
+            - generic [ref=f7e201]:
+              - generic [ref=f7e206]:
+                - generic [ref=f7e207]:
+                  - heading "Watch mode" [level=2] [ref=f7e208]
+                  - generic [ref=f7e209]: settled
+                - paragraph [ref=f7e213]: One calm view of what is running, what changed, and where to inspect next.
+              - generic [ref=f7e214]:
+                - generic [ref=f7e215]: 4/4 resolved
+                - generic [ref=f7e216]: 100%
+            - generic [ref=f7e217]:
+              - region [ref=f7e218]:
+                - generic [ref=f7e219]:
+                  - generic [ref=f7e220]: Run settled
+                  - generic [ref=f7e221]: failed
+                - generic [ref=f7e224]:
+                  - generic [ref=f7e225]:
+                    - heading "Tell an outcome story with data" [level=3] [ref=f7e226]
+                    - generic [ref=f7e227]:
+                      - generic [ref=f7e228]: visual-data-story-card
+                      - generic [ref=f7e229]: ·
+                      - generic [ref=f7e230]: visual-code
+                      - generic [ref=f7e231]: Data artifact
+                  - generic [ref=f7e232]: case 01 / 04
+                - list "Case lifecycle" [ref=f7e233]:
+                  - 'listitem "Queued: complete" [ref=f7e234]'
+                  - 'listitem "Generating: complete" [ref=f7e239]'
+                  - 'listitem "Grading: complete" [ref=f7e244]'
+                  - 'listitem "Result: current" [ref=f7e249]'
+                - generic [ref=f7e253]:
+                  - generic [ref=f7e254]: Evidence failed
+                  - button "Open evidence" [ref=f7e256] [cursor=pointer]
+              - region "Live run pulse" [ref=f7e259]:
+                - generic [ref=f7e260]:
+                  - generic [ref=f7e261]: Wall time
+                  - generic [ref=f7e265]: 4m4s
+                - generic [ref=f7e266]:
+                  - generic [ref=f7e267]: Pass rate
+                  - generic [ref=f7e271]: 25%
+                - generic [ref=f7e272]:
+                  - generic [ref=f7e273]: Resolved
+                  - generic [ref=f7e277]: 4/4
+                - generic [ref=f7e278]:
+                  - generic [ref=f7e279]: Visual lanes
+                  - generic [ref=f7e283]: "4"
+                - generic [ref=f7e284]:
+                  - generic [ref=f7e285]:
+                    - generic [ref=f7e286]: Resolution
+                    - generic [ref=f7e287]: 100%
+                  - progressbar "Run resolution" [ref=f7e288]
+                  - generic [ref=f7e290]:
+                    - generic [ref=f7e291]: 1 passed
+                    - generic [ref=f7e292]: 3 failed
+                    - generic [ref=f7e293]: 0 errors
+                    - generic [ref=f7e294]: 0 skipped
+                - paragraph [ref=f7e295]: Visual lanes count declared artifact contracts only; artifact presence is not a visual-quality verdict.
+              - region [ref=f7e296]:
+                - generic [ref=f7e297]:
+                  - heading "Recent activity" [level=3] [ref=f7e301]
+                  - generic [ref=f7e302]: quiet
+                - group "Activity filter" [ref=f7e303]:
+                  - button "All" [pressed] [ref=f7e304] [cursor=pointer]
+                  - button "Tools" [ref=f7e305] [cursor=pointer]
+                  - button "Results" [ref=f7e306] [cursor=pointer]
+                - log [ref=f7e307]:
+                  - generic [ref=f7e308]:
+                    - paragraph [ref=f7e311]: The run is settled. Select a case below to inspect its evidence.
+                    - link "Open full case transcript" [ref=f7e312] [cursor=pointer]:
+                      - /url: /runs/f5c15c33/case/visual-data-story-card
+          - generic [ref=f7e313]:
+            - generic [ref=f7e314]:
+              - generic [ref=f7e315]: Execution timeline · 4 cases
+              - generic [ref=f7e317]:
+                - generic [ref=f7e318]: "elapsed: 4m4s (case span)"
+                - generic [ref=f7e319]: "work: 6m43s (overlap summed)"
+            - generic [ref=f7e320]:
+              - button "Case Tell an outcome story with data, status failed, duration 2m7s" [pressed] [ref=f7e321] [cursor=pointer]
+              - button "Case Create an isometric voxel world, status passed, duration 2m3s" [ref=f7e322] [cursor=pointer]
+              - button "Case Design a readable route planner, status failed, duration 2m1s" [ref=f7e323] [cursor=pointer]
+              - button "Case Write an incident runbook, status failed, duration 32.3s" [ref=f7e324] [cursor=pointer]
+            - generic [ref=f7e325]:
+              - generic [ref=f7e326]:
+                - text: pass
+                - generic [ref=f7e328]: "1"
+              - generic [ref=f7e329]:
+                - text: fail
+                - generic [ref=f7e331]: "3"
+          - generic [ref=f7e332]:
+            - generic [ref=f7e333]:
+              - generic [ref=f7e338]:
+                - generic [ref=f7e339]: Evaluation confidence
+                - generic [ref=f7e340]: Separates pass rate from proof coverage, adversarial coverage, and known weaknesses.
+              - generic [ref=f7e341]: Solid confidence
+            - generic [ref=f7e342]:
+              - generic [ref=f7e344]:
+                - generic [ref=f7e345]:
+                  - generic [ref=f7e346]: Deterministic + trace proof
+                  - generic [ref=f7e351]: 4/4 cases have non-LLM proof backstops
+                - generic [ref=f7e352]: 100%
+              - generic [ref=f7e356]:
+                - generic [ref=f7e357]:
+                  - generic [ref=f7e358]: Known-bad coverage
+                  - generic [ref=f7e361]: 4/4 cases include plausible bad solves to reject
+                - generic [ref=f7e362]: 100%
+              - generic [ref=f7e365]:
+                - generic [ref=f7e366]: Weakness radar
+                - generic [ref=f7e369]: No structural weaknesses detected
+          - generic [ref=f7e371]:
+            - generic [ref=f7e372]:
+              - generic [ref=f7e374]:
+                - generic [ref=f7e378]: Cases
+                - generic [ref=f7e379]: "4"
+              - generic [ref=f7e380]:
+                - button "All" [pressed] [ref=f7e381] [cursor=pointer]
+                - button "Show passed cases (1)" [ref=f7e382] [cursor=pointer]: ● 1
+                - button "Show failed cases (3)" [ref=f7e383] [cursor=pointer]: ● 3
+                - button "Show error cases (0)" [ref=f7e384] [cursor=pointer]: "! 0"
+                - generic [ref=f7e385]: 4/4 · 25%
+              - generic [ref=f7e386]:
+                - generic [ref=f7e387]:
+                  - checkbox "Select Tell an outcome story with data for re-run" [ref=f7e389]
+                  - button "Select Tell an outcome story with data" [ref=f7e390] [cursor=pointer]:
+                    - generic [ref=f7e391]: "01"
+                    - generic [ref=f7e392]:
+                      - generic [ref=f7e393]:
+                        - generic [ref=f7e394]: Tell an outcome story with data
+                        - generic [ref=f7e395]: preview
+                      - generic [ref=f7e402]:
+                        - generic [ref=f7e403]: visual-code
+                        - generic [ref=f7e404]: · turns 1 · 0 tools
+                    - generic [ref=f7e405]: Failed
+                  - link "Re-run Tell an outcome story with data" [ref=f7e411] [cursor=pointer]:
+                    - /url: /runs/new?caseIds=visual-data-story-card&model=gpt-5.6-luna
+                    - text: Re-run
+                - generic [ref=f7e415]:
+                  - checkbox "Select Create an isometric voxel world for re-run" [ref=f7e417]
+                  - button "Select Create an isometric voxel world" [ref=f7e418] [cursor=pointer]:
+                    - generic [ref=f7e419]: "02"
+                    - generic [ref=f7e420]:
+                      - generic [ref=f7e421]:
+                        - generic [ref=f7e422]: Create an isometric voxel world
+                        - generic [ref=f7e423]: preview
+                      - generic [ref=f7e430]:
+                        - generic [ref=f7e431]: visual-code
+                        - generic [ref=f7e432]: · turns 1 · 0 tools
+                    - generic [ref=f7e433]: Passed
+                  - link "Re-run Create an isometric voxel world" [ref=f7e438] [cursor=pointer]:
+                    - /url: /runs/new?caseIds=visual-isometric-voxel-world&model=gpt-5.6-luna
+                    - text: Re-run
+                - generic [ref=f7e442]:
+                  - checkbox "Select Design a readable route planner for re-run" [ref=f7e444]
+                  - button "Select Design a readable route planner" [ref=f7e445] [cursor=pointer]:
+                    - generic [ref=f7e446]: "03"
+                    - generic [ref=f7e447]:
+                      - generic [ref=f7e448]:
+                        - generic [ref=f7e449]: Design a readable route planner
+                        - generic [ref=f7e450]: preview
+                      - generic [ref=f7e457]:
+                        - generic [ref=f7e458]: visual-code
+                        - generic [ref=f7e459]: · turns 1 · 0 tools
+                    - generic [ref=f7e460]: Failed
+                  - link "Re-run Design a readable route planner" [ref=f7e466] [cursor=pointer]:
+                    - /url: /runs/new?caseIds=visual-map-route-planner&model=gpt-5.6-luna
+                    - text: Re-run
+                - generic [ref=f7e470]:
+                  - checkbox "Select Write an incident runbook for re-run" [ref=f7e472]
+                  - button "Select Write an incident runbook" [ref=f7e473] [cursor=pointer]:
+                    - generic [ref=f7e474]: "04"
+                    - generic [ref=f7e475]:
+                      - generic [ref=f7e476]:
+                        - generic [ref=f7e477]: Write an incident runbook
+                        - generic [ref=f7e478]: preview
+                      - generic [ref=f7e485]:
+                        - generic [ref=f7e486]: visual-code
+                        - generic [ref=f7e487]: · turns 1 · 0 tools
+                    - generic [ref=f7e488]: Failed
+                  - link "Re-run Write an incident runbook" [ref=f7e494] [cursor=pointer]:
+                    - /url: /runs/new?caseIds=visual-markdown-runbook&model=gpt-5.6-luna
+                    - text: Re-run
+            - generic [ref=f7e499]:
+              - generic [ref=f7e500]:
+                - generic [ref=f7e501]:
+                  - generic [ref=f7e502]:
+                    - generic [ref=f7e503]: Tell an outcome story with data
+                    - generic [ref=f7e504]:
+                      - generic [ref=f7e505]: visual-data-story-card
+                      - button "Copy case id" [ref=f7e506] [cursor=pointer]
+                  - generic [ref=f7e510]: Failed
+                - generic [ref=f7e516]:
+                  - link "Graders" [ref=f7e517] [cursor=pointer]:
+                    - /url: "#case-graders"
+                  - link "Artifact" [ref=f7e518] [cursor=pointer]:
+                    - /url: "#case-artifact"
+                  - link "Transcript" [ref=f7e519] [cursor=pointer]:
+                    - /url: "#case-transcript"
+                  - link "Answer" [ref=f7e520] [cursor=pointer]:
+                    - /url: "#case-answer"
+              - generic [ref=f7e521]:
+                - generic [ref=f7e522]:
+                  - generic [ref=f7e527]:
+                    - generic [ref=f7e528]: Case trust contract
+                    - generic [ref=f7e529]: High confidence · score 91
+                  - generic [ref=f7e530]:
+                    - generic [ref=f7e531]: oracle
+                    - generic [ref=f7e535]: known-bad
+                    - generic [ref=f7e539]: proof
+                    - generic [ref=f7e543]: budget
+                    - generic [ref=f7e547]: artifact contract
+                - generic [ref=f7e551]:
+                  - generic [ref=f7e552]:
+                    - generic [ref=f7e553]: Deterministic
+                    - generic [ref=f7e559]: 6/7
+                  - generic [ref=f7e560]:
+                    - generic [ref=f7e561]: Trace
+                    - generic [ref=f7e574]: 0/0
+                  - generic [ref=f7e575]:
+                    - generic [ref=f7e576]: Artifact contract
+                    - generic [ref=f7e582]: 1 expected
+              - generic [ref=f7e583]:
+                - generic [ref=f7e584]:
+                  - generic [ref=f7e585]: Turns
+                  - generic [ref=f7e589]: "1"
+                - generic [ref=f7e590]:
+                  - generic [ref=f7e591]: Duration
+                  - generic [ref=f7e595]: 111.2s
+                - generic [ref=f7e596]:
+                  - generic [ref=f7e597]: Output tok/s
+                  - generic [ref=f7e601]: "55.9"
+                - generic [ref=f7e602]:
+                  - generic [ref=f7e603]: Est. cost
+                  - generic [ref=f7e606]: ~$0.0092
+                - generic [ref=f7e607]:
+                  - generic [ref=f7e608]: Tokens in
+                  - generic [ref=f7e612]: 29,239
+                - generic [ref=f7e613]:
+                  - generic [ref=f7e614]: Tokens out
+                  - generic [ref=f7e618]: 6,217
+              - generic [ref=f7e619]:
+                - generic [ref=f7e620]:
+                  - button "Evidence groups" [expanded] [ref=f7e621] [cursor=pointer]
+                  - generic [ref=f7e625]: 82%
+                - generic [ref=f7e626]:
+                  - generic [ref=f7e627]:
+                    - generic [ref=f7e629]:
+                      - generic [ref=f7e630]: Artifact contract
+                      - generic [ref=f7e634]: 1 expected
+                    - generic [ref=f7e636]:
+                      - generic [ref=f7e637]: Deterministic
+                      - generic [ref=f7e642]: 6/7
+                    - generic [ref=f7e644]:
+                      - generic [ref=f7e645]: LLM judge
+                      - generic [ref=f7e650]: 1/1
+                  - generic [ref=f7e651]:
+                    - group [ref=f7e652]:
+                      - generic "file_exists passed 0ms outcome-story.html exists" [ref=f7e653] [cursor=pointer]:
+                        - generic [ref=f7e657]:
+                          - generic [ref=f7e658]:
+                            - generic [ref=f7e659]: file_exists
+                            - generic [ref=f7e660]: passed
+                            - generic [ref=f7e661]: 0ms
+                          - generic [ref=f7e662]: outcome-story.html exists
+                    - group [ref=f7e663]:
+                      - generic "file_contains passed 2ms pattern matched in outcome-story.html" [ref=f7e664] [cursor=pointer]:
+                        - generic [ref=f7e668]:
+                          - generic [ref=f7e669]:
+                            - generic [ref=f7e670]: file_contains
+                            - generic [ref=f7e671]: passed
+                            - generic [ref=f7e672]: 2ms
+                          - generic [ref=f7e673]: pattern matched in outcome-story.html
+                    - group [ref=f7e674]:
+                      - generic "file_contains passed 1ms pattern matched in outcome-story.html" [ref=f7e675] [cursor=pointer]:
+                        - generic [ref=f7e679]:
+                          - generic [ref=f7e680]:
+                            - generic [ref=f7e681]: file_contains
+                            - generic [ref=f7e682]: passed
+                            - generic [ref=f7e683]: 1ms
+                          - generic [ref=f7e684]: pattern matched in outcome-story.html
+                    - group [ref=f7e685]:
+                      - generic "exit_code failed 53ms exit=1 in 53ms stderr:" [ref=f7e686] [cursor=pointer]:
+                        - generic [ref=f7e690]:
+                          - generic [ref=f7e691]:
+                            - generic [ref=f7e692]: exit_code
+                            - generic [ref=f7e693]: failed
+                            - generic [ref=f7e694]: 53ms
+                          - generic [ref=f7e695]: "exit=1 in 53ms stderr:"
+                    - group [ref=f7e696]:
+                      - generic "file_contains passed 1ms pattern matched in outcome-story.html" [ref=f7e697] [cursor=pointer]:
+                        - generic [ref=f7e701]:
+                          - generic [ref=f7e702]:
+                            - generic [ref=f7e703]: file_contains
+                            - generic [ref=f7e704]: passed
+                            - generic [ref=f7e705]: 1ms
+                          - generic [ref=f7e706]: pattern matched in outcome-story.html
+                    - group [ref=f7e707]:
+                      - generic "file_contains passed 0ms pattern matched in outcome-story.html" [ref=f7e708] [cursor=pointer]:
+                        - generic [ref=f7e712]:
+                          - generic [ref=f7e713]:
+                            - generic [ref=f7e714]: file_contains
+                            - generic [ref=f7e715]: passed
+                            - generic [ref=f7e716]: 0ms
+                          - generic [ref=f7e717]: pattern matched in outcome-story.html
+                    - group [ref=f7e718]:
+                      - generic "file_contains passed 1ms pattern absent in outcome-story.html" [ref=f7e719] [cursor=pointer]:
+                        - generic [ref=f7e723]:
+                          - generic [ref=f7e724]:
+                            - generic [ref=f7e725]: file_contains
+                            - generic [ref=f7e726]: passed
+                            - generic [ref=f7e727]: 1ms
+                          - generic [ref=f7e728]: pattern absent in outcome-story.html
+                    - group [ref=f7e729]:
+                      - 'generic "rubric_llm passed 15601ms LLM judge via codex/gpt-5.6-luna: The artifact presents a clear editorial reading order: title and summary, then a label…" [ref=f7e730] [cursor=pointer]':
+                        - generic [ref=f7e734]:
+                          - generic [ref=f7e735]:
+                            - generic [ref=f7e736]: rubric_llm
+                            - generic [ref=f7e737]: passed
+                            - generic [ref=f7e738]: 15601ms
+                          - generic [ref=f7e739]: "LLM judge via codex/gpt-5.6-luna: The artifact presents a clear editorial reading order: title and summary, then a label…"
+              - generic [ref=f7e741]:
+                - generic [ref=f7e742]:
+                  - button "Live artifact preview outcome-story.html" [expanded] [ref=f7e743] [cursor=pointer]:
+                    - generic [ref=f7e749]:
+                      - generic [ref=f7e750]: Live artifact preview
+                      - generic [ref=f7e751]: outcome-story.html
+                  - button "Preview outcome-story.html" [pressed] [ref=f7e753] [cursor=pointer]: outcome-story.html
+                - status [ref=f7e760]:
+                  - generic [ref=f7e763]: Expected artifact not observed
+                  - generic [ref=f7e764]: The preview appears automatically once the eval writes the expected file.
+              - generic [ref=f7e765]:
+                - button "Transcript (5)" [expanded] [ref=f7e767] [cursor=pointer]
+                - generic [ref=f7e772]:
+                  - generic [ref=f7e773]:
+                    - generic [ref=f7e774]:
+                      - generic [ref=f7e775]: assistant
+                      - generic [ref=f7e776]: "@ 1785455548270ms"
+                    - generic [ref=f7e777]: I’m using the frontend-app builder guidance because this is a self-contained web artifact, and I’ll keep the implementation strictly to one semantic HTML file with inline CSS and no runtime dependencies. I’ll also check the repo’s existing state and OpenEval conventions before writing it.
+                  - generic [ref=f7e778]:
+                    - generic [ref=f7e779]:
+                      - generic [ref=f7e780]: assistant
+                      - generic [ref=f7e781]: "@ 1785455559464ms"
+                    - generic [ref=f7e782]: "The workspace is a benchmark workdir with unrelated parent changes already present, so I’ll keep the scope confined to this workdir and avoid touching the parent checkout. The card will use a restrained editorial dark theme: a strong title, one concise narrative sentence, paired before/after rows, and bars that make the direction of change immediately legible."
+                  - generic [ref=f7e783]:
+                    - generic [ref=f7e784]:
+                      - generic [ref=f7e785]: assistant
+                      - generic [ref=f7e786]: "@ 1785455609523ms"
+                    - generic [ref=f7e787]: "The file is now implemented with four paired metric sections, explicit “higher/lower is better” cues, an accessible figure description, and a visible legend. I’m doing a focused static QA pass now: checking the exact title, required labels/values, forbidden dependency patterns, and that the workdir contains only the requested artifact."
+                  - generic [ref=f7e788]:
+                    - generic [ref=f7e789]:
+                      - generic [ref=f7e790]: assistant
+                      - generic [ref=f7e791]: "@ 1785455633425ms"
+                    - generic [ref=f7e792]: "Static QA passed for the requested content and dependency constraints. The installed `tidy` binary is an older HTML4 validator and flags the intentional semantic HTML5 elements (`main`, `article`, `section`, `figure`) as unrecognized; I’m treating that output as a validator limitation, not a document defect, and I’m recording the actual checks clearly in the handoff."
+                  - generic [ref=f7e793]:
+                    - generic [ref=f7e794]:
+                      - generic [ref=f7e795]: assistant
+                      - generic [ref=f7e796]: "@ 1785455642599ms"
+                    - generic [ref=f7e797]: "Created the requested self-contained file: [outcome-story.html](/Users/ianzvirbulis/Documents/AgentEvals.nosync/data/workdirs/f5c15c33/visual-data-story-card__s0/outcome-story.html) It includes: - Exact title: “OpenEval Outcome Story” - Polished dark editorial card layout - Semantic HTML structure using `main`, `article`, `header`, `section`, `figure`, `figcaption`, and `footer` - Four clearly labeled before/after metrics: - Pass rate - Median latency - API equivalent - Known-bad rejection - Eight visible data bars with numeric values - “Higher is better” / “Lower is better” directional labels - A concise before/after explanation - Accessible chart labeling through `aria-labelledby` and descriptive `figcaption` - Visible legend for baseline vs current run - Inline CSS only - No JavaScript, SVG, canvas, external assets, external stylesheets, network requests, or additional files Validation confirmed the required labels, exact title, numeric bars, and absence of forbidden dependencies. The available `tidy` command reported false positives because its installed version predates HTML5 semantic elements; the document structure was separately checked with Python’s HTML parser."
+              - generic [ref=f7e798]:
+                - generic [ref=f7e799]:
+                  - button "Final answer" [expanded] [ref=f7e800] [cursor=pointer]
+                  - button "Copy final answer" [ref=f7e804] [cursor=pointer]
+                - generic [ref=f7e808]: "Created the requested self-contained file: [outcome-story.html](/Users/ianzvirbulis/Documents/AgentEvals.nosync/data/workdirs/f5c15c33/visual-data-story-card__s0/outcome-story.html) It includes: - Exact title: “OpenEval Outcome Story” - Polished dark editorial card layout - Semantic HTML structure using `main`, `article`, `header`, `section`, `figure`, `figcaption`, and `footer` - Four clearly labeled before/after metrics: - Pass rate - Median latency - API equivalent - Known-bad rejection - Eight visible data bars with numeric values - “Higher is better” / “Lower is better” directional labels - A concise before/after explanation - Accessible chart labeling through `aria-labelledby` and descriptive `figcaption` - Visible legend for baseline vs current run - Inline CSS only - No JavaScript, SVG, canvas, external assets, external stylesheets, network requests, or additional files Validation confirmed the required labels, exact title, numeric bars, and absence of forbidden dependencies. The available `tidy` command reported false positives because its installed version predates HTML5 semantic elements; the document structure was separately checked with Python’s HTML parser."
+              - link "Open full transcript →" [ref=f7e811] [cursor=pointer]:
+                - /url: /runs/f5c15c33/case/visual-data-story-card
+  - navigation "Mobile navigation" [ref=f7e812]:
+    - generic [ref=f7e813]:
+      - link "Dashboard" [ref=f7e814] [cursor=pointer]:
+        - /url: /
+      - link "Live" [ref=f7e821] [cursor=pointer]:
+        - /url: /live
+      - link "Runs" [ref=f7e829] [cursor=pointer]:
+        - /url: /runs
+      - button "More navigation" [ref=f7e833] [cursor=pointer]:
+        - generic [ref=f7e838]: More
+  - region "Notifications"

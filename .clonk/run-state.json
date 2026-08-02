@@ -1,0 +1,48 @@
+{
+  "status": "active",
+  "mode": "build",
+  "provider": "codex",
+  "model": "opus",
+  "effortLevel": null,
+  "codexModel": "gpt-5.6-luna",
+  "codexReasoningEffort": "high",
+  "cursorModel": null,
+  "cursorThinking": null,
+  "phaseModels": {
+    "build": {
+      "codexModel": "gpt-5.6-luna",
+      "codexReasoningEffort": "high",
+      "provider": "codex"
+    },
+    "research": {
+      "codexModel": "gpt-5.6-terra",
+      "codexReasoningEffort": "medium",
+      "provider": "codex"
+    },
+    "test": {
+      "codexModel": "gpt-5.6-luna",
+      "codexReasoningEffort": "xhigh",
+      "provider": "codex"
+    }
+  },
+  "parallel": true,
+  "maxParallel": 4,
+  "featureMode": false,
+  "mergeBackInto": null,
+  "worktreeBranch": null,
+  "worktreeBaseSha": null,
+  "maxIterations": 100,
+  "iterationDelayMs": 0,
+  "branchName": null,
+  "startedAt": 1785629822439,
+  "iteration": 0,
+  "tokens": {
+    "input": 0,
+    "output": 0,
+    "cacheRead": 0,
+    "cacheCreation": 0
+  },
+  "estimatedCostUsd": 0,
+  "workLog": [],
+  "updatedAt": 1785629822798
+}

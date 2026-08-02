@@ -3,7 +3,7 @@ import { allCollectionSources, defToSpec } from "../collection/sources";
 import { loadCurrentJudgments } from "./judge";
 import {
   toPoints, detectMarkers, metricSeries, markerImpact,
-  type Marker, type MarkerImpact, type SeriesPoint, type SessionPoint, type OutcomeProvenance,
+  type Marker, type MarkerImpact, type SeriesPoint, type SessionPoint, type OutcomeProvenance, type OutcomeSeriesEvidence,
 } from "./timeline";
 import { detectChangePoints, type ChangePoint } from "./changepoints";
 
@@ -35,6 +35,8 @@ export interface TimelineReport {
   impacts: MarkerImpact[];
   changePoints: ChangePoint[]; // automatic shifts, marker-attributed where possible
   outcomeSeries: SeriesPoint[]; // downsampled for a sparkline
+  /** Exact source denominator and provenance for the downsampled outcome chart. */
+  outcomeSeriesEvidence?: OutcomeSeriesEvidence;
 }
 
 function downsample<T>(xs: T[], max: number): T[] {
@@ -160,13 +162,16 @@ export function buildTimeline(sessionsIn?: TimelineSession[]): TimelineReport {
       : heuristic.length
         ? "heuristic"
         : "unavailable";
-  const selected = judgedHalves.first.length >= MIN_OVERALL_SAMPLES && judgedHalves.second.length >= MIN_OVERALL_SAMPLES
+  const hasJudgedSeries = judgedHalves.first.length >= MIN_OVERALL_SAMPLES && judgedHalves.second.length >= MIN_OVERALL_SAMPLES;
+  const selected = hasJudgedSeries
     ? { ...judgedHalves, provenance: "judged" as const }
     : heuristicHalves.first.length >= MIN_OVERALL_SAMPLES && heuristicHalves.second.length >= MIN_OVERALL_SAMPLES
       ? { ...heuristicHalves, provenance: "heuristic" as const }
       : { ...halves(withSignal), provenance: fallbackProvenance };
   const firstHalf = selected.first;
   const secondHalf = selected.second;
+  const seriesPoints = [...firstHalf, ...secondHalf];
+  const seriesPool: OutcomeSeriesEvidence["pool"] = hasJudgedSeries ? "judged" : "signal";
   const firstHalfOutcome = med(firstHalf.map((p) => p.outcome));
   const secondHalfOutcome = med(secondHalf.map((p) => p.outcome));
   const overallComparable = firstHalf.length >= MIN_OVERALL_SAMPLES
@@ -213,6 +218,13 @@ export function buildTimeline(sessionsIn?: TimelineSession[]): TimelineReport {
     markers,
     impacts,
     changePoints: detectChangePoints(points, markers),
-    outcomeSeries: downsample(metricSeries([...firstHalf, ...secondHalf], (p) => p.outcome, 15), 80),
+    outcomeSeries: downsample(metricSeries(seriesPoints, (p) => p.outcome, 15), 80),
+    outcomeSeriesEvidence: {
+      n: seriesPoints.length,
+      denominator: points.length,
+      coverage: points.length ? seriesPoints.length / points.length : 0,
+      pool: seriesPool,
+      provenance: selected.provenance,
+    },
   };
 }

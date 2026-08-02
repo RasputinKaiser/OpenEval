@@ -1,0 +1,497 @@
+- generic [active] [ref=f1e1]:
+  - link "Skip to content" [ref=f1e2] [cursor=pointer]:
+    - /url: "#main"
+  - generic [ref=f1e3]:
+    - complementary [ref=f1e4]:
+      - generic [ref=f1e10]:
+        - generic [ref=f1e11]: OpenEval
+        - generic [ref=f1e12]: OpenEval Suite
+      - navigation "Primary" [ref=f1e13]:
+        - link "Dashboard" [ref=f1e15] [cursor=pointer]:
+          - /url: /
+        - generic [ref=f1e22]:
+          - link "Runs" [ref=f1e23] [cursor=pointer]:
+            - /url: /runs
+          - link "Leaderboard" [ref=f1e27] [cursor=pointer]:
+            - /url: /runs/leaderboard
+          - link "Compare" [ref=f1e35] [cursor=pointer]:
+            - /url: /runs/compare
+          - link "Cases" [ref=f1e44] [cursor=pointer]:
+            - /url: /cases
+          - link "New Run" [ref=f1e49] [cursor=pointer]:
+            - /url: /runs/new
+          - link "Accuracy" [ref=f1e53] [cursor=pointer]:
+            - /url: /accuracy
+        - generic [ref=f1e58]:
+          - link "Live" [ref=f1e59] [cursor=pointer]:
+            - /url: /live
+          - link "Collection" [ref=f1e67] [cursor=pointer]:
+            - /url: /collection
+          - link "Timeline" [ref=f1e79] [cursor=pointer]:
+            - /url: /collection/timeline
+        - generic [ref=f1e84]:
+          - link "Harnesses" [ref=f1e85] [cursor=pointer]:
+            - /url: /harnesses
+          - link "Settings" [ref=f1e89] [cursor=pointer]:
+            - /url: /settings
+    - main [ref=f1e94]:
+      - generic [ref=f1e95]:
+        - generic [ref=f1e96]:
+          - generic [ref=f1e97]:
+            - heading "New Run" [level=1] [ref=f1e98]
+            - paragraph [ref=f1e99]: Configure and start a fresh evaluation run.
+          - generic [ref=f1e100]:
+            - button "Repeat last run" [ref=f1e101] [cursor=pointer]
+            - generic [ref=f1e106]: "Last: Run 2026-07-30 23:52:11"
+        - region "Evaluate workflow" [ref=f1e107]:
+          - generic [ref=f1e109]:
+            - generic [ref=f1e110]: Evaluate workflow
+            - paragraph [ref=f1e111]: Run a suite, inspect evidence, then compare what changed.
+          - navigation "Evaluate pages" [ref=f1e112]:
+            - link "01 · Runs Track evaluations" [ref=f1e113] [cursor=pointer]:
+              - /url: /runs
+              - generic [ref=f1e117]:
+                - generic [ref=f1e118]: 01 · Runs
+                - generic [ref=f1e119]: Track evaluations
+            - link "02 · Leaderboard Rank harnesses" [ref=f1e120] [cursor=pointer]:
+              - /url: /runs/leaderboard
+              - generic [ref=f1e128]:
+                - generic [ref=f1e129]: 02 · Leaderboard
+                - generic [ref=f1e130]: Rank harnesses
+            - link "03 · Compare Find regressions" [ref=f1e131] [cursor=pointer]:
+              - /url: /runs/compare
+              - generic [ref=f1e140]:
+                - generic [ref=f1e141]: 03 · Compare
+                - generic [ref=f1e142]: Find regressions
+            - link "04 · Cases Curate the suite" [ref=f1e143] [cursor=pointer]:
+              - /url: /cases
+              - generic [ref=f1e148]:
+                - generic [ref=f1e149]: 04 · Cases
+                - generic [ref=f1e150]: Curate the suite
+            - link "05 · New run Launch an experiment" [ref=f1e151] [cursor=pointer]:
+              - /url: /runs/new
+              - generic [ref=f1e155]:
+                - generic [ref=f1e156]: 05 · New run
+                - generic [ref=f1e157]: Launch an experiment
+            - link "06 · Accuracy Audit evidence" [ref=f1e158] [cursor=pointer]:
+              - /url: /accuracy
+              - generic [ref=f1e163]:
+                - generic [ref=f1e164]: 06 · Accuracy
+                - generic [ref=f1e165]: Audit evidence
+        - region [ref=f1e166]:
+          - generic [ref=f1e167]:
+            - generic [ref=f1e168]:
+              - heading "Build a benchmark recipe" [level=2] [ref=f1e169]
+              - paragraph [ref=f1e170]: Start with a focused lane, then tune the execution. Presets keep the first run useful and affordable; every case remains selectable below.
+            - generic [ref=f1e171]:
+              - generic [ref=f1e172]: 21 planned cases
+              - generic [ref=f1e173]: 0 visual lanes
+          - generic [ref=f1e174]:
+            - button "Core suite SWE, tools, and reasoning" [ref=f1e175] [cursor=pointer]:
+              - generic [ref=f1e176]: Core suite
+              - generic [ref=f1e177]: SWE, tools, and reasoning
+            - button "Creative sampler 4 low-usage cases across scene, data, route, and runbook" [ref=f1e178] [cursor=pointer]:
+              - generic [ref=f1e179]: Creative sampler
+              - generic [ref=f1e180]: 4 low-usage cases across scene, data, route, and runbook
+            - button "Creative lab CSS scenes, dashboards, diagrams, data, and SVG" [ref=f1e181] [cursor=pointer]:
+              - generic [ref=f1e182]: Creative lab
+              - generic [ref=f1e183]: CSS scenes, dashboards, diagrams, data, and SVG
+            - button "Reasoning Problems that reward careful thinking" [ref=f1e184] [cursor=pointer]:
+              - generic [ref=f1e185]: Reasoning
+              - generic [ref=f1e186]: Problems that reward careful thinking
+            - button "Everything Full catalog; highest usage" [ref=f1e187] [cursor=pointer]:
+              - generic [ref=f1e188]: Everything
+              - generic [ref=f1e189]: Full catalog; highest usage
+          - generic [ref=f1e190]:
+            - generic [ref=f1e191]:
+              - text: "Planned executions:"
+              - strong [ref=f1e192]: "21"
+            - generic [ref=f1e193]:
+              - text: "Case budget ceiling:"
+              - strong [ref=f1e194]: ~$4.10 declared for 6/21 cases
+            - generic [ref=f1e195]: Ceiling is per-case configuration, not provider billing.
+        - generic [ref=f1e196]:
+          - generic [ref=f1e197]:
+            - region [ref=f1e198]:
+              - generic [ref=f1e199]:
+                - heading "Execution settings" [level=2] [ref=f1e200]
+                - paragraph [ref=f1e201]: Name the run, set a bounded sample plan, then choose the agent setup.
+              - generic [ref=f1e202]:
+                - generic [ref=f1e203]:
+                  - text: Run name (optional)
+                  - textbox "Run name (optional)" [ref=f1e204]:
+                    - /placeholder: Auto-generated if blank
+                - generic [ref=f1e205]:
+                  - text: Parallel workers
+                  - spinbutton "Parallel workers" [ref=f1e206]: "1"
+                  - generic [ref=f1e207]: 1–8 concurrent case workers
+                - generic [ref=f1e208]:
+                  - text: Samples (pass@k)
+                  - spinbutton "Samples (pass@k)" [ref=f1e209]: "1"
+                  - generic [ref=f1e210]: Run each case k times (1–8) · report pass@1, pass@k, pass^k
+              - heading "Agent setup" [level=3] [ref=f1e212]
+              - generic [ref=f1e213]:
+                - text: Runner
+                - generic [ref=f1e214]:
+                  - button "headless Isolated subprocess per case" [pressed] [ref=f1e215] [cursor=pointer]:
+                    - generic [ref=f1e216]: headless
+                    - generic [ref=f1e217]: Isolated subprocess per case
+                  - button "tmux tmux session — watch live" [ref=f1e218] [cursor=pointer]:
+                    - generic [ref=f1e219]: tmux
+                    - generic [ref=f1e220]: tmux session — watch live
+              - generic [ref=f1e221]:
+                - text: Harness
+                - button "Harness" [ref=f1e224] [cursor=pointer]:
+                  - generic [ref=f1e225]: Default
+                - generic [ref=f1e233]: Agent CLI to run cases against. Discovered from PATH — unavailable ones show their probe failure.
+                - alert [ref=f1e234]:
+                  - generic [ref=f1e237]: Checking harness availability before launch…
+              - generic [ref=f1e238]:
+                - text: Model
+                - button "Model" [ref=f1e241] [cursor=pointer]:
+                  - generic [ref=f1e242]: Default (harness auto)
+                - generic [ref=f1e251]: Leave default to let the harness pick.
+            - region [ref=f1e252]:
+              - generic [ref=f1e253]:
+                - generic [ref=f1e257]:
+                  - heading "Choose benchmark cases" [level=2] [ref=f1e258]
+                  - paragraph [ref=f1e259]: Use a preset above or refine the catalog by category, difficulty, tags, and search.
+                - button "Select all visible" [ref=f1e260] [cursor=pointer]
+              - generic [ref=f1e261]:
+                - group "Category" [ref=f1e262]:
+                  - generic [ref=f1e264]:
+                    - button "Agentic SWE" [pressed] [ref=f1e265] [cursor=pointer]
+                    - button "Single tool" [pressed] [ref=f1e266] [cursor=pointer]
+                    - button "Reasoning" [pressed] [ref=f1e267] [cursor=pointer]
+                    - button "Creative lab" [ref=f1e268] [cursor=pointer]
+                - group "Difficulty" [ref=f1e269]:
+                  - generic [ref=f1e271]:
+                    - button "easy" [ref=f1e272] [cursor=pointer]
+                    - button "medium" [ref=f1e273] [cursor=pointer]
+                    - button "hard" [ref=f1e274] [cursor=pointer]
+                    - button "untiered" [ref=f1e275] [cursor=pointer]
+                - group "Tags" [ref=f1e276]:
+                  - generic [ref=f1e278]:
+                    - button "#3d" [ref=f1e279] [cursor=pointer]
+                    - button "#accessibility" [ref=f1e280] [cursor=pointer]
+                    - button "#adversarial" [ref=f1e281] [cursor=pointer]
+                    - button "#artifact-contract" [ref=f1e282] [cursor=pointer]
+                    - button "#bash" [ref=f1e283] [cursor=pointer]
+                    - button "#bug" [ref=f1e284] [cursor=pointer]
+                    - button "#bugfix" [ref=f1e285] [cursor=pointer]
+                    - button "#cli" [ref=f1e286] [cursor=pointer]
+                    - button "#composition" [ref=f1e287] [cursor=pointer]
+                    - button "#counterfactual" [ref=f1e288] [cursor=pointer]
+                    - button "#css" [ref=f1e289] [cursor=pointer]
+                    - button "#css-3d" [ref=f1e290] [cursor=pointer]
+                    - button "#dashboard" [ref=f1e291] [cursor=pointer]
+                    - button "#data" [ref=f1e292] [cursor=pointer]
+                    - button "#debugging" [ref=f1e293] [cursor=pointer]
+                    - button "#delete" [ref=f1e294] [cursor=pointer]
+                    - button "#dependency" [ref=f1e295] [cursor=pointer]
+                    - button "#depth" [ref=f1e296] [cursor=pointer]
+                    - button "#design" [ref=f1e297] [cursor=pointer]
+                    - button "#deterministic" [ref=f1e298] [cursor=pointer]
+                    - button "#diagram" [ref=f1e299] [cursor=pointer]
+                    - button "#documentation" [ref=f1e300] [cursor=pointer]
+                    - button "#edge-case" [ref=f1e301] [cursor=pointer]
+                    - button "#edit" [ref=f1e302] [cursor=pointer]
+                    - button "#esm" [ref=f1e303] [cursor=pointer]
+                    - button "#explanation" [ref=f1e304] [cursor=pointer]
+                    - button "#feature" [ref=f1e305] [cursor=pointer]
+                    - button "#flowchart" [ref=f1e306] [cursor=pointer]
+                    - button "#grep" [ref=f1e307] [cursor=pointer]
+                    - button "#html" [ref=f1e308] [cursor=pointer]
+                    - button "#incident-response" [ref=f1e309] [cursor=pointer]
+                    - button "#information-design" [ref=f1e310] [cursor=pointer]
+                    - button "#interaction" [ref=f1e311] [cursor=pointer]
+                    - button "#interactive" [ref=f1e312] [cursor=pointer]
+                    - button "#isometric" [ref=f1e313] [cursor=pointer]
+                    - button "#javascript" [ref=f1e314] [cursor=pointer]
+                    - button "#json" [ref=f1e315] [cursor=pointer]
+                    - button "#keyboard" [ref=f1e316] [cursor=pointer]
+                    - button "#logs" [ref=f1e317] [cursor=pointer]
+                    - button "#long-horizon" [ref=f1e318] [cursor=pointer]
+                    - button "#map" [ref=f1e319] [cursor=pointer]
+                    - button "#markdown" [ref=f1e320] [cursor=pointer]
+                    - button "#math" [ref=f1e321] [cursor=pointer]
+                    - button "#media-query" [ref=f1e322] [cursor=pointer]
+                    - button "#mermaid" [ref=f1e323] [cursor=pointer]
+                    - button "#node" [ref=f1e324] [cursor=pointer]
+                    - button "#pixel-art" [ref=f1e325] [cursor=pointer]
+                    - button "#planning" [ref=f1e326] [cursor=pointer]
+                    - button "#proof" [ref=f1e327] [cursor=pointer]
+                    - button "#python" [ref=f1e328] [cursor=pointer]
+                    - button "#read" [ref=f1e329] [cursor=pointer]
+                    - button "#recovery" [ref=f1e330] [cursor=pointer]
+                    - button "#refactor" [ref=f1e331] [cursor=pointer]
+                    - button "#responsive" [ref=f1e332] [cursor=pointer]
+                    - button "#rollback" [ref=f1e333] [cursor=pointer]
+                    - button "#side-effects" [ref=f1e334] [cursor=pointer]
+                    - button "#sorting" [ref=f1e335] [cursor=pointer]
+                    - button "#statistics" [ref=f1e336] [cursor=pointer]
+                    - button "#storytelling" [ref=f1e337] [cursor=pointer]
+                    - button "#structured-data" [ref=f1e338] [cursor=pointer]
+                    - button "#supplied-data" [ref=f1e339] [cursor=pointer]
+                    - button "#svg" [ref=f1e340] [cursor=pointer]
+                    - button "#table" [ref=f1e341] [cursor=pointer]
+                    - button "#test-first" [ref=f1e342] [cursor=pointer]
+                    - button "#tests" [ref=f1e343] [cursor=pointer]
+                    - button "#trace" [ref=f1e344] [cursor=pointer]
+                    - button "#transaction" [ref=f1e345] [cursor=pointer]
+                    - button "#typography" [ref=f1e346] [cursor=pointer]
+                    - button "#visual-code" [ref=f1e347] [cursor=pointer]
+                    - button "#voxel" [ref=f1e348] [cursor=pointer]
+                    - button "#web-ui" [ref=f1e349] [cursor=pointer]
+                    - button "#write" [ref=f1e350] [cursor=pointer]
+              - textbox "Search cases" [ref=f1e356]:
+                - /placeholder: Search cases…
+              - generic [ref=f1e357]:
+                - 'button "Predict JavaScript output Reasoning · easy· 2 graders · #javascript · #trace" [ref=f1e358] [cursor=pointer]':
+                  - generic [ref=f1e360]:
+                    - generic [ref=f1e361]: Predict JavaScript output
+                    - generic [ref=f1e362]:
+                      - generic [ref=f1e363]: Reasoning
+                      - text: · easy· 2 graders
+                      - generic [ref=f1e364]: "· #javascript"
+                      - generic [ref=f1e365]: "· #trace"
+                - 'button "Produce a 3-step remediation plan Reasoning · medium· 5 graders · #planning · #counterfactual · max ~$0.50" [ref=f1e366] [cursor=pointer]':
+                  - generic [ref=f1e368]:
+                    - generic [ref=f1e369]: Produce a 3-step remediation plan
+                    - generic [ref=f1e370]:
+                      - generic [ref=f1e371]: Reasoning
+                      - text: · medium· 5 graders
+                      - generic [ref=f1e372]: "· #planning"
+                      - generic [ref=f1e373]: "· #counterfactual"
+                    - generic [ref=f1e374]: · max ~$0.50
+                - 'button "Explain an off-by-one bug and fix it Reasoning · medium· 5 graders · #explanation · #bug · #edge-case · max ~$0.50" [ref=f1e376] [cursor=pointer]':
+                  - generic [ref=f1e378]:
+                    - generic [ref=f1e379]: Explain an off-by-one bug and fix it
+                    - generic [ref=f1e380]:
+                      - generic [ref=f1e381]: Reasoning
+                      - text: · medium· 5 graders
+                      - generic [ref=f1e382]: "· #explanation"
+                      - generic [ref=f1e383]: "· #bug"
+                      - generic [ref=f1e384]: "· #edge-case"
+                    - generic [ref=f1e385]: · max ~$0.50
+                - 'button "Sketch a proof for sum of first n integers Reasoning · medium· 5 graders · #math · #proof · max ~$0.50" [ref=f1e387] [cursor=pointer]':
+                  - generic [ref=f1e389]:
+                    - generic [ref=f1e390]: Sketch a proof for sum of first n integers
+                    - generic [ref=f1e391]:
+                      - generic [ref=f1e392]: Reasoning
+                      - text: · medium· 5 graders
+                      - generic [ref=f1e393]: "· #math"
+                      - generic [ref=f1e394]: "· #proof"
+                    - generic [ref=f1e395]: · max ~$0.50
+                - 'button "Explain recursion in one sentence Reasoning · easy· 2 graders · #explanation" [ref=f1e397] [cursor=pointer]':
+                  - generic [ref=f1e399]:
+                    - generic [ref=f1e400]: Explain recursion in one sentence
+                    - generic [ref=f1e401]:
+                      - generic [ref=f1e402]: Reasoning
+                      - text: · easy· 2 graders
+                      - generic [ref=f1e403]: "· #explanation"
+                - 'button "Solve a travel word problem Reasoning · medium· 2 graders · #math" [ref=f1e404] [cursor=pointer]':
+                  - generic [ref=f1e406]:
+                    - generic [ref=f1e407]: Solve a travel word problem
+                    - generic [ref=f1e408]:
+                      - generic [ref=f1e409]: Reasoning
+                      - text: · medium· 2 graders
+                      - generic [ref=f1e410]: "· #math"
+                - 'button "Enable a feature flag without touching production lock Single tool · easy· 3 graders · #edit · #side-effects · #json" [ref=f1e411] [cursor=pointer]':
+                  - generic [ref=f1e413]:
+                    - generic [ref=f1e414]: Enable a feature flag without touching production lock
+                    - generic [ref=f1e415]:
+                      - generic [ref=f1e416]: Single tool
+                      - text: · easy· 3 graders
+                      - generic [ref=f1e417]: "· #edit"
+                      - generic [ref=f1e418]: "· #side-effects"
+                      - generic [ref=f1e419]: "· #json"
+                - 'button "Count ERROR lines in log.txt Single tool · easy· 2 graders · #grep · #bash" [ref=f1e420] [cursor=pointer]':
+                  - generic [ref=f1e422]:
+                    - generic [ref=f1e423]: Count ERROR lines in log.txt
+                    - generic [ref=f1e424]:
+                      - generic [ref=f1e425]: Single tool
+                      - text: · easy· 2 graders
+                      - generic [ref=f1e426]: "· #grep"
+                      - generic [ref=f1e427]: "· #bash"
+                - 'button "Create README.md with project description Single tool · easy· 2 graders · #write" [ref=f1e428] [cursor=pointer]':
+                  - generic [ref=f1e430]:
+                    - generic [ref=f1e431]: Create README.md with project description
+                    - generic [ref=f1e432]:
+                      - generic [ref=f1e433]: Single tool
+                      - text: · easy· 2 graders
+                      - generic [ref=f1e434]: "· #write"
+                - 'button "Delete only the stale build manifest Single tool · easy· 3 graders · #delete · #side-effects · #json" [ref=f1e435] [cursor=pointer]':
+                  - generic [ref=f1e437]:
+                    - generic [ref=f1e438]: Delete only the stale build manifest
+                    - generic [ref=f1e439]:
+                      - generic [ref=f1e440]: Single tool
+                      - text: · easy· 3 graders
+                      - generic [ref=f1e441]: "· #delete"
+                      - generic [ref=f1e442]: "· #side-effects"
+                      - generic [ref=f1e443]: "· #json"
+                - 'button "Build a trustworthy numeric summary Single tool · medium· 7 graders · #structured-data · #json · #cli · #statistics Deliverable: number-summary.json with count, sum, min, max, and median as JSON numbers. Measures: Whether an agent can inspect structured input, compute several statistics correctly, and preserve a machine-readable output contract. Evidence: deterministic · artifact · max ~$0.35 · 10 max turns" [ref=f1e444] [cursor=pointer]':
+                  - generic [ref=f1e446]:
+                    - generic [ref=f1e447]: Build a trustworthy numeric summary
+                    - generic [ref=f1e448]:
+                      - generic [ref=f1e449]: Single tool
+                      - text: · medium· 7 graders
+                      - generic [ref=f1e450]: "· #structured-data"
+                      - generic [ref=f1e451]: "· #json"
+                      - generic [ref=f1e452]: "· #cli"
+                      - generic [ref=f1e453]: "· #statistics"
+                    - generic [ref=f1e454]: "Deliverable: number-summary.json with count, sum, min, max, and median as JSON numbers."
+                    - generic [ref=f1e455]: "Measures: Whether an agent can inspect structured input, compute several statistics correctly, and preserve a machine-readable output contract."
+                    - generic [ref=f1e456]:
+                      - text: "Evidence: deterministic · artifact"
+                      - generic [ref=f1e457]: · max ~$0.35
+                      - generic [ref=f1e458]: · 10 max turns
+                - 'button "Sum numbers from a file Single tool · easy· 2 graders · #read · #write · #math" [ref=f1e459] [cursor=pointer]':
+                  - generic [ref=f1e461]:
+                    - generic [ref=f1e462]: Sum numbers from a file
+                    - generic [ref=f1e463]:
+                      - generic [ref=f1e464]: Single tool
+                      - text: · easy· 2 graders
+                      - generic [ref=f1e465]: "· #read"
+                      - generic [ref=f1e466]: "· #write"
+                      - generic [ref=f1e467]: "· #math"
+                - 'button "Add a Rectangle class Agentic SWE · easy· 3 graders · #feature · #node · #tests" [ref=f1e468] [cursor=pointer]':
+                  - generic [ref=f1e470]:
+                    - generic [ref=f1e471]: Add a Rectangle class
+                    - generic [ref=f1e472]:
+                      - generic [ref=f1e473]: Agentic SWE
+                      - text: · easy· 3 graders
+                      - generic [ref=f1e474]: "· #feature"
+                      - generic [ref=f1e475]: "· #node"
+                      - generic [ref=f1e476]: "· #tests"
+                - 'button "Make a batch update atomic Agentic SWE · hard· 7 graders · #bugfix · #node · #transaction · #rollback · #trace · #recovery Deliverable: A tested transaction helper with no partial state leak and explicit rollback/commit events. Measures: Whether an agent can preserve atomic state semantics and an auditable commit/rollback trace when a multi-step update partially fails. Evidence: deterministic · trace" [ref=f1e477] [cursor=pointer]':
+                  - generic [ref=f1e479]:
+                    - generic [ref=f1e480]: Make a batch update atomic
+                    - generic [ref=f1e481]:
+                      - generic [ref=f1e482]: Agentic SWE
+                      - text: · hard· 7 graders
+                      - generic [ref=f1e483]: "· #bugfix"
+                      - generic [ref=f1e484]: "· #node"
+                      - generic [ref=f1e485]: "· #transaction"
+                      - generic [ref=f1e486]: "· #rollback"
+                      - generic [ref=f1e487]: "· #trace"
+                      - generic [ref=f1e488]: "· #recovery"
+                    - generic [ref=f1e489]: "Deliverable: A tested transaction helper with no partial state leak and explicit rollback/commit events."
+                    - generic [ref=f1e490]: "Measures: Whether an agent can preserve atomic state semantics and an auditable commit/rollback trace when a multi-step update partially fails."
+                    - generic [ref=f1e491]: "Evidence: deterministic · trace"
+                - 'button "Convert CommonJS counter to ESM Agentic SWE · medium· 4 graders · #refactor · #node · #esm" [ref=f1e492] [cursor=pointer]':
+                  - generic [ref=f1e494]:
+                    - generic [ref=f1e495]: Convert CommonJS counter to ESM
+                    - generic [ref=f1e496]:
+                      - generic [ref=f1e497]: Agentic SWE
+                      - text: · medium· 4 graders
+                      - generic [ref=f1e498]: "· #refactor"
+                      - generic [ref=f1e499]: "· #node"
+                      - generic [ref=f1e500]: "· #esm"
+                - 'button "Fix the FizzBuzz bug Agentic SWE · easy· 4 graders · #bugfix · #node · #tests" [ref=f1e501] [cursor=pointer]':
+                  - generic [ref=f1e503]:
+                    - generic [ref=f1e504]: Fix the FizzBuzz bug
+                    - generic [ref=f1e505]:
+                      - generic [ref=f1e506]: Agentic SWE
+                      - text: · easy· 4 graders
+                      - generic [ref=f1e507]: "· #bugfix"
+                      - generic [ref=f1e508]: "· #node"
+                      - generic [ref=f1e509]: "· #tests"
+                - 'button "Fix leap year logic Agentic SWE · medium· 4 graders · #bugfix · #node · #tests" [ref=f1e510] [cursor=pointer]':
+                  - generic [ref=f1e512]:
+                    - generic [ref=f1e513]: Fix leap year logic
+                    - generic [ref=f1e514]:
+                      - generic [ref=f1e515]: Agentic SWE
+                      - text: · medium· 4 graders
+                      - generic [ref=f1e516]: "· #bugfix"
+                      - generic [ref=f1e517]: "· #node"
+                      - generic [ref=f1e518]: "· #tests"
+                - 'button "Summarize ERROR lines from a messy logs directory Agentic SWE · medium· 4 graders · #adversarial · #side-effects · #debugging · #logs · max ~$0.75 · 22 max turns" [ref=f1e519] [cursor=pointer]':
+                  - generic [ref=f1e521]:
+                    - generic [ref=f1e522]: Summarize ERROR lines from a messy logs directory
+                    - generic [ref=f1e523]:
+                      - generic [ref=f1e524]: Agentic SWE
+                      - text: · medium· 4 graders
+                      - generic [ref=f1e525]: "· #adversarial"
+                      - generic [ref=f1e526]: "· #side-effects"
+                      - generic [ref=f1e527]: "· #debugging"
+                      - generic [ref=f1e528]: "· #logs"
+                    - generic [ref=f1e529]:
+                      - generic [ref=f1e530]: · max ~$0.75
+                      - generic [ref=f1e531]: · 22 max turns
+                - 'button "Fix three bugs across a two-module math pipeline Agentic SWE · hard· 4 graders · #long-horizon · #bugfix · #refactor · #tests · #dependency · max ~$1.50 · 28 max turns" [ref=f1e532] [cursor=pointer]':
+                  - generic [ref=f1e534]:
+                    - generic [ref=f1e535]: Fix three bugs across a two-module math pipeline
+                    - generic [ref=f1e536]:
+                      - generic [ref=f1e537]: Agentic SWE
+                      - text: · hard· 4 graders
+                      - generic [ref=f1e538]: "· #long-horizon"
+                      - generic [ref=f1e539]: "· #bugfix"
+                      - generic [ref=f1e540]: "· #refactor"
+                      - generic [ref=f1e541]: "· #tests"
+                      - generic [ref=f1e542]: "· #dependency"
+                    - generic [ref=f1e543]:
+                      - generic [ref=f1e544]: · max ~$1.50
+                      - generic [ref=f1e545]: · 28 max turns
+                - 'button "Fix Python median for even-length lists Agentic SWE · medium· 4 graders · #bugfix · #python · #tests" [ref=f1e546] [cursor=pointer]':
+                  - generic [ref=f1e548]:
+                    - generic [ref=f1e549]: Fix Python median for even-length lists
+                    - generic [ref=f1e550]:
+                      - generic [ref=f1e551]: Agentic SWE
+                      - text: · medium· 4 graders
+                      - generic [ref=f1e552]: "· #bugfix"
+                      - generic [ref=f1e553]: "· #python"
+                      - generic [ref=f1e554]: "· #tests"
+                - 'button "Fix rangeSum test-first Agentic SWE · medium· 5 graders · #bugfix · #node · #tests · #trace · #test-first" [ref=f1e555] [cursor=pointer]':
+                  - generic [ref=f1e557]:
+                    - generic [ref=f1e558]: Fix rangeSum test-first
+                    - generic [ref=f1e559]:
+                      - generic [ref=f1e560]: Agentic SWE
+                      - text: · medium· 5 graders
+                      - generic [ref=f1e561]: "· #bugfix"
+                      - generic [ref=f1e562]: "· #node"
+                      - generic [ref=f1e563]: "· #tests"
+                      - generic [ref=f1e564]: "· #trace"
+                      - generic [ref=f1e565]: "· #test-first"
+          - generic [ref=f1e567]:
+            - generic [ref=f1e568]:
+              - generic [ref=f1e569]: Run summary
+              - generic [ref=f1e570]: 21 case executions
+            - paragraph [ref=f1e571]: 21 cases × 1 sample on default / default model, parallelism 1
+            - generic [ref=f1e572]:
+              - generic [ref=f1e573]:
+                - term [ref=f1e574]: Cases
+                - definition [ref=f1e575]: 21 filtered
+              - generic [ref=f1e576]:
+                - term [ref=f1e577]: Runner
+                - definition [ref=f1e578]: headless
+              - generic [ref=f1e579]:
+                - term [ref=f1e580]: Harness
+                - definition [ref=f1e581]: default
+              - generic [ref=f1e582]:
+                - term [ref=f1e583]: Model
+                - definition [ref=f1e584]: default
+              - generic [ref=f1e585]:
+                - term [ref=f1e586]: Parallel
+                - definition [ref=f1e587]: 1×
+              - generic [ref=f1e588]:
+                - term [ref=f1e589]: Samples
+                - definition [ref=f1e590]: "1"
+            - button [disabled] [ref=f1e591]
+            - alert [ref=f1e597]:
+              - listitem [ref=f1e598]:
+                - generic [ref=f1e601]: "Harness: Checking harness availability before launch…"
+            - generic [ref=f1e602]: Each case runs in an isolated workdir. Results stream to the run page in real time.
+  - navigation "Mobile navigation" [ref=f1e603]:
+    - generic [ref=f1e604]:
+      - link "Dashboard" [ref=f1e605] [cursor=pointer]:
+        - /url: /
+      - link "Live" [ref=f1e612] [cursor=pointer]:
+        - /url: /live
+      - link "Runs" [ref=f1e620] [cursor=pointer]:
+        - /url: /runs
+      - button "More navigation" [ref=f1e624] [cursor=pointer]:
+        - generic [ref=f1e629]: More
+  - region "Notifications"
+  - button "Open Next.js Dev Tools" [ref=f1e636] [cursor=pointer]
+  - alert [ref=f1e640]

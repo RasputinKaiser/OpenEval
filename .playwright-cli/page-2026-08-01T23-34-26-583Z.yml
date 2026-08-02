@@ -1,0 +1,84 @@
+- generic [active] [ref=f5e1]:
+  - link "Skip to content" [ref=f5e2] [cursor=pointer]:
+    - /url: "#main"
+  - main [ref=f5e4]:
+    - generic [ref=f5e5]:
+      - generic [ref=f5e6]:
+        - generic [ref=f5e7]:
+          - heading "Live sessions" [level=1] [ref=f5e8]
+          - generic [ref=f5e14]:
+            - button "claude-code" [ref=f5e16] [cursor=pointer]
+            - generic [ref=f5e25]:
+              - status "Time since the last successful live poll" [ref=f5e26]: updated just now
+              - button "Redact on" [pressed] [ref=f5e28] [cursor=pointer]
+              - button "Refresh" [ref=f5e32] [cursor=pointer]
+        - paragraph [ref=f5e38]:
+          - text: Live trace sessions from
+          - code [ref=f5e39]: /Users/[redacted]/.claude/projects
+          - text: ", with usage provenance, parser confidence, and copy-safe redaction for local usernames."
+      - navigation "Page sections" [ref=f5e40]:
+        - generic [ref=f5e41]:
+          - generic [ref=f5e42]: Showing Monitor
+          - button "Show all page sections" [ref=f5e43] [cursor=pointer]: All
+          - button "Monitor" [pressed] [ref=f5e44] [cursor=pointer]
+          - button "Trust data" [ref=f5e45] [cursor=pointer]
+          - button "Sessions" [ref=f5e46] [cursor=pointer]
+          - button "Intelligence" [ref=f5e47] [cursor=pointer]
+        - generic [ref=f5e48]:
+          - generic [ref=f5e49]: 01 / 04
+          - generic [ref=f5e50]: Usage, cost, and throughput from the current scanned slice.
+      - status [ref=f5e51]: "Partial corpus boundary: scanned 200 of 739 discovered files and parsed 200 sessions. 539 older files were not scanned; usage and quality totals below describe only the evidenced parsed population."
+      - generic [ref=f5e53]:
+        - generic [ref=f5e54]:
+          - generic [ref=f5e55]:
+            - generic [ref=f5e56]: Usage
+            - generic [ref=f5e60]: Tokens and cost are shown only when the selected trace source reports them; totals cover the parsed latest-session slice shown above.
+          - generic [ref=f5e61]: 198/200 usage measured
+        - generic [ref=f5e62]:
+          - generic [ref=f5e63]:
+            - generic [ref=f5e64]: Volume
+            - generic [ref=f5e65]:
+              - generic [ref=f5e66]: Total tok
+              - generic [ref=f5e67]: 8.64B
+            - generic [ref=f5e68]:
+              - generic [ref=f5e69]: Input
+              - generic [ref=f5e70]: 878k
+            - generic [ref=f5e71]:
+              - generic [ref=f5e72]: Output
+              - generic [ref=f5e73]: 26M
+          - generic [ref=f5e74]:
+            - generic [ref=f5e75]: Cache
+            - generic [ref=f5e76]:
+              - generic [ref=f5e77]: Cache read
+              - generic [ref=f5e78]: 8.37B
+            - generic [ref=f5e79]:
+              - generic [ref=f5e80]: Cache create
+              - generic [ref=f5e81]: 243M
+            - generic [ref=f5e82]:
+              - generic [ref=f5e83]: Coverage
+              - generic [ref=f5e84]: 99%
+          - generic [ref=f5e85]:
+            - generic [ref=f5e86]: Cost & rate
+            - generic [ref=f5e87]:
+              - generic [ref=f5e88]: Est. cost
+              - generic [ref=f5e89]: ~$8,061
+            - generic [ref=f5e90]:
+              - generic [ref=f5e91]: Cost evidence
+              - generic [ref=f5e92]: 0 recorded · 183 estimated · 17 missing
+            - generic [ref=f5e93]:
+              - generic [ref=f5e94]: Cost coverage
+              - generic [ref=f5e95]: 92%
+            - generic [ref=f5e96]:
+              - generic [ref=f5e97]: Out tok/s
+              - generic [ref=f5e98]: "41.9"
+  - navigation "Mobile navigation" [ref=f5e99]:
+    - generic [ref=f5e100]:
+      - link "Dashboard" [ref=f5e101] [cursor=pointer]:
+        - /url: /
+      - link "Live" [ref=f5e108] [cursor=pointer]:
+        - /url: /live
+      - link "Runs" [ref=f5e116] [cursor=pointer]:
+        - /url: /runs
+      - button "More navigation" [ref=f5e120] [cursor=pointer]:
+        - generic [ref=f5e125]: More
+  - region "Notifications"

@@ -1,0 +1,1653 @@
+- generic [active] [ref=f5e1]:
+  - link "Skip to content" [ref=f5e2] [cursor=pointer]:
+    - /url: "#main"
+  - generic [ref=f5e3]:
+    - complementary [ref=f5e4]:
+      - generic [ref=f5e10]:
+        - generic [ref=f5e11]: OpenEval
+        - generic [ref=f5e12]: OpenEval Suite
+      - navigation "Primary" [ref=f5e13]:
+        - link "Dashboard" [ref=f5e15] [cursor=pointer]:
+          - /url: /
+        - generic [ref=f5e22]:
+          - link "Runs" [ref=f5e23] [cursor=pointer]:
+            - /url: /runs
+          - link "Leaderboard" [ref=f5e27] [cursor=pointer]:
+            - /url: /runs/leaderboard
+          - link "Compare" [ref=f5e35] [cursor=pointer]:
+            - /url: /runs/compare
+          - link "Cases" [ref=f5e44] [cursor=pointer]:
+            - /url: /cases
+          - link "New Run" [ref=f5e49] [cursor=pointer]:
+            - /url: /runs/new
+          - link "Accuracy" [ref=f5e52] [cursor=pointer]:
+            - /url: /accuracy
+        - generic [ref=f5e58]:
+          - link "Live" [ref=f5e59] [cursor=pointer]:
+            - /url: /live
+          - link "Collection" [ref=f5e67] [cursor=pointer]:
+            - /url: /collection
+          - link "Timeline" [ref=f5e79] [cursor=pointer]:
+            - /url: /collection/timeline
+        - generic [ref=f5e84]:
+          - link "Harnesses" [ref=f5e85] [cursor=pointer]:
+            - /url: /harnesses
+          - link "Settings" [ref=f5e89] [cursor=pointer]:
+            - /url: /settings
+    - main [ref=f5e94]:
+      - generic [ref=f5e95]:
+        - generic [ref=f5e96]:
+          - heading "Accuracy audit" [level=1] [ref=f5e98]
+          - paragraph [ref=f5e104]: The evidence gate for Evaluate. It separates verified case contracts from runtime, visual, and human proof that is not attached yet.
+        - region "Evaluate workflow" [ref=f5e105]:
+          - generic [ref=f5e107]:
+            - generic [ref=f5e108]: Evaluate workflow
+            - paragraph [ref=f5e109]: Run a suite, inspect evidence, then compare what changed.
+          - navigation "Evaluate pages" [ref=f5e110]:
+            - link "01 · Runs Track evaluations" [ref=f5e111] [cursor=pointer]:
+              - /url: /runs
+              - generic [ref=f5e115]:
+                - generic [ref=f5e116]: 01 · Runs
+                - generic [ref=f5e117]: Track evaluations
+            - link "02 · Leaderboard Rank harnesses" [ref=f5e118] [cursor=pointer]:
+              - /url: /runs/leaderboard
+              - generic [ref=f5e126]:
+                - generic [ref=f5e127]: 02 · Leaderboard
+                - generic [ref=f5e128]: Rank harnesses
+            - link "03 · Compare Find regressions" [ref=f5e129] [cursor=pointer]:
+              - /url: /runs/compare
+              - generic [ref=f5e138]:
+                - generic [ref=f5e139]: 03 · Compare
+                - generic [ref=f5e140]: Find regressions
+            - link "04 · Cases Curate the suite" [ref=f5e141] [cursor=pointer]:
+              - /url: /cases
+              - generic [ref=f5e146]:
+                - generic [ref=f5e147]: 04 · Cases
+                - generic [ref=f5e148]: Curate the suite
+            - link "05 · New run Launch an experiment" [ref=f5e149] [cursor=pointer]:
+              - /url: /runs/new
+              - generic [ref=f5e153]:
+                - generic [ref=f5e154]: 05 · New run
+                - generic [ref=f5e155]: Launch an experiment
+            - link "06 · Accuracy Audit evidence" [ref=f5e156] [cursor=pointer]:
+              - /url: /accuracy
+              - generic [ref=f5e161]:
+                - generic [ref=f5e162]: 06 · Accuracy
+                - generic [ref=f5e163]: Audit evidence
+        - region "Evaluation evidence actions" [ref=f5e164]:
+          - generic [ref=f5e165]:
+            - generic [ref=f5e166]: Evidence loop
+            - paragraph [ref=f5e167]: Use this audit before trusting a score.
+            - paragraph [ref=f5e168]: Cases define what a run can prove. Fix weak contracts, run the affected cases, then compare the resulting evidence.
+            - generic [ref=f5e169]:
+              - link "Inspect cases →" [ref=f5e170] [cursor=pointer]:
+                - /url: /cases
+              - link "Run a suite →" [ref=f5e171] [cursor=pointer]:
+                - /url: /runs/new
+              - link "Review runs →" [ref=f5e172] [cursor=pointer]:
+                - /url: /runs
+          - generic [ref=f5e173]:
+            - generic [ref=f5e174]:
+              - generic [ref=f5e175]: Judge posture
+              - generic [ref=f5e176]: configuration only
+            - generic [ref=f5e177]: codex / gpt-5.6-luna
+            - paragraph [ref=f5e178]: "Reasoning effort: high. A judge verdict is evidence only when the selected backend returns a valid score."
+        - region "Audit posture" [ref=f5e179]:
+          - generic [ref=f5e180]: Unknown
+          - generic [ref=f5e184]: 35 valid cases; no loader issues reported
+          - generic [ref=f5e185]: 0 failing · 19 unknown case surfaces · structural checks only
+        - region "Accuracy summary" [ref=f5e186]:
+          - generic [ref=f5e187]:
+            - generic [ref=f5e188]: Audit posture
+            - generic [ref=f5e190]: Unknown
+            - generic [ref=f5e191]: 0 fail · 19 unknown
+          - generic [ref=f5e192]:
+            - generic [ref=f5e193]: Oracle coverage
+            - generic [ref=f5e195]: 35/35
+            - generic [ref=f5e196]: 35/35 cases
+          - generic [ref=f5e197]:
+            - generic [ref=f5e198]: Deterministic
+            - generic [ref=f5e200]: 35/35
+            - generic [ref=f5e201]: tests or trace backstop
+          - generic [ref=f5e202]:
+            - generic [ref=f5e203]: Known-bad
+            - generic [ref=f5e205]: 35/35
+            - generic [ref=f5e206]: rejection scripts
+          - generic [ref=f5e207]:
+            - generic [ref=f5e208]: Visual contracts
+            - generic [ref=f5e210]: "14"
+            - generic [ref=f5e211]: 0 need image input
+          - generic [ref=f5e212]:
+            - generic [ref=f5e213]: Weak cases
+            - generic [ref=f5e216]: "0"
+            - generic [ref=f5e217]: concrete gaps
+        - region [ref=f5e218]:
+          - generic [ref=f5e219]:
+            - generic [ref=f5e220]:
+              - heading "Evidence surfaces" [level=2] [ref=f5e221]
+              - paragraph [ref=f5e222]: Select a surface to inspect its applicable cases. Counts are cases, not a fabricated pass rate.
+            - generic "Audit status legend" [ref=f5e223]:
+              - generic [ref=f5e224]: Pass
+              - generic [ref=f5e229]: Fail
+              - generic [ref=f5e235]: Unknown
+              - generic [ref=f5e240]: N/A
+          - generic [ref=f5e244]:
+            - generic [ref=f5e245]:
+              - generic [ref=f5e246]:
+                - generic [ref=f5e247]: Corpus validity
+                - generic [ref=f5e248]: Pass
+              - generic [ref=f5e252]: "35"
+              - generic [ref=f5e253]: valid cases · 0 loader issues
+              - paragraph [ref=f5e254]: 35 valid cases; no loader issues reported
+            - button "Filter by Deterministic tests, Pass" [ref=f5e255] [cursor=pointer]:
+              - generic [ref=f5e256]:
+                - generic [ref=f5e257]: Deterministic tests
+                - generic [ref=f5e258]: Pass
+              - generic [ref=f5e262]:
+                - generic [ref=f5e263]: 35/35
+                - generic [ref=f5e264]: pass / applicable
+              - generic [ref=f5e265]: 192 declared · 192 verified
+              - paragraph [ref=f5e266]: 35/35 applicable cases pass this surface
+            - button "Filter by Oracle solve, Pass" [ref=f5e267] [cursor=pointer]:
+              - generic [ref=f5e268]:
+                - generic [ref=f5e269]: Oracle solve
+                - generic [ref=f5e270]: Pass
+              - generic [ref=f5e274]:
+                - generic [ref=f5e275]: 35/35
+                - generic [ref=f5e276]: pass / applicable
+              - generic [ref=f5e277]: 35 declared · 35 verified
+              - paragraph [ref=f5e278]: 35/35 applicable cases pass this surface
+            - button "Filter by Known-bad rejection, Pass" [ref=f5e279] [cursor=pointer]:
+              - generic [ref=f5e280]:
+                - generic [ref=f5e281]: Known-bad rejection
+                - generic [ref=f5e282]: Pass
+              - generic [ref=f5e286]:
+                - generic [ref=f5e287]: 35/35
+                - generic [ref=f5e288]: pass / applicable
+              - generic [ref=f5e289]: 36 declared · 36 verified
+              - paragraph [ref=f5e290]: 35/35 applicable cases pass this surface
+            - button "Filter by Trace steps, Unknown" [ref=f5e291] [cursor=pointer]:
+              - generic [ref=f5e292]:
+                - generic [ref=f5e293]: Trace steps
+                - generic [ref=f5e294]: Unknown
+              - generic [ref=f5e298]:
+                - generic [ref=f5e299]: 0/2
+                - generic [ref=f5e300]: pass / applicable
+              - generic [ref=f5e301]: 4 declared · 0 verified
+              - paragraph [ref=f5e302]: 0/2 applicable cases pass this surface
+            - button "Filter by Visual contract, Unknown" [ref=f5e303] [cursor=pointer]:
+              - generic [ref=f5e304]:
+                - generic [ref=f5e305]: Visual contract
+                - generic [ref=f5e306]: Unknown
+              - generic [ref=f5e310]:
+                - generic [ref=f5e311]: 0/14
+                - generic [ref=f5e312]: pass / applicable
+              - generic [ref=f5e313]: 18 declared · 0 verified
+              - paragraph [ref=f5e314]: 18 artifact contracts declared; rendered output is not attached to this metadata audit
+            - button "Filter by LLM judge, Unknown" [ref=f5e315] [cursor=pointer]:
+              - generic [ref=f5e316]:
+                - generic [ref=f5e317]: LLM judge
+                - generic [ref=f5e318]: Unknown
+              - generic [ref=f5e322]:
+                - generic [ref=f5e323]: 0/7
+                - generic [ref=f5e324]: pass / applicable
+              - generic [ref=f5e325]: 7 declared · 0 verified
+              - paragraph [ref=f5e326]: 7 judge contracts declared; no runtime verdict is attached
+            - button "Filter by Manual review, N/A" [ref=f5e327] [cursor=pointer]:
+              - generic [ref=f5e328]:
+                - generic [ref=f5e329]: Manual review
+                - generic [ref=f5e330]: N/A
+              - generic [ref=f5e333]:
+                - generic [ref=f5e334]: 0/0
+                - generic [ref=f5e335]: pass / applicable
+              - generic [ref=f5e336]: 0 declared · 0 verified
+              - paragraph [ref=f5e337]: 0/0 applicable cases pass this surface
+        - region "Case filters" [ref=f5e338]:
+          - generic [ref=f5e339]:
+            - generic "Case categories" [ref=f5e340]:
+              - button "all · 35" [pressed] [ref=f5e342] [cursor=pointer]
+              - button "agentic-swe · 9" [ref=f5e343] [cursor=pointer]
+              - button "reasoning · 6" [ref=f5e344] [cursor=pointer]
+              - button "single-tool · 6" [ref=f5e345] [cursor=pointer]
+              - button "visual-code · 14" [ref=f5e346] [cursor=pointer]
+              - button "weak · 0" [ref=f5e347] [cursor=pointer]
+            - generic [ref=f5e348]:
+              - textbox "Search accuracy cases" [ref=f5e353]:
+                - /placeholder: Search cases…
+              - combobox "Sort accuracy cases" [ref=f5e357]:
+                - option "Weakness count" [selected]
+                - option "Name"
+                - option "Category"
+          - generic [ref=f5e358]: 35 of 35 cases shown
+        - generic [ref=f5e360]:
+          - region [ref=f5e361]:
+            - generic [ref=f5e362]:
+              - generic [ref=f5e363]:
+                - heading "Case proof matrix" [level=2] [ref=f5e364]
+                - paragraph [ref=f5e365]: Hover or focus a status for its exact audit meaning.
+              - generic [ref=f5e366]: 35 / 35
+            - table [ref=f5e368]:
+              - caption [ref=f5e369]: Per-case accuracy evidence status and actionable weaknesses
+              - rowgroup [ref=f5e370]:
+                - row [ref=f5e371]:
+                  - columnheader "Case" [ref=f5e372]
+                  - columnheader "Tests" [ref=f5e373]
+                  - columnheader "Oracle" [ref=f5e374]
+                  - columnheader "Known bad" [ref=f5e375]
+                  - columnheader "Trace" [ref=f5e376]
+                  - columnheader "Visual" [ref=f5e377]
+                  - columnheader "Judge" [ref=f5e378]
+                  - columnheader "Manual" [ref=f5e379]
+                  - columnheader "Action" [ref=f5e380]
+              - rowgroup [ref=f5e381]:
+                - row [ref=f5e382]:
+                  - rowheader "Compose an evidence poster visual-poster-composition · visual-code · easy budget visual" [ref=f5e383]:
+                    - link "Compose an evidence poster" [ref=f5e384] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=visual-poster-composition
+                    - generic [ref=f5e385]: visual-poster-composition · visual-code · easy
+                    - generic [ref=f5e386]:
+                      - generic [ref=f5e387]: budget
+                      - generic [ref=f5e388]: visual
+                  - cell [ref=f5e389]:
+                    - 'generic "Pass: 6 deterministic graders" [ref=f5e390]':
+                      - generic [ref=f5e391]: Pass
+                      - generic [ref=f5e395]: 6 / 6
+                  - cell [ref=f5e396]:
+                    - 'generic "Pass: solve script declared" [ref=f5e397]':
+                      - generic [ref=f5e398]: Pass
+                      - generic [ref=f5e402]: 1 / 1
+                  - cell [ref=f5e403]:
+                    - 'generic "Pass: 1 plausible-but-wrong rejection script" [ref=f5e404]':
+                      - generic [ref=f5e405]: Pass
+                      - generic [ref=f5e409]: 1 / 1
+                  - cell [ref=f5e410]:
+                    - 'generic "N/A: no trace-step grader" [ref=f5e411]':
+                      - generic [ref=f5e412]: N/A
+                      - generic [ref=f5e415]: 0 / 0
+                  - cell [ref=f5e416]:
+                    - 'generic "Unknown: 1 expected visual artifact declared" [ref=f5e417]':
+                      - generic [ref=f5e418]: Unknown
+                      - generic [ref=f5e422]: 1 / 0
+                  - cell [ref=f5e423]:
+                    - 'generic "Unknown: 1 rubric judge declared" [ref=f5e424]':
+                      - generic [ref=f5e425]: Unknown
+                      - generic [ref=f5e429]: 1 / 0
+                  - cell [ref=f5e430]:
+                    - 'generic "N/A: no manual grader" [ref=f5e431]':
+                      - generic [ref=f5e432]: N/A
+                      - generic [ref=f5e435]: 0 / 0
+                  - cell "visual artifact contract is declared but no rendered artifact is attached to this audit LLM judge contract is declared but no runtime judge verdict is attached to this audit Run this case →" [ref=f5e436]:
+                    - generic [ref=f5e437]:
+                      - generic [ref=f5e438]: visual artifact contract is declared but no rendered artifact is attached to this audit
+                      - generic [ref=f5e439]: LLM judge contract is declared but no runtime judge verdict is attached to this audit
+                    - link "Run this case →" [ref=f5e440] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=visual-poster-composition
+                - row [ref=f5e441]:
+                  - rowheader "Create an isometric voxel world visual-isometric-voxel-world · visual-code · medium budget visual" [ref=f5e442]:
+                    - link "Create an isometric voxel world" [ref=f5e443] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=visual-isometric-voxel-world
+                    - generic [ref=f5e444]: visual-isometric-voxel-world · visual-code · medium
+                    - generic [ref=f5e445]:
+                      - generic [ref=f5e446]: budget
+                      - generic [ref=f5e447]: visual
+                  - cell [ref=f5e448]:
+                    - 'generic "Pass: 8 deterministic graders" [ref=f5e449]':
+                      - generic [ref=f5e450]: Pass
+                      - generic [ref=f5e454]: 8 / 8
+                  - cell [ref=f5e455]:
+                    - 'generic "Pass: solve script declared" [ref=f5e456]':
+                      - generic [ref=f5e457]: Pass
+                      - generic [ref=f5e461]: 1 / 1
+                  - cell [ref=f5e462]:
+                    - 'generic "Pass: 1 plausible-but-wrong rejection script" [ref=f5e463]':
+                      - generic [ref=f5e464]: Pass
+                      - generic [ref=f5e468]: 1 / 1
+                  - cell [ref=f5e469]:
+                    - 'generic "N/A: no trace-step grader" [ref=f5e470]':
+                      - generic [ref=f5e471]: N/A
+                      - generic [ref=f5e474]: 0 / 0
+                  - cell [ref=f5e475]:
+                    - 'generic "Unknown: 1 expected visual artifact declared" [ref=f5e476]':
+                      - generic [ref=f5e477]: Unknown
+                      - generic [ref=f5e481]: 1 / 0
+                  - cell [ref=f5e482]:
+                    - 'generic "Unknown: 1 rubric judge declared" [ref=f5e483]':
+                      - generic [ref=f5e484]: Unknown
+                      - generic [ref=f5e488]: 1 / 0
+                  - cell [ref=f5e489]:
+                    - 'generic "N/A: no manual grader" [ref=f5e490]':
+                      - generic [ref=f5e491]: N/A
+                      - generic [ref=f5e494]: 0 / 0
+                  - cell "visual artifact contract is declared but no rendered artifact is attached to this audit LLM judge contract is declared but no runtime judge verdict is attached to this audit Run this case →" [ref=f5e495]:
+                    - generic [ref=f5e496]:
+                      - generic [ref=f5e497]: visual artifact contract is declared but no rendered artifact is attached to this audit
+                      - generic [ref=f5e498]: LLM judge contract is declared but no runtime judge verdict is attached to this audit
+                    - link "Run this case →" [ref=f5e499] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=visual-isometric-voxel-world
+                - row [ref=f5e500]:
+                  - rowheader "Design a readable route planner visual-map-route-planner · visual-code · medium budget visual" [ref=f5e501]:
+                    - link "Design a readable route planner" [ref=f5e502] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=visual-map-route-planner
+                    - generic [ref=f5e503]: visual-map-route-planner · visual-code · medium
+                    - generic [ref=f5e504]:
+                      - generic [ref=f5e505]: budget
+                      - generic [ref=f5e506]: visual
+                  - cell [ref=f5e507]:
+                    - 'generic "Pass: 7 deterministic graders" [ref=f5e508]':
+                      - generic [ref=f5e509]: Pass
+                      - generic [ref=f5e513]: 7 / 7
+                  - cell [ref=f5e514]:
+                    - 'generic "Pass: solve script declared" [ref=f5e515]':
+                      - generic [ref=f5e516]: Pass
+                      - generic [ref=f5e520]: 1 / 1
+                  - cell [ref=f5e521]:
+                    - 'generic "Pass: 1 plausible-but-wrong rejection script" [ref=f5e522]':
+                      - generic [ref=f5e523]: Pass
+                      - generic [ref=f5e527]: 1 / 1
+                  - cell [ref=f5e528]:
+                    - 'generic "N/A: no trace-step grader" [ref=f5e529]':
+                      - generic [ref=f5e530]: N/A
+                      - generic [ref=f5e533]: 0 / 0
+                  - cell [ref=f5e534]:
+                    - 'generic "Unknown: 1 expected visual artifact declared" [ref=f5e535]':
+                      - generic [ref=f5e536]: Unknown
+                      - generic [ref=f5e540]: 1 / 0
+                  - cell [ref=f5e541]:
+                    - 'generic "Unknown: 1 rubric judge declared" [ref=f5e542]':
+                      - generic [ref=f5e543]: Unknown
+                      - generic [ref=f5e547]: 1 / 0
+                  - cell [ref=f5e548]:
+                    - 'generic "N/A: no manual grader" [ref=f5e549]':
+                      - generic [ref=f5e550]: N/A
+                      - generic [ref=f5e553]: 0 / 0
+                  - cell "visual artifact contract is declared but no rendered artifact is attached to this audit LLM judge contract is declared but no runtime judge verdict is attached to this audit Run this case →" [ref=f5e554]:
+                    - generic [ref=f5e555]:
+                      - generic [ref=f5e556]: visual artifact contract is declared but no rendered artifact is attached to this audit
+                      - generic [ref=f5e557]: LLM judge contract is declared but no runtime judge verdict is attached to this audit
+                    - link "Run this case →" [ref=f5e558] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=visual-map-route-planner
+                - row [ref=f5e559]:
+                  - rowheader "Tell an outcome story with data visual-data-story-card · visual-code · medium budget visual" [ref=f5e560]:
+                    - link "Tell an outcome story with data" [ref=f5e561] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=visual-data-story-card
+                    - generic [ref=f5e562]: visual-data-story-card · visual-code · medium
+                    - generic [ref=f5e563]:
+                      - generic [ref=f5e564]: budget
+                      - generic [ref=f5e565]: visual
+                  - cell [ref=f5e566]:
+                    - 'generic "Pass: 7 deterministic graders" [ref=f5e567]':
+                      - generic [ref=f5e568]: Pass
+                      - generic [ref=f5e572]: 7 / 7
+                  - cell [ref=f5e573]:
+                    - 'generic "Pass: solve script declared" [ref=f5e574]':
+                      - generic [ref=f5e575]: Pass
+                      - generic [ref=f5e579]: 1 / 1
+                  - cell [ref=f5e580]:
+                    - 'generic "Pass: 1 plausible-but-wrong rejection script" [ref=f5e581]':
+                      - generic [ref=f5e582]: Pass
+                      - generic [ref=f5e586]: 1 / 1
+                  - cell [ref=f5e587]:
+                    - 'generic "N/A: no trace-step grader" [ref=f5e588]':
+                      - generic [ref=f5e589]: N/A
+                      - generic [ref=f5e592]: 0 / 0
+                  - cell [ref=f5e593]:
+                    - 'generic "Unknown: 1 expected visual artifact declared" [ref=f5e594]':
+                      - generic [ref=f5e595]: Unknown
+                      - generic [ref=f5e599]: 1 / 0
+                  - cell [ref=f5e600]:
+                    - 'generic "Unknown: 1 rubric judge declared" [ref=f5e601]':
+                      - generic [ref=f5e602]: Unknown
+                      - generic [ref=f5e606]: 1 / 0
+                  - cell [ref=f5e607]:
+                    - 'generic "N/A: no manual grader" [ref=f5e608]':
+                      - generic [ref=f5e609]: N/A
+                      - generic [ref=f5e612]: 0 / 0
+                  - cell "visual artifact contract is declared but no rendered artifact is attached to this audit LLM judge contract is declared but no runtime judge verdict is attached to this audit Run this case →" [ref=f5e613]:
+                    - generic [ref=f5e614]:
+                      - generic [ref=f5e615]: visual artifact contract is declared but no rendered artifact is attached to this audit
+                      - generic [ref=f5e616]: LLM judge contract is declared but no runtime judge verdict is attached to this audit
+                    - link "Run this case →" [ref=f5e617] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=visual-data-story-card
+                - row [ref=f5e618]:
+                  - rowheader "Author a Mermaid pipeline flowchart visual-mermaid-pipeline-diagram · visual-code · medium budget visual" [ref=f5e619]:
+                    - link "Author a Mermaid pipeline flowchart" [ref=f5e620] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=visual-mermaid-pipeline-diagram
+                    - generic [ref=f5e621]: visual-mermaid-pipeline-diagram · visual-code · medium
+                    - generic [ref=f5e622]:
+                      - generic [ref=f5e623]: budget
+                      - generic [ref=f5e624]: visual
+                  - cell [ref=f5e625]:
+                    - 'generic "Pass: 8 deterministic graders" [ref=f5e626]':
+                      - generic [ref=f5e627]: Pass
+                      - generic [ref=f5e631]: 8 / 8
+                  - cell [ref=f5e632]:
+                    - 'generic "Pass: solve script declared" [ref=f5e633]':
+                      - generic [ref=f5e634]: Pass
+                      - generic [ref=f5e638]: 1 / 1
+                  - cell [ref=f5e639]:
+                    - 'generic "Pass: 1 plausible-but-wrong rejection script" [ref=f5e640]':
+                      - generic [ref=f5e641]: Pass
+                      - generic [ref=f5e645]: 1 / 1
+                  - cell [ref=f5e646]:
+                    - 'generic "N/A: no trace-step grader" [ref=f5e647]':
+                      - generic [ref=f5e648]: N/A
+                      - generic [ref=f5e651]: 0 / 0
+                  - cell [ref=f5e652]:
+                    - 'generic "Unknown: 1 expected visual artifact declared" [ref=f5e653]':
+                      - generic [ref=f5e654]: Unknown
+                      - generic [ref=f5e658]: 1 / 0
+                  - cell [ref=f5e659]:
+                    - 'generic "N/A: no LLM judge" [ref=f5e660]':
+                      - generic [ref=f5e661]: N/A
+                      - generic [ref=f5e664]: 0 / 0
+                  - cell [ref=f5e665]:
+                    - 'generic "N/A: no manual grader" [ref=f5e666]':
+                      - generic [ref=f5e667]: N/A
+                      - generic [ref=f5e670]: 0 / 0
+                  - cell "visual artifact contract is declared but no rendered artifact is attached to this audit Run this case →" [ref=f5e671]:
+                    - generic [ref=f5e672]: visual artifact contract is declared but no rendered artifact is attached to this audit
+                    - link "Run this case →" [ref=f5e674] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=visual-mermaid-pipeline-diagram
+                - row [ref=f5e675]:
+                  - rowheader "Build a client-side sortable results table visual-sortable-results-table · visual-code · hard budget visual" [ref=f5e676]:
+                    - link "Build a client-side sortable results table" [ref=f5e677] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=visual-sortable-results-table
+                    - generic [ref=f5e678]: visual-sortable-results-table · visual-code · hard
+                    - generic [ref=f5e679]:
+                      - generic [ref=f5e680]: budget
+                      - generic [ref=f5e681]: visual
+                  - cell [ref=f5e682]:
+                    - 'generic "Pass: 14 deterministic graders" [ref=f5e683]':
+                      - generic [ref=f5e684]: Pass
+                      - generic [ref=f5e688]: 14 / 14
+                  - cell [ref=f5e689]:
+                    - 'generic "Pass: solve script declared" [ref=f5e690]':
+                      - generic [ref=f5e691]: Pass
+                      - generic [ref=f5e695]: 1 / 1
+                  - cell [ref=f5e696]:
+                    - 'generic "Pass: 1 plausible-but-wrong rejection script" [ref=f5e697]':
+                      - generic [ref=f5e698]: Pass
+                      - generic [ref=f5e702]: 1 / 1
+                  - cell [ref=f5e703]:
+                    - 'generic "N/A: no trace-step grader" [ref=f5e704]':
+                      - generic [ref=f5e705]: N/A
+                      - generic [ref=f5e708]: 0 / 0
+                  - cell [ref=f5e709]:
+                    - 'generic "Unknown: 1 expected visual artifact declared" [ref=f5e710]':
+                      - generic [ref=f5e711]: Unknown
+                      - generic [ref=f5e715]: 1 / 0
+                  - cell [ref=f5e716]:
+                    - 'generic "N/A: no LLM judge" [ref=f5e717]':
+                      - generic [ref=f5e718]: N/A
+                      - generic [ref=f5e721]: 0 / 0
+                  - cell [ref=f5e722]:
+                    - 'generic "N/A: no manual grader" [ref=f5e723]':
+                      - generic [ref=f5e724]: N/A
+                      - generic [ref=f5e727]: 0 / 0
+                  - cell "visual artifact contract is declared but no rendered artifact is attached to this audit Run this case →" [ref=f5e728]:
+                    - generic [ref=f5e729]: visual artifact contract is declared but no rendered artifact is attached to this audit
+                    - link "Run this case →" [ref=f5e731] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=visual-sortable-results-table
+                - row [ref=f5e732]:
+                  - rowheader "Build a responsive pricing grid with a media query visual-responsive-pricing-grid · visual-code · medium budget visual" [ref=f5e733]:
+                    - link "Build a responsive pricing grid with a media query" [ref=f5e734] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=visual-responsive-pricing-grid
+                    - generic [ref=f5e735]: visual-responsive-pricing-grid · visual-code · medium
+                    - generic [ref=f5e736]:
+                      - generic [ref=f5e737]: budget
+                      - generic [ref=f5e738]: visual
+                  - cell [ref=f5e739]:
+                    - 'generic "Pass: 12 deterministic graders" [ref=f5e740]':
+                      - generic [ref=f5e741]: Pass
+                      - generic [ref=f5e745]: 12 / 12
+                  - cell [ref=f5e746]:
+                    - 'generic "Pass: solve script declared" [ref=f5e747]':
+                      - generic [ref=f5e748]: Pass
+                      - generic [ref=f5e752]: 1 / 1
+                  - cell [ref=f5e753]:
+                    - 'generic "Pass: 1 plausible-but-wrong rejection script" [ref=f5e754]':
+                      - generic [ref=f5e755]: Pass
+                      - generic [ref=f5e759]: 1 / 1
+                  - cell [ref=f5e760]:
+                    - 'generic "N/A: no trace-step grader" [ref=f5e761]':
+                      - generic [ref=f5e762]: N/A
+                      - generic [ref=f5e765]: 0 / 0
+                  - cell [ref=f5e766]:
+                    - 'generic "Unknown: 2 expected visual artifacts declared" [ref=f5e767]':
+                      - generic [ref=f5e768]: Unknown
+                      - generic [ref=f5e772]: 2 / 0
+                  - cell [ref=f5e773]:
+                    - 'generic "N/A: no LLM judge" [ref=f5e774]':
+                      - generic [ref=f5e775]: N/A
+                      - generic [ref=f5e778]: 0 / 0
+                  - cell [ref=f5e779]:
+                    - 'generic "N/A: no manual grader" [ref=f5e780]':
+                      - generic [ref=f5e781]: N/A
+                      - generic [ref=f5e784]: 0 / 0
+                  - cell "visual artifact contract is declared but no rendered artifact is attached to this audit Run this case →" [ref=f5e785]:
+                    - generic [ref=f5e786]: visual artifact contract is declared but no rendered artifact is attached to this audit
+                    - link "Run this case →" [ref=f5e788] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=visual-responsive-pricing-grid
+                - row [ref=f5e789]:
+                  - rowheader "Build a static 3D depth lab visual-3d-depth-lab · visual-code · hard budget visual" [ref=f5e790]:
+                    - link "Build a static 3D depth lab" [ref=f5e791] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=visual-3d-depth-lab
+                    - generic [ref=f5e792]: visual-3d-depth-lab · visual-code · hard
+                    - generic [ref=f5e793]:
+                      - generic [ref=f5e794]: budget
+                      - generic [ref=f5e795]: visual
+                  - cell [ref=f5e796]:
+                    - 'generic "Pass: 9 deterministic graders" [ref=f5e797]':
+                      - generic [ref=f5e798]: Pass
+                      - generic [ref=f5e802]: 9 / 9
+                  - cell [ref=f5e803]:
+                    - 'generic "Pass: solve script declared" [ref=f5e804]':
+                      - generic [ref=f5e805]: Pass
+                      - generic [ref=f5e809]: 1 / 1
+                  - cell [ref=f5e810]:
+                    - 'generic "Pass: 1 plausible-but-wrong rejection script" [ref=f5e811]':
+                      - generic [ref=f5e812]: Pass
+                      - generic [ref=f5e816]: 1 / 1
+                  - cell [ref=f5e817]:
+                    - 'generic "N/A: no trace-step grader" [ref=f5e818]':
+                      - generic [ref=f5e819]: N/A
+                      - generic [ref=f5e822]: 0 / 0
+                  - cell [ref=f5e823]:
+                    - 'generic "Unknown: 1 expected visual artifact declared" [ref=f5e824]':
+                      - generic [ref=f5e825]: Unknown
+                      - generic [ref=f5e829]: 1 / 0
+                  - cell [ref=f5e830]:
+                    - 'generic "N/A: no LLM judge" [ref=f5e831]':
+                      - generic [ref=f5e832]: N/A
+                      - generic [ref=f5e835]: 0 / 0
+                  - cell [ref=f5e836]:
+                    - 'generic "N/A: no manual grader" [ref=f5e837]':
+                      - generic [ref=f5e838]: N/A
+                      - generic [ref=f5e841]: 0 / 0
+                  - cell "visual artifact contract is declared but no rendered artifact is attached to this audit Run this case →" [ref=f5e842]:
+                    - generic [ref=f5e843]: visual artifact contract is declared but no rendered artifact is attached to this audit
+                    - link "Run this case →" [ref=f5e845] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=visual-3d-depth-lab
+                - row [ref=f5e846]:
+                  - rowheader "Build a static eval results dashboard visual-web-eval-dashboard · visual-code · hard budget visual" [ref=f5e847]:
+                    - link "Build a static eval results dashboard" [ref=f5e848] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=visual-web-eval-dashboard
+                    - generic [ref=f5e849]: visual-web-eval-dashboard · visual-code · hard
+                    - generic [ref=f5e850]:
+                      - generic [ref=f5e851]: budget
+                      - generic [ref=f5e852]: visual
+                  - cell [ref=f5e853]:
+                    - 'generic "Pass: 11 deterministic graders" [ref=f5e854]':
+                      - generic [ref=f5e855]: Pass
+                      - generic [ref=f5e859]: 11 / 11
+                  - cell [ref=f5e860]:
+                    - 'generic "Pass: solve script declared" [ref=f5e861]':
+                      - generic [ref=f5e862]: Pass
+                      - generic [ref=f5e866]: 1 / 1
+                  - cell [ref=f5e867]:
+                    - 'generic "Pass: 1 plausible-but-wrong rejection script" [ref=f5e868]':
+                      - generic [ref=f5e869]: Pass
+                      - generic [ref=f5e873]: 1 / 1
+                  - cell [ref=f5e874]:
+                    - 'generic "N/A: no trace-step grader" [ref=f5e875]':
+                      - generic [ref=f5e876]: N/A
+                      - generic [ref=f5e879]: 0 / 0
+                  - cell [ref=f5e880]:
+                    - 'generic "Unknown: 2 expected visual artifacts declared" [ref=f5e881]':
+                      - generic [ref=f5e882]: Unknown
+                      - generic [ref=f5e886]: 2 / 0
+                  - cell [ref=f5e887]:
+                    - 'generic "N/A: no LLM judge" [ref=f5e888]':
+                      - generic [ref=f5e889]: N/A
+                      - generic [ref=f5e892]: 0 / 0
+                  - cell [ref=f5e893]:
+                    - 'generic "N/A: no manual grader" [ref=f5e894]':
+                      - generic [ref=f5e895]: N/A
+                      - generic [ref=f5e898]: 0 / 0
+                  - cell "visual artifact contract is declared but no rendered artifact is attached to this audit Run this case →" [ref=f5e899]:
+                    - generic [ref=f5e900]: visual artifact contract is declared but no rendered artifact is attached to this audit
+                    - link "Run this case →" [ref=f5e902] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=visual-web-eval-dashboard
+                - row [ref=f5e903]:
+                  - rowheader "Create a deterministic pixel-art field visual-pixel-art-scene · visual-code · medium budget visual" [ref=f5e904]:
+                    - link "Create a deterministic pixel-art field" [ref=f5e905] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=visual-pixel-art-scene
+                    - generic [ref=f5e906]: visual-pixel-art-scene · visual-code · medium
+                    - generic [ref=f5e907]:
+                      - generic [ref=f5e908]: budget
+                      - generic [ref=f5e909]: visual
+                  - cell [ref=f5e910]:
+                    - 'generic "Pass: 8 deterministic graders" [ref=f5e911]':
+                      - generic [ref=f5e912]: Pass
+                      - generic [ref=f5e916]: 8 / 8
+                  - cell [ref=f5e917]:
+                    - 'generic "Pass: solve script declared" [ref=f5e918]':
+                      - generic [ref=f5e919]: Pass
+                      - generic [ref=f5e923]: 1 / 1
+                  - cell [ref=f5e924]:
+                    - 'generic "Pass: 1 plausible-but-wrong rejection script" [ref=f5e925]':
+                      - generic [ref=f5e926]: Pass
+                      - generic [ref=f5e930]: 1 / 1
+                  - cell [ref=f5e931]:
+                    - 'generic "N/A: no trace-step grader" [ref=f5e932]':
+                      - generic [ref=f5e933]: N/A
+                      - generic [ref=f5e936]: 0 / 0
+                  - cell [ref=f5e937]:
+                    - 'generic "Unknown: 1 expected visual artifact declared" [ref=f5e938]':
+                      - generic [ref=f5e939]: Unknown
+                      - generic [ref=f5e943]: 1 / 0
+                  - cell [ref=f5e944]:
+                    - 'generic "N/A: no LLM judge" [ref=f5e945]':
+                      - generic [ref=f5e946]: N/A
+                      - generic [ref=f5e949]: 0 / 0
+                  - cell [ref=f5e950]:
+                    - 'generic "N/A: no manual grader" [ref=f5e951]':
+                      - generic [ref=f5e952]: N/A
+                      - generic [ref=f5e955]: 0 / 0
+                  - cell "visual artifact contract is declared but no rendered artifact is attached to this audit Run this case →" [ref=f5e956]:
+                    - generic [ref=f5e957]: visual artifact contract is declared but no rendered artifact is attached to this audit
+                    - link "Run this case →" [ref=f5e959] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=visual-pixel-art-scene
+                - row [ref=f5e960]:
+                  - rowheader "Explain an off-by-one bug and fix it reasoning-edge-case-explanation · reasoning · medium budget" [ref=f5e961]:
+                    - link "Explain an off-by-one bug and fix it" [ref=f5e962] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=reasoning-edge-case-explanation
+                    - generic [ref=f5e963]: reasoning-edge-case-explanation · reasoning · medium
+                    - generic [ref=f5e964]: budget
+                  - cell [ref=f5e966]:
+                    - 'generic "Pass: 4 deterministic graders" [ref=f5e967]':
+                      - generic [ref=f5e968]: Pass
+                      - generic [ref=f5e972]: 4 / 4
+                  - cell [ref=f5e973]:
+                    - 'generic "Pass: final answer oracle declared" [ref=f5e974]':
+                      - generic [ref=f5e975]: Pass
+                      - generic [ref=f5e979]: 1 / 1
+                  - cell [ref=f5e980]:
+                    - 'generic "Pass: 1 plausible-but-wrong rejection script" [ref=f5e981]':
+                      - generic [ref=f5e982]: Pass
+                      - generic [ref=f5e986]: 1 / 1
+                  - cell [ref=f5e987]:
+                    - 'generic "N/A: no trace-step grader" [ref=f5e988]':
+                      - generic [ref=f5e989]: N/A
+                      - generic [ref=f5e992]: 0 / 0
+                  - cell [ref=f5e993]:
+                    - 'generic "N/A: no visual contract" [ref=f5e994]':
+                      - generic [ref=f5e995]: N/A
+                      - generic [ref=f5e998]: 0 / 0
+                  - cell [ref=f5e999]:
+                    - 'generic "Unknown: 1 rubric judge declared" [ref=f5e1000]':
+                      - generic [ref=f5e1001]: Unknown
+                      - generic [ref=f5e1005]: 1 / 0
+                  - cell [ref=f5e1006]:
+                    - 'generic "N/A: no manual grader" [ref=f5e1007]':
+                      - generic [ref=f5e1008]: N/A
+                      - generic [ref=f5e1011]: 0 / 0
+                  - cell "LLM judge contract is declared but no runtime judge verdict is attached to this audit Run this case →" [ref=f5e1012]:
+                    - generic [ref=f5e1013]: LLM judge contract is declared but no runtime judge verdict is attached to this audit
+                    - link "Run this case →" [ref=f5e1015] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=reasoning-edge-case-explanation
+                - row [ref=f5e1016]:
+                  - rowheader "Generate a polished SVG status card visual-svg-status-card · visual-code · medium budget visual" [ref=f5e1017]:
+                    - link "Generate a polished SVG status card" [ref=f5e1018] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=visual-svg-status-card
+                    - generic [ref=f5e1019]: visual-svg-status-card · visual-code · medium
+                    - generic [ref=f5e1020]:
+                      - generic [ref=f5e1021]: budget
+                      - generic [ref=f5e1022]: visual
+                  - cell [ref=f5e1023]:
+                    - 'generic "Pass: 10 deterministic graders" [ref=f5e1024]':
+                      - generic [ref=f5e1025]: Pass
+                      - generic [ref=f5e1029]: 10 / 10
+                  - cell [ref=f5e1030]:
+                    - 'generic "Pass: solve script declared" [ref=f5e1031]':
+                      - generic [ref=f5e1032]: Pass
+                      - generic [ref=f5e1036]: 1 / 1
+                  - cell [ref=f5e1037]:
+                    - 'generic "Pass: 1 plausible-but-wrong rejection script" [ref=f5e1038]':
+                      - generic [ref=f5e1039]: Pass
+                      - generic [ref=f5e1043]: 1 / 1
+                  - cell [ref=f5e1044]:
+                    - 'generic "N/A: no trace-step grader" [ref=f5e1045]':
+                      - generic [ref=f5e1046]: N/A
+                      - generic [ref=f5e1049]: 0 / 0
+                  - cell [ref=f5e1050]:
+                    - 'generic "Unknown: 1 expected visual artifact declared" [ref=f5e1051]':
+                      - generic [ref=f5e1052]: Unknown
+                      - generic [ref=f5e1056]: 1 / 0
+                  - cell [ref=f5e1057]:
+                    - 'generic "N/A: no LLM judge" [ref=f5e1058]':
+                      - generic [ref=f5e1059]: N/A
+                      - generic [ref=f5e1062]: 0 / 0
+                  - cell [ref=f5e1063]:
+                    - 'generic "N/A: no manual grader" [ref=f5e1064]':
+                      - generic [ref=f5e1065]: N/A
+                      - generic [ref=f5e1068]: 0 / 0
+                  - cell "visual artifact contract is declared but no rendered artifact is attached to this audit Run this case →" [ref=f5e1069]:
+                    - generic [ref=f5e1070]: visual artifact contract is declared but no rendered artifact is attached to this audit
+                    - link "Run this case →" [ref=f5e1072] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=visual-svg-status-card
+                - row [ref=f5e1073]:
+                  - rowheader "Produce a 3-step remediation plan reasoning-counterfactual-plan · reasoning · medium budget" [ref=f5e1074]:
+                    - link "Produce a 3-step remediation plan" [ref=f5e1075] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=reasoning-counterfactual-plan
+                    - generic [ref=f5e1076]: reasoning-counterfactual-plan · reasoning · medium
+                    - generic [ref=f5e1077]: budget
+                  - cell [ref=f5e1079]:
+                    - 'generic "Pass: 4 deterministic graders" [ref=f5e1080]':
+                      - generic [ref=f5e1081]: Pass
+                      - generic [ref=f5e1085]: 4 / 4
+                  - cell [ref=f5e1086]:
+                    - 'generic "Pass: final answer oracle declared" [ref=f5e1087]':
+                      - generic [ref=f5e1088]: Pass
+                      - generic [ref=f5e1092]: 1 / 1
+                  - cell [ref=f5e1093]:
+                    - 'generic "Pass: 1 plausible-but-wrong rejection script" [ref=f5e1094]':
+                      - generic [ref=f5e1095]: Pass
+                      - generic [ref=f5e1099]: 1 / 1
+                  - cell [ref=f5e1100]:
+                    - 'generic "N/A: no trace-step grader" [ref=f5e1101]':
+                      - generic [ref=f5e1102]: N/A
+                      - generic [ref=f5e1105]: 0 / 0
+                  - cell [ref=f5e1106]:
+                    - 'generic "N/A: no visual contract" [ref=f5e1107]':
+                      - generic [ref=f5e1108]: N/A
+                      - generic [ref=f5e1111]: 0 / 0
+                  - cell [ref=f5e1112]:
+                    - 'generic "Unknown: 1 rubric judge declared" [ref=f5e1113]':
+                      - generic [ref=f5e1114]: Unknown
+                      - generic [ref=f5e1118]: 1 / 0
+                  - cell [ref=f5e1119]:
+                    - 'generic "N/A: no manual grader" [ref=f5e1120]':
+                      - generic [ref=f5e1121]: N/A
+                      - generic [ref=f5e1124]: 0 / 0
+                  - cell "LLM judge contract is declared but no runtime judge verdict is attached to this audit Run this case →" [ref=f5e1125]:
+                    - generic [ref=f5e1126]: LLM judge contract is declared but no runtime judge verdict is attached to this audit
+                    - link "Run this case →" [ref=f5e1128] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=reasoning-counterfactual-plan
+                - row [ref=f5e1129]:
+                  - rowheader "Repair an accessible filter interaction visual-accessible-filter-form · visual-code · medium visual" [ref=f5e1130]:
+                    - link "Repair an accessible filter interaction" [ref=f5e1131] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=visual-accessible-filter-form
+                    - generic [ref=f5e1132]: visual-accessible-filter-form · visual-code · medium
+                    - generic [ref=f5e1133]: visual
+                  - cell [ref=f5e1135]:
+                    - 'generic "Pass: 7 deterministic graders" [ref=f5e1136]':
+                      - generic [ref=f5e1137]: Pass
+                      - generic [ref=f5e1141]: 7 / 7
+                  - cell [ref=f5e1142]:
+                    - 'generic "Pass: solve script declared" [ref=f5e1143]':
+                      - generic [ref=f5e1144]: Pass
+                      - generic [ref=f5e1148]: 1 / 1
+                  - cell [ref=f5e1149]:
+                    - 'generic "Pass: 1 plausible-but-wrong rejection script" [ref=f5e1150]':
+                      - generic [ref=f5e1151]: Pass
+                      - generic [ref=f5e1155]: 1 / 1
+                  - cell [ref=f5e1156]:
+                    - 'generic "N/A: no trace-step grader" [ref=f5e1157]':
+                      - generic [ref=f5e1158]: N/A
+                      - generic [ref=f5e1161]: 0 / 0
+                  - cell [ref=f5e1162]:
+                    - 'generic "Unknown: 2 expected visual artifacts declared" [ref=f5e1163]':
+                      - generic [ref=f5e1164]: Unknown
+                      - generic [ref=f5e1168]: 2 / 0
+                  - cell [ref=f5e1169]:
+                    - 'generic "N/A: no LLM judge" [ref=f5e1170]':
+                      - generic [ref=f5e1171]: N/A
+                      - generic [ref=f5e1174]: 0 / 0
+                  - cell [ref=f5e1175]:
+                    - 'generic "N/A: no manual grader" [ref=f5e1176]':
+                      - generic [ref=f5e1177]: N/A
+                      - generic [ref=f5e1180]: 0 / 0
+                  - cell "visual artifact contract is declared but no rendered artifact is attached to this audit Run this case →" [ref=f5e1181]:
+                    - generic [ref=f5e1182]: visual artifact contract is declared but no rendered artifact is attached to this audit
+                    - link "Run this case →" [ref=f5e1184] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=visual-accessible-filter-form
+                - row [ref=f5e1185]:
+                  - rowheader "Sketch a proof for sum of first n integers reasoning-math-proof-sketch · reasoning · medium budget" [ref=f5e1186]:
+                    - link "Sketch a proof for sum of first n integers" [ref=f5e1187] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=reasoning-math-proof-sketch
+                    - generic [ref=f5e1188]: reasoning-math-proof-sketch · reasoning · medium
+                    - generic [ref=f5e1189]: budget
+                  - cell [ref=f5e1191]:
+                    - 'generic "Pass: 4 deterministic graders" [ref=f5e1192]':
+                      - generic [ref=f5e1193]: Pass
+                      - generic [ref=f5e1197]: 4 / 4
+                  - cell [ref=f5e1198]:
+                    - 'generic "Pass: final answer oracle declared" [ref=f5e1199]':
+                      - generic [ref=f5e1200]: Pass
+                      - generic [ref=f5e1204]: 1 / 1
+                  - cell [ref=f5e1205]:
+                    - 'generic "Pass: 1 plausible-but-wrong rejection script" [ref=f5e1206]':
+                      - generic [ref=f5e1207]: Pass
+                      - generic [ref=f5e1211]: 1 / 1
+                  - cell [ref=f5e1212]:
+                    - 'generic "N/A: no trace-step grader" [ref=f5e1213]':
+                      - generic [ref=f5e1214]: N/A
+                      - generic [ref=f5e1217]: 0 / 0
+                  - cell [ref=f5e1218]:
+                    - 'generic "N/A: no visual contract" [ref=f5e1219]':
+                      - generic [ref=f5e1220]: N/A
+                      - generic [ref=f5e1223]: 0 / 0
+                  - cell [ref=f5e1224]:
+                    - 'generic "Unknown: 1 rubric judge declared" [ref=f5e1225]':
+                      - generic [ref=f5e1226]: Unknown
+                      - generic [ref=f5e1230]: 1 / 0
+                  - cell [ref=f5e1231]:
+                    - 'generic "N/A: no manual grader" [ref=f5e1232]':
+                      - generic [ref=f5e1233]: N/A
+                      - generic [ref=f5e1236]: 0 / 0
+                  - cell "LLM judge contract is declared but no runtime judge verdict is attached to this audit Run this case →" [ref=f5e1237]:
+                    - generic [ref=f5e1238]: LLM judge contract is declared but no runtime judge verdict is attached to this audit
+                    - link "Run this case →" [ref=f5e1240] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=reasoning-math-proof-sketch
+                - row [ref=f5e1241]:
+                  - rowheader "Turn supplied data into an accessible SVG chart visual-supplied-data-svg · visual-code · medium visual" [ref=f5e1242]:
+                    - link "Turn supplied data into an accessible SVG chart" [ref=f5e1243] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=visual-supplied-data-svg
+                    - generic [ref=f5e1244]: visual-supplied-data-svg · visual-code · medium
+                    - generic [ref=f5e1245]: visual
+                  - cell [ref=f5e1247]:
+                    - 'generic "Pass: 6 deterministic graders" [ref=f5e1248]':
+                      - generic [ref=f5e1249]: Pass
+                      - generic [ref=f5e1253]: 6 / 6
+                  - cell [ref=f5e1254]:
+                    - 'generic "Pass: solve script declared" [ref=f5e1255]':
+                      - generic [ref=f5e1256]: Pass
+                      - generic [ref=f5e1260]: 1 / 1
+                  - cell [ref=f5e1261]:
+                    - 'generic "Pass: 1 plausible-but-wrong rejection script" [ref=f5e1262]':
+                      - generic [ref=f5e1263]: Pass
+                      - generic [ref=f5e1267]: 1 / 1
+                  - cell [ref=f5e1268]:
+                    - 'generic "N/A: no trace-step grader" [ref=f5e1269]':
+                      - generic [ref=f5e1270]: N/A
+                      - generic [ref=f5e1273]: 0 / 0
+                  - cell [ref=f5e1274]:
+                    - 'generic "Unknown: 2 expected visual artifacts declared" [ref=f5e1275]':
+                      - generic [ref=f5e1276]: Unknown
+                      - generic [ref=f5e1280]: 2 / 0
+                  - cell [ref=f5e1281]:
+                    - 'generic "N/A: no LLM judge" [ref=f5e1282]':
+                      - generic [ref=f5e1283]: N/A
+                      - generic [ref=f5e1286]: 0 / 0
+                  - cell [ref=f5e1287]:
+                    - 'generic "N/A: no manual grader" [ref=f5e1288]':
+                      - generic [ref=f5e1289]: N/A
+                      - generic [ref=f5e1292]: 0 / 0
+                  - cell "visual artifact contract is declared but no rendered artifact is attached to this audit Run this case →" [ref=f5e1293]:
+                    - generic [ref=f5e1294]: visual artifact contract is declared but no rendered artifact is attached to this audit
+                    - link "Run this case →" [ref=f5e1296] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=visual-supplied-data-svg
+                - row [ref=f5e1297]:
+                  - rowheader "Write an incident runbook visual-markdown-runbook · visual-code · medium budget visual" [ref=f5e1298]:
+                    - link "Write an incident runbook" [ref=f5e1299] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=visual-markdown-runbook
+                    - generic [ref=f5e1300]: visual-markdown-runbook · visual-code · medium
+                    - generic [ref=f5e1301]:
+                      - generic [ref=f5e1302]: budget
+                      - generic [ref=f5e1303]: visual
+                  - cell [ref=f5e1304]:
+                    - 'generic "Pass: 7 deterministic graders" [ref=f5e1305]':
+                      - generic [ref=f5e1306]: Pass
+                      - generic [ref=f5e1310]: 7 / 7
+                  - cell [ref=f5e1311]:
+                    - 'generic "Pass: solve script declared" [ref=f5e1312]':
+                      - generic [ref=f5e1313]: Pass
+                      - generic [ref=f5e1317]: 1 / 1
+                  - cell [ref=f5e1318]:
+                    - 'generic "Pass: 1 plausible-but-wrong rejection script" [ref=f5e1319]':
+                      - generic [ref=f5e1320]: Pass
+                      - generic [ref=f5e1324]: 1 / 1
+                  - cell [ref=f5e1325]:
+                    - 'generic "N/A: no trace-step grader" [ref=f5e1326]':
+                      - generic [ref=f5e1327]: N/A
+                      - generic [ref=f5e1330]: 0 / 0
+                  - cell [ref=f5e1331]:
+                    - 'generic "Unknown: 1 expected visual artifact declared" [ref=f5e1332]':
+                      - generic [ref=f5e1333]: Unknown
+                      - generic [ref=f5e1337]: 1 / 0
+                  - cell [ref=f5e1338]:
+                    - 'generic "N/A: no LLM judge" [ref=f5e1339]':
+                      - generic [ref=f5e1340]: N/A
+                      - generic [ref=f5e1343]: 0 / 0
+                  - cell [ref=f5e1344]:
+                    - 'generic "N/A: no manual grader" [ref=f5e1345]':
+                      - generic [ref=f5e1346]: N/A
+                      - generic [ref=f5e1349]: 0 / 0
+                  - cell "visual artifact contract is declared but no rendered artifact is attached to this audit Run this case →" [ref=f5e1350]:
+                    - generic [ref=f5e1351]: visual artifact contract is declared but no rendered artifact is attached to this audit
+                    - link "Run this case →" [ref=f5e1353] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=visual-markdown-runbook
+                - row [ref=f5e1354]:
+                  - rowheader "Add a Rectangle class swe-add-rectangle · agentic-swe · easy" [ref=f5e1355]:
+                    - link "Add a Rectangle class" [ref=f5e1356] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=swe-add-rectangle
+                    - generic [ref=f5e1357]: swe-add-rectangle · agentic-swe · easy
+                  - cell [ref=f5e1358]:
+                    - 'generic "Pass: 3 deterministic graders" [ref=f5e1359]':
+                      - generic [ref=f5e1360]: Pass
+                      - generic [ref=f5e1364]: 3 / 3
+                  - cell [ref=f5e1365]:
+                    - 'generic "Pass: solve script declared" [ref=f5e1366]':
+                      - generic [ref=f5e1367]: Pass
+                      - generic [ref=f5e1371]: 1 / 1
+                  - cell [ref=f5e1372]:
+                    - 'generic "Pass: 1 plausible-but-wrong rejection script" [ref=f5e1373]':
+                      - generic [ref=f5e1374]: Pass
+                      - generic [ref=f5e1378]: 1 / 1
+                  - cell [ref=f5e1379]:
+                    - 'generic "N/A: no trace-step grader" [ref=f5e1380]':
+                      - generic [ref=f5e1381]: N/A
+                      - generic [ref=f5e1384]: 0 / 0
+                  - cell [ref=f5e1385]:
+                    - 'generic "N/A: no visual contract" [ref=f5e1386]':
+                      - generic [ref=f5e1387]: N/A
+                      - generic [ref=f5e1390]: 0 / 0
+                  - cell [ref=f5e1391]:
+                    - 'generic "N/A: no LLM judge" [ref=f5e1392]':
+                      - generic [ref=f5e1393]: N/A
+                      - generic [ref=f5e1396]: 0 / 0
+                  - cell [ref=f5e1397]:
+                    - 'generic "N/A: no manual grader" [ref=f5e1398]':
+                      - generic [ref=f5e1399]: N/A
+                      - generic [ref=f5e1402]: 0 / 0
+                  - cell [ref=f5e1403]:
+                    - text: no structural gap detected
+                    - link "Run this case →" [ref=f5e1404] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=swe-add-rectangle
+                - row [ref=f5e1405]:
+                  - rowheader "Build a trustworthy numeric summary single-number-summary · single-tool · medium budget" [ref=f5e1406]:
+                    - link "Build a trustworthy numeric summary" [ref=f5e1407] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=single-number-summary
+                    - generic [ref=f5e1408]: single-number-summary · single-tool · medium
+                    - generic [ref=f5e1409]: budget
+                  - cell [ref=f5e1411]:
+                    - 'generic "Pass: 7 deterministic graders" [ref=f5e1412]':
+                      - generic [ref=f5e1413]: Pass
+                      - generic [ref=f5e1417]: 7 / 7
+                  - cell [ref=f5e1418]:
+                    - 'generic "Pass: solve script declared" [ref=f5e1419]':
+                      - generic [ref=f5e1420]: Pass
+                      - generic [ref=f5e1424]: 1 / 1
+                  - cell [ref=f5e1425]:
+                    - 'generic "Pass: 1 plausible-but-wrong rejection script" [ref=f5e1426]':
+                      - generic [ref=f5e1427]: Pass
+                      - generic [ref=f5e1431]: 1 / 1
+                  - cell [ref=f5e1432]:
+                    - 'generic "N/A: no trace-step grader" [ref=f5e1433]':
+                      - generic [ref=f5e1434]: N/A
+                      - generic [ref=f5e1437]: 0 / 0
+                  - cell [ref=f5e1438]:
+                    - 'generic "N/A: no visual contract" [ref=f5e1439]':
+                      - generic [ref=f5e1440]: N/A
+                      - generic [ref=f5e1443]: 0 / 0
+                  - cell [ref=f5e1444]:
+                    - 'generic "N/A: no LLM judge" [ref=f5e1445]':
+                      - generic [ref=f5e1446]: N/A
+                      - generic [ref=f5e1449]: 0 / 0
+                  - cell [ref=f5e1450]:
+                    - 'generic "N/A: no manual grader" [ref=f5e1451]':
+                      - generic [ref=f5e1452]: N/A
+                      - generic [ref=f5e1455]: 0 / 0
+                  - cell [ref=f5e1456]:
+                    - text: no structural gap detected
+                    - link "Run this case →" [ref=f5e1457] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=single-number-summary
+                - row [ref=f5e1458]:
+                  - rowheader "Convert CommonJS counter to ESM swe-cjs-to-esm · agentic-swe · medium" [ref=f5e1459]:
+                    - link "Convert CommonJS counter to ESM" [ref=f5e1460] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=swe-cjs-to-esm
+                    - generic [ref=f5e1461]: swe-cjs-to-esm · agentic-swe · medium
+                  - cell [ref=f5e1462]:
+                    - 'generic "Pass: 4 deterministic graders" [ref=f5e1463]':
+                      - generic [ref=f5e1464]: Pass
+                      - generic [ref=f5e1468]: 4 / 4
+                  - cell [ref=f5e1469]:
+                    - 'generic "Pass: solve script declared" [ref=f5e1470]':
+                      - generic [ref=f5e1471]: Pass
+                      - generic [ref=f5e1475]: 1 / 1
+                  - cell [ref=f5e1476]:
+                    - 'generic "Pass: 1 plausible-but-wrong rejection script" [ref=f5e1477]':
+                      - generic [ref=f5e1478]: Pass
+                      - generic [ref=f5e1482]: 1 / 1
+                  - cell [ref=f5e1483]:
+                    - 'generic "N/A: no trace-step grader" [ref=f5e1484]':
+                      - generic [ref=f5e1485]: N/A
+                      - generic [ref=f5e1488]: 0 / 0
+                  - cell [ref=f5e1489]:
+                    - 'generic "N/A: no visual contract" [ref=f5e1490]':
+                      - generic [ref=f5e1491]: N/A
+                      - generic [ref=f5e1494]: 0 / 0
+                  - cell [ref=f5e1495]:
+                    - 'generic "N/A: no LLM judge" [ref=f5e1496]':
+                      - generic [ref=f5e1497]: N/A
+                      - generic [ref=f5e1500]: 0 / 0
+                  - cell [ref=f5e1501]:
+                    - 'generic "N/A: no manual grader" [ref=f5e1502]':
+                      - generic [ref=f5e1503]: N/A
+                      - generic [ref=f5e1506]: 0 / 0
+                  - cell [ref=f5e1507]:
+                    - text: no structural gap detected
+                    - link "Run this case →" [ref=f5e1508] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=swe-cjs-to-esm
+                - row [ref=f5e1509]:
+                  - rowheader "Count ERROR lines in log.txt single-count-errors · single-tool · easy" [ref=f5e1510]:
+                    - link "Count ERROR lines in log.txt" [ref=f5e1511] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=single-count-errors
+                    - generic [ref=f5e1512]: single-count-errors · single-tool · easy
+                  - cell [ref=f5e1513]:
+                    - 'generic "Pass: 2 deterministic graders" [ref=f5e1514]':
+                      - generic [ref=f5e1515]: Pass
+                      - generic [ref=f5e1519]: 2 / 2
+                  - cell [ref=f5e1520]:
+                    - 'generic "Pass: solve script declared" [ref=f5e1521]':
+                      - generic [ref=f5e1522]: Pass
+                      - generic [ref=f5e1526]: 1 / 1
+                  - cell [ref=f5e1527]:
+                    - 'generic "Pass: 1 plausible-but-wrong rejection script" [ref=f5e1528]':
+                      - generic [ref=f5e1529]: Pass
+                      - generic [ref=f5e1533]: 1 / 1
+                  - cell [ref=f5e1534]:
+                    - 'generic "N/A: no trace-step grader" [ref=f5e1535]':
+                      - generic [ref=f5e1536]: N/A
+                      - generic [ref=f5e1539]: 0 / 0
+                  - cell [ref=f5e1540]:
+                    - 'generic "N/A: no visual contract" [ref=f5e1541]':
+                      - generic [ref=f5e1542]: N/A
+                      - generic [ref=f5e1545]: 0 / 0
+                  - cell [ref=f5e1546]:
+                    - 'generic "N/A: no LLM judge" [ref=f5e1547]':
+                      - generic [ref=f5e1548]: N/A
+                      - generic [ref=f5e1551]: 0 / 0
+                  - cell [ref=f5e1552]:
+                    - 'generic "N/A: no manual grader" [ref=f5e1553]':
+                      - generic [ref=f5e1554]: N/A
+                      - generic [ref=f5e1557]: 0 / 0
+                  - cell [ref=f5e1558]:
+                    - text: no structural gap detected
+                    - link "Run this case →" [ref=f5e1559] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=single-count-errors
+                - row [ref=f5e1560]:
+                  - rowheader "Create README.md with project description single-create-readme · single-tool · easy" [ref=f5e1561]:
+                    - link "Create README.md with project description" [ref=f5e1562] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=single-create-readme
+                    - generic [ref=f5e1563]: single-create-readme · single-tool · easy
+                  - cell [ref=f5e1564]:
+                    - 'generic "Pass: 2 deterministic graders" [ref=f5e1565]':
+                      - generic [ref=f5e1566]: Pass
+                      - generic [ref=f5e1570]: 2 / 2
+                  - cell [ref=f5e1571]:
+                    - 'generic "Pass: solve script declared" [ref=f5e1572]':
+                      - generic [ref=f5e1573]: Pass
+                      - generic [ref=f5e1577]: 1 / 1
+                  - cell [ref=f5e1578]:
+                    - 'generic "Pass: 1 plausible-but-wrong rejection script" [ref=f5e1579]':
+                      - generic [ref=f5e1580]: Pass
+                      - generic [ref=f5e1584]: 1 / 1
+                  - cell [ref=f5e1585]:
+                    - 'generic "N/A: no trace-step grader" [ref=f5e1586]':
+                      - generic [ref=f5e1587]: N/A
+                      - generic [ref=f5e1590]: 0 / 0
+                  - cell [ref=f5e1591]:
+                    - 'generic "N/A: no visual contract" [ref=f5e1592]':
+                      - generic [ref=f5e1593]: N/A
+                      - generic [ref=f5e1596]: 0 / 0
+                  - cell [ref=f5e1597]:
+                    - 'generic "N/A: no LLM judge" [ref=f5e1598]':
+                      - generic [ref=f5e1599]: N/A
+                      - generic [ref=f5e1602]: 0 / 0
+                  - cell [ref=f5e1603]:
+                    - 'generic "N/A: no manual grader" [ref=f5e1604]':
+                      - generic [ref=f5e1605]: N/A
+                      - generic [ref=f5e1608]: 0 / 0
+                  - cell [ref=f5e1609]:
+                    - text: no structural gap detected
+                    - link "Run this case →" [ref=f5e1610] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=single-create-readme
+                - row [ref=f5e1611]:
+                  - rowheader "Delete only the stale build manifest single-delete-obsolete-artifact · single-tool · easy" [ref=f5e1612]:
+                    - link "Delete only the stale build manifest" [ref=f5e1613] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=single-delete-obsolete-artifact
+                    - generic [ref=f5e1614]: single-delete-obsolete-artifact · single-tool · easy
+                  - cell [ref=f5e1615]:
+                    - 'generic "Pass: 3 deterministic graders" [ref=f5e1616]':
+                      - generic [ref=f5e1617]: Pass
+                      - generic [ref=f5e1621]: 3 / 3
+                  - cell [ref=f5e1622]:
+                    - 'generic "Pass: solve script declared" [ref=f5e1623]':
+                      - generic [ref=f5e1624]: Pass
+                      - generic [ref=f5e1628]: 1 / 1
+                  - cell [ref=f5e1629]:
+                    - 'generic "Pass: 2 plausible-but-wrong rejection scripts" [ref=f5e1630]':
+                      - generic [ref=f5e1631]: Pass
+                      - generic [ref=f5e1635]: 2 / 2
+                  - cell [ref=f5e1636]:
+                    - 'generic "N/A: no trace-step grader" [ref=f5e1637]':
+                      - generic [ref=f5e1638]: N/A
+                      - generic [ref=f5e1641]: 0 / 0
+                  - cell [ref=f5e1642]:
+                    - 'generic "N/A: no visual contract" [ref=f5e1643]':
+                      - generic [ref=f5e1644]: N/A
+                      - generic [ref=f5e1647]: 0 / 0
+                  - cell [ref=f5e1648]:
+                    - 'generic "N/A: no LLM judge" [ref=f5e1649]':
+                      - generic [ref=f5e1650]: N/A
+                      - generic [ref=f5e1653]: 0 / 0
+                  - cell [ref=f5e1654]:
+                    - 'generic "N/A: no manual grader" [ref=f5e1655]':
+                      - generic [ref=f5e1656]: N/A
+                      - generic [ref=f5e1659]: 0 / 0
+                  - cell [ref=f5e1660]:
+                    - text: no structural gap detected
+                    - link "Run this case →" [ref=f5e1661] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=single-delete-obsolete-artifact
+                - row [ref=f5e1662]:
+                  - rowheader "Enable a feature flag without touching production lock single-config-edit-forbidden · single-tool · easy" [ref=f5e1663]:
+                    - link "Enable a feature flag without touching production lock" [ref=f5e1664] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=single-config-edit-forbidden
+                    - generic [ref=f5e1665]: single-config-edit-forbidden · single-tool · easy
+                  - cell [ref=f5e1666]:
+                    - 'generic "Pass: 3 deterministic graders" [ref=f5e1667]':
+                      - generic [ref=f5e1668]: Pass
+                      - generic [ref=f5e1672]: 3 / 3
+                  - cell [ref=f5e1673]:
+                    - 'generic "Pass: solve script declared" [ref=f5e1674]':
+                      - generic [ref=f5e1675]: Pass
+                      - generic [ref=f5e1679]: 1 / 1
+                  - cell [ref=f5e1680]:
+                    - 'generic "Pass: 1 plausible-but-wrong rejection script" [ref=f5e1681]':
+                      - generic [ref=f5e1682]: Pass
+                      - generic [ref=f5e1686]: 1 / 1
+                  - cell [ref=f5e1687]:
+                    - 'generic "N/A: no trace-step grader" [ref=f5e1688]':
+                      - generic [ref=f5e1689]: N/A
+                      - generic [ref=f5e1692]: 0 / 0
+                  - cell [ref=f5e1693]:
+                    - 'generic "N/A: no visual contract" [ref=f5e1694]':
+                      - generic [ref=f5e1695]: N/A
+                      - generic [ref=f5e1698]: 0 / 0
+                  - cell [ref=f5e1699]:
+                    - 'generic "N/A: no LLM judge" [ref=f5e1700]':
+                      - generic [ref=f5e1701]: N/A
+                      - generic [ref=f5e1704]: 0 / 0
+                  - cell [ref=f5e1705]:
+                    - 'generic "N/A: no manual grader" [ref=f5e1706]':
+                      - generic [ref=f5e1707]: N/A
+                      - generic [ref=f5e1710]: 0 / 0
+                  - cell [ref=f5e1711]:
+                    - text: no structural gap detected
+                    - link "Run this case →" [ref=f5e1712] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=single-config-edit-forbidden
+                - row [ref=f5e1713]:
+                  - rowheader "Explain recursion in one sentence reasoning-recursion · reasoning · easy" [ref=f5e1714]:
+                    - link "Explain recursion in one sentence" [ref=f5e1715] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=reasoning-recursion
+                    - generic [ref=f5e1716]: reasoning-recursion · reasoning · easy
+                  - cell [ref=f5e1717]:
+                    - 'generic "Pass: 2 deterministic graders" [ref=f5e1718]':
+                      - generic [ref=f5e1719]: Pass
+                      - generic [ref=f5e1723]: 2 / 2
+                  - cell [ref=f5e1724]:
+                    - 'generic "Pass: final answer oracle declared" [ref=f5e1725]':
+                      - generic [ref=f5e1726]: Pass
+                      - generic [ref=f5e1730]: 1 / 1
+                  - cell [ref=f5e1731]:
+                    - 'generic "Pass: 1 plausible-but-wrong rejection script" [ref=f5e1732]':
+                      - generic [ref=f5e1733]: Pass
+                      - generic [ref=f5e1737]: 1 / 1
+                  - cell [ref=f5e1738]:
+                    - 'generic "N/A: no trace-step grader" [ref=f5e1739]':
+                      - generic [ref=f5e1740]: N/A
+                      - generic [ref=f5e1743]: 0 / 0
+                  - cell [ref=f5e1744]:
+                    - 'generic "N/A: no visual contract" [ref=f5e1745]':
+                      - generic [ref=f5e1746]: N/A
+                      - generic [ref=f5e1749]: 0 / 0
+                  - cell [ref=f5e1750]:
+                    - 'generic "N/A: no LLM judge" [ref=f5e1751]':
+                      - generic [ref=f5e1752]: N/A
+                      - generic [ref=f5e1755]: 0 / 0
+                  - cell [ref=f5e1756]:
+                    - 'generic "N/A: no manual grader" [ref=f5e1757]':
+                      - generic [ref=f5e1758]: N/A
+                      - generic [ref=f5e1761]: 0 / 0
+                  - cell [ref=f5e1762]:
+                    - text: no structural gap detected
+                    - link "Run this case →" [ref=f5e1763] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=reasoning-recursion
+                - row [ref=f5e1764]:
+                  - rowheader "Fix leap year logic swe-fix-leap-year · agentic-swe · medium" [ref=f5e1765]:
+                    - link "Fix leap year logic" [ref=f5e1766] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=swe-fix-leap-year
+                    - generic [ref=f5e1767]: swe-fix-leap-year · agentic-swe · medium
+                  - cell [ref=f5e1768]:
+                    - 'generic "Pass: 4 deterministic graders" [ref=f5e1769]':
+                      - generic [ref=f5e1770]: Pass
+                      - generic [ref=f5e1774]: 4 / 4
+                  - cell [ref=f5e1775]:
+                    - 'generic "Pass: solve script declared" [ref=f5e1776]':
+                      - generic [ref=f5e1777]: Pass
+                      - generic [ref=f5e1781]: 1 / 1
+                  - cell [ref=f5e1782]:
+                    - 'generic "Pass: 1 plausible-but-wrong rejection script" [ref=f5e1783]':
+                      - generic [ref=f5e1784]: Pass
+                      - generic [ref=f5e1788]: 1 / 1
+                  - cell [ref=f5e1789]:
+                    - 'generic "N/A: no trace-step grader" [ref=f5e1790]':
+                      - generic [ref=f5e1791]: N/A
+                      - generic [ref=f5e1794]: 0 / 0
+                  - cell [ref=f5e1795]:
+                    - 'generic "N/A: no visual contract" [ref=f5e1796]':
+                      - generic [ref=f5e1797]: N/A
+                      - generic [ref=f5e1800]: 0 / 0
+                  - cell [ref=f5e1801]:
+                    - 'generic "N/A: no LLM judge" [ref=f5e1802]':
+                      - generic [ref=f5e1803]: N/A
+                      - generic [ref=f5e1806]: 0 / 0
+                  - cell [ref=f5e1807]:
+                    - 'generic "N/A: no manual grader" [ref=f5e1808]':
+                      - generic [ref=f5e1809]: N/A
+                      - generic [ref=f5e1812]: 0 / 0
+                  - cell [ref=f5e1813]:
+                    - text: no structural gap detected
+                    - link "Run this case →" [ref=f5e1814] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=swe-fix-leap-year
+                - row [ref=f5e1815]:
+                  - rowheader "Fix Python median for even-length lists swe-py-fix-median · agentic-swe · medium" [ref=f5e1816]:
+                    - link "Fix Python median for even-length lists" [ref=f5e1817] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=swe-py-fix-median
+                    - generic [ref=f5e1818]: swe-py-fix-median · agentic-swe · medium
+                  - cell [ref=f5e1819]:
+                    - 'generic "Pass: 4 deterministic graders" [ref=f5e1820]':
+                      - generic [ref=f5e1821]: Pass
+                      - generic [ref=f5e1825]: 4 / 4
+                  - cell [ref=f5e1826]:
+                    - 'generic "Pass: solve script declared" [ref=f5e1827]':
+                      - generic [ref=f5e1828]: Pass
+                      - generic [ref=f5e1832]: 1 / 1
+                  - cell [ref=f5e1833]:
+                    - 'generic "Pass: 1 plausible-but-wrong rejection script" [ref=f5e1834]':
+                      - generic [ref=f5e1835]: Pass
+                      - generic [ref=f5e1839]: 1 / 1
+                  - cell [ref=f5e1840]:
+                    - 'generic "N/A: no trace-step grader" [ref=f5e1841]':
+                      - generic [ref=f5e1842]: N/A
+                      - generic [ref=f5e1845]: 0 / 0
+                  - cell [ref=f5e1846]:
+                    - 'generic "N/A: no visual contract" [ref=f5e1847]':
+                      - generic [ref=f5e1848]: N/A
+                      - generic [ref=f5e1851]: 0 / 0
+                  - cell [ref=f5e1852]:
+                    - 'generic "N/A: no LLM judge" [ref=f5e1853]':
+                      - generic [ref=f5e1854]: N/A
+                      - generic [ref=f5e1857]: 0 / 0
+                  - cell [ref=f5e1858]:
+                    - 'generic "N/A: no manual grader" [ref=f5e1859]':
+                      - generic [ref=f5e1860]: N/A
+                      - generic [ref=f5e1863]: 0 / 0
+                  - cell [ref=f5e1864]:
+                    - text: no structural gap detected
+                    - link "Run this case →" [ref=f5e1865] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=swe-py-fix-median
+                - row [ref=f5e1866]:
+                  - rowheader "Fix rangeSum test-first swe-trace-test-first · agentic-swe · medium" [ref=f5e1867]:
+                    - link "Fix rangeSum test-first" [ref=f5e1868] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=swe-trace-test-first
+                    - generic [ref=f5e1869]: swe-trace-test-first · agentic-swe · medium
+                  - cell [ref=f5e1870]:
+                    - 'generic "Pass: 3 deterministic graders" [ref=f5e1871]':
+                      - generic [ref=f5e1872]: Pass
+                      - generic [ref=f5e1876]: 3 / 3
+                  - cell [ref=f5e1877]:
+                    - 'generic "Pass: solve script declared" [ref=f5e1878]':
+                      - generic [ref=f5e1879]: Pass
+                      - generic [ref=f5e1883]: 1 / 1
+                  - cell [ref=f5e1884]:
+                    - 'generic "Pass: 1 plausible-but-wrong rejection script" [ref=f5e1885]':
+                      - generic [ref=f5e1886]: Pass
+                      - generic [ref=f5e1890]: 1 / 1
+                  - cell [ref=f5e1891]:
+                    - 'generic "Unknown: 2 trace-step graders declared; runtime transcript evidence is not attached" [ref=f5e1892]':
+                      - generic [ref=f5e1893]: Unknown
+                      - generic [ref=f5e1897]: 2 / 0
+                  - cell [ref=f5e1898]:
+                    - 'generic "N/A: no visual contract" [ref=f5e1899]':
+                      - generic [ref=f5e1900]: N/A
+                      - generic [ref=f5e1903]: 0 / 0
+                  - cell [ref=f5e1904]:
+                    - 'generic "N/A: no LLM judge" [ref=f5e1905]':
+                      - generic [ref=f5e1906]: N/A
+                      - generic [ref=f5e1909]: 0 / 0
+                  - cell [ref=f5e1910]:
+                    - 'generic "N/A: no manual grader" [ref=f5e1911]':
+                      - generic [ref=f5e1912]: N/A
+                      - generic [ref=f5e1915]: 0 / 0
+                  - cell [ref=f5e1916]:
+                    - text: no structural gap detected
+                    - link "Run this case →" [ref=f5e1917] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=swe-trace-test-first
+                - row [ref=f5e1918]:
+                  - rowheader "Fix the FizzBuzz bug swe-fix-fizzbuzz · agentic-swe · easy" [ref=f5e1919]:
+                    - link "Fix the FizzBuzz bug" [ref=f5e1920] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=swe-fix-fizzbuzz
+                    - generic [ref=f5e1921]: swe-fix-fizzbuzz · agentic-swe · easy
+                  - cell [ref=f5e1922]:
+                    - 'generic "Pass: 4 deterministic graders" [ref=f5e1923]':
+                      - generic [ref=f5e1924]: Pass
+                      - generic [ref=f5e1928]: 4 / 4
+                  - cell [ref=f5e1929]:
+                    - 'generic "Pass: solve script declared" [ref=f5e1930]':
+                      - generic [ref=f5e1931]: Pass
+                      - generic [ref=f5e1935]: 1 / 1
+                  - cell [ref=f5e1936]:
+                    - 'generic "Pass: 1 plausible-but-wrong rejection script" [ref=f5e1937]':
+                      - generic [ref=f5e1938]: Pass
+                      - generic [ref=f5e1942]: 1 / 1
+                  - cell [ref=f5e1943]:
+                    - 'generic "N/A: no trace-step grader" [ref=f5e1944]':
+                      - generic [ref=f5e1945]: N/A
+                      - generic [ref=f5e1948]: 0 / 0
+                  - cell [ref=f5e1949]:
+                    - 'generic "N/A: no visual contract" [ref=f5e1950]':
+                      - generic [ref=f5e1951]: N/A
+                      - generic [ref=f5e1954]: 0 / 0
+                  - cell [ref=f5e1955]:
+                    - 'generic "N/A: no LLM judge" [ref=f5e1956]':
+                      - generic [ref=f5e1957]: N/A
+                      - generic [ref=f5e1960]: 0 / 0
+                  - cell [ref=f5e1961]:
+                    - 'generic "N/A: no manual grader" [ref=f5e1962]':
+                      - generic [ref=f5e1963]: N/A
+                      - generic [ref=f5e1966]: 0 / 0
+                  - cell [ref=f5e1967]:
+                    - text: no structural gap detected
+                    - link "Run this case →" [ref=f5e1968] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=swe-fix-fizzbuzz
+                - row [ref=f5e1969]:
+                  - rowheader "Fix three bugs across a two-module math pipeline swe-pipeline-multi-fix · agentic-swe · hard budget" [ref=f5e1970]:
+                    - link "Fix three bugs across a two-module math pipeline" [ref=f5e1971] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=swe-pipeline-multi-fix
+                    - generic [ref=f5e1972]: swe-pipeline-multi-fix · agentic-swe · hard
+                    - generic [ref=f5e1973]: budget
+                  - cell [ref=f5e1975]:
+                    - 'generic "Pass: 4 deterministic graders" [ref=f5e1976]':
+                      - generic [ref=f5e1977]: Pass
+                      - generic [ref=f5e1981]: 4 / 4
+                  - cell [ref=f5e1982]:
+                    - 'generic "Pass: solve script declared" [ref=f5e1983]':
+                      - generic [ref=f5e1984]: Pass
+                      - generic [ref=f5e1988]: 1 / 1
+                  - cell [ref=f5e1989]:
+                    - 'generic "Pass: 1 plausible-but-wrong rejection script" [ref=f5e1990]':
+                      - generic [ref=f5e1991]: Pass
+                      - generic [ref=f5e1995]: 1 / 1
+                  - cell [ref=f5e1996]:
+                    - 'generic "N/A: no trace-step grader" [ref=f5e1997]':
+                      - generic [ref=f5e1998]: N/A
+                      - generic [ref=f5e2001]: 0 / 0
+                  - cell [ref=f5e2002]:
+                    - 'generic "N/A: no visual contract" [ref=f5e2003]':
+                      - generic [ref=f5e2004]: N/A
+                      - generic [ref=f5e2007]: 0 / 0
+                  - cell [ref=f5e2008]:
+                    - 'generic "N/A: no LLM judge" [ref=f5e2009]':
+                      - generic [ref=f5e2010]: N/A
+                      - generic [ref=f5e2013]: 0 / 0
+                  - cell [ref=f5e2014]:
+                    - 'generic "N/A: no manual grader" [ref=f5e2015]':
+                      - generic [ref=f5e2016]: N/A
+                      - generic [ref=f5e2019]: 0 / 0
+                  - cell [ref=f5e2020]:
+                    - text: no structural gap detected
+                    - link "Run this case →" [ref=f5e2021] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=swe-pipeline-multi-fix
+                - row [ref=f5e2022]:
+                  - rowheader "Make a batch update atomic swe-atomic-batch · agentic-swe · hard" [ref=f5e2023]:
+                    - link "Make a batch update atomic" [ref=f5e2024] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=swe-atomic-batch
+                    - generic [ref=f5e2025]: swe-atomic-batch · agentic-swe · hard
+                  - cell [ref=f5e2026]:
+                    - 'generic "Pass: 5 deterministic graders" [ref=f5e2027]':
+                      - generic [ref=f5e2028]: Pass
+                      - generic [ref=f5e2032]: 5 / 5
+                  - cell [ref=f5e2033]:
+                    - 'generic "Pass: solve script declared" [ref=f5e2034]':
+                      - generic [ref=f5e2035]: Pass
+                      - generic [ref=f5e2039]: 1 / 1
+                  - cell [ref=f5e2040]:
+                    - 'generic "Pass: 1 plausible-but-wrong rejection script" [ref=f5e2041]':
+                      - generic [ref=f5e2042]: Pass
+                      - generic [ref=f5e2046]: 1 / 1
+                  - cell [ref=f5e2047]:
+                    - 'generic "Unknown: 2 trace-step graders declared; runtime transcript evidence is not attached" [ref=f5e2048]':
+                      - generic [ref=f5e2049]: Unknown
+                      - generic [ref=f5e2053]: 2 / 0
+                  - cell [ref=f5e2054]:
+                    - 'generic "N/A: no visual contract" [ref=f5e2055]':
+                      - generic [ref=f5e2056]: N/A
+                      - generic [ref=f5e2059]: 0 / 0
+                  - cell [ref=f5e2060]:
+                    - 'generic "N/A: no LLM judge" [ref=f5e2061]':
+                      - generic [ref=f5e2062]: N/A
+                      - generic [ref=f5e2065]: 0 / 0
+                  - cell [ref=f5e2066]:
+                    - 'generic "N/A: no manual grader" [ref=f5e2067]':
+                      - generic [ref=f5e2068]: N/A
+                      - generic [ref=f5e2071]: 0 / 0
+                  - cell [ref=f5e2072]:
+                    - text: no structural gap detected
+                    - link "Run this case →" [ref=f5e2073] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=swe-atomic-batch
+                - row [ref=f5e2074]:
+                  - rowheader "Predict JavaScript output reasoning-code-trace · reasoning · easy" [ref=f5e2075]:
+                    - link "Predict JavaScript output" [ref=f5e2076] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=reasoning-code-trace
+                    - generic [ref=f5e2077]: reasoning-code-trace · reasoning · easy
+                  - cell [ref=f5e2078]:
+                    - 'generic "Pass: 2 deterministic graders" [ref=f5e2079]':
+                      - generic [ref=f5e2080]: Pass
+                      - generic [ref=f5e2084]: 2 / 2
+                  - cell [ref=f5e2085]:
+                    - 'generic "Pass: final answer oracle declared" [ref=f5e2086]':
+                      - generic [ref=f5e2087]: Pass
+                      - generic [ref=f5e2091]: 1 / 1
+                  - cell [ref=f5e2092]:
+                    - 'generic "Pass: 1 plausible-but-wrong rejection script" [ref=f5e2093]':
+                      - generic [ref=f5e2094]: Pass
+                      - generic [ref=f5e2098]: 1 / 1
+                  - cell [ref=f5e2099]:
+                    - 'generic "N/A: no trace-step grader" [ref=f5e2100]':
+                      - generic [ref=f5e2101]: N/A
+                      - generic [ref=f5e2104]: 0 / 0
+                  - cell [ref=f5e2105]:
+                    - 'generic "N/A: no visual contract" [ref=f5e2106]':
+                      - generic [ref=f5e2107]: N/A
+                      - generic [ref=f5e2110]: 0 / 0
+                  - cell [ref=f5e2111]:
+                    - 'generic "N/A: no LLM judge" [ref=f5e2112]':
+                      - generic [ref=f5e2113]: N/A
+                      - generic [ref=f5e2116]: 0 / 0
+                  - cell [ref=f5e2117]:
+                    - 'generic "N/A: no manual grader" [ref=f5e2118]':
+                      - generic [ref=f5e2119]: N/A
+                      - generic [ref=f5e2122]: 0 / 0
+                  - cell [ref=f5e2123]:
+                    - text: no structural gap detected
+                    - link "Run this case →" [ref=f5e2124] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=reasoning-code-trace
+                - row [ref=f5e2125]:
+                  - rowheader "Solve a travel word problem reasoning-word-problem · reasoning · medium" [ref=f5e2126]:
+                    - link "Solve a travel word problem" [ref=f5e2127] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=reasoning-word-problem
+                    - generic [ref=f5e2128]: reasoning-word-problem · reasoning · medium
+                  - cell [ref=f5e2129]:
+                    - 'generic "Pass: 2 deterministic graders" [ref=f5e2130]':
+                      - generic [ref=f5e2131]: Pass
+                      - generic [ref=f5e2135]: 2 / 2
+                  - cell [ref=f5e2136]:
+                    - 'generic "Pass: final answer oracle declared" [ref=f5e2137]':
+                      - generic [ref=f5e2138]: Pass
+                      - generic [ref=f5e2142]: 1 / 1
+                  - cell [ref=f5e2143]:
+                    - 'generic "Pass: 1 plausible-but-wrong rejection script" [ref=f5e2144]':
+                      - generic [ref=f5e2145]: Pass
+                      - generic [ref=f5e2149]: 1 / 1
+                  - cell [ref=f5e2150]:
+                    - 'generic "N/A: no trace-step grader" [ref=f5e2151]':
+                      - generic [ref=f5e2152]: N/A
+                      - generic [ref=f5e2155]: 0 / 0
+                  - cell [ref=f5e2156]:
+                    - 'generic "N/A: no visual contract" [ref=f5e2157]':
+                      - generic [ref=f5e2158]: N/A
+                      - generic [ref=f5e2161]: 0 / 0
+                  - cell [ref=f5e2162]:
+                    - 'generic "N/A: no LLM judge" [ref=f5e2163]':
+                      - generic [ref=f5e2164]: N/A
+                      - generic [ref=f5e2167]: 0 / 0
+                  - cell [ref=f5e2168]:
+                    - 'generic "N/A: no manual grader" [ref=f5e2169]':
+                      - generic [ref=f5e2170]: N/A
+                      - generic [ref=f5e2173]: 0 / 0
+                  - cell [ref=f5e2174]:
+                    - text: no structural gap detected
+                    - link "Run this case →" [ref=f5e2175] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=reasoning-word-problem
+                - row [ref=f5e2176]:
+                  - rowheader "Sum numbers from a file single-sum-numbers · single-tool · easy" [ref=f5e2177]:
+                    - link "Sum numbers from a file" [ref=f5e2178] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=single-sum-numbers
+                    - generic [ref=f5e2179]: single-sum-numbers · single-tool · easy
+                  - cell [ref=f5e2180]:
+                    - 'generic "Pass: 2 deterministic graders" [ref=f5e2181]':
+                      - generic [ref=f5e2182]: Pass
+                      - generic [ref=f5e2186]: 2 / 2
+                  - cell [ref=f5e2187]:
+                    - 'generic "Pass: solve script declared" [ref=f5e2188]':
+                      - generic [ref=f5e2189]: Pass
+                      - generic [ref=f5e2193]: 1 / 1
+                  - cell [ref=f5e2194]:
+                    - 'generic "Pass: 1 plausible-but-wrong rejection script" [ref=f5e2195]':
+                      - generic [ref=f5e2196]: Pass
+                      - generic [ref=f5e2200]: 1 / 1
+                  - cell [ref=f5e2201]:
+                    - 'generic "N/A: no trace-step grader" [ref=f5e2202]':
+                      - generic [ref=f5e2203]: N/A
+                      - generic [ref=f5e2206]: 0 / 0
+                  - cell [ref=f5e2207]:
+                    - 'generic "N/A: no visual contract" [ref=f5e2208]':
+                      - generic [ref=f5e2209]: N/A
+                      - generic [ref=f5e2212]: 0 / 0
+                  - cell [ref=f5e2213]:
+                    - 'generic "N/A: no LLM judge" [ref=f5e2214]':
+                      - generic [ref=f5e2215]: N/A
+                      - generic [ref=f5e2218]: 0 / 0
+                  - cell [ref=f5e2219]:
+                    - 'generic "N/A: no manual grader" [ref=f5e2220]':
+                      - generic [ref=f5e2221]: N/A
+                      - generic [ref=f5e2224]: 0 / 0
+                  - cell [ref=f5e2225]:
+                    - text: no structural gap detected
+                    - link "Run this case →" [ref=f5e2226] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=single-sum-numbers
+                - row [ref=f5e2227]:
+                  - rowheader "Summarize ERROR lines from a messy logs directory swe-log-summary-adversarial · agentic-swe · medium budget" [ref=f5e2228]:
+                    - link "Summarize ERROR lines from a messy logs directory" [ref=f5e2229] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=swe-log-summary-adversarial
+                    - generic [ref=f5e2230]: swe-log-summary-adversarial · agentic-swe · medium
+                    - generic [ref=f5e2231]: budget
+                  - cell [ref=f5e2233]:
+                    - 'generic "Pass: 4 deterministic graders" [ref=f5e2234]':
+                      - generic [ref=f5e2235]: Pass
+                      - generic [ref=f5e2239]: 4 / 4
+                  - cell [ref=f5e2240]:
+                    - 'generic "Pass: solve script declared" [ref=f5e2241]':
+                      - generic [ref=f5e2242]: Pass
+                      - generic [ref=f5e2246]: 1 / 1
+                  - cell [ref=f5e2247]:
+                    - 'generic "Pass: 1 plausible-but-wrong rejection script" [ref=f5e2248]':
+                      - generic [ref=f5e2249]: Pass
+                      - generic [ref=f5e2253]: 1 / 1
+                  - cell [ref=f5e2254]:
+                    - 'generic "N/A: no trace-step grader" [ref=f5e2255]':
+                      - generic [ref=f5e2256]: N/A
+                      - generic [ref=f5e2259]: 0 / 0
+                  - cell [ref=f5e2260]:
+                    - 'generic "N/A: no visual contract" [ref=f5e2261]':
+                      - generic [ref=f5e2262]: N/A
+                      - generic [ref=f5e2265]: 0 / 0
+                  - cell [ref=f5e2266]:
+                    - 'generic "N/A: no LLM judge" [ref=f5e2267]':
+                      - generic [ref=f5e2268]: N/A
+                      - generic [ref=f5e2271]: 0 / 0
+                  - cell [ref=f5e2272]:
+                    - 'generic "N/A: no manual grader" [ref=f5e2273]':
+                      - generic [ref=f5e2274]: N/A
+                      - generic [ref=f5e2277]: 0 / 0
+                  - cell [ref=f5e2278]:
+                    - text: no structural gap detected
+                    - link "Run this case →" [ref=f5e2279] [cursor=pointer]:
+                      - /url: /runs/new?caseIds=swe-log-summary-adversarial
+          - complementary "Audit interpretation" [ref=f5e2280]:
+            - generic [ref=f5e2281]:
+              - heading "How to read this" [level=2] [ref=f5e2282]
+              - paragraph [ref=f5e2283]: This route audits case-definition contracts and local oracle availability. It does not replay an agent, run a judge, or inspect rendered pixels.
+              - list [ref=f5e2284]:
+                - listitem [ref=f5e2285]:
+                  - generic [ref=f5e2286]: Pass
+                  - text: Structural evidence is present and verified by this audit.
+                - listitem [ref=f5e2290]:
+                  - generic [ref=f5e2291]: Fail
+                  - text: A concrete authoring or resolution gap is detected.
+                - listitem [ref=f5e2296]:
+                  - generic [ref=f5e2297]: Unknown
+                  - text: A contract exists, but runtime or human proof is not attached.
+                - listitem [ref=f5e2301]:
+                  - generic [ref=f5e2302]: N/A
+                  - text: The case does not declare that evidence surface.
+            - generic [ref=f5e2305]:
+              - generic [ref=f5e2306]: Visual boundary
+              - paragraph [ref=f5e2310]: 14 cases declare artifact contracts. This page distinguishes structural/artifact evidence from rendered quality; a byte receipt is never presented as a pixel verdict.
+              - generic [ref=f5e2311]:
+                - generic [ref=f5e2312]:
+                  - generic [ref=f5e2313]: Contracts
+                  - generic [ref=f5e2314]: "14"
+                - generic [ref=f5e2315]:
+                  - generic [ref=f5e2316]: Image input
+                  - generic [ref=f5e2317]: "0"
+            - generic [ref=f5e2318]:
+              - heading "Evidence tier inventory" [level=2] [ref=f5e2319]
+              - generic [ref=f5e2320]:
+                - generic [ref=f5e2321]:
+                  - generic [ref=f5e2322]: Deterministic
+                  - generic [ref=f5e2323]: "192"
+                - generic [ref=f5e2324]:
+                  - generic [ref=f5e2325]: Trace
+                  - generic [ref=f5e2326]: "4"
+                - generic [ref=f5e2327]:
+                  - generic [ref=f5e2328]: Visual
+                  - generic [ref=f5e2329]: "14"
+                - generic [ref=f5e2330]:
+                  - generic [ref=f5e2331]: LLM judge
+                  - generic [ref=f5e2332]: "7"
+                - generic [ref=f5e2333]:
+                  - generic [ref=f5e2334]: Manual
+                  - generic [ref=f5e2335]: "0"
+              - paragraph [ref=f5e2336]: Tier counts describe declared grader contracts; they are not run pass counts.
+            - generic [ref=f5e2337]:
+              - heading "Next useful checks" [level=2] [ref=f5e2338]
+              - list [ref=f5e2339]:
+                - listitem [ref=f5e2340]: Run selftest to exercise solve and known-bad scripts.
+                - listitem [ref=f5e2341]: Attach visual receipts after rendering artifacts.
+                - listitem [ref=f5e2342]: Review weak judge backstops before trusting rubric scores.
+  - navigation "Mobile navigation" [ref=f5e2343]:
+    - generic [ref=f5e2344]:
+      - link "Dashboard" [ref=f5e2345] [cursor=pointer]:
+        - /url: /
+      - link "Live" [ref=f5e2352] [cursor=pointer]:
+        - /url: /live
+      - link "Runs" [ref=f5e2360] [cursor=pointer]:
+        - /url: /runs
+      - button "More navigation" [ref=f5e2364] [cursor=pointer]:
+        - generic [ref=f5e2369]: More
+  - region "Notifications"
+  - alert [ref=f5e2371]

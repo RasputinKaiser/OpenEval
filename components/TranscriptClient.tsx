@@ -2,13 +2,14 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
-import { Loader2, MessageSquare, Wrench, AlertTriangle, ListFilter, Search, X, ScanLine, ImageIcon, FileIcon } from "lucide-react";
+import { Loader2, MessageSquare, Wrench, AlertTriangle, ListFilter, Search, X, ScanLine, ImageIcon, FileIcon, ChevronUp, ChevronDown } from "lucide-react";
 import type { LiveTranscriptTurn, TranscriptNormalization } from "@/lib/live";
 import { fmtDateTime, fmtNum, fmtStableDateTime, fmtTime } from "@/lib/format";
 import { useRedactedShow } from "@/lib/use-redaction";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import ErrorHopper from "./ErrorHopper";
 import { RedactToggle } from "./RedactToggle";
+import { AgentReasoningBlock, isAgentReasoningTurn } from "./live/AgentReasoningBlock";
 
 /**
  * Interactive transcript viewer: role-styled turns (conversation reads like a
@@ -87,7 +88,8 @@ export default function TranscriptClient({
   const [loadedTurns, setLoadedTurns] = useState(turns);
   const [knownTotal, setKnownTotal] = useState(() => Math.max(totalTurns, turns.length));
   const [knownCounts, setKnownCounts] = useState<TurnCounts>(() => initialCounts(turns, totalTurns, totalCounts));
-  const [filter, setFilter] = useState<Filter>("all");
+  const defaultFilter: Filter = (totalCounts?.chat ?? countTurns(turns).chat) > 0 ? "chat" : "all";
+  const [filter, setFilter] = useState<Filter>(defaultFilter);
   const [q, setQ] = useState("");
   const [mounted, setMounted] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -113,11 +115,13 @@ export default function TranscriptClient({
     setLoadedTurns(turns);
     setKnownTotal(Math.max(totalTurns, turns.length));
     setKnownCounts(initialCounts(turns, totalTurns, totalCounts));
+    setFilter(defaultFilter);
+    setQ("");
     setLoadError(null);
     setSourceNotice(null);
     setSourceRevision(null);
     setKnownNormalization(normalization);
-  }, [file, turns, totalTurns, totalCounts, normalization]);
+  }, [defaultFilter, file, turns, totalTurns, totalCounts, normalization]);
 
   // Harvest from the file path and the transcript itself so bare mentions in
   // prompts/output get scrubbed; secrets on — session logs are exactly where
@@ -149,6 +153,21 @@ export default function TranscriptClient({
     () => visible.filter(({ t }) => t.severity === "error").map(({ i }) => i),
     [visible],
   );
+  const matchIndexes = useMemo(() => (dq ? visible.map(({ i }) => i) : []), [dq, visible]);
+  const [matchPos, setMatchPos] = useState(-1);
+
+  useEffect(() => {
+    setMatchPos(-1);
+  }, [filter, dq, loadedTurns.length]);
+
+  function jumpToMatch(direction: 1 | -1) {
+    if (matchIndexes.length === 0) return;
+    const next = matchPos < 0
+      ? direction === 1 ? 0 : matchIndexes.length - 1
+      : Math.min(Math.max(matchPos + direction, 0), matchIndexes.length - 1);
+    setMatchPos(next);
+    document.getElementById(`turn-${matchIndexes[next]}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
 
   // Redacted text per visible turn, cached — the scrub stack is regex-heavy
   // and must not re-run across thousands of rows on unrelated re-renders.
@@ -228,8 +247,12 @@ export default function TranscriptClient({
 
   return (
     <div>
-      <div className="flex items-center gap-1.5 mb-3 flex-wrap">
-      <div className="flex items-center gap-1.5 flex-wrap" role="tablist" aria-label="Turn filter">
+      <div
+        className="sticky top-2 z-20 -mx-2 mb-3 space-y-2 rounded-lg border border-bd bg-bg/95 p-2 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-bg/80"
+      >
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <span className="mr-1 text-[10px] font-medium uppercase tracking-[0.12em] text-fg-dim">View</span>
+        <div className="flex items-center gap-1.5 flex-wrap" role="tablist" aria-label="Turn filter">
         {CHIPS.map(({ key, label, icon: Icon, n }) => (
           <button
             key={key}
@@ -249,8 +272,12 @@ export default function TranscriptClient({
             <span className={clsx("mono tabular-nums", key === "errors" && n > 0 && "text-err")}>{fmtNum(n)}</span>
           </button>
         ))}
+        </div>
+        <span className="ml-auto hidden text-[10px] text-fg-dim sm:inline">
+          {filter === "chat" ? "Conversation first" : filter === "tools" ? "Tool evidence" : filter === "errors" ? "Error signals" : "All normalized events"}
+        </span>
       </div>
-      <div className="ml-auto flex items-center gap-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
         <div className="relative">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 size-3 text-fg-dim" />
           <input
@@ -267,14 +294,36 @@ export default function TranscriptClient({
           )}
         </div>
         {dq && (
-          <span className="text-[10px] text-fg-dim mono tabular-nums whitespace-nowrap">
-            {fmtNum(visible.length)} match{visible.length === 1 ? "" : "es"} in shown turns
-          </span>
+          <div className="flex min-w-0 basis-full items-center gap-1 text-[10px] text-fg-dim mono tabular-nums whitespace-nowrap sm:basis-auto">
+            <span className="min-w-0 truncate" role="status" aria-live="polite">{fmtNum(visible.length)} match{visible.length === 1 ? "" : "es"} in loaded turns</span>
+            {matchIndexes.length > 0 && (
+              <>
+                <span className="sr-only">Use previous and next match controls to navigate.</span>
+                <button
+                  type="button"
+                  onClick={() => jumpToMatch(-1)}
+                  disabled={matchPos <= 0}
+                  aria-label="Previous transcript match"
+                  className="grid min-h-8 min-w-8 place-items-center rounded-md border border-bd hover:bg-bg-elev disabled:opacity-40"
+                >
+                  <ChevronUp className="size-3" />
+                </button>
+                <span aria-hidden="true">{matchPos >= 0 ? `${matchPos + 1}/${matchIndexes.length}` : "Jump"}</span>
+                <button
+                  type="button"
+                  onClick={() => jumpToMatch(1)}
+                  disabled={matchPos >= matchIndexes.length - 1}
+                  aria-label="Next transcript match"
+                  className="grid min-h-8 min-w-8 place-items-center rounded-md border border-bd hover:bg-bg-elev disabled:opacity-40"
+                >
+                  <ChevronDown className="size-3" />
+                </button>
+              </>
+            )}
+          </div>
         )}
         <RedactToggle compact redact={redact} onToggle={() => setRedact((v) => !v)} />
       </div>
-      </div>
-
       {knownNormalization && (knownNormalization.suppressedMirrors > 0 || knownNormalization.compoundRecords > 0) && (
         <div className="mb-3 flex items-start gap-2 rounded-md border border-bd bg-bg-elev px-3 py-2 text-[11px] text-fg-muted" role="status">
           <ScanLine className="mt-0.5 size-3.5 shrink-0 text-accent-soft" />
@@ -286,6 +335,7 @@ export default function TranscriptClient({
           </span>
         </div>
       )}
+      </div>
 
       {/* Hops over the errors VISIBLE under the current filter/search — ids keep
           original indexes, so anchors always exist. Key resets its cursor when
@@ -293,71 +343,87 @@ export default function TranscriptClient({
       {visibleErrorIdx.length > 0 && <ErrorHopper key={`${filter}:${dq}`} errorTurnIndexes={visibleErrorIdx} />}
 
       <div className="space-y-1">
-        {rendered.length === 0 && (
-          <div className="card p-6 text-center text-sm text-fg-dim">
-            {dq ? "No matches in the shown turns." : counts[filter] > 0 ? "No matching turns in the shown window." : "Nothing matches this filter."}
-          </div>
-        )}
+            {rendered.length === 0 && (
+              <div className="card p-6 text-center text-sm text-fg-dim">
+                {dq
+                  ? loadedTurns.length < knownTotal
+                    ? "No matches in the loaded window. Load next to continue searching."
+                    : "No matches in this transcript."
+                  : counts[filter] > 0 ? "No matching turns in the shown window." : "Nothing matches this filter."}
+              </div>
+            )}
         {rendered.map(({ t, i, label, preview }) => {
           const meta = t.role === "meta" && t.severity === "info";
+          const agentReasoning = isAgentReasoningTurn(t);
           return (
-            <div key={i} id={`turn-${i}`} className={clsx(meta ? "cv-auto" : "cv-auto-lg", "card border rounded-md", SEVERITY_TONE[t.severity], roleTone(t), meta ? "px-3 py-1" : "px-3 py-2")}>
-              <div className="flex items-center justify-between gap-3">
-                <span
-                  className={clsx(
-                    "text-[11px] font-medium",
-                    t.severity === "error" ? "text-err"
-                      : t.severity === "warning" ? "text-warn"
-                      : t.role === "user" ? "text-accent-soft"
-                      : t.role === "assistant" ? "text-fg"
-                      : t.role === "tool" ? "text-fg-muted mono"
-                      : "text-fg-dim",
-                  )}
-                >
-                  {label}
-                </span>
-                <span className="flex items-center gap-1.5 shrink-0">
-                  {t.tool?.status && (
-                    <span className="rounded border border-bd px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-fg-dim">
-                      {show(t.tool.status)}
-                    </span>
-                  )}
-                  {(t.media?.images ?? 0) > 0 && (
-                    <span className="inline-flex items-center gap-1 rounded border border-bd px-1.5 py-0.5 text-[9px] text-fg-dim">
-                      <ImageIcon className="size-2.5" />
-                      {fmtNum(t.media?.images ?? 0)} image{t.media?.images === 1 ? "" : "s"}
-                    </span>
-                  )}
-                  {(t.media?.files ?? 0) > 0 && (
-                    <span className="inline-flex items-center gap-1 rounded border border-bd px-1.5 py-0.5 text-[9px] text-fg-dim">
-                      <FileIcon className="size-2.5" />
-                      {fmtNum(t.media?.files ?? 0)} file{t.media?.files === 1 ? "" : "s"}
-                    </span>
-                  )}
-                  {t.tool?.durationMs != null && (
-                    <span className="text-[10px] text-fg-dim mono tabular-nums" title={t.tool.callId ? `Call ${show(t.tool.callId)}` : undefined}>
-                      {t.tool.durationMs < 1000 ? `${t.tool.durationMs}ms` : `${(t.tool.durationMs / 1000).toFixed(1)}s`}
-                    </span>
-                  )}
-                  {t.at ? (
-                    <time
-                      className="text-[10px] text-fg-dim mono tabular-nums"
-                      dateTime={fmtStableDateTime(t.at)}
-                      title={fmtDateTime(t.at)}
-                    >
-                      {mounted ? fmtTime(t.at) : fmtStableDateTime(t.at)}
-                    </time>
-                  ) : null}
-                </span>
-              </div>
-              {preview && (meta ? (
-                <div className="text-[11px] mono text-fg-dim truncate">{preview}</div>
+            <div key={i} id={`turn-${i}`} className={clsx(meta ? "cv-auto" : "cv-auto-lg", "card border rounded-md", SEVERITY_TONE[t.severity], roleTone(t), agentReasoning ? "border-accent/30 bg-accent/[0.02] p-0" : meta ? "px-3 py-1" : "px-3 py-2")}>
+              {agentReasoning ? (
+                <AgentReasoningBlock preview={preview} at={t.at} mounted={mounted} />
               ) : (
-                <pre className={clsx(
-                  "mt-1 text-[12px] whitespace-pre-wrap break-words max-h-48 overflow-y-auto",
-                  t.role === "user" || t.role === "assistant" ? "font-sans text-fg/90 leading-relaxed" : "mono text-fg-muted",
-                )}>{preview}</pre>
-              ))}
+                <>
+                  <div className="flex items-center justify-between gap-3">
+                    <span
+                      className={clsx(
+                        "text-[11px] font-medium",
+                        t.severity === "error" ? "text-err"
+                          : t.severity === "warning" ? "text-warn"
+                          : t.role === "user" ? "text-accent-soft"
+                          : t.role === "assistant" ? "text-fg"
+                          : t.role === "tool" ? "text-fg-muted mono"
+                          : "text-fg-dim",
+                      )}
+                    >
+                      {label}
+                    </span>
+                    <span className="flex items-center gap-1.5 shrink-0">
+                      {t.tool?.status && (
+                        <span className="rounded border border-bd px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-fg-dim">
+                          {show(t.tool.status)}
+                        </span>
+                      )}
+                      {t.tool && (
+                        <span className="rounded border border-accent/20 bg-accent/5 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-accent-soft" title={t.tool.callId ? `Call ${show(t.tool.callId)}` : undefined}>
+                          {t.tool.phase === "call" ? "call" : "result"}
+                        </span>
+                      )}
+                      {(t.media?.images ?? 0) > 0 && (
+                        <span className="inline-flex items-center gap-1 rounded border border-bd px-1.5 py-0.5 text-[9px] text-fg-dim">
+                          <ImageIcon className="size-2.5" />
+                          {fmtNum(t.media?.images ?? 0)} image{t.media?.images === 1 ? "" : "s"}
+                        </span>
+                      )}
+                      {(t.media?.files ?? 0) > 0 && (
+                        <span className="inline-flex items-center gap-1 rounded border border-bd px-1.5 py-0.5 text-[9px] text-fg-dim">
+                          <FileIcon className="size-2.5" />
+                          {fmtNum(t.media?.files ?? 0)} file{t.media?.files === 1 ? "" : "s"}
+                        </span>
+                      )}
+                      {t.tool?.durationMs != null && (
+                        <span className="text-[10px] text-fg-dim mono tabular-nums" title={t.tool.callId ? `Call ${show(t.tool.callId)}` : undefined}>
+                          {t.tool.durationMs < 1000 ? `${t.tool.durationMs}ms` : `${(t.tool.durationMs / 1000).toFixed(1)}s`}
+                        </span>
+                      )}
+                      {t.at ? (
+                        <time
+                          className="text-[10px] text-fg-dim mono tabular-nums"
+                          dateTime={fmtStableDateTime(t.at)}
+                          title={fmtDateTime(t.at)}
+                        >
+                          {mounted ? fmtTime(t.at) : fmtStableDateTime(t.at)}
+                        </time>
+                      ) : null}
+                    </span>
+                  </div>
+                  {preview && (meta ? (
+                    <div className="text-[11px] mono text-fg-dim truncate">{preview}</div>
+                  ) : (
+                    <pre className={clsx(
+                      "mt-1 text-[12px] whitespace-pre-wrap break-words max-h-48 overflow-y-auto",
+                      t.role === "user" || t.role === "assistant" ? "font-sans text-fg/90 leading-relaxed" : "mono text-fg-muted",
+                    )}>{preview}</pre>
+                  ))}
+                </>
+              )}
             </div>
           );
         })}
@@ -371,7 +437,9 @@ export default function TranscriptClient({
             className="inline-flex items-center gap-2 rounded-md border border-bd px-3 py-1.5 text-xs text-fg-muted hover:bg-bg-elev hover:text-fg disabled:opacity-60"
           >
             {loadingMore && <Loader2 className="size-3.5 animate-spin" />}
-            {loadingMore ? "Loading transcript…" : `Load next ${fmtNum(Math.min(PAGE_SIZE, knownTotal - loadedTurns.length))} turns`}
+                {loadingMore
+                  ? "Loading transcript…"
+                  : `Load next ${fmtNum(Math.min(PAGE_SIZE, knownTotal - loadedTurns.length))} turns${dq ? " to continue search" : ""}`}
           </button>
           <p className="text-[10px] text-fg-dim mono tabular-nums">Showing {fmtNum(loadedTurns.length)} of {fmtNum(knownTotal)} parsed turns</p>
           {loadError && <p className="text-[11px] text-err" role="alert">{show(loadError)}</p>}

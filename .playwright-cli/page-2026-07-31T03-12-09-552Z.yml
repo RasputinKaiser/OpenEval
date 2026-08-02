@@ -1,0 +1,319 @@
+- generic [active] [ref=e1]:
+  - link "Skip to content" [ref=e2] [cursor=pointer]:
+    - /url: "#main"
+  - generic [ref=e3]:
+    - complementary [ref=e4]:
+      - generic [ref=e10]:
+        - generic [ref=e11]: OpenEval
+        - generic [ref=e12]: OpenEval Suite
+      - navigation "Primary" [ref=e13]:
+        - link "Dashboard" [ref=e15] [cursor=pointer]:
+          - /url: /
+        - generic [ref=e22]:
+          - generic [ref=e23]: Evaluate
+          - link "Runs" [ref=e24] [cursor=pointer]:
+            - /url: /runs
+          - link "Leaderboard" [ref=e29] [cursor=pointer]:
+            - /url: /runs/leaderboard
+          - link "Compare" [ref=e37] [cursor=pointer]:
+            - /url: /runs/compare
+          - link "Cases" [ref=e46] [cursor=pointer]:
+            - /url: /cases
+          - link "New Run" [ref=e51] [cursor=pointer]:
+            - /url: /runs/new
+          - link "Accuracy" [ref=e54] [cursor=pointer]:
+            - /url: /accuracy
+        - generic [ref=e59]:
+          - generic [ref=e60]: Observe
+          - link "Live" [ref=e61] [cursor=pointer]:
+            - /url: /live
+          - link "Collection" [ref=e69] [cursor=pointer]:
+            - /url: /collection
+          - link "Timeline" [ref=e81] [cursor=pointer]:
+            - /url: /collection/timeline
+        - generic [ref=e86]:
+          - generic [ref=e87]: System
+          - link "Harnesses" [ref=e88] [cursor=pointer]:
+            - /url: /harnesses
+          - link "Settings" [ref=e92] [cursor=pointer]:
+            - /url: /settings
+      - generic [ref=e97]:
+        - generic [ref=e98]: v0.1.3
+        - generic [ref=e99]:
+          - button "Switch to dark mode" [ref=e100] [cursor=pointer]
+          - button "Collapse sidebar" [ref=e103] [cursor=pointer]
+    - main [ref=e107]:
+      - generic [ref=e108]:
+        - generic [ref=e109]:
+          - generic [ref=e110]:
+            - heading "Runs" [level=1] [ref=e111]
+            - link "New run" [ref=e117] [cursor=pointer]:
+              - /url: /runs/new
+          - paragraph [ref=e119]: Track suite executions, inspect evidence, and choose the next comparison.
+        - region "Evaluate workflow" [ref=e120]:
+          - generic [ref=e121]:
+            - generic [ref=e122]:
+              - generic [ref=e123]: Evaluate workflow
+              - paragraph [ref=e124]: Run a suite, inspect evidence, then compare what changed.
+            - generic [ref=e125]: Track evaluations
+          - navigation "Evaluate pages" [ref=e126]:
+            - link "01 · Runs Track evaluations" [ref=e127] [cursor=pointer]:
+              - /url: /runs
+              - generic [ref=e131]:
+                - generic [ref=e132]: 01 · Runs
+                - generic [ref=e133]: Track evaluations
+            - link "02 · Leaderboard Rank harnesses" [ref=e134] [cursor=pointer]:
+              - /url: /runs/leaderboard
+              - generic [ref=e142]:
+                - generic [ref=e143]: 02 · Leaderboard
+                - generic [ref=e144]: Rank harnesses
+            - link "03 · Compare Find regressions" [ref=e145] [cursor=pointer]:
+              - /url: /runs/compare
+              - generic [ref=e154]:
+                - generic [ref=e155]: 03 · Compare
+                - generic [ref=e156]: Find regressions
+            - link "04 · Cases Curate the suite" [ref=e157] [cursor=pointer]:
+              - /url: /cases
+              - generic [ref=e162]:
+                - generic [ref=e163]: 04 · Cases
+                - generic [ref=e164]: Curate the suite
+            - link "05 · New run Launch an experiment" [ref=e165] [cursor=pointer]:
+              - /url: /runs/new
+              - generic [ref=e169]:
+                - generic [ref=e170]: 05 · New run
+                - generic [ref=e171]: Launch an experiment
+            - link "06 · Accuracy Audit evidence" [ref=e172] [cursor=pointer]:
+              - /url: /accuracy
+              - generic [ref=e177]:
+                - generic [ref=e178]: 06 · Accuracy
+                - generic [ref=e179]: Audit evidence
+        - region [ref=e180]:
+          - generic [ref=e181]:
+            - generic [ref=e182]:
+              - heading "Evaluate" [level=2] [ref=e187]
+              - paragraph [ref=e188]: Run the suite, check what it can prove, and compare the evidence that changes.
+              - generic "Evaluation overview" [ref=e189]:
+                - generic [ref=e190]:
+                  - generic [ref=e191]: Runs
+                  - generic [ref=e192]: "14"
+                - generic [ref=e193]:
+                  - generic [ref=e194]: Cases
+                  - generic [ref=e195]: "35"
+                - generic [ref=e196]:
+                  - generic [ref=e197]: Latest
+                  - link "Run 2026-07-30 23:52:11 1 passed · 3 failed · 0 errored" [ref=e198] [cursor=pointer]:
+                    - /url: /runs/f5c15c33
+                    - generic [ref=e199]: Run 2026-07-30 23:52:11
+                    - generic "1 passed · 3 failed · 0 errored" [ref=e200]
+            - navigation "Evaluate actions" [ref=e201]:
+              - link "New Run Launch an evaluation" [ref=e202] [cursor=pointer]:
+                - /url: /runs/new
+                - generic [ref=e206]:
+                  - generic [ref=e207]: New Run
+                  - generic [ref=e208]: Launch an evaluation
+              - link "Accuracy Audit case evidence" [ref=e211] [cursor=pointer]:
+                - /url: /accuracy
+                - generic [ref=e216]:
+                  - generic [ref=e217]: Accuracy
+                  - generic [ref=e218]: Audit case evidence
+              - link "Compare Find regressions" [ref=e221] [cursor=pointer]:
+                - /url: /runs/compare
+                - generic [ref=e230]:
+                  - generic [ref=e231]: Compare
+                  - generic [ref=e232]: Find regressions
+              - link "Cases Curate the suite" [ref=e235] [cursor=pointer]:
+                - /url: /cases
+                - generic [ref=e240]:
+                  - generic [ref=e241]: Cases
+                  - generic [ref=e242]: Curate the suite
+        - generic [ref=e245]:
+          - generic [ref=e246]:
+            - generic [ref=e247]:
+              - button "All" [pressed] [ref=e248] [cursor=pointer]
+              - button "Running" [ref=e249] [cursor=pointer]
+              - button "Completed" [ref=e250] [cursor=pointer]
+              - button "Has passes" [ref=e251] [cursor=pointer]
+              - button "Failed" [ref=e252] [cursor=pointer]
+            - generic [ref=e253]: ·
+            - button "Newest" [ref=e255] [cursor=pointer]
+            - textbox "Search runs" [ref=e262]:
+              - /placeholder: Search runs…
+            - generic [ref=e263]:
+              - combobox "Runs per page" [ref=e264]:
+                - option "25"
+                - option "50" [selected]
+                - option "100"
+                - option "200"
+              - generic [ref=e265]: 14/14
+          - generic [ref=e266]:
+            - generic [ref=e267]:
+              - generic [ref=e268]: Yesterday
+              - generic [ref=e269]:
+                - link "Run 2026-07-30 23:52:11 Jul 30, 2026, 11:52 PM · tmux codex · 2× 25% Completed" [ref=e270] [cursor=pointer]:
+                  - /url: /runs/f5c15c33
+                  - generic [ref=e271]:
+                    - generic [ref=e272]: Run 2026-07-30 23:52:11
+                    - generic [ref=e273]:
+                      - time [ref=e274]: Jul 30, 2026, 11:52 PM
+                      - text: · tmux
+                      - generic "codex" [ref=e275]
+                      - generic [ref=e276]: · 2×
+                  - generic [ref=e277]:
+                    - generic [ref=e278]: 25%
+                    - generic [ref=e284]: Completed
+                - link "Run 2026-07-30 23:05:44 Jul 30, 2026, 11:05 PM · tmux claude-code · 1× 0% Completed" [ref=e289] [cursor=pointer]:
+                  - /url: /runs/c4663fff
+                  - generic [ref=e290]:
+                    - generic [ref=e291]: Run 2026-07-30 23:05:44
+                    - generic [ref=e292]:
+                      - time [ref=e293]: Jul 30, 2026, 11:05 PM
+                      - text: · tmux
+                      - generic "claude-code" [ref=e294]
+                      - generic [ref=e295]: · 1×
+                  - generic [ref=e296]:
+                    - generic [ref=e297]: 0%
+                    - generic [ref=e302]: Completed
+                - link "Run 2026-07-30 22:54:19 Jul 30, 2026, 10:54 PM · tmux claude-code · 2× · 2 samples 0% Completed" [ref=e307] [cursor=pointer]:
+                  - /url: /runs/30ce6001
+                  - generic [ref=e308]:
+                    - generic [ref=e309]: Run 2026-07-30 22:54:19
+                    - generic [ref=e310]:
+                      - time [ref=e311]: Jul 30, 2026, 10:54 PM
+                      - text: · tmux
+                      - generic "claude-code" [ref=e312]
+                      - generic [ref=e313]: · 2×
+                      - generic [ref=e314]: · 2 samples
+                  - generic [ref=e315]:
+                    - generic [ref=e316]: 0%
+                    - generic [ref=e321]: Completed
+                - link "Run 2026-07-30 21:15:38 Jul 30, 2026, 9:15 PM · tmux codex · 2× 63% Completed" [ref=e326] [cursor=pointer]:
+                  - /url: /runs/16f7bc71
+                  - generic [ref=e327]:
+                    - generic [ref=e328]: Run 2026-07-30 21:15:38
+                    - generic [ref=e329]:
+                      - time [ref=e330]: Jul 30, 2026, 9:15 PM
+                      - text: · tmux
+                      - generic "codex" [ref=e331]
+                      - generic [ref=e332]: · 2×
+                  - generic [ref=e333]:
+                    - generic [ref=e334]: 63%
+                    - generic [ref=e341]: Completed
+            - generic [ref=e346]:
+              - generic [ref=e347]: This month
+              - link "Opus Run Jul 21, 2026, 12:57 AM · headless claude-code · 1× 0% Completed" [ref=e349] [cursor=pointer]:
+                - /url: /runs/d722f1cb
+                - generic [ref=e350]:
+                  - generic [ref=e351]: Opus Run
+                  - generic [ref=e352]:
+                    - time [ref=e353]: Jul 21, 2026, 12:57 AM
+                    - text: · headless
+                    - generic "claude-code" [ref=e354]
+                    - generic [ref=e355]: · 1×
+                - generic [ref=e356]:
+                  - generic [ref=e357]: 0%
+                  - generic [ref=e362]: Completed
+            - generic [ref=e367]:
+              - generic [ref=e368]: Older
+              - generic [ref=e369]:
+                - link "Run 2026-06-28 02:13:57 Jun 28, 2026, 2:13 AM · headless · 1× 100% Completed" [ref=e370] [cursor=pointer]:
+                  - /url: /runs/782d3c9d
+                  - generic [ref=e371]:
+                    - generic [ref=e372]: Run 2026-06-28 02:13:57
+                    - generic [ref=e373]:
+                      - time [ref=e374]: Jun 28, 2026, 2:13 AM
+                      - text: · headless
+                      - generic [ref=e375]: · 1×
+                  - generic [ref=e376]:
+                    - generic [ref=e377]: 100%
+                    - generic [ref=e382]: Completed
+                - link "Run 2026-06-28 00:55:27 Jun 28, 2026, 12:55 AM · headless · 1× 100% Completed" [ref=e387] [cursor=pointer]:
+                  - /url: /runs/aa5bb76e
+                  - generic [ref=e388]:
+                    - generic [ref=e389]: Run 2026-06-28 00:55:27
+                    - generic [ref=e390]:
+                      - time [ref=e391]: Jun 28, 2026, 12:55 AM
+                      - text: · headless
+                      - generic [ref=e392]: · 1×
+                  - generic [ref=e393]:
+                    - generic [ref=e394]: 100%
+                    - generic [ref=e399]: Completed
+                - link "Run 2026-06-28 00:47:35 Jun 28, 2026, 12:47 AM · headless · 1× 100% Completed" [ref=e404] [cursor=pointer]:
+                  - /url: /runs/bcddbdc3
+                  - generic [ref=e405]:
+                    - generic [ref=e406]: Run 2026-06-28 00:47:35
+                    - generic [ref=e407]:
+                      - time [ref=e408]: Jun 28, 2026, 12:47 AM
+                      - text: · headless
+                      - generic [ref=e409]: · 1×
+                  - generic [ref=e410]:
+                    - generic [ref=e411]: 100%
+                    - generic [ref=e416]: Completed
+                - link "Run 2026-06-28 00:43:47 Jun 28, 2026, 12:43 AM · headless · 1× 0% Completed" [ref=e421] [cursor=pointer]:
+                  - /url: /runs/6fbaf317
+                  - generic [ref=e422]:
+                    - generic [ref=e423]: Run 2026-06-28 00:43:47
+                    - generic [ref=e424]:
+                      - time [ref=e425]: Jun 28, 2026, 12:43 AM
+                      - text: · headless
+                      - generic [ref=e426]: · 1×
+                  - generic [ref=e427]:
+                    - generic [ref=e428]: 0%
+                    - generic [ref=e433]: Completed
+                - link "Run 2026-06-28 00:04:09 Jun 28, 2026, 12:04 AM · headless · 1× · 2 samples 75% Completed" [ref=e438] [cursor=pointer]:
+                  - /url: /runs/39e17453
+                  - generic [ref=e439]:
+                    - generic [ref=e440]: Run 2026-06-28 00:04:09
+                    - generic [ref=e441]:
+                      - time [ref=e442]: Jun 28, 2026, 12:04 AM
+                      - text: · headless
+                      - generic [ref=e443]: · 1×
+                      - generic [ref=e444]: · 2 samples
+                  - generic [ref=e445]:
+                    - generic [ref=e446]: 75%
+                    - generic [ref=e452]: Completed
+                - link "Run 2026-06-27 23:17:50 Jun 27, 2026, 11:17 PM · headless · 1× 100% Completed" [ref=e457] [cursor=pointer]:
+                  - /url: /runs/41373ca8
+                  - generic [ref=e458]:
+                    - generic [ref=e459]: Run 2026-06-27 23:17:50
+                    - generic [ref=e460]:
+                      - time [ref=e461]: Jun 27, 2026, 11:17 PM
+                      - text: · headless
+                      - generic [ref=e462]: · 1×
+                  - generic [ref=e463]:
+                    - generic [ref=e464]: 100%
+                    - generic [ref=e469]: Completed
+                - link "Run 2026-06-27 23:17:13 Jun 27, 2026, 11:17 PM · tmux · 1× 0% Completed" [ref=e474] [cursor=pointer]:
+                  - /url: /runs/133d4df2
+                  - generic [ref=e475]:
+                    - generic [ref=e476]: Run 2026-06-27 23:17:13
+                    - generic [ref=e477]:
+                      - time [ref=e478]: Jun 27, 2026, 11:17 PM
+                      - text: · tmux
+                      - generic [ref=e479]: · 1×
+                  - generic [ref=e480]:
+                    - generic [ref=e481]: 0%
+                    - generic [ref=e486]: Completed
+                - link "Run 2026-06-27 23:15:53 Jun 27, 2026, 11:15 PM · headless · 1× 100% Completed" [ref=e491] [cursor=pointer]:
+                  - /url: /runs/5b230ffa
+                  - generic [ref=e492]:
+                    - generic [ref=e493]: Run 2026-06-27 23:15:53
+                    - generic [ref=e494]:
+                      - time [ref=e495]: Jun 27, 2026, 11:15 PM
+                      - text: · headless
+                      - generic [ref=e496]: · 1×
+                  - generic [ref=e497]:
+                    - generic [ref=e498]: 100%
+                    - generic [ref=e503]: Completed
+                - link "First Test By User Jun 27, 2026, 11:15 PM · tmux · 2× 0% Completed" [ref=e508] [cursor=pointer]:
+                  - /url: /runs/71012704
+                  - generic [ref=e509]:
+                    - generic [ref=e510]: First Test By User
+                    - generic [ref=e511]:
+                      - time [ref=e512]: Jun 27, 2026, 11:15 PM
+                      - text: · tmux
+                      - generic [ref=e513]: · 2×
+                  - generic [ref=e514]:
+                    - generic [ref=e515]: 0%
+                    - generic [ref=e520]: Completed
+  - region "Notifications"
+  - alert [ref=e525]

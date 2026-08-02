@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useRef, useState } from "react";
+import { memo, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import clsx from "clsx";
 import {
@@ -13,6 +13,8 @@ import { useVisibilityPoll } from "@/lib/use-visibility-poll";
 import ArtifactPreview from "./ArtifactPreview";
 import { isTerminalCaseStatus } from "@/lib/status";
 import { presentRunnerCost } from "@/lib/cost-display";
+import { useRedactedShow } from "@/lib/use-redaction";
+import { RedactToggle } from "./RedactToggle";
 
 const GRADER_TIER: Record<string, string> = {
   exit_code: "bg-ok/10 text-ok",
@@ -41,6 +43,8 @@ export default function CaseDetailClient({ caseId, runId, initial }: Props) {
   const [previewContent, setPreviewContent] = useState<{ path: string; content: string } | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const lastEnd = useRef(initial?.ended_at ?? 0);
+  const redactionSeed = useMemo(() => [JSON.stringify(rc)], [rc]);
+  const { redact, setRedact, show } = useRedactedShow(redactionSeed, { secrets: true });
 
   const shouldPoll = !isTerminalCaseStatus(rc?.status);
 
@@ -93,8 +97,13 @@ export default function CaseDetailClient({ caseId, runId, initial }: Props) {
     <div className="space-y-4">
       <div>
         <Link href={`/runs/${runId}`} className="text-xs text-fg-muted hover:text-fg">← Back to run</Link>
-        <h1 className="text-xl font-semibold mt-1">{rc.case_name}</h1>
-        <div className="text-xs text-fg-dim mono mt-1">{rc.case_id} · {rc.category}</div>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="text-xl font-semibold mt-1">{show(rc.case_name)}</h1>
+            <div className="text-xs text-fg-dim mono mt-1">{rc.case_id} · {rc.category}</div>
+          </div>
+          <RedactToggle compact redact={redact} onToggle={() => setRedact((value) => !value)} />
+        </div>
       </div>
 
       {runner && <RunSummary runner={runner} />}
@@ -104,7 +113,7 @@ export default function CaseDetailClient({ caseId, runId, initial }: Props) {
           <div className="divide-y divide-bd-subtle">
             {runner.toolCalls.length === 0 && <div className="px-4 py-6 text-center text-fg-muted text-sm">No tool calls recorded.</div>}
             {runner.toolCalls.map((tc, i) => (
-              <ToolCallItem key={tc.id || i} tc={tc} idx={i} />
+              <ToolCallItem key={tc.id || i} tc={tc} idx={i} showText={show} />
             ))}
           </div>
         </Section>
@@ -112,7 +121,7 @@ export default function CaseDetailClient({ caseId, runId, initial }: Props) {
 
       {runner && (
         <Section title="Transcript" icon={Terminal} count={runner.transcript.length} open={openTranscript} onToggle={() => setOpenTranscript(!openTranscript)}>
-          <Transcript runner={runner} />
+          <Transcript runner={runner} showText={show} />
         </Section>
       )}
 
@@ -138,7 +147,7 @@ export default function CaseDetailClient({ caseId, runId, initial }: Props) {
             </div>
             {previewLoading && <div className="text-xs text-fg-muted">Loading artifact…</div>}
             {previewContent && (
-              <ArtifactPreview path={previewContent.path} content={previewContent.content} />
+              <ArtifactPreview path={show(previewContent.path)} content={show(previewContent.content)} />
             )}
             {!previewContent && !previewLoading && (
               <div className="text-xs text-fg-muted">
@@ -159,14 +168,14 @@ export default function CaseDetailClient({ caseId, runId, initial }: Props) {
                   <div className="flex items-center gap-2">
                     {g.passed ? <CheckCircle2 className="size-4 text-ok" /> : <XCircle className="size-4 text-err" />}
                     <span className={clsx("font-mono text-xs px-1.5 py-0.5 rounded", GRADER_TIER[g.spec.type] ?? "bg-bg-elev")}>{g.spec.type}</span>
-                    <span className="text-xs text-fg-muted">{g.detail}</span>
+                    <span className="text-xs text-fg-muted">{show(g.detail)}</span>
                   </div>
                   <span className="text-[10px] text-fg-dim mono tabular-nums">{g.durationMs}ms</span>
                 </div>
                 {g.output && (
                   <details className="mt-2 group">
                     <summary className="text-[11px] text-fg-muted cursor-pointer hover:text-fg">View output</summary>
-                    <pre className="mt-2 text-[11px] mono text-fg-muted bg-bg p-3 rounded border border-bd-subtle overflow-x-auto max-h-64 overflow-y-auto">{g.output.slice(0, 4000)}</pre>
+                    <pre className="mt-2 text-[11px] mono text-fg-muted bg-bg p-3 rounded border border-bd-subtle overflow-x-auto max-h-64 overflow-y-auto">{show(g.output.slice(0, 4000))}</pre>
                   </details>
                 )}
               </div>
@@ -189,7 +198,7 @@ export default function CaseDetailClient({ caseId, runId, initial }: Props) {
             <AlertTriangle className="size-4 text-err shrink-0 mt-0.5" />
             <div>
               <div className="text-sm font-medium text-err">Error</div>
-              <pre className="mt-2 text-[11px] mono text-fg-muted whitespace-pre-wrap">{rc.error_msg}</pre>
+              <pre className="mt-2 text-[11px] mono text-fg-muted whitespace-pre-wrap">{show(rc.error_msg)}</pre>
             </div>
           </div>
         </div>
@@ -238,7 +247,7 @@ function Section({ title, icon: Icon, count, open, onToggle, children }: { title
   );
 }
 
-const ToolCallItem = memo(function ToolCallItem({ tc, idx }: { tc: RunnerResult["toolCalls"][number]; idx: number }) {
+const ToolCallItem = memo(function ToolCallItem({ tc, idx, showText }: { tc: RunnerResult["toolCalls"][number]; idx: number; showText: (value: unknown) => string }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="relative px-4 py-2.5">
@@ -252,7 +261,7 @@ const ToolCallItem = memo(function ToolCallItem({ tc, idx }: { tc: RunnerResult[
             {tc.isError && <span className="text-[10px] text-err px-1 rounded bg-err/10">error</span>}
           </div>
           <div className="text-[11px] text-fg-muted mono mt-0.5 truncate">
-            {tc.output ? tc.output.slice(0, 120) : (tc.input ? JSON.stringify(tc.input).slice(0, 120) : "")}
+            {showText(tc.output ? tc.output.slice(0, 120) : (tc.input ? JSON.stringify(tc.input).slice(0, 120) : ""))}
           </div>
         </div>
         <ChevronRight className={clsx("size-3.5 text-fg-dim mt-0.5 transition-transform", open && "rotate-90")} />
@@ -262,13 +271,13 @@ const ToolCallItem = memo(function ToolCallItem({ tc, idx }: { tc: RunnerResult[
           {tc.input !== undefined && (
             <div>
               <div className="text-[10px] uppercase text-fg-dim mb-1">Input</div>
-              <pre className="text-[11px] mono text-fg-muted bg-bg p-2 rounded border border-bd-subtle overflow-x-auto">{JSON.stringify(tc.input, null, 2)}</pre>
+              <pre className="text-[11px] mono text-fg-muted bg-bg p-2 rounded border border-bd-subtle overflow-x-auto">{showText(JSON.stringify(tc.input, null, 2))}</pre>
             </div>
           )}
           {tc.output && (
             <div>
               <div className="text-[10px] uppercase text-fg-dim mb-1">Output</div>
-              <pre className={clsx("text-[11px] mono p-2 rounded border overflow-x-auto max-h-80 overflow-y-auto", tc.isError ? "text-err/80 bg-err/5 border-err/15" : "text-fg-muted bg-bg border-bd-subtle")}>{tc.output.slice(0, 8000)}</pre>
+              <pre className={clsx("text-[11px] mono p-2 rounded border overflow-x-auto max-h-80 overflow-y-auto", tc.isError ? "text-err/80 bg-err/5 border-err/15" : "text-fg-muted bg-bg border-bd-subtle")}>{showText(tc.output.slice(0, 8000))}</pre>
             </div>
           )}
         </div>
@@ -277,7 +286,7 @@ const ToolCallItem = memo(function ToolCallItem({ tc, idx }: { tc: RunnerResult[
   );
 });
 
-function Transcript({ runner }: { runner: RunnerResult }) {
+function Transcript({ runner, showText }: { runner: RunnerResult; showText: (value: unknown) => string }) {
   return (
     <div className="font-mono text-[12px]">
       {runner.transcript.map((m, i) => (
@@ -288,20 +297,20 @@ function Transcript({ runner }: { runner: RunnerResult }) {
           </div>
           {m.content.map((b, j) => {
             if (b.type === "text") {
-              return <pre key={j} className="px-4 py-2 text-fg whitespace-pre-wrap">{b.text}</pre>;
+              return <pre key={j} className="px-4 py-2 text-fg whitespace-pre-wrap">{showText(b.text)}</pre>;
             }
             if (b.type === "tool_use") {
               return (
                 <div key={j} className="px-4 py-2 flex items-start gap-2">
                   <Wrench className="size-3 text-accent-soft mt-0.5" />
                   <span className="text-accent-soft">{b.name}</span>
-                  <span className="text-fg-dim">{typeof b.input === "string" ? b.input : JSON.stringify(b.input)}</span>
+                  <span className="text-fg-dim">{showText(typeof b.input === "string" ? b.input : JSON.stringify(b.input))}</span>
                 </div>
               );
             }
             if (b.type === "tool_result") {
               return (
-                <pre key={j} className={clsx("px-4 py-2 whitespace-pre-wrap border-l-2 ml-2", b.is_error ? "border-err/50 text-err/80" : "border-bd-subtle text-fg-muted")}>{b.content.slice(0, 4000)}</pre>
+                <pre key={j} className={clsx("px-4 py-2 whitespace-pre-wrap border-l-2 ml-2", b.is_error ? "border-err/50 text-err/80" : "border-bd-subtle text-fg-muted")}>{showText(b.content.slice(0, 4000))}</pre>
               );
             }
             return null;

@@ -1,0 +1,355 @@
+- generic [ref=f2e1]:
+  - link "Skip to content" [ref=f2e2] [cursor=pointer]:
+    - /url: "#main"
+  - generic [ref=f2e3]:
+    - complementary [ref=f2e4]:
+      - generic [ref=f2e10]:
+        - generic [ref=f2e11]: OpenEval
+        - generic [ref=f2e12]: OpenEval Suite
+      - navigation "Primary" [ref=f2e13]:
+        - link "Dashboard" [ref=f2e15] [cursor=pointer]:
+          - /url: /
+        - generic [ref=f2e22]:
+          - generic [ref=f2e23]: Evaluate
+          - link "Runs" [ref=f2e24] [cursor=pointer]:
+            - /url: /runs
+          - link "Leaderboard" [ref=f2e28] [cursor=pointer]:
+            - /url: /runs/leaderboard
+          - link "Compare" [ref=f2e36] [cursor=pointer]:
+            - /url: /runs/compare
+          - link "Cases" [ref=f2e45] [cursor=pointer]:
+            - /url: /cases
+          - link "New Run" [ref=f2e50] [cursor=pointer]:
+            - /url: /runs/new
+          - link "Accuracy" [ref=f2e53] [cursor=pointer]:
+            - /url: /accuracy
+        - generic [ref=f2e58]:
+          - generic [ref=f2e59]: Observe
+          - link "Live" [ref=f2e60] [cursor=pointer]:
+            - /url: /live
+          - link "Collection" [ref=f2e68] [cursor=pointer]:
+            - /url: /collection
+          - link "Timeline" [ref=f2e81] [cursor=pointer]:
+            - /url: /collection/timeline
+        - generic [ref=f2e86]:
+          - generic [ref=f2e87]: System
+          - link "Harnesses" [ref=f2e88] [cursor=pointer]:
+            - /url: /harnesses
+          - link "Settings" [ref=f2e92] [cursor=pointer]:
+            - /url: /settings
+      - generic [ref=f2e97]:
+        - link "OpenEval release v0.1.4" [ref=f2e98] [cursor=pointer]:
+          - /url: https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.4
+          - text: v0.1.4
+        - generic [ref=f2e99]:
+          - button "Switch to dark mode" [ref=f2e237] [cursor=pointer]
+          - button "Collapse sidebar" [ref=f2e107] [cursor=pointer]
+    - main [ref=f2e111]:
+      - generic [ref=f2e112]:
+        - generic [ref=f2e113]:
+          - generic [ref=f2e114]:
+            - heading "Collection" [level=1] [ref=f2e115]
+            - generic [ref=f2e128]:
+              - generic "Scan generated 2026-08-01T23:29:45.306Z" [ref=f2e129]: scanned just now
+              - button "Redact on" [pressed] [ref=f2e130] [cursor=pointer]
+              - link "Timeline & Impact" [ref=f2e134] [cursor=pointer]:
+                - /url: /collection/timeline
+              - button "Rescan" [ref=f2e137] [cursor=pointer]
+          - paragraph [ref=f2e143]: Live & archived transcripts discovered across every agent harness on this machine. Archived sessions outlive their pruned files.
+        - navigation "Page sections" [ref=f2e144]:
+          - generic [ref=f2e145]:
+            - generic [ref=f2e146]: Showing When you work
+            - button "Show all page sections" [ref=f2e147] [cursor=pointer]: All
+            - button "Start here" [ref=f2e148] [cursor=pointer]
+            - button "Trust data" [ref=f2e149] [cursor=pointer]
+            - button "Spend & usage" [ref=f2e150] [cursor=pointer]
+            - button "When you work" [active] [pressed] [ref=f2e151] [cursor=pointer]
+            - button "Model mix" [ref=f2e152] [cursor=pointer]
+            - button "Tool health" [ref=f2e153] [cursor=pointer]
+            - button "Sources" [ref=f2e154] [cursor=pointer]
+            - button "Find a session" [ref=f2e155] [cursor=pointer]
+          - generic [ref=f2e156]:
+            - generic [ref=f2e157]: 04 / 08
+            - generic [ref=f2e158]: See weekly and day-part rhythms across session starts.
+            - generic [ref=f2e159]: 2.5k sessions · ~$32.7k API eq.
+        - status [ref=f2e160]:
+          - generic [ref=f2e163]:
+            - generic [ref=f2e164]: Parsed coverage has caveats
+            - generic [ref=f2e165]: One or more discovered transcript files were unsupported, unreadable, or otherwise excluded from parsed totals for Codex CLI + ChatGPT app. Parser warnings below describe the retained sessions.
+        - generic [ref=f2e230]:
+          - searchbox "Search sessions" [ref=f2e234]
+          - button "Search" [disabled] [ref=f2e235]
+        - generic [ref=f2e399]:
+          - generic [ref=f2e400]:
+            - generic [ref=f2e407]:
+              - heading "Rhythm" [level=2] [ref=f2e408]
+              - paragraph [ref=f2e409]: When sessions start — weekday × hour, plus the day-part split
+            - generic [ref=f2e410]: 2.5k sessions
+          - generic [ref=f2e411]:
+            - region [ref=f2e412]:
+              - generic [ref=f2e413]:
+                - generic [ref=f2e414]:
+                  - heading "When you work — session starts" [level=2] [ref=f2e415]
+                  - paragraph [ref=f2e416]: Local time · select any cell for an exact count.
+                - generic [ref=f2e417]: 2.5k starts
+              - generic [ref=f2e418]:
+                - generic [ref=f2e419]:
+                  - generic [ref=f2e420]: Selected hour
+                  - generic [ref=f2e421]:
+                    - text: Tue
+                    - generic [ref=f2e422]: 21:00–22:00
+                - generic [ref=f2e423]:
+                  - generic [ref=f2e424]: "73"
+                  - generic [ref=f2e425]: 3% of starts
+              - group "Session starts by local day and hour" [ref=f2e426]:
+                - generic [ref=f2e427]:
+                  - group "Mon session starts by hour" [ref=f2e428]:
+                    - generic [ref=f2e429]: Mon
+                    - button "Mon 00:00 — 3 sessions" [ref=f2e430] [cursor=pointer]
+                    - button "Mon 01:00 — 6 sessions" [ref=f2e431] [cursor=pointer]
+                    - button "Mon 02:00 — 4 sessions" [ref=f2e432] [cursor=pointer]
+                    - button "Mon 03:00 — 6 sessions" [ref=f2e433] [cursor=pointer]
+                    - button "Mon 04:00 — 4 sessions" [ref=f2e434] [cursor=pointer]
+                    - button "Mon 05:00 — 20 sessions" [ref=f2e435] [cursor=pointer]
+                    - button "Mon 06:00 — 10 sessions" [ref=f2e436] [cursor=pointer]
+                    - button "Mon 07:00 — 0 sessions" [ref=f2e437] [cursor=pointer]
+                    - button "Mon 08:00 — 0 sessions" [ref=f2e438] [cursor=pointer]
+                    - button "Mon 09:00 — 3 sessions" [ref=f2e439] [cursor=pointer]
+                    - button "Mon 10:00 — 1 session" [ref=f2e440] [cursor=pointer]
+                    - button "Mon 11:00 — 2 sessions" [ref=f2e441] [cursor=pointer]
+                    - button "Mon 12:00 — 1 session" [ref=f2e442] [cursor=pointer]
+                    - button "Mon 13:00 — 22 sessions" [ref=f2e443] [cursor=pointer]
+                    - button "Mon 14:00 — 11 sessions" [ref=f2e444] [cursor=pointer]
+                    - button "Mon 15:00 — 5 sessions" [ref=f2e445] [cursor=pointer]
+                    - button "Mon 16:00 — 12 sessions" [ref=f2e446] [cursor=pointer]
+                    - button "Mon 17:00 — 10 sessions" [ref=f2e447] [cursor=pointer]
+                    - button "Mon 18:00 — 28 sessions" [ref=f2e448] [cursor=pointer]
+                    - button "Mon 19:00 — 14 sessions" [ref=f2e449] [cursor=pointer]
+                    - button "Mon 20:00 — 23 sessions" [ref=f2e450] [cursor=pointer]
+                    - button "Mon 21:00 — 27 sessions" [ref=f2e451] [cursor=pointer]
+                    - button "Mon 22:00 — 35 sessions" [ref=f2e452] [cursor=pointer]
+                    - button "Mon 23:00 — 49 sessions" [ref=f2e453] [cursor=pointer]
+                  - group "Tue session starts by hour" [ref=f2e454]:
+                    - generic [ref=f2e455]: Tue
+                    - button "Tue 00:00 — 10 sessions" [ref=f2e456] [cursor=pointer]
+                    - button "Tue 01:00 — 17 sessions" [ref=f2e457] [cursor=pointer]
+                    - button "Tue 02:00 — 1 session" [ref=f2e458] [cursor=pointer]
+                    - button "Tue 03:00 — 4 sessions" [ref=f2e459] [cursor=pointer]
+                    - button "Tue 04:00 — 3 sessions" [ref=f2e460] [cursor=pointer]
+                    - button "Tue 05:00 — 1 session" [ref=f2e461] [cursor=pointer]
+                    - button "Tue 06:00 — 5 sessions" [ref=f2e462] [cursor=pointer]
+                    - button "Tue 07:00 — 0 sessions" [ref=f2e463] [cursor=pointer]
+                    - button "Tue 08:00 — 9 sessions" [ref=f2e464] [cursor=pointer]
+                    - button "Tue 09:00 — 0 sessions" [ref=f2e465] [cursor=pointer]
+                    - button "Tue 10:00 — 0 sessions" [ref=f2e466] [cursor=pointer]
+                    - button "Tue 11:00 — 22 sessions" [ref=f2e467] [cursor=pointer]
+                    - button "Tue 12:00 — 56 sessions" [ref=f2e468] [cursor=pointer]
+                    - button "Tue 13:00 — 22 sessions" [ref=f2e469] [cursor=pointer]
+                    - button "Tue 14:00 — 32 sessions" [ref=f2e470] [cursor=pointer]
+                    - button "Tue 15:00 — 24 sessions" [ref=f2e471] [cursor=pointer]
+                    - button "Tue 16:00 — 15 sessions" [ref=f2e472] [cursor=pointer]
+                    - button "Tue 17:00 — 10 sessions" [ref=f2e473] [cursor=pointer]
+                    - button "Tue 18:00 — 44 sessions" [ref=f2e474] [cursor=pointer]
+                    - button "Tue 19:00 — 69 sessions" [ref=f2e475] [cursor=pointer]
+                    - button "Tue 20:00 — 31 sessions" [ref=f2e476] [cursor=pointer]
+                    - button "Tue 21:00 — 73 sessions" [ref=f2e477] [cursor=pointer]
+                    - button "Tue 22:00 — 37 sessions" [ref=f2e478] [cursor=pointer]
+                    - button "Tue 23:00 — 15 sessions" [ref=f2e479] [cursor=pointer]
+                  - group "Wed session starts by hour" [ref=f2e480]:
+                    - generic [ref=f2e481]: Wed
+                    - button "Wed 00:00 — 11 sessions" [ref=f2e482] [cursor=pointer]
+                    - button "Wed 01:00 — 4 sessions" [ref=f2e483] [cursor=pointer]
+                    - button "Wed 02:00 — 0 sessions" [ref=f2e484] [cursor=pointer]
+                    - button "Wed 03:00 — 0 sessions" [ref=f2e485] [cursor=pointer]
+                    - button "Wed 04:00 — 5 sessions" [ref=f2e486] [cursor=pointer]
+                    - button "Wed 05:00 — 3 sessions" [ref=f2e487] [cursor=pointer]
+                    - button "Wed 06:00 — 0 sessions" [ref=f2e488] [cursor=pointer]
+                    - button "Wed 07:00 — 3 sessions" [ref=f2e489] [cursor=pointer]
+                    - button "Wed 08:00 — 4 sessions" [ref=f2e490] [cursor=pointer]
+                    - button "Wed 09:00 — 1 session" [ref=f2e491] [cursor=pointer]
+                    - button "Wed 10:00 — 0 sessions" [ref=f2e492] [cursor=pointer]
+                    - button "Wed 11:00 — 0 sessions" [ref=f2e493] [cursor=pointer]
+                    - button "Wed 12:00 — 3 sessions" [ref=f2e494] [cursor=pointer]
+                    - button "Wed 13:00 — 20 sessions" [ref=f2e495] [cursor=pointer]
+                    - button "Wed 14:00 — 31 sessions" [ref=f2e496] [cursor=pointer]
+                    - button "Wed 15:00 — 23 sessions" [ref=f2e497] [cursor=pointer]
+                    - button "Wed 16:00 — 20 sessions" [ref=f2e498] [cursor=pointer]
+                    - button "Wed 17:00 — 8 sessions" [ref=f2e499] [cursor=pointer]
+                    - button "Wed 18:00 — 13 sessions" [ref=f2e500] [cursor=pointer]
+                    - button "Wed 19:00 — 14 sessions" [ref=f2e501] [cursor=pointer]
+                    - button "Wed 20:00 — 30 sessions" [ref=f2e502] [cursor=pointer]
+                    - button "Wed 21:00 — 1 session" [ref=f2e503] [cursor=pointer]
+                    - button "Wed 22:00 — 4 sessions" [ref=f2e504] [cursor=pointer]
+                    - button "Wed 23:00 — 8 sessions" [ref=f2e505] [cursor=pointer]
+                  - group "Thu session starts by hour" [ref=f2e506]:
+                    - generic [ref=f2e507]: Thu
+                    - button "Thu 00:00 — 10 sessions" [ref=f2e508] [cursor=pointer]
+                    - button "Thu 01:00 — 8 sessions" [ref=f2e509] [cursor=pointer]
+                    - button "Thu 02:00 — 4 sessions" [ref=f2e510] [cursor=pointer]
+                    - button "Thu 03:00 — 12 sessions" [ref=f2e511] [cursor=pointer]
+                    - button "Thu 04:00 — 15 sessions" [ref=f2e512] [cursor=pointer]
+                    - button "Thu 05:00 — 8 sessions" [ref=f2e513] [cursor=pointer]
+                    - button "Thu 06:00 — 7 sessions" [ref=f2e514] [cursor=pointer]
+                    - button "Thu 07:00 — 8 sessions" [ref=f2e515] [cursor=pointer]
+                    - button "Thu 08:00 — 0 sessions" [ref=f2e516] [cursor=pointer]
+                    - button "Thu 09:00 — 0 sessions" [ref=f2e517] [cursor=pointer]
+                    - button "Thu 10:00 — 2 sessions" [ref=f2e518] [cursor=pointer]
+                    - button "Thu 11:00 — 0 sessions" [ref=f2e519] [cursor=pointer]
+                    - button "Thu 12:00 — 4 sessions" [ref=f2e520] [cursor=pointer]
+                    - button "Thu 13:00 — 9 sessions" [ref=f2e521] [cursor=pointer]
+                    - button "Thu 14:00 — 27 sessions" [ref=f2e522] [cursor=pointer]
+                    - button "Thu 15:00 — 60 sessions" [ref=f2e523] [cursor=pointer]
+                    - button "Thu 16:00 — 31 sessions" [ref=f2e524] [cursor=pointer]
+                    - button "Thu 17:00 — 34 sessions" [ref=f2e525] [cursor=pointer]
+                    - button "Thu 18:00 — 22 sessions" [ref=f2e526] [cursor=pointer]
+                    - button "Thu 19:00 — 35 sessions" [ref=f2e527] [cursor=pointer]
+                    - button "Thu 20:00 — 46 sessions" [ref=f2e528] [cursor=pointer]
+                    - button "Thu 21:00 — 17 sessions" [ref=f2e529] [cursor=pointer]
+                    - button "Thu 22:00 — 18 sessions" [ref=f2e530] [cursor=pointer]
+                    - button "Thu 23:00 — 61 sessions" [ref=f2e531] [cursor=pointer]
+                  - group "Fri session starts by hour" [ref=f2e532]:
+                    - generic [ref=f2e533]: Fri
+                    - button "Fri 00:00 — 23 sessions" [ref=f2e534] [cursor=pointer]
+                    - button "Fri 01:00 — 33 sessions" [ref=f2e535] [cursor=pointer]
+                    - button "Fri 02:00 — 13 sessions" [ref=f2e536] [cursor=pointer]
+                    - button "Fri 03:00 — 7 sessions" [ref=f2e537] [cursor=pointer]
+                    - button "Fri 04:00 — 4 sessions" [ref=f2e538] [cursor=pointer]
+                    - button "Fri 05:00 — 7 sessions" [ref=f2e539] [cursor=pointer]
+                    - button "Fri 06:00 — 6 sessions" [ref=f2e540] [cursor=pointer]
+                    - button "Fri 07:00 — 7 sessions" [ref=f2e541] [cursor=pointer]
+                    - button "Fri 08:00 — 4 sessions" [ref=f2e542] [cursor=pointer]
+                    - button "Fri 09:00 — 2 sessions" [ref=f2e543] [cursor=pointer]
+                    - button "Fri 10:00 — 1 session" [ref=f2e544] [cursor=pointer]
+                    - button "Fri 11:00 — 22 sessions" [ref=f2e545] [cursor=pointer]
+                    - button "Fri 12:00 — 5 sessions" [ref=f2e546] [cursor=pointer]
+                    - button "Fri 13:00 — 1 session" [ref=f2e547] [cursor=pointer]
+                    - button "Fri 14:00 — 13 sessions" [ref=f2e548] [cursor=pointer]
+                    - button "Fri 15:00 — 12 sessions" [ref=f2e549] [cursor=pointer]
+                    - button "Fri 16:00 — 4 sessions" [ref=f2e550] [cursor=pointer]
+                    - button "Fri 17:00 — 2 sessions" [ref=f2e551] [cursor=pointer]
+                    - button "Fri 18:00 — 13 sessions" [ref=f2e552] [cursor=pointer]
+                    - button "Fri 19:00 — 21 sessions" [ref=f2e553] [cursor=pointer]
+                    - button "Fri 20:00 — 16 sessions" [ref=f2e554] [cursor=pointer]
+                    - button "Fri 21:00 — 7 sessions" [ref=f2e555] [cursor=pointer]
+                    - button "Fri 22:00 — 4 sessions" [ref=f2e556] [cursor=pointer]
+                    - button "Fri 23:00 — 4 sessions" [ref=f2e557] [cursor=pointer]
+                  - group "Sat session starts by hour" [ref=f2e558]:
+                    - generic [ref=f2e559]: Sat
+                    - button "Sat 00:00 — 6 sessions" [ref=f2e560] [cursor=pointer]
+                    - button "Sat 01:00 — 18 sessions" [ref=f2e561] [cursor=pointer]
+                    - button "Sat 02:00 — 1 session" [ref=f2e562] [cursor=pointer]
+                    - button "Sat 03:00 — 0 sessions" [ref=f2e563] [cursor=pointer]
+                    - button "Sat 04:00 — 0 sessions" [ref=f2e564] [cursor=pointer]
+                    - button "Sat 05:00 — 1 session" [ref=f2e565] [cursor=pointer]
+                    - button "Sat 06:00 — 0 sessions" [ref=f2e566] [cursor=pointer]
+                    - button "Sat 07:00 — 0 sessions" [ref=f2e567] [cursor=pointer]
+                    - button "Sat 08:00 — 3 sessions" [ref=f2e568] [cursor=pointer]
+                    - button "Sat 09:00 — 6 sessions" [ref=f2e569] [cursor=pointer]
+                    - button "Sat 10:00 — 0 sessions" [ref=f2e570] [cursor=pointer]
+                    - button "Sat 11:00 — 2 sessions" [ref=f2e571] [cursor=pointer]
+                    - button "Sat 12:00 — 14 sessions" [ref=f2e572] [cursor=pointer]
+                    - button "Sat 13:00 — 8 sessions" [ref=f2e573] [cursor=pointer]
+                    - button "Sat 14:00 — 39 sessions" [ref=f2e574] [cursor=pointer]
+                    - button "Sat 15:00 — 32 sessions" [ref=f2e575] [cursor=pointer]
+                    - button "Sat 16:00 — 34 sessions" [ref=f2e576] [cursor=pointer]
+                    - button "Sat 17:00 — 54 sessions" [ref=f2e577] [cursor=pointer]
+                    - button "Sat 18:00 — 30 sessions" [ref=f2e578] [cursor=pointer]
+                    - button "Sat 19:00 — 44 sessions" [ref=f2e579] [cursor=pointer]
+                    - button "Sat 20:00 — 60 sessions" [ref=f2e580] [cursor=pointer]
+                    - button "Sat 21:00 — 67 sessions" [ref=f2e581] [cursor=pointer]
+                    - button "Sat 22:00 — 26 sessions" [ref=f2e582] [cursor=pointer]
+                    - button "Sat 23:00 — 47 sessions" [ref=f2e583] [cursor=pointer]
+                  - group "Sun session starts by hour" [ref=f2e584]:
+                    - generic [ref=f2e585]: Sun
+                    - button "Sun 00:00 — 43 sessions" [ref=f2e586] [cursor=pointer]
+                    - button "Sun 01:00 — 8 sessions" [ref=f2e587] [cursor=pointer]
+                    - button "Sun 02:00 — 52 sessions" [ref=f2e588] [cursor=pointer]
+                    - button "Sun 03:00 — 4 sessions" [ref=f2e589] [cursor=pointer]
+                    - button "Sun 04:00 — 19 sessions" [ref=f2e590] [cursor=pointer]
+                    - button "Sun 05:00 — 1 session" [ref=f2e591] [cursor=pointer]
+                    - button "Sun 06:00 — 7 sessions" [ref=f2e592] [cursor=pointer]
+                    - button "Sun 07:00 — 2 sessions" [ref=f2e593] [cursor=pointer]
+                    - button "Sun 08:00 — 3 sessions" [ref=f2e594] [cursor=pointer]
+                    - button "Sun 09:00 — 0 sessions" [ref=f2e595] [cursor=pointer]
+                    - button "Sun 10:00 — 5 sessions" [ref=f2e596] [cursor=pointer]
+                    - button "Sun 11:00 — 19 sessions" [ref=f2e597] [cursor=pointer]
+                    - button "Sun 12:00 — 1 session" [ref=f2e598] [cursor=pointer]
+                    - button "Sun 13:00 — 22 sessions" [ref=f2e599] [cursor=pointer]
+                    - button "Sun 14:00 — 72 sessions" [ref=f2e600] [cursor=pointer]
+                    - button "Sun 15:00 — 8 sessions" [ref=f2e601] [cursor=pointer]
+                    - button "Sun 16:00 — 16 sessions" [ref=f2e602] [cursor=pointer]
+                    - button "Sun 17:00 — 11 sessions" [ref=f2e603] [cursor=pointer]
+                    - button "Sun 18:00 — 3 sessions" [ref=f2e604] [cursor=pointer]
+                    - button "Sun 19:00 — 32 sessions" [ref=f2e605] [cursor=pointer]
+                    - button "Sun 20:00 — 8 sessions" [ref=f2e606] [cursor=pointer]
+                    - button "Sun 21:00 — 5 sessions" [ref=f2e607] [cursor=pointer]
+                    - button "Sun 22:00 — 27 sessions" [ref=f2e608] [cursor=pointer]
+                    - button "Sun 23:00 — 18 sessions" [ref=f2e609] [cursor=pointer]
+                  - generic [ref=f2e610]:
+                    - generic [ref=f2e611]: Local hour
+                    - generic [ref=f2e612]: 00–23
+                  - generic [ref=f2e613]:
+                    - generic [ref=f2e614]: "0"
+                    - generic [ref=f2e615]: "6"
+                    - generic [ref=f2e616]: "12"
+                    - generic [ref=f2e617]: "18"
+                    - generic [ref=f2e618]: "21"
+                  - generic [ref=f2e619]:
+                    - generic [ref=f2e620]: Less
+                    - generic [ref=f2e626]: More
+            - generic [ref=f2e627]:
+              - generic [ref=f2e628]:
+                - heading "Day parts" [level=3] [ref=f2e629]
+                - paragraph [ref=f2e630]: How session starts divide across the day.
+              - generic [ref=f2e631]:
+                - generic [ref=f2e632]:
+                  - generic [ref=f2e633]:
+                    - generic [ref=f2e634]: Dominant window
+                    - generic [ref=f2e635]: Evening 18–24
+                  - generic [ref=f2e636]:
+                    - generic [ref=f2e637]: 45%
+                    - generic [ref=f2e638]: 1.1k starts
+                - generic "Session starts by day part" [ref=f2e639]:
+                  - 'button "Morning: 166 starts, 7%" [ref=f2e640] [cursor=pointer]'
+                  - 'button "Afternoon: 838 starts, 33%" [ref=f2e641] [cursor=pointer]'
+                  - 'button "Evening: 1,146 starts, 45%" [pressed] [ref=f2e642] [cursor=pointer]'
+                  - 'button "Night: 399 starts, 16%" [ref=f2e643] [cursor=pointer]'
+              - generic [ref=f2e644]:
+                - button "Morning 06–12 166 · 7%" [ref=f2e645] [cursor=pointer]:
+                  - generic [ref=f2e646]:
+                    - generic [ref=f2e647]: Morning 06–12
+                    - generic [ref=f2e648]:
+                      - text: "166"
+                      - generic [ref=f2e649]: · 7%
+                - button "Afternoon 12–18 838 · 33%" [ref=f2e651] [cursor=pointer]:
+                  - generic [ref=f2e652]:
+                    - generic [ref=f2e653]: Afternoon 12–18
+                    - generic [ref=f2e654]:
+                      - text: "838"
+                      - generic [ref=f2e655]: · 33%
+                - button "Evening 18–24 1.1k · 45%" [pressed] [ref=f2e657] [cursor=pointer]:
+                  - generic [ref=f2e658]:
+                    - generic [ref=f2e659]: Evening 18–24
+                    - generic [ref=f2e660]:
+                      - text: 1.1k
+                      - generic [ref=f2e661]: · 45%
+                - button "Night 00–06 399 · 16%" [ref=f2e663] [cursor=pointer]:
+                  - generic [ref=f2e664]:
+                    - generic [ref=f2e665]: Night 00–06
+                    - generic [ref=f2e666]:
+                      - text: "399"
+                      - generic [ref=f2e667]: · 16%
+              - generic [ref=f2e669]:
+                - generic [ref=f2e670]:
+                  - generic [ref=f2e671]: Busiest day
+                  - generic [ref=f2e672]: Tue · 20%
+                - generic [ref=f2e673]:
+                  - generic [ref=f2e674]: Peak hour
+                  - generic [ref=f2e675]: 19:00
+                - generic [ref=f2e676]:
+                  - generic [ref=f2e677]: Weekend
+                  - generic [ref=f2e678]: 34%
+        - paragraph [ref=f2e236]: ~ Dollar values are API-equivalent list estimates, not subscription/provider spend. They use token evidence plus OpenRouter /api/v1/models rates checked 2026-07-30; family and fallback mappings remain visibly labeled. Request-level long-context surcharges may be absent when the transcript lacks threshold evidence.
+  - region "Notifications"
+  - button "Open Next.js Dev Tools" [ref=f2e394] [cursor=pointer]
+  - alert [ref=f2e398]

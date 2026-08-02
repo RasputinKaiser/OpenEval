@@ -1,0 +1,88 @@
+- generic [active] [ref=f16e1]:
+  - link "Skip to content" [ref=f16e2] [cursor=pointer]:
+    - /url: "#main"
+  - generic [ref=f16e3]:
+    - complementary [ref=f16e4]:
+      - generic [ref=f16e10]:
+        - generic [ref=f16e11]: OpenEval
+        - generic [ref=f16e12]: OpenEval Suite
+      - navigation "Primary" [ref=f16e13]:
+        - link "Dashboard" [ref=f16e15] [cursor=pointer]:
+          - /url: /
+        - generic [ref=f16e22]:
+          - generic [ref=f16e23]: Evaluate
+          - link "Runs" [ref=f16e24] [cursor=pointer]:
+            - /url: /runs
+          - link "Leaderboard" [ref=f16e28] [cursor=pointer]:
+            - /url: /runs/leaderboard
+          - link "Compare" [ref=f16e37] [cursor=pointer]:
+            - /url: /runs/compare
+          - link "Cases" [ref=f16e46] [cursor=pointer]:
+            - /url: /cases
+          - link "New Run" [ref=f16e51] [cursor=pointer]:
+            - /url: /runs/new
+          - link "Accuracy" [ref=f16e54] [cursor=pointer]:
+            - /url: /accuracy
+        - generic [ref=f16e59]:
+          - generic [ref=f16e60]: Observe
+          - link "Live" [ref=f16e61] [cursor=pointer]:
+            - /url: /live
+          - link "Collection" [ref=f16e69] [cursor=pointer]:
+            - /url: /collection
+          - link "Timeline" [ref=f16e81] [cursor=pointer]:
+            - /url: /collection/timeline
+        - generic [ref=f16e86]:
+          - generic [ref=f16e87]: System
+          - link "Harnesses" [ref=f16e88] [cursor=pointer]:
+            - /url: /harnesses
+          - link "Settings" [ref=f16e92] [cursor=pointer]:
+            - /url: /settings
+      - generic [ref=f16e97]:
+        - generic [ref=f16e98]: v0.1.3
+        - generic [ref=f16e99]:
+          - button "Switch to light mode" [ref=f16e100] [cursor=pointer]
+          - button "Collapse sidebar" [ref=f16e107] [cursor=pointer]
+    - main [ref=f16e111]:
+      - generic [ref=f16e112]:
+        - generic [ref=f16e113]:
+          - heading "Harness Leaderboard" [level=1] [ref=f16e115]
+          - paragraph [ref=f16e124]: "Compare agent CLIs head-to-head: pass rate, cost, tokens, speed. The payoff for running the same suite across harnesses."
+        - region "Evaluate workflow" [ref=f16e125]:
+          - generic [ref=f16e126]:
+            - generic [ref=f16e127]:
+              - generic [ref=f16e128]: Evaluate workflow
+              - paragraph [ref=f16e129]: Run a suite, inspect evidence, then compare what changed.
+            - generic [ref=f16e130]: Rank harnesses
+          - navigation "Evaluate pages" [ref=f16e131]:
+            - link "01 · Runs Track evaluations" [ref=f16e132] [cursor=pointer]:
+              - /url: /runs
+              - generic [ref=f16e136]:
+                - generic [ref=f16e137]: 01 · Runs
+                - generic [ref=f16e138]: Track evaluations
+            - link "02 · Leaderboard Rank harnesses" [ref=f16e139] [cursor=pointer]:
+              - /url: /runs/leaderboard
+              - generic [ref=f16e147]:
+                - generic [ref=f16e148]: 02 · Leaderboard
+                - generic [ref=f16e149]: Rank harnesses
+            - link "03 · Compare Find regressions" [ref=f16e150] [cursor=pointer]:
+              - /url: /runs/compare
+              - generic [ref=f16e159]:
+                - generic [ref=f16e160]: 03 · Compare
+                - generic [ref=f16e161]: Find regressions
+            - link "04 · Cases Curate the suite" [ref=f16e162] [cursor=pointer]:
+              - /url: /cases
+              - generic [ref=f16e167]:
+                - generic [ref=f16e168]: 04 · Cases
+                - generic [ref=f16e169]: Curate the suite
+            - link "05 · New run Launch an experiment" [ref=f16e170] [cursor=pointer]:
+              - /url: /runs/new
+              - generic [ref=f16e174]:
+                - generic [ref=f16e175]: 05 · New run
+                - generic [ref=f16e176]: Launch an experiment
+            - link "06 · Accuracy Audit evidence" [ref=f16e177] [cursor=pointer]:
+              - /url: /accuracy
+              - generic [ref=f16e182]:
+                - generic [ref=f16e183]: 06 · Accuracy
+                - generic [ref=f16e184]: Audit evidence
+        - status [ref=f16e185]: Aggregating runs…
+  - region "Notifications"

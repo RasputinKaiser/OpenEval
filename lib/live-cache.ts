@@ -16,10 +16,10 @@ import type { LiveSession } from "./live";
  * Bump PARSER_VERSION whenever parseLiveSession's output changes shape or
  * semantics; stale-version rows are ignored and overwritten.
  */
-export const PARSER_VERSION = 23; // v23: Codex custom/tool-search call coverage; v22: thread/item rollout normalization and lineage/usage coverage
+export const PARSER_VERSION = 24; // v24: tolerant flat/wrapped/redacted reasoning normalization; v23: Codex custom/tool-search call coverage
 
 /** Bump whenever transcript-to-search text extraction semantics change. */
-export const FTS_INDEX_VERSION = 5; // v5: semantic transcript dedupe plus per-block Claude/ncode tool evidence
+export const FTS_INDEX_VERSION = 6; // v6: bounded reasoning/thinking evidence plus source-aware pending invalidation
 
 const CACHE_DB_PATH = path.join(ROOT, "data", "live-cache.db");
 

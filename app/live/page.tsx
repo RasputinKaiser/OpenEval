@@ -1,5 +1,6 @@
 import LiveClient from "@/components/LiveClient";
-import { defaultLiveLimitForHarness, projectLiveAggregate, readLiveSessionDetail, resolveLiveSessionFile, scanLiveSessions, getErroringTurns, type LiveAggregateList, type LiveSessionDetailResult, type TranscriptResult } from "@/lib/live";
+import { isAgentReasoningTurn } from "@/components/live/live-shared";
+import { defaultLiveLimitForHarness, projectLiveAggregate, readLiveSessionDetail, resolveLiveSessionFile, scanLiveSessions, parseSessionTranscript, ERRORING_TURN_CAP, type LiveAggregateList, type LiveSessionDetailResult, type TranscriptResult } from "@/lib/live";
 
 export const dynamic = "force-dynamic";
 
@@ -8,7 +9,26 @@ async function getSessionTranscript(filePath: string, harness?: string): Promise
   const resolved = resolveLiveSessionFile(filePath, harness);
   if (!resolved) return { turns: [], error: "Invalid session path" };
   try {
-    return getErroringTurns(resolved.file, resolved.source.format);
+    const parsed = parseSessionTranscript(resolved.file, resolved.source.format);
+    if (parsed.error) return { turns: [], error: parsed.error };
+
+    // Keep the drawer useful for reasoning without turning its detail request
+    // into a transcript dump: incident neighbors and reasoning stay capped.
+    const indexes = new Set<number>();
+    parsed.turns.forEach((turn, index) => {
+      if (turn.severity !== "info") {
+        indexes.add(Math.max(0, index - 1));
+        indexes.add(index);
+        indexes.add(Math.min(parsed.turns.length - 1, index + 1));
+      }
+      if (isAgentReasoningTurn(turn)) indexes.add(index);
+    });
+    const ordered = [...indexes].filter((index) => index >= 0).sort((a, b) => a - b);
+    const bounded = ordered.length > ERRORING_TURN_CAP ? ordered.slice(-ERRORING_TURN_CAP) : ordered;
+    return {
+      turns: bounded.map((index) => parsed.turns[index]),
+      truncated: Boolean(parsed.truncated || ordered.length > bounded.length),
+    };
   } catch (e) {
     return { turns: [], error: `Failed to parse session transcript: ${e instanceof Error ? e.message : String(e)}` };
   }

@@ -661,6 +661,13 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
   ], [hasWeekly, hasHeatmap, hasModels, hasTools]);
   const { activeSection, selectSection, isVisible } = useProgressiveSection(sections);
 
+  // A search handoff is a direct request to find evidence. Move the user to
+  // the session catalog once results arrive instead of leaving them at the
+  // overview panel while the query runs in the background.
+  useEffect(() => {
+    if (q.trim() && hits !== null) selectSection("sessions");
+  }, [hits, q, selectSection]);
+
   const ioTokens = data.totalInputTokens + data.totalOutputTokens;
   const cacheRead = data.totalCacheReadTokens ?? 0;
   const cacheMult = ioTokens > 0 ? cacheRead / ioTokens : 0;

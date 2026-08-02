@@ -1,0 +1,15 @@
+{
+  "bgm": {
+    "path": "assets/audio/openeval-pulse.v4-structured.mp3",
+    "volume": 1.0
+  },
+  "voices": [],
+  "sfx": [
+    {
+      "path": "assets/audio/sfx-mix.wav",
+      "mixedInto": "assets/audio/openeval-pulse.v4-structured.mp3",
+      "volume": 0.5,
+      "role": "restrained UI transition hits"
+    }
+  ]
+}

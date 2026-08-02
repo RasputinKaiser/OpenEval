@@ -116,14 +116,79 @@ export function getErroringTurns(filePath: string, format?: LiveTraceFormat): Tr
   };
 }
 
-/** Joined text of an OpenAI/Anthropic-style content array (input_text / output_text / text blocks). */
-function contentText(content: unknown): string {
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
-  return content
-    .map((b: any) => (typeof b === "string" ? b : typeof b?.text === "string" ? b.text : ""))
-    .filter(Boolean)
-    .join("\n");
+/**
+ * Joined text of an OpenAI/Anthropic-style content value. Providers have
+ * shipped this as a string, a block array, or a wrapper object containing
+ * `text`/`content`/`summary`; keep the extractor tolerant while bounding the
+ * amount of untrusted reasoning text retained by a single semantic turn.
+ */
+function contentText(content: unknown, depth = 0): string {
+  if (typeof content === "string") return content.slice(0, 32_000);
+  if (!content || depth > 3) return "";
+  if (Array.isArray(content)) {
+    let out = "";
+    for (const block of content) {
+      const text = contentText(block, depth + 1);
+      if (!text) continue;
+      out += out ? `\n${text}` : text;
+      if (out.length >= 32_000) break;
+    }
+    return out.slice(0, 32_000);
+  }
+  if (typeof content !== "object") return "";
+  const block = content as Record<string, unknown>;
+  if (typeof block.text === "string") return block.text.slice(0, 32_000);
+  for (const key of ["content", "summary", "thinking", "reasoning", "text"]) {
+    const text = contentText(block[key], depth + 1);
+    if (text) return text;
+  }
+  return "";
+}
+
+type ReasoningSource = "codex" | "claude" | "generic";
+type ReasoningKind = "summary" | "thinking" | "encrypted" | "truncated";
+
+function isReasoningTag(value: unknown): boolean {
+  const tag = String(value ?? "").trim().toLowerCase().replace(/[-\s]+/g, "_");
+  return tag === "reasoning" || tag === "agent_reasoning" || tag === "thinking" || tag === "agent_thinking"
+    || tag === "redacted_thinking" || tag.endsWith("_reasoning");
+}
+
+function reasoningTurn(
+  type: string,
+  subtype: string | undefined,
+  at: number | undefined,
+  payload: any,
+  source: ReasoningSource,
+  fallbackKind: ReasoningKind = "summary",
+): LiveTranscriptTurn {
+  const text = contentText(payload?.summary)
+    || contentText(payload?.thinking)
+    || contentText(payload?.reasoning)
+    || contentText(payload?.content)
+    || contentText(payload?.text);
+  const rawType = String(payload?.type ?? subtype ?? "").toLowerCase();
+  const encrypted = /redacted|encrypted/.test(rawType)
+    || payload?.encrypted_content != null
+    || payload?.redacted_content != null;
+  const kind: ReasoningKind = text
+    ? fallbackKind
+    : encrypted
+      ? "encrypted"
+      : /truncated/.test(rawType)
+        ? "truncated"
+        : fallbackKind;
+  const preview = text || (kind === "encrypted" ? "(encrypted reasoning)" : kind === "truncated" ? "(truncated reasoning)" : "(unavailable reasoning)");
+  return {
+    type,
+    subtype: subtype ?? (isReasoningTag(payload?.type) ? String(payload.type) : "reasoning"),
+    severity: "info",
+    at,
+    role: "assistant",
+    label: fallbackKind === "thinking" ? "Thinking" : "Reasoning",
+    preview: jsonPreview(preview),
+    reasoning: { kind, source },
+  };
 }
 
 function codexMessageProjection(payload: any): { text: string; images: number; files: number } {
@@ -327,21 +392,10 @@ function expandCompoundTranscriptRecord(obj: any, state: TranscriptParseState): 
   const turns: LiveTranscriptTurn[] = [];
 
   if (type === "assistant") {
-    const thinking = blocks
-      .filter((block) => block.type === "thinking")
-      .map((block) => typeof block.thinking === "string" ? block.thinking : typeof block.text === "string" ? block.text : "")
-      .filter(Boolean)
-      .join("\n");
-    if (thinking) {
-      turns.push({
-        type,
-        subtype: "thinking",
-        severity: "info",
-        at,
-        role: "assistant",
-        label: "Thinking",
-        preview: jsonPreview(thinking),
-      });
+    const thinkingBlocks = blocks.filter((block) => isReasoningTag(block.type));
+    if (thinkingBlocks.length > 0) {
+      const thinking = thinkingBlocks.map((block) => reasoningTurn(type, "thinking", at, block, "claude", "thinking"));
+      turns.push(...thinking);
     }
 
     const prose = blocks
@@ -416,6 +470,7 @@ function toTranscriptTurn(obj: any, index: number, state: TranscriptParseState):
 
   if (type === "event_msg") {
     const payload = obj.payload ?? {};
+    if (isReasoningTag(payload.type)) return reasoningTurn(type, payload.type, at, payload, "codex");
     if (payload.type === "agent_message") {
       return { type, subtype: payload.type, severity: "info", at, role: "assistant", label: "Assistant", preview: jsonPreview(payload.message ?? "") };
     }
@@ -435,6 +490,12 @@ function toTranscriptTurn(obj: any, index: number, state: TranscriptParseState):
       label: payload.type === "token_count" ? "Usage" : `Event: ${payload.type ?? index}`,
       preview: jsonPreview(payload.type === "token_count" ? payload.info?.total_token_usage ?? payload.info : payload.message ?? payload),
     };
+  }
+
+  // Some newer adapters emit a flat reasoning record rather than wrapping it
+  // in response_item/item.completed. Normalize it before generic meta output.
+  if (isReasoningTag(type) || isReasoningTag(subtype)) {
+    return reasoningTurn(type, subtype, at, obj, "generic");
   }
 
   // New Codex thread/item rollouts use flat lifecycle records instead of the
@@ -487,10 +548,7 @@ function toTranscriptTurn(obj: any, index: number, state: TranscriptParseState):
       const text = typeof item.text === "string" ? item.text : contentText(item.content);
       return { type, subtype: itemType || subtype, severity: "info", at: itemAt, role: "assistant", label: "Assistant", preview: jsonPreview(text) };
     }
-    if (itemType === "reasoning") {
-      const summary = contentText(item.summary) || contentText(item.content);
-      return { type, subtype: itemType, severity: "info", at: itemAt, role: "assistant", label: "Reasoning", preview: jsonPreview(summary || "(encrypted reasoning)") };
-    }
+    if (isReasoningTag(itemType)) return reasoningTurn(type, itemType, itemAt, item, "codex");
     if (CODEX_TOOL_CALL_TYPES.has(itemType)) return toolCallTurn(item, type, itemAt, state);
     if (CODEX_TOOL_OUTPUT_TYPES.has(itemType)) return toolResultTurn(item, type, itemAt, state);
     return { type, subtype: itemType || subtype, severity: "info", at: itemAt, role: "meta", label: `Item: ${itemType || "record"}`, preview: jsonPreview(item) };
@@ -523,10 +581,7 @@ function toTranscriptTurn(obj: any, index: number, state: TranscriptParseState):
     }
     if (CODEX_TOOL_CALL_TYPES.has(payload.type)) return toolCallTurn(payload, type, at, state);
     if (CODEX_TOOL_OUTPUT_TYPES.has(payload.type)) return toolResultTurn(payload, type, at, state);
-    if (payload.type === "reasoning") {
-      const summary = contentText(payload.summary) || contentText(payload.content);
-      return { type, subtype: payload.type, severity: "info", at, role: "assistant", label: "Reasoning", preview: jsonPreview(summary || "(encrypted reasoning)") };
-    }
+    if (isReasoningTag(payload.type)) return reasoningTurn(type, payload.type, at, payload, "codex");
     return { type, subtype: payload.type, severity: "info", at, role: "meta", label: `Response: ${payload.type ?? "item"}`, preview: jsonPreview(payload) };
   }
 

@@ -21,8 +21,10 @@ const ROLE_LABEL: Record<string, string> = {
   system: "text-warn",
 };
 
+export type DisplayText = (value: unknown) => string;
+
 /** Incrementally paginated transcript viewer (IntersectionObserver-driven). */
-export default function Transcript({ transcript }: { transcript: TranscriptEntry[] }) {
+export default function Transcript({ transcript, showText = (value) => String(value ?? "") }: { transcript: TranscriptEntry[]; showText?: DisplayText }) {
   const [visible, setVisible] = useState(TRANSCRIPT_INITIAL);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const total = transcript.length;
@@ -51,7 +53,7 @@ export default function Transcript({ transcript }: { transcript: TranscriptEntry
   return (
     <div className="font-mono text-[12px]">
       {shown.map((entry, i) => (
-        <TranscriptEntryRow key={entry.uuid || i} entry={entry} />
+        <TranscriptEntryRow key={entry.uuid || i} entry={entry} showText={showText} />
       ))}
       {remaining > 0 && (
         <div ref={sentinelRef} className="py-3 text-center text-[11px] text-fg-dim">
@@ -65,7 +67,7 @@ export default function Transcript({ transcript }: { transcript: TranscriptEntry
   );
 }
 
-const TranscriptEntryRow = memo(function TranscriptEntryRow({ entry }: { entry: TranscriptEntry }) {
+const TranscriptEntryRow = memo(function TranscriptEntryRow({ entry, showText }: { entry: TranscriptEntry; showText: DisplayText }) {
   const [showMore, setShowMore] = useState(false);
   let budget = showMore ? Infinity : MAX_ENTRY_LEN;
   let cut = false;
@@ -76,7 +78,7 @@ const TranscriptEntryRow = memo(function TranscriptEntryRow({ entry }: { entry: 
       const text = budget === Infinity ? block.text : block.text.slice(0, Math.max(0, budget));
       if (budget !== Infinity) budget = Math.max(0, budget - text.length);
       cut = budget === 0 && block.text.length > text.length;
-      return <pre key={j} className="px-4 py-2 text-fg whitespace-pre-wrap break-words">{text}</pre>;
+      return <pre key={j} className="px-4 py-2 text-fg whitespace-pre-wrap break-words">{showText(text)}</pre>;
     }
     if (block.type === "tool_use") {
       const input = typeof block.input === "string" ? block.input : JSON.stringify(block.input);
@@ -85,7 +87,7 @@ const TranscriptEntryRow = memo(function TranscriptEntryRow({ entry }: { entry: 
         <div key={j} className="px-4 py-2 flex items-start gap-2">
           <Wrench className="size-3 text-accent-soft mt-0.5 shrink-0" />
           <span className="text-accent-soft shrink-0">{block.name}</span>
-          <span className="text-fg-dim whitespace-pre-wrap break-words">{input}</span>
+          <span className="text-fg-dim whitespace-pre-wrap break-words">{showText(input)}</span>
         </div>
       );
     }
@@ -100,7 +102,7 @@ const TranscriptEntryRow = memo(function TranscriptEntryRow({ entry }: { entry: 
             <ChevronRight className="size-3 group-open:rotate-90 transition-transform" /> Tool result
             {block.is_error && <span className="ml-1 text-err">(error)</span>}
           </summary>
-          <pre className={clsx("mt-1 pl-5 text-[11px] mono whitespace-pre-wrap border-l-2 break-words max-h-96 overflow-auto", block.is_error ? "border-err/50 text-err/80" : "border-bd-subtle text-fg-muted")}>{text}</pre>
+          <pre className={clsx("mt-1 pl-5 text-[11px] mono whitespace-pre-wrap border-l-2 break-words max-h-96 overflow-auto", block.is_error ? "border-err/50 text-err/80" : "border-bd-subtle text-fg-muted")}>{showText(text)}</pre>
         </details>
       );
     }
