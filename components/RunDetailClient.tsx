@@ -15,10 +15,11 @@ import CaseListPanel from "./run-detail/CaseListPanel";
 import CaseSidePanel from "./run-detail/CaseSidePanel";
 import { summarizeRunConfidence } from "./run-detail/trust";
 import { useCollapsedSections } from "./run-detail/collapse";
+import type { JudgeSelection } from "@/lib/grader/selection";
 
-interface Props { runId: string; runName?: string; initialCases: RunCaseRecord[]; running: boolean; createdAt?: number; endedAt?: number | null; model?: string; harness?: string; harnessInfo?: { id: string; bin: string | null; version: string | null }; }
+interface Props { runId: string; runName?: string; initialCases: RunCaseRecord[]; running: boolean; createdAt?: number; endedAt?: number | null; model?: string; harness?: string; judge?: JudgeSelection; harnessInfo?: { id: string; bin: string | null; version: string | null }; }
 
-export default function RunDetailClient({ runId, runName, initialCases, running, createdAt, endedAt, model, harness, harnessInfo }: Props) {
+export default function RunDetailClient({ runId, runName, initialCases, running, createdAt, endedAt, model, harness, judge, harnessInfo }: Props) {
   const [cases, setCases] = useState<RunCaseRecord[]>(initialCases);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(initialCases.length ? 0 : null);
   const [live, setLive] = useState(running);
@@ -116,6 +117,7 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
       run_name: runName ?? "Run output",
       harness: harness ?? null,
       model: model ?? null,
+      judge: judge ?? null,
       cases,
     });
   }
@@ -128,6 +130,7 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
         model={model}
         harness={harness}
         harnessInfo={harnessInfo}
+        judge={judge}
         live={live}
         cancelPhase={cancelPhase}
         onCancel={cancelRun}

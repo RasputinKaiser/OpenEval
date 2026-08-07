@@ -8,6 +8,7 @@ import {
   checkBetterSqlite3,
   checkDatabase,
   checkDiskHeadroom,
+  checkNpmVersion,
   checkNextCache,
   checkNodeVersion,
   checkPort3000,
@@ -75,6 +76,20 @@ test("node version: fails closed when the runtime version is malformed", () => {
     const r = checkNodeVersion(root, "not-a-version");
     assert.equal(r.status, "fail");
     assert.match(r.detail, /Could not parse/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("npm version: accepts npm 10 and warns outside the release-tested major", () => {
+  const root = tmpdir("doctor-npm-version-");
+  try {
+    writeHealthyCheckout(root, CURRENT_MAJOR);
+    fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ engines: { node: ">=20", npm: ">=10 <11" } }));
+    assert.equal(checkNpmVersion(root, "10.9.8").status, "ok");
+    const warning = checkNpmVersion(root, "9.9.0");
+    assert.equal(warning.status, "warn");
+    assert.match(warning.hint ?? "", /npm 10/);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

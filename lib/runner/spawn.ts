@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { getAdapter } from "../adapters/registry";
+import { RawOutputCaptureWriter } from "./raw-output";
 import type { ParseAccumulator } from "../adapters/types";
 import type { RunnerContext, RunnerResult, TranscriptEntry } from "../types";
 
@@ -11,6 +12,7 @@ export interface SpawnHarnessResult {
   durationMs: number;
   timedOut: boolean;
   aborted: boolean;
+  rawOutput: import("./raw-output").RawOutputCapture | null;
 }
 
 /** Max bytes retained per stream, so a runaway harness can't OOM the eval. */
@@ -22,6 +24,9 @@ export const MAX_RETAINED_BYTES = 8 * 1024 * 1024;
  * that would exit on the escalation still gets the chance to close naturally.
  */
 export const FORCE_RESOLVE_AFTER_KILL_MS = 3000;
+export const MAX_PARSED_TRANSCRIPT_ENTRIES = 240;
+export const MAX_PARSED_TOOL_CALLS = 128;
+function cappedArray<T>(max: number): T[] { const values: T[] = []; const push = values.push.bind(values); values.push = (...items: T[]) => push(...items.slice(0, Math.max(0, max - values.length))); return values; }
 
 /**
  * Kill a detached child and every process it spawned. Escalates: a graceful
@@ -157,14 +162,15 @@ export function spawnHarnessProcess(ctx: RunnerContext, onLine: (line: string, a
   const startedAt = Date.now();
   const acc: ParseAccumulator = {
     startedAt,
-    transcript: [] as TranscriptEntry[],
-    toolCalls: [] as RunnerResult["toolCalls"],
+    transcript: cappedArray<TranscriptEntry>(MAX_PARSED_TRANSCRIPT_ENTRIES),
+    toolCalls: cappedArray<RunnerResult["toolCalls"][number]>(MAX_PARSED_TOOL_CALLS),
     finalText: "",
     result: null as Partial<RunnerResult> | null,
   };
   let stdout = "";
   let stderr = "";
   let stdoutBuf = "";
+  const rawOutput = ctx.rawOutput ? new RawOutputCaptureWriter(ctx.rawOutput) : null;
 
   let timedOut = false;
   let aborted = false;
@@ -214,6 +220,7 @@ export function spawnHarnessProcess(ctx: RunnerContext, onLine: (line: string, a
     proc.stdout?.on("data", (chunk: Buffer) => {
       const text = chunk.toString();
       stdout = appendCapped(stdout, text);
+      if (rawOutput && !rawOutput.write("stdout", chunk)) { proc.stdout?.pause(); rawOutput.onDrain("stdout", () => proc.stdout?.resume()); }
       // A throw from onLine (adapter.parseLine → onEvent → synchronous SQLite
       // appendEvent, which can raise SQLITE_BUSY) would otherwise escape this
       // 'data' handler uncaught and abort the whole process, killing every
@@ -222,9 +229,9 @@ export function spawnHarnessProcess(ctx: RunnerContext, onLine: (line: string, a
         try { onLine(line, acc); } catch {}
       });
     });
-    proc.stderr?.on("data", (c: Buffer) => { stderr = appendCapped(stderr, c.toString()); });
+    proc.stderr?.on("data", (c: Buffer) => { stderr = appendCapped(stderr, c.toString()); if (rawOutput && !rawOutput.write("stderr", c)) { proc.stderr?.pause(); rawOutput.onDrain("stderr", () => proc.stderr?.resume()); } });
 
-    const finish = (exitCode: number) => {
+    const finish = async (exitCode: number) => {
       if (settled) return; // 'error' and 'close' can both fire; flush only once
       settled = true;
       clearTimeout(timer);
@@ -234,7 +241,8 @@ export function spawnHarnessProcess(ctx: RunnerContext, onLine: (line: string, a
       if (stdoutBuf.trim()) {
         try { onLine(stdoutBuf, acc); } catch {}
       }
-      resolve({ acc, stdout, stderr, exitCode, durationMs: Date.now() - startedAt, timedOut, aborted });
+      const captured = rawOutput ? await rawOutput.close() : null;
+      resolve({ acc, stdout, stderr, exitCode, durationMs: Date.now() - startedAt, timedOut, aborted, rawOutput: captured });
     };
     proc.on("error", () => finish(2));
     proc.on("close", (code) => finish(code ?? (acc.result?.isError ? 1 : 0)));

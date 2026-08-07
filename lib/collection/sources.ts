@@ -154,6 +154,17 @@ export const KNOWN_COLLECTION_SOURCES: CollectionSourceDef[] = [
   },
 ];
 
+let testSourceDefs: CollectionSourceDef[] | null = null;
+
+/**
+ * Route tests replace the machine catalog with a hermetic temp-root catalog.
+ * This is intentionally a narrow test seam: production callers always use the
+ * adapter/curated catalog above.
+ */
+export function _setCollectionSourceDefsForTest(defs: CollectionSourceDef[] | null): void {
+  testSourceDefs = defs;
+}
+
 /** Runnable harnesses that declare a liveTrace also contribute a source. */
 export function collectionSourcesFromAdapters(): CollectionSourceDef[] {
   const out: CollectionSourceDef[] = [];
@@ -179,6 +190,7 @@ export function collectionSourcesFromAdapters(): CollectionSourceDef[] {
  * first root isn't already claimed by an adapter.
  */
 export function allCollectionSources(): CollectionSourceDef[] {
+  if (testSourceDefs) return testSourceDefs;
   const adapters = collectionSourcesFromAdapters();
   const claimed = new Set(adapters.flatMap((s) => s.roots.map((r) => r.replace(/\/+$/, ""))));
   const extras = KNOWN_COLLECTION_SOURCES.filter(

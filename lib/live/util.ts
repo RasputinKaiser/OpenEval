@@ -1,5 +1,4 @@
 import fs from "node:fs";
-import { StringDecoder } from "node:string_decoder";
 import { estimateCostUsd, isPlaceholderModel } from "../pricing";
 import type { LiveMetricSources, LiveModelUsage, LiveSession, LiveSessionToolDuration, LiveUsageSegment, MetricSource } from "./types";
 
@@ -50,6 +49,19 @@ const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 // same WhiteSpace ∪ LineTerminator set (incl. NBSP), and the test allocates
 // no per-line string. Shared, non-global — no lastIndex state.
 export const NON_WS_RE = /\S/;
+
+/**
+ * A JSONL record must not be allowed to grow with an unterminated line. The
+ * parser still receives a bounded sentinel so callers can report the loss of
+ * evidence as malformed/truncated instead of silently dropping the record.
+ */
+export const MAX_JSONL_RECORD_BYTES = 4 * 1024 * 1024;
+export const TRUNCATED_JSONL_RECORD_PREFIX = "[openeval:truncated-jsonl-record] ";
+const JSONL_RECORD_PREVIEW_BYTES = 420;
+
+export function isTruncatedJsonlRecord(line: string): boolean {
+  return line.startsWith(TRUNCATED_JSONL_RECORD_PREFIX);
+}
 
 // Hoisted from the per-tool_use hot path; contents must not change without
 // auditing readLikeOperations/writeLikeOperations semantics.
@@ -328,39 +340,94 @@ export function extractFilePaths(value: unknown, out = new Set<string>()): Set<s
   return out;
 }
 
+export interface FileLineRecord {
+  line: string;
+  /** Absolute byte offset immediately after this record. */
+  nextOffset: number;
+}
+
+function appendRecordBytes(record: Buffer<ArrayBufferLike>, piece: Buffer<ArrayBufferLike>, recordBytes: number): { record: Buffer<ArrayBufferLike>; bytes: number; truncated: boolean } {
+  if (piece.length === 0) return { record, bytes: recordBytes, truncated: false };
+  if (recordBytes + piece.length <= MAX_JSONL_RECORD_BYTES) {
+    return {
+      record: record.length === 0 ? Buffer.from(piece) : Buffer.concat([record, piece]),
+      bytes: recordBytes + piece.length,
+      truncated: false,
+    };
+  }
+
+  // Keep only a small diagnostic prefix once the hard byte ceiling is crossed.
+  // The rest of the record is consumed and discarded until its newline so the
+  // next cursor still lands on a record boundary.
+  const previewLength = Math.min(JSONL_RECORD_PREVIEW_BYTES, record.length + piece.length);
+  const preview = Buffer.allocUnsafe(previewLength);
+  const fromRecord = Math.min(record.length, previewLength);
+  record.copy(preview, 0, 0, fromRecord);
+  if (fromRecord < previewLength) piece.copy(preview, fromRecord, 0, previewLength - fromRecord);
+  return { record: preview, bytes: MAX_JSONL_RECORD_BYTES + 1, truncated: true };
+}
+
 /**
- * Stream a file's lines without ever materializing the whole file as one string.
- * `fs.readFileSync(file, "utf8")` throws ERR_STRING_TOO_LONG on files over ~512MB
- * — real agent sessions get that big — which silently dropped the largest (and
- * most token-heavy) sessions from every total. Reads in bounded chunks with a
- * StringDecoder so multibyte characters spanning a chunk boundary aren't
- * corrupted, holding at most one chunk + one line in memory.
+ * Stream bounded byte records without ever materializing an unterminated JSONL
+ * line in full. Complete records retain their existing string behavior. A
+ * record over MAX_JSONL_RECORD_BYTES becomes a bounded sentinel; downstream
+ * parsers can turn that sentinel into an explicit warning turn.
  */
-export function* readFileLines(file: string): Generator<string> {
+export function* readFileLineRecords(file: string, startOffset = 0): Generator<FileLineRecord> {
+  if (!Number.isInteger(startOffset) || startOffset < 0) throw new Error("Invalid file line cursor position");
   const CHUNK = 1 << 20; // 1 MiB
   const fd = fs.openSync(file, "r");
-  const decoder = new StringDecoder("utf8");
+  let record: Buffer<ArrayBufferLike> = Buffer.alloc(0);
+  let recordBytes = 0;
+  let truncated = false;
+  let readOffset = startOffset;
+
+  const reset = () => {
+    record = Buffer.alloc(0);
+    recordBytes = 0;
+    truncated = false;
+  };
+
+  const emit = (nextOffset: number): FileLineRecord => {
+    const line = truncated
+      ? `${TRUNCATED_JSONL_RECORD_PREFIX}${record.toString("utf8")}`
+      : record.toString("utf8");
+    const result = { line, nextOffset };
+    reset();
+    return result;
+  };
+
   try {
     const buf = Buffer.allocUnsafe(CHUNK);
-    let leftover = "";
     let n: number;
-    while ((n = fs.readSync(fd, buf, 0, CHUNK, null)) > 0) {
-      leftover += decoder.write(buf.subarray(0, n));
-      // Cursor scan: re-slicing leftover per line is O(lines × chunk) in
-      // allocations; one tail slice per chunk yields the same line sequence.
+    while ((n = fs.readSync(fd, buf, 0, CHUNK, startOffset === 0 ? null : readOffset)) > 0) {
+      const chunkStart = readOffset;
+      readOffset += n;
+      const chunk = buf.subarray(0, n);
       let start = 0;
-      let idx: number;
-      while ((idx = leftover.indexOf("\n", start)) >= 0) {
-        yield leftover.slice(start, idx);
-        start = idx + 1;
+      let newline: number;
+      while ((newline = chunk.indexOf(0x0a, start)) >= 0) {
+        const appended = appendRecordBytes(record, chunk.subarray(start, newline), recordBytes);
+        record = appended.record;
+        recordBytes = appended.bytes;
+        truncated = truncated || appended.truncated;
+        yield emit(chunkStart + newline + 1);
+        start = newline + 1;
       }
-      if (start > 0) leftover = leftover.slice(start);
+      const appended = appendRecordBytes(record, chunk.subarray(start), recordBytes);
+      record = appended.record;
+      recordBytes = appended.bytes;
+      truncated = truncated || appended.truncated;
     }
-    leftover += decoder.end();
-    if (leftover.length) yield leftover;
+    if (recordBytes > 0) yield emit(readOffset);
   } finally {
     fs.closeSync(fd);
   }
+}
+
+/** Stream a file's lines while retaining the historical string-only API. */
+export function* readFileLines(file: string): Generator<string> {
+  for (const record of readFileLineRecords(file)) yield record.line;
 }
 
 export function buildWarnings(

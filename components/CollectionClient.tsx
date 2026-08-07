@@ -346,7 +346,7 @@ type CollectionPayload = AllSourcesResult & { nextCursor?: string | null };
 function collectionSessionIdentity(
   session: Pick<AllSourcesResult["sessions"][number], "sourceId" | "sessionId" | "path">,
 ): string {
-  return `${session.sourceId}\u0000${session.path ?? session.sessionId}`;
+  return `${session.sourceId}\u0000${session.sessionId}`;
 }
 
 /** Sessions-only `?cursor=` page — no stats/rollups, so paging stays O(page). */
@@ -380,6 +380,121 @@ function ScannedAgo({ generatedAtMs }: { generatedAtMs: number }) {
     >
       scanned {fmtRel(generatedAtMs, nowMs)}
     </span>
+  );
+}
+
+/**
+ * Persistent evidence orientation for the Collection canvas. Collection owns
+ * retained-summary and freshness counts; outcome comparability is deliberately
+ * handed off to Timeline, whose report owns that denominator and provenance.
+ */
+function EvidenceRail({
+  activeSection,
+  onSelect,
+  retainedSessions,
+  archivedSessions,
+  staleSessions,
+  refreshing,
+  hasError,
+  hasCoverageCaveat,
+}: {
+  activeSection: string;
+  onSelect: (sectionId: string) => void;
+  retainedSessions: number;
+  archivedSessions: number;
+  staleSessions: number;
+  refreshing: boolean;
+  hasError: boolean;
+  hasCoverageCaveat: boolean;
+}) {
+  const snapshotLabel = hasError ? "scan error" : refreshing ? "refreshing" : hasCoverageCaveat ? "caveats" : "current";
+  const snapshotTone = hasError || hasCoverageCaveat ? "text-warn" : refreshing ? "text-accent-soft" : "text-ok";
+  const navItems = [
+    { id: "all", label: "Full report", detail: "show every section", icon: Layers },
+    { id: "overview", label: "Overview", detail: "collection summary", icon: Boxes },
+    { id: "fidelity", label: "Evidence quality", detail: "coverage & limits", icon: ShieldCheck },
+    { id: "harnesses", label: "Sources", detail: "harness inventory", icon: HardDrive },
+    { id: "sessions", label: "Sessions", detail: "search retained sessions", icon: Search },
+  ];
+
+  return (
+    <aside className="mb-4 hidden min-w-0 max-w-full lg:sticky lg:top-4 lg:mb-0 lg:block lg:self-start" aria-label="Evidence orientation">
+      <div className="card min-w-0 max-w-full overflow-hidden p-3">
+        <div className="flex items-baseline justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-[11px] font-medium uppercase tracking-[0.14em] text-fg">Evidence room</h2>
+            <p className="mt-1 text-[10px] leading-snug text-fg-dim">What is kept, what compares, and where to look.</p>
+          </div>
+          <span className={clsx("shrink-0 text-[9px] font-medium uppercase tracking-wider", snapshotTone)}>{snapshotLabel}</span>
+        </div>
+        <div className="mt-3 max-w-full overflow-x-auto overscroll-x-contain lg:overflow-visible">
+          <div className="flex w-max min-w-full gap-1 lg:block">
+            {navItems.map(({ id, label, detail, icon: Icon }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => onSelect(id)}
+                aria-pressed={activeSection === id}
+                aria-current={activeSection === id ? "page" : undefined}
+                className={clsx(
+                  "flex min-h-10 min-w-[8.5rem] items-center gap-2 rounded-md border px-2 py-1.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent lg:w-full",
+                  activeSection === id ? "border-accent/50 bg-accent/10 text-fg" : "border-transparent text-fg-muted hover:bg-bg-elev hover:text-fg",
+                )}
+              >
+                <Icon className="size-3.5 shrink-0 text-accent-soft" aria-hidden="true" />
+                <span className="min-w-0">
+                  <span className="block truncate text-[11px] font-medium">{label}</span>
+                  <span className="block truncate text-[9px] text-fg-dim">{detail}</span>
+                </span>
+              </button>
+            ))}
+            <Link
+              href="/collection/timeline"
+              className="flex min-h-10 min-w-[8.5rem] items-center gap-2 rounded-md border border-transparent px-2 py-1.5 text-fg-muted transition-colors hover:bg-bg-elev hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent lg:w-full"
+            >
+              <Activity className="size-3.5 shrink-0 text-accent-soft" aria-hidden="true" />
+              <span className="min-w-0">
+                <span className="block truncate text-[11px] font-medium">Compare outcomes</span>
+                <span className="block truncate text-[9px] text-fg-dim">Outcome basis &amp; limits</span>
+              </span>
+            </Link>
+          </div>
+        </div>
+        <div className="mt-3 border-t border-bd-subtle pt-3">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <span className="text-[9px] font-medium uppercase tracking-[0.14em] text-fg-dim">Population</span>
+            <span className={clsx("text-[9px] font-medium uppercase tracking-wider", snapshotTone)}>{snapshotLabel}</span>
+          </div>
+          <div className="flex min-w-0 max-w-full gap-2 overflow-x-auto overscroll-x-contain lg:block lg:space-y-1.5 lg:overflow-visible">
+            <div className="min-w-[8.5rem] rounded-md border border-bd-subtle bg-bg px-2.5 py-2 lg:min-w-0" title={`${fmtNumFull(retainedSessions)} parsed session summaries are retained in Collection.`}>
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="text-[10px] text-fg-muted">Retained</span>
+                <span className="mono text-[12px] font-semibold tabular-nums text-fg">{fmtNum(retainedSessions)}</span>
+              </div>
+              <div className="mt-0.5 text-[9px] text-fg-dim">parsed summaries{archivedSessions > 0 ? ` · ${fmtNum(archivedSessions)} archived` : ""}</div>
+            </div>
+            <Link
+              href="/collection/timeline"
+              className="block min-w-[8.5rem] rounded-md border border-bd-subtle bg-bg px-2.5 py-2 transition-colors hover:bg-bg-elev focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent lg:min-w-0"
+              title="Timeline owns outcome signals, comparable windows, and their denominator."
+            >
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="text-[10px] text-fg-muted">Comparable</span>
+                <span className="text-[10px] font-medium text-accent-soft">Timeline <span aria-hidden="true">→</span></span>
+              </div>
+              <div className="mt-0.5 text-[9px] text-fg-dim">outcome comparison lives there</div>
+            </Link>
+            <div className="min-w-[8.5rem] rounded-md border border-bd-subtle bg-bg px-2.5 py-2 lg:min-w-0" title={`${fmtNumFull(staleSessions)} parsed sessions last emitted an event more than 12 hours ago. Historical sessions are expected in the archive and are not parser failures.`}>
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="text-[10px] text-fg-muted">Stale</span>
+                <span className={clsx("mono text-[12px] font-semibold tabular-nums", staleSessions > 0 ? "text-warn" : "text-fg")}>{fmtNum(staleSessions)}</span>
+              </div>
+              <div className="mt-0.5 text-[9px] text-fg-dim">older than 12h · retained</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </aside>
   );
 }
 
@@ -650,16 +765,16 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
   const hasTools = tools.length > 0;
 
   const sections = useMemo(() => [
-    { id: "overview", label: "Start here", description: "Corpus size, API-equivalent spend, work volume, and a direct transcript search." },
-    { id: "fidelity", label: "Trust data", description: "See coverage gaps, storage boundaries, and the evidence behind each total." },
-    ...(hasWeekly ? [{ id: "usage", label: "Spend & usage", description: "Track session volume, tokens, and API-equivalent cost over time." }] : []),
-    ...(hasHeatmap ? [{ id: "rhythm", label: "When you work", description: "See weekly and day-part rhythms across session starts." }] : []),
-    ...(hasModels ? [{ id: "models", label: "Model mix", description: "Compare model usage, cost, tokens, and reliability." }] : []),
-    ...(hasTools ? [{ id: "tools", label: "Tool health", description: "Find which tools run most often and where failures cluster." }] : []),
-    { id: "harnesses", label: "Sources", description: "Inspect harness discovery, parse coverage, and archive status." },
-    { id: "sessions", label: "Find a session", description: "Filter, sort, and open the bounded transcript catalog." },
+    { id: "overview", label: "Start here", description: "Corpus size, estimated API cost, work volume, and transcript search." },
+    { id: "fidelity", label: "Evidence quality", description: "Check coverage, storage limits, and how totals were built." },
+    ...(hasWeekly ? [{ id: "usage", label: "Spend & usage", description: "Track sessions, tokens, and estimated API cost over time." }] : []),
+    ...(hasHeatmap ? [{ id: "rhythm", label: "When you work", description: "See when sessions start across the week and day." }] : []),
+    ...(hasModels ? [{ id: "models", label: "Model mix", description: "Compare model use, tokens, estimated cost, and errors." }] : []),
+    ...(hasTools ? [{ id: "tools", label: "Tool health", description: "See which tools run most and where they fail." }] : []),
+    { id: "harnesses", label: "Sources", description: "Check which harnesses were found, parsed, or archived." },
+    { id: "sessions", label: "Find a session", description: "Search and open retained transcript summaries." },
   ], [hasWeekly, hasHeatmap, hasModels, hasTools]);
-  const { activeSection, selectSection, isVisible } = useProgressiveSection(sections);
+  const { activeSection, selectSection, isVisible } = useProgressiveSection(sections, "all");
 
   // A search handoff is a direct request to find evidence. Move the user to
   // the session catalog once results arrive instead of leaving them at the
@@ -735,16 +850,16 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
       <PageHeader
         icon={Boxes}
         title="Collection"
-        subtitle="Live & archived transcripts discovered across every agent harness on this machine. Archived sessions outlive their pruned files."
+        subtitle="Browse sessions from configured sources on this machine, including archived summaries."
         actions={
           <>
             <ScannedAgo generatedAtMs={data.generatedAtMs} />
-            <RedactToggle redact={redact} onToggle={() => setRedact((v) => !v)} />
+            <RedactToggle redact={redact} onToggle={() => setRedact((v) => !v)} compact />
             <Link
               href="/collection/timeline"
               className="flex min-h-10 items-center gap-1.5 rounded-md border border-bd px-2.5 py-2 text-sm text-fg-muted hover:bg-bg-elev hover:text-fg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             >
-              <Activity className="size-3.5" /> Timeline &amp; Impact
+              <Activity className="size-3.5" /> Timeline &amp; comparisons
             </Link>
             <button
               onClick={refresh}
@@ -757,12 +872,27 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
         }
       />
 
-      <ProgressiveSectionNav
-        sections={sections}
-        activeSection={activeSection}
-        onSelect={selectSection}
-        summary={`${fmtNum(data.totalParsedSessions)} sessions · ${tilde}${fmtUsd(data.totalCostUsd)} API eq.`}
-      />
+      <div className="min-w-0 max-w-full lg:hidden">
+        <ProgressiveSectionNav
+          sections={sections}
+          activeSection={activeSection}
+          onSelect={selectSection}
+          summary={`${fmtNum(data.totalParsedSessions)} sessions · ${tilde}${fmtUsd(data.totalCostUsd)} API eq.`}
+        />
+      </div>
+
+      <div className="grid min-w-0 max-w-full gap-5 lg:grid-cols-[13rem_minmax(0,1fr)]">
+        <EvidenceRail
+          activeSection={activeSection}
+          onSelect={selectSection}
+          retainedSessions={data.totalParsedSessions}
+          archivedSessions={data.totalArchivedSessions}
+          staleSessions={staleSessions}
+          refreshing={Boolean(data.stale || data.refreshing)}
+          hasError={Boolean(err)}
+          hasCoverageCaveat={Boolean(data.partial || data.inventoryPartial || data.coveragePartial)}
+        />
+        <main className="min-w-0 max-w-full">
 
       {err && (
         <div className="mb-4 rounded-lg border border-err/40 bg-err/10 p-3 flex items-start gap-2.5" role="alert">
@@ -770,7 +900,7 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
           <div className="min-w-0">
             <div className="text-sm font-medium text-err">Collection scan failed</div>
             <div className="text-[12px] text-fg-muted mt-0.5 break-words">
-              {err} — the stats below may be stale or empty. Use Rescan to retry.
+              {err} The report may be stale; an empty or missing result is unavailable evidence, not proof of zero activity. Use Rescan to try again.
             </div>
           </div>
         </div>
@@ -779,50 +909,25 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
         <div className="mb-4 rounded-lg border border-warn/40 bg-warn/10 p-3 flex items-start gap-2.5" role="status">
           <AlertTriangle className="size-4 text-warn shrink-0 mt-0.5" />
           <div>
-            <div className="text-sm font-medium text-warn">Collection snapshot is refreshing</div>
+            <div className="text-sm font-medium text-warn">Refreshing Collection</div>
             <div className="text-xs text-fg-muted mt-0.5">
-              The last complete scan remains visible while a newer corpus snapshot is built.
+              The last complete scan stays visible while a new snapshot is built.
             </div>
           </div>
         </div>
       )}
 
-      {data.partial && (
-        <div className="mb-4 rounded-lg border border-warn/50 bg-warn/10 p-3 flex items-start gap-2.5" role="alert">
+      {(data.partial || data.inventoryPartial || data.coveragePartial) && (
+        <div className="mb-4 rounded-lg border border-warn/40 bg-warn/10 p-3 flex items-start gap-2.5" role={data.partial ? "alert" : "status"}>
           <AlertTriangle className="size-4 text-warn shrink-0 mt-0.5" />
           <div className="min-w-0">
-            <div className="text-sm font-medium text-warn">Scan budget expired — values are incomplete</div>
-            <div className="text-[12px] text-fg-muted mt-0.5">
-              The newest parsed files and cached archived history are shown; older on-disk files were not parsed in this scan.
-              {partialSourceLabels ? <> Affected: {partialSourceLabels}.</> : null} Use Rescan to continue.
-            </div>
-          </div>
-        </div>
-      )}
-
-      {data.inventoryPartial && (
-        <div className="mb-4 rounded-lg border border-warn/40 bg-warn/10 p-3 flex items-start gap-2.5" role="status">
-          <AlertTriangle className="size-4 text-warn shrink-0 mt-0.5" />
-          <div className="min-w-0">
-            <div className="text-sm font-medium text-warn">Detect-only file inventory is a lower bound</div>
-            <div className="text-[12px] text-fg-muted mt-0.5">
-              A bounded discovery walk reached its depth or file cap
-              {inventoryPartialSourceLabels ? <> for {inventoryPartialSourceLabels}</> : null}.
-              Parsed-session totals are unaffected; only detect-only file counts may be incomplete.
-            </div>
-          </div>
-        </div>
-      )}
-
-      {data.coveragePartial && (
-        <div className="mb-4 rounded-lg border border-warn/40 bg-warn/10 p-3 flex items-start gap-2.5" role="status">
-          <AlertTriangle className="size-4 text-warn shrink-0 mt-0.5" />
-          <div className="min-w-0">
-            <div className="text-sm font-medium text-warn">Parsed coverage has caveats</div>
-            <div className="text-[12px] text-fg-muted mt-0.5">
-              One or more discovered transcript files were unsupported, unreadable, or otherwise excluded from parsed totals
-              {coveragePartialSourceLabels ? <> for {coveragePartialSourceLabels}</> : null}. Parser warnings below describe the retained sessions.
-            </div>
+            <div className="text-sm font-medium text-warn">Collection coverage has caveats</div>
+            <p className="text-[12px] text-fg-muted mt-0.5">These notes describe completeness, not activity. Parsed totals remain bounded by the evidence that was readable in this scan.</p>
+            <ul className="mt-1.5 space-y-0.5 text-[11px] leading-4 text-fg-muted">
+              {data.partial && <li>Scan stopped early; older files were not parsed in this pass{partialSourceLabels ? ` (${partialSourceLabels})` : ""}. Use Rescan to continue.</li>}
+              {data.inventoryPartial && <li>File inventory is a lower bound{inventoryPartialSourceLabels ? ` for ${inventoryPartialSourceLabels}` : ""}; found-only counts may be incomplete.</li>}
+              {data.coveragePartial && <li>Some discovered transcript files could not be included in parsed totals{coveragePartialSourceLabels ? ` for ${coveragePartialSourceLabels}` : ""}; parser warnings describe retained sessions.</li>}
+            </ul>
           </div>
         </div>
       )}
@@ -841,7 +946,7 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
             <StatCell label="Files" value={fmtNum(data.totalFiles)} title={`${fmtNumFull(data.totalFiles)} session files on disk`} sub="on-disk inventory" />
           </StatGroup>
 
-          <StatGroup icon={Coins} label="API equivalent">
+          <StatGroup icon={Coins} label="Estimated API cost">
             <StatCell
               featured
               label="List estimate"
@@ -884,36 +989,36 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
       {isVisible("fidelity") && <section id="fidelity" className={clsx("scroll-mt-16 mb-6", sectionVisibilityClass(true))}>
         <SectionHeader
           icon={ShieldCheck}
-          title="Data fidelity"
-          desc="Provenance of parsed sessions and parser support for files found on disk"
-          right={`${fmtNum(parseableFiles)} parseable · ${fmtNum(detectOnlyFiles)} detect-only`}
+          title="Evidence quality"
+          desc="Recorded, estimated, and unavailable data across readable files"
+          right={`${fmtNum(parseableFiles)} readable · ${fmtNum(detectOnlyFiles)} found only`}
         />
         <div className="card overflow-hidden">
           <div className="grid grid-cols-2 sm:grid-cols-3 divide-x divide-y divide-bd-subtle">
             <StatCell
-              label="Measured tokens"
+              label="Recorded tokens"
               value={data.totalParsedSessions > 0 ? `${fmtNum(measuredUsageSessions)}/${fmtNum(data.totalParsedSessions)}` : "—"}
-              title={`${fmtNumFull(measuredUsageSessions)} of ${fmtNumFull(data.totalParsedSessions)} parsed sessions carry measured token usage; missing-token sessions: ${fmtNumFull(missingTokenSessions)}.`}
+              title={`${fmtNumFull(measuredUsageSessions)} of ${fmtNumFull(data.totalParsedSessions)} parsed sessions carry recorded token usage; missing-token sessions: ${fmtNumFull(missingTokenSessions)}.`}
               sub={missingTokenSessions > 0 ? `${fmtNum(missingTokenSessions)} missing` : "all parsed sessions"}
             />
             <StatCell
-              label="Measured duration"
+              label="Recorded duration"
               value={data.totalParsedSessions > 0 ? `${fmtNum(measuredDurationSessions)}/${fmtNum(data.totalParsedSessions)}` : "—"}
-              title={`${fmtNumFull(measuredDurationSessions)} of ${fmtNumFull(data.totalParsedSessions)} parsed sessions carry measured duration evidence.`}
+              title={`${fmtNumFull(measuredDurationSessions)} of ${fmtNumFull(data.totalParsedSessions)} parsed sessions carry recorded duration evidence.`}
               sub="session evidence"
             />
             <StatCell
-              label="Model missing"
+              label="Missing model"
               value={fmtNum(missingModelSessions)}
               tone={missingModelSessions > 0 ? "text-warn" : undefined}
               title={`${fmtNumFull(missingModelSessions)} parsed sessions have no model identity in their trace.`}
               sub={inferredModelSessions > 0 ? `${fmtNum(inferredModelSessions)} inferred` : "none missing"}
             />
             <StatCell
-              label="Cost inferred"
+              label="Estimated cost"
               value={fmtNum(inferredCostSessions)}
-              title={`${fmtNumFull(inferredCostSessions)} parsed sessions use token/rate evidence rather than a recorded cost; ${fmtNumFull(data.totalMeasuredCostSessions)} have measured cost.`}
-              sub={`${fmtNum(data.totalMeasuredCostSessions)} measured`}
+              title={`${fmtNumFull(inferredCostSessions)} parsed sessions use token/rate evidence rather than a recorded cost; ${fmtNumFull(data.totalMeasuredCostSessions)} have recorded cost.`}
+              sub={`${fmtNum(data.totalMeasuredCostSessions)} recorded`}
             />
             <StatCell
               label="Malformed sessions"
@@ -923,21 +1028,21 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
               sub="parse health"
             />
             <StatCell
-              label="Historical >12h"
+              label="Older than 12h"
               value={fmtNum(staleSessions)}
               title={`${fmtNumFull(staleSessions)} parsed sessions last emitted an event more than 12 hours ago. Historical sessions are expected in the archive and are not parser failures.`}
               sub="expected in archive"
             />
             <StatCell
-              label="Parseable files"
+              label="Readable files"
               value={fmtNum(parseableFiles)}
-              title={`${fmtNumFull(parseableFiles)} on-disk files belong to sources with a parser. This is an inventory count, not session coverage.`}
+              title={`${fmtNumFull(parseableFiles)} on-disk files belong to sources OpenEval can read. This is an inventory count, not session coverage.`}
               sub="on disk"
             />
             <StatCell
-              label="Detect-only files"
+              label="Found, not parsed"
               value={fmtNum(detectOnlyFiles)}
-              title={`${fmtNumFull(detectOnlyFiles)} on-disk files are detected but not parsed because their source format has no parser yet.`}
+              title={`${fmtNumFull(detectOnlyFiles)} on-disk files were found but not parsed because their source format has no parser yet.`}
               sub="metrics unavailable"
             />
             <StatCell
@@ -948,7 +1053,7 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
             />
           </div>
           <p className="px-3 py-2 border-t border-bd-subtle text-[10px] text-fg-dim">
-            Measured and inferred counts describe parsed sessions (including archived cache rows). Normal collection retains one compact parsed summary per transcript state and does not copy raw transcripts; unchanged scans are read-only. Optional full-text search stores bounded conversational head/tail excerpts so long sessions remain findable without unbounded cache growth.
+            Recorded and estimated counts describe parsed sessions (including archived cache rows). Collection keeps one compact summary per transcript state and does not copy raw transcripts; unchanged scans are read-only. Optional full-text search stores bounded conversation excerpts so long sessions remain findable without unbounded cache growth.
           </p>
           <div className="grid grid-cols-1 gap-5 border-t border-bd-subtle p-4 lg:grid-cols-[1.3fr_1fr]">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -956,42 +1061,42 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
                 label="Model identity"
                 total={data.totalParsedSessions}
                 segments={[
-                  { label: "measured", value: measuredModelSessions, tone: "measured" },
-                  { label: "inferred", value: inferredModelSessions, tone: "inferred" },
-                  { label: "unavailable", value: Math.max(0, data.totalParsedSessions - measuredModelSessions - inferredModelSessions), tone: "missing" },
+                  { label: "Recorded", value: measuredModelSessions, tone: "measured" },
+                  { label: "Estimated", value: inferredModelSessions, tone: "inferred" },
+                  { label: "Not available", value: Math.max(0, data.totalParsedSessions - measuredModelSessions - inferredModelSessions), tone: "missing" },
                 ]}
               />
               <EvidenceComposition
                 label="Duration"
                 total={data.totalParsedSessions}
                 segments={[
-                  { label: "measured", value: measuredDurationSessions, tone: "measured" },
-                  { label: "inferred", value: inferredDurationSessions, tone: "inferred" },
-                  { label: "unavailable", value: Math.max(0, data.totalParsedSessions - measuredDurationSessions - inferredDurationSessions), tone: "missing" },
+                  { label: "Recorded", value: measuredDurationSessions, tone: "measured" },
+                  { label: "Estimated", value: inferredDurationSessions, tone: "inferred" },
+                  { label: "Not available", value: Math.max(0, data.totalParsedSessions - measuredDurationSessions - inferredDurationSessions), tone: "missing" },
                 ]}
               />
               <EvidenceComposition
                 label="Token usage"
                 total={data.totalParsedSessions}
                 segments={[
-                  { label: "measured", value: measuredUsageSessions, tone: "measured" },
-                  { label: "unavailable", value: Math.max(0, data.totalParsedSessions - measuredUsageSessions), tone: "missing" },
+                  { label: "Recorded", value: measuredUsageSessions, tone: "measured" },
+                  { label: "Not available", value: Math.max(0, data.totalParsedSessions - measuredUsageSessions), tone: "missing" },
                 ]}
               />
               <EvidenceComposition
                 label="Cost"
                 total={data.totalParsedSessions}
                 segments={[
-                  { label: "measured", value: data.totalMeasuredCostSessions, tone: "measured" },
-                  { label: "inferred", value: inferredCostSessions, tone: "inferred" },
-                  { label: "unavailable", value: Math.max(0, data.totalParsedSessions - data.totalMeasuredCostSessions - inferredCostSessions), tone: "missing" },
+                  { label: "Recorded", value: data.totalMeasuredCostSessions, tone: "measured" },
+                  { label: "Estimated", value: inferredCostSessions, tone: "inferred" },
+                  { label: "Not available", value: Math.max(0, data.totalParsedSessions - data.totalMeasuredCostSessions - inferredCostSessions), tone: "missing" },
                 ]}
                 note="Pricing coverage is not relabeled as measured cost."
               />
             </div>
             <div className="rounded-lg border border-bd-subtle bg-bg-subtle/30 p-3">
               <div className="mb-3 flex items-baseline justify-between gap-3">
-                <span className="text-[11px] font-medium text-fg">Actionable parser signals</span>
+                <span className="text-[11px] font-medium text-fg">Parser warnings</span>
                 <span className="mono text-[10px] tabular-nums text-fg-dim">{fmtNum(parseWarningCounts.sessionsWithWarnings)} sessions</span>
               </div>
               <div className="space-y-2.5">
@@ -1010,85 +1115,12 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
         </div>
       </section>}
 
-      <section className="card p-3 mb-6">
-        <form
-          onSubmit={(e) => { e.preventDefault(); runSearch(q); }}
-          className="flex flex-wrap items-center gap-2"
-        >
-          {searching
-            ? <RefreshCw className="size-4 text-accent-soft shrink-0 animate-spin" aria-label="Searching" role="img" />
-            : <Search className="size-4 text-fg-dim shrink-0" />}
-          <input
-            type="search"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Search every session, every harness… (e.g. auth refactor)"
-            aria-label="Search sessions"
-            className="min-h-10 min-w-0 flex-1 basis-48 bg-transparent text-sm outline-none focus-visible:ring-2 focus-visible:ring-accent placeholder:text-fg-dim"
-          />
-          <button
-            type="submit"
-            disabled={searching || !q.trim()}
-            className="min-h-10 rounded-md border border-bd px-2.5 py-2 text-sm text-fg-muted hover:bg-bg-elev hover:text-fg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50"
-          >
-            {searching ? "Searching…" : "Search"}
-          </button>
-          {indexInfo && indexInfo.indexedFiles < indexInfo.totalFiles && (
-            <button
-              type="button"
-              onClick={buildIndex}
-              disabled={indexing}
-              title="Reads transcripts and indexes their text for search. Incremental — only new/changed files are read."
-              className="flex min-h-10 items-center gap-1.5 rounded-md border border-bd px-2.5 py-2 text-sm text-warn hover:bg-bg-elev transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-60"
-            >
-              <DatabaseZap className={clsx("size-3.5", indexing && "animate-pulse")} />
-              {indexing ? `Indexing ${indexInfo.indexedFiles}/${indexInfo.totalFiles}…` : `Index ${indexInfo.totalFiles - indexInfo.indexedFiles} files`}
-            </button>
-          )}
-        </form>
-        {hits !== null && (
-          <div className="mt-3 border-t border-bd/50 pt-2">
-            <p className="text-[11px] text-fg-dim mb-2 tabular-nums" aria-live="polite">
-              {searching
-                ? "Searching…"
-                : hits.length === 0
-                  ? "No matches"
-                  : hits.length >= SEARCH_LIMIT
-                    ? `First ${hits.length} results`
-                    : `${hits.length} result${hits.length === 1 ? "" : "s"}`}
-              {lastSearched.current ? <> for <span className="text-fg-muted">&ldquo;{lastSearched.current}&rdquo;</span></> : null}
-            </p>
-            {indexInfo && indexInfo.indexedFiles < indexInfo.totalFiles && !indexing && (
-              <p className="text-[11px] text-warn mb-2">Only {indexInfo.indexedFiles}/{indexInfo.totalFiles} files indexed — results may be incomplete.</p>
-            )}
-            {hits.length === 0 && <p className="text-sm text-fg-dim py-2">No matches. Try a shorter or different phrase — search matches transcript text across every harness.</p>}
-            <div className="space-y-1">
-              {hits.map((h) => (
-                <Link
-                  key={h.file}
-                  href={`/collection/session?file=${encodeURIComponent(h.file)}`}
-                  className="block min-h-11 rounded-md px-2 py-2 -mx-2 hover:bg-bg-elev transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="rounded bg-accent/10 text-accent-soft px-1.5 py-0.5 text-[10px] shrink-0">{h.sourceId}</span>
-                    <span className="truncate font-medium">{show(h.title || h.file.split("/").pop())}</span>
-                    <span className="text-[11px] text-fg-dim mono shrink-0 ml-auto tabular-nums">{fmtRel(h.at, data.generatedAtMs)}</span>
-                  </div>
-                  <div className="text-[12px] text-fg-muted mono mt-0.5 line-clamp-2">{show(h.snippet)}</div>
-                  <div className="text-[10px] text-fg-dim truncate">{compactDisplayPath(h.project, redact)}</div>
-                </Link>
-              ))}
-            </div>
-          </div>
-        )}
-      </section>
-
       {hasWeekly && rollup && isVisible("usage") && (
         <section id="usage" className={clsx("scroll-mt-16 mb-6", sectionVisibilityClass(true))}>
           <SectionHeader
             icon={TrendingUp}
             title="Usage"
-            desc="Weekly API-list equivalent, volume, and where it goes — full history, every harness"
+            desc="Weekly volume, estimated API cost, and source mix across all harnesses"
             right={`${rollup.weekly.length}w window`}
           />
           <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-3">
@@ -1107,7 +1139,7 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
           <SectionHeader
             icon={CalendarClock}
             title="Rhythm"
-            desc="When sessions start — weekday × hour, plus the day-part split"
+            desc="Session start times by weekday, hour, and day part"
             right={`${fmtNum(rollup.heatmapSessions ?? 0)} sessions`}
           />
           <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-3">
@@ -1122,7 +1154,7 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
           <SectionHeader
             icon={Cpu}
             title="Models"
-            desc="Normalized model identities, measured usage, and rate provenance across harnesses"
+            desc="Normalized model names, usage, and rate sources"
             right={`${models.length} models · ${tilde}${fmtUsd(totalModelCost)} API eq.`}
           />
           <div className="card min-w-0 overflow-hidden">
@@ -1322,10 +1354,86 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
       </section>}
 
       {isVisible("sessions") && <section id="sessions" className={clsx("scroll-mt-16 mb-5", sectionVisibilityClass(true))}>
+        <div id="find-session" className="card mb-4 min-w-0 p-3">
+          <div className="mb-2 flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+            <h2 className="text-[11px] font-medium uppercase tracking-[0.12em] text-fg">Find a session</h2>
+            <span className="text-[10px] text-fg-dim">Search retained transcript text across every harness.</span>
+          </div>
+          <form
+            onSubmit={(e) => { e.preventDefault(); runSearch(q); }}
+            className="flex min-w-0 flex-wrap items-center gap-2"
+          >
+            {searching
+              ? <RefreshCw className="size-4 text-accent-soft shrink-0 animate-spin" aria-label="Searching" role="img" />
+              : <Search className="size-4 text-fg-dim shrink-0" />}
+            <input
+              type="search"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search sessions and harnesses… (e.g. auth refactor)"
+              aria-label="Search sessions"
+              className="min-h-10 min-w-0 flex-1 basis-48 bg-transparent text-sm outline-none focus-visible:ring-2 focus-visible:ring-accent placeholder:text-fg-dim"
+            />
+            <button
+              type="submit"
+              disabled={searching || !q.trim()}
+              className="min-h-10 rounded-md border border-bd px-2.5 py-2 text-sm text-fg-muted hover:bg-bg-elev hover:text-fg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50"
+            >
+              {searching ? "Searching…" : "Search"}
+            </button>
+            {indexInfo && indexInfo.indexedFiles < indexInfo.totalFiles && (
+              <button
+                type="button"
+                onClick={buildIndex}
+                disabled={indexing}
+                title="Reads transcripts and indexes their text for search. Incremental — only new/changed files are read."
+                className="flex min-h-10 items-center gap-1.5 rounded-md border border-bd px-2.5 py-2 text-sm text-warn hover:bg-bg-elev transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-60"
+              >
+                <DatabaseZap className={clsx("size-3.5", indexing && "animate-pulse")} />
+                {indexing ? `Indexing ${indexInfo.indexedFiles}/${indexInfo.totalFiles}…` : `Index ${indexInfo.totalFiles - indexInfo.indexedFiles} files`}
+              </button>
+            )}
+          </form>
+          {hits !== null && (
+            <div className="mt-3 border-t border-bd/50 pt-2">
+              <p className="text-[11px] text-fg-dim mb-2 tabular-nums" aria-live="polite">
+                {searching
+                  ? "Searching…"
+                  : hits.length === 0
+                    ? "No matches"
+                    : hits.length >= SEARCH_LIMIT
+                      ? `First ${hits.length} results`
+                      : `${hits.length} result${hits.length === 1 ? "" : "s"}`}
+                {lastSearched.current ? <> for <span className="text-fg-muted">&ldquo;{lastSearched.current}&rdquo;</span></> : null}
+              </p>
+              {indexInfo && indexInfo.indexedFiles < indexInfo.totalFiles && !indexing && (
+                <p className="text-[11px] text-warn mb-2">Only {indexInfo.indexedFiles}/{indexInfo.totalFiles} files indexed — results may be incomplete.</p>
+              )}
+              {hits.length === 0 && <p className="text-sm text-fg-dim py-2">No matches. Try a shorter phrase or another term.</p>}
+              <div className="space-y-1">
+                {hits.map((h) => (
+                  <Link
+                    key={h.file}
+                    href={`/collection/session?sourceId=${encodeURIComponent(h.sourceId)}&pathHint=${encodeURIComponent(h.file)}`}
+                    className="block min-h-11 rounded-md px-2 py-2 -mx-2 hover:bg-bg-elev transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="rounded bg-accent/10 text-accent-soft px-1.5 py-0.5 text-[10px] shrink-0">{h.sourceId}</span>
+                      <span className="truncate font-medium">{show(h.title || h.file.split("/").pop())}</span>
+                      <span className="text-[11px] text-fg-dim mono shrink-0 ml-auto tabular-nums">{fmtRel(h.at, data.generatedAtMs)}</span>
+                    </div>
+                    <div className="text-[12px] text-fg-muted mono mt-0.5 line-clamp-2">{show(h.snippet)}</div>
+                    <div className="text-[10px] text-fg-dim truncate">{compactDisplayPath(h.project, redact)}</div>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
         <SectionHeader
           icon={History}
           title="Sessions"
-          desc="Most recent sessions across all harnesses — click one to read its transcript"
+          desc="Recent sessions across all harnesses. Open one to read its transcript."
           right={loadedLabel}
         />
         <div className="card min-w-0 overflow-hidden">
@@ -1379,7 +1487,7 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
                     <tr key={collectionSessionIdentity(s)} className="cv-auto">
                       <td className={clsx(STICKY_TD, "min-w-[220px] max-w-[300px]")}>
                         {s.path ? (
-                          <Link href={`/collection/session?file=${encodeURIComponent(s.path)}`} className="block group" title={title}>
+                          <Link href={`/collection/session?sourceId=${encodeURIComponent(s.sourceId)}&sessionId=${encodeURIComponent(s.sessionId)}`} className="block group" title={title}>
                             <span className="block truncate text-[12px] text-fg group-hover:text-accent-soft group-hover:underline">{title}</span>
                             <span className="block truncate text-[10px] text-fg-dim">{project}</span>
                           </Link>
@@ -1398,25 +1506,25 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
                           className="mt-1"
                           identity={`${s.sourceId} / ${s.sessionId}`}
                           source={`${s.sourceLabel} (${s.sourceId})`}
-                          provenance={s.archived ? "Archived parsed summary" : s.path ? "Parsed from transcript" : "Parsed summary without a retained path"}
+                          provenance={s.archived ? "Archived summary" : s.path ? "From transcript" : "Summary without a retained path"}
                           transcript={s.path
                             ? {
                                 status: s.archived ? "archived" : "available",
                                 detail: s.archived
-                                  ? "The parsed summary remains available, but the source file may have been pruned."
-                                  : "The source-qualified transcript path is available on the detail page.",
-                                href: `/collection/session?file=${encodeURIComponent(s.path)}`,
+                                  ? "The summary remains available, but the source file may be gone."
+                                  : "Open the source-qualified transcript on the detail page.",
+                                href: `/collection/session?sourceId=${encodeURIComponent(s.sourceId)}&sessionId=${encodeURIComponent(s.sessionId)}`,
                                 linkLabel: s.archived ? "Open archive status" : "Open transcript",
                               }
                             : {
                                 status: "unavailable",
-                                detail: "This bounded row has no transcript path to open; treat its metrics as summary evidence only.",
+                                detail: "No transcript path is retained; use these metrics as summary evidence only.",
                               }}
                           caveats={[
                             s.archived ? "Full transcript text is gone when the source file has been pruned." : null,
                             s.isSubagent ? "Child traces are retained evidence and are excluded from Timeline outcome denominators." : null,
                             s.dataQuality < 50 ? `Data quality is ${Math.round(s.dataQuality)}/100; inspect the source before relying on derived metrics.` : null,
-                            "The list row contains bounded metadata; raw transcript content loads only on the detail page.",
+                            "This row shows summary metadata; raw transcript text loads on the detail page.",
                           ].filter((caveat): caveat is string => Boolean(caveat))}
                         />
                       </td>
@@ -1460,9 +1568,11 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
 
       {data.anyEstimatedCost && (
         <p className="text-[11px] text-fg-dim mt-3">
-          ~ Dollar values are <span className="text-fg-muted">API-equivalent list estimates</span>, not subscription/provider spend. They use token evidence plus {data.pricingSource} rates checked {data.pricingListDate}; family and fallback mappings remain visibly labeled. Request-level long-context surcharges may be absent when the transcript lacks threshold evidence.
+          ~ Dollar values are <span className="text-fg-muted">API-equivalent list estimates</span>, not provider spend. They use token evidence and {data.pricingSource} rates checked {data.pricingListDate}; family and fallback mappings remain labeled. Long-context surcharges may be missing when transcripts lack threshold evidence.
         </p>
       )}
+        </main>
+      </div>
     </div>
   );
 }

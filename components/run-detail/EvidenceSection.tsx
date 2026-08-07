@@ -72,17 +72,18 @@ export const GraderRow = memo(function GraderRow({ g, showText = (value) => Stri
   const expected = g.spec.type === "file_eq" ? g.spec.expected : g.spec.type === "file_contains" ? g.spec.pattern : undefined;
   const actual = g.output ?? "";
   const showDiff = (g.spec.type === "file_eq" || g.spec.type === "file_contains") && !g.passed && actual;
+  const blocked = Boolean(g.infraError || g.judgeReceipt?.status === "blocked");
 
   return (
     <details className="group relative">
       <summary className="relative pl-4 pr-4 py-2.5 cursor-pointer hover:bg-bg-elev flex items-start gap-2 list-none">
-        <div className={clsx("absolute left-0 top-2 bottom-2 w-0.5 rounded-full", g.passed ? "bg-ok" : "bg-err")} />
+        <div className={clsx("absolute left-0 top-2 bottom-2 w-0.5 rounded-full", blocked ? "bg-warn" : g.passed ? "bg-ok" : "bg-err")} />
         <ChevronRight className="size-3.5 text-fg-dim mt-0.5 group-open:rotate-90 transition-transform" />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className={clsx("font-mono text-[11px] px-1.5 py-0.5 rounded", GRADER_TIER_COLOR[g.spec.type] ?? "bg-bg-elev")}>{g.spec.type}</span>
-            <span className={clsx("text-[10px] px-1.5 py-0.5 rounded-full border", g.passed ? "text-ok border-ok/30 bg-ok/10" : "text-err border-err/30 bg-err/10")}>
-              {g.passed ? "passed" : "failed"}
+            <span className={clsx("text-[10px] px-1.5 py-0.5 rounded-full border", blocked ? "text-warn border-warn/30 bg-warn/10" : g.passed ? "text-ok border-ok/30 bg-ok/10" : "text-err border-err/30 bg-err/10")}>
+              {blocked ? "blocked" : g.passed ? "passed" : "failed"}
             </span>
             <span className="text-[10px] text-fg-dim mono tabular-nums">{g.durationMs}ms</span>
           </div>
@@ -94,6 +95,22 @@ export const GraderRow = memo(function GraderRow({ g, showText = (value) => Stri
           <div className="text-[10px] uppercase text-fg-dim mb-1">Detail</div>
           <pre className="text-[11px] mono text-fg-muted whitespace-pre-wrap break-words">{showText(g.detail)}</pre>
         </div>
+        {g.judgeReceipt && (
+          <div className={clsx("rounded border p-2.5", blocked ? "border-warn/30 bg-warn/5" : "border-accent/20 bg-accent/5")} aria-label="Judge receipt">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-[10px] uppercase tracking-wider text-fg-muted">Judge receipt</div>
+              <span className={clsx("mono text-[10px]", blocked ? "text-warn" : g.judgeReceipt.status === "passed" ? "text-ok" : "text-err")}>{g.judgeReceipt.status}</span>
+            </div>
+            <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] sm:grid-cols-4">
+              <div><dt className="text-fg-dim">Source</dt><dd className="mono break-all text-fg-muted">{g.judgeReceipt.selection.source}</dd></div>
+              <div><dt className="text-fg-dim">Model</dt><dd className="mono break-all text-fg-muted">{g.judgeReceipt.selection.model}</dd></div>
+              <div><dt className="text-fg-dim">Effort</dt><dd className="mono text-fg-muted">{g.judgeReceipt.selection.reasoningEffort ?? "—"}</dd></div>
+              <div><dt className="text-fg-dim">Transport</dt><dd className="mono text-fg-muted">{g.judgeReceipt.transport}</dd></div>
+            </dl>
+            {g.judgeReceipt.score != null && <div className="mt-2 text-[10px] text-fg-muted">Score <span className="mono tabular-nums text-fg">{g.judgeReceipt.score.toFixed(2)}</span>{g.judgeReceipt.reason ? <> · {showText(g.judgeReceipt.reason)}</> : null}</div>}
+            {g.judgeReceipt.failure && <div className="mt-2 text-[10px] leading-relaxed text-warn"><span className="mono">{g.judgeReceipt.failure.code}</span> · {showText(g.judgeReceipt.failure.detail)}</div>}
+          </div>
+        )}
         {showDiff ? (
           <DiffView expected={expected !== undefined ? String(expected) : ""} actual={actual} showText={showText} />
         ) : g.output ? (

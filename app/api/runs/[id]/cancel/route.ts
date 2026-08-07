@@ -9,14 +9,14 @@ export const dynamic = "force-dynamic";
 // Next returns 405 automatically for methods without an exported handler.
 export async function POST(_req: Request, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
-  const run = getRun(params.id);
-  if (!run) {
-    return notFound("Run not found", { detail: `No run with id "${params.id}".` });
-  }
-  if (run.status !== "running") {
-    return conflict(`Run is ${run.status}; only running runs can be cancelled`);
-  }
   try {
+    const run = getRun(params.id);
+    if (!run) {
+      return notFound("Run not found", { detail: `No run with id "${params.id}".` });
+    }
+    if (run.status !== "running") {
+      return conflict(`Run is ${run.status}; only running runs can be cancelled`);
+    }
     // DB first: the run loop treats the row's "aborted" status as the source of
     // truth, so cancellation lands even when dev HMR reset the in-process
     // registry. The loop recomputes the summary once in-flight cases finish;

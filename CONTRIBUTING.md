@@ -5,27 +5,43 @@ Thanks for helping improve OpenEval. This project is a local-first evaluation da
 ## Development Setup
 
 ```bash
-npm install
+nvm use 20
+npm ci
+npm run doctor
 npm run dev
 ```
 
-Open http://localhost:3000 to use the dashboard.
+Open http://localhost:3000 (or the port printed by Next.js) to use the dashboard.
+If `better-sqlite3` fails to load after changing Node versions, run
+`npm rebuild better-sqlite3` after switching back to Node 20.
 
-Before sending a change, run the same checks CI runs:
+Before sending a change, run the canonical CI checks:
 
 ```bash
-npm run typecheck && npm test && npm run lint
-bash scripts/public-upload-audit.sh
+npm run verify:ci
 ```
 
 `npm test` runs the full suite (`tests/*.test.ts`), not just the live-trace subset — a change that only passes `test:live` can still be CI-red.
 
-For changes touching cases or graders, also run:
+For changes touching cases or graders, `verify:ci` already includes the strict
+accuracy gate. To run the broader non-strict audit while iterating:
 
 ```bash
 npm run selftest
 npm run audit:accuracy
 ```
+
+Before a release, stop the dev server and run the production gate from a clean
+candidate checkout:
+
+```bash
+npm ci
+npm run verify:release
+npm start
+```
+
+Do not run `npm run build` while `npm run dev` is active; both commands write
+`.next`, and the dev server must be restarted after a production build.
 
 `npm run selftest` grades a no-op baseline for every case, executes each `oracle.known_bad` script, and fails if the graders pass a known-bad answer.
 

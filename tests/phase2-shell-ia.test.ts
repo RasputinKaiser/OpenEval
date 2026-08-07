@@ -89,7 +89,7 @@ test("Collection and Timeline keep warnings/progress outside focused panels", ()
     assert.match(src, /isVisible\("[^"]+"\) && <section/);
   }
   const collection = read("components/CollectionClient.tsx");
-  assert.ok(collection.indexOf("Scan budget expired") < collection.indexOf("<section id=\"overview\""));
+  assert.ok(collection.indexOf("Scan stopped early") < collection.indexOf("<section id=\"overview\""));
   const timeline = read("components/TimelineClient.tsx");
   assert.ok(timeline.indexOf("Timeline evidence may be stale") < timeline.indexOf("<section id=\"overview\""));
   assert.match(timeline, /role="progressbar"/);
@@ -116,8 +116,8 @@ test("Timeline action and loading contracts keep refresh, judge work, and fallba
   const error = read("app/collection/timeline/error.tsx");
   assert.match(timeline, /aria-label="Timeline actions"/);
   assert.match(timeline, /<details className="relative">/);
-  assert.match(timeline, /preserve the current report while it loads/);
-  assert.match(timeline, /The current report remains visible/);
+  assert.match(timeline, /keeping the current report visible/);
+  assert.match(timeline, /The current report stays visible/);
   assert.match(loading, /role="status"/);
   assert.match(loading, /Loading Timeline and Impact evidence/);
   assert.match(error, /Timeline evidence unavailable/);

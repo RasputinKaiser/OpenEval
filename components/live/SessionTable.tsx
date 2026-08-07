@@ -165,7 +165,7 @@ export function SessionTable({
             <FolderGit2 className="size-4 text-fg-muted" /> Recent sessions
           </div>
           <div className="mt-1 text-xs text-fg-muted">
-            {renderedSessions.length}/{sessions.length} filtered · {totalCount} total · values marked missing are not treated as zero-confidence measurements
+            Showing {renderedSessions.length} of {sessions.length} filtered · {totalCount} total · missing values are not zeroes
           </div>
         </div>
         {controls}
@@ -198,8 +198,8 @@ export function SessionTable({
           <div role="status" className="p-8 text-center text-sm text-fg-muted">
             {totalCount === 0 ? (
               <>
-                <div className="font-medium text-fg">No sessions were parsed in this scan.</div>
-                <div className="mx-auto mt-1 max-w-md text-xs leading-5">Check the source and coverage notices above; this list is bounded to the evidenced scanned population.</div>
+                <div className="font-medium text-fg">No parsed sessions are available in this scan.</div>
+                <div className="mx-auto mt-1 max-w-md text-xs leading-5">Check the source and coverage notices above. This list is limited to the scanned evidence.</div>
               </>
             ) : "No sessions match the current filter."}
           </div>

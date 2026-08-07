@@ -23,6 +23,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
         endedAt={run.ended_at}
         model={run.params.model}
         harness={run.params.harness}
+        judge={run.params.judge}
         harnessInfo={harnessInfo}
       />
     </main>

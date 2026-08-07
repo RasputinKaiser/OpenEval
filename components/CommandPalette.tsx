@@ -43,7 +43,7 @@ const NAV_ITEMS: CommandItem[] = [
   { id: "nav-harnesses", label: "Harnesses", icon: Plug, href: "/harnesses", group: "Navigation", keywords: "cli adapters" },
   { id: "nav-accuracy", label: "Accuracy", icon: ShieldCheck, href: "/accuracy", group: "Navigation", keywords: "audit coverage" },
   { id: "nav-collection", label: "Collection", icon: Boxes, href: "/collection", group: "Navigation", keywords: "harnesses sessions archive search transcripts" },
-  { id: "nav-timeline", label: "Timeline & Impact", icon: TrendingUp, href: "/collection/timeline", group: "Navigation", keywords: "adoption skills plugins outcome judge" },
+  { id: "nav-timeline", label: "Timeline & comparisons", icon: TrendingUp, href: "/collection/timeline", group: "Navigation", keywords: "adoption skills plugins outcome judge" },
   { id: "nav-settings", label: "Settings", icon: Settings, href: "/settings", group: "Navigation", keywords: "config preferences" },
 ];
 

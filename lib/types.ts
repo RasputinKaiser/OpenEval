@@ -1,3 +1,6 @@
+import type { RawOutputCapture, RawOutputPaths } from "./runner/raw-output";
+import type { JudgeSelection } from "./grader/selection";
+
 export type Category = "agentic-swe" | "single-tool" | "reasoning" | "visual-code";
 
 export type Difficulty = "easy" | "medium" | "hard";
@@ -115,6 +118,8 @@ export interface RunnerContext {
   onEvent?: (event: RunnerEvent) => void;
   /** Cancellation: aborting kills the harness process tree (headless) / tmux session mid-case. */
   signal?: AbortSignal;
+  /** Durable raw process-output files; normalized parser output is separate. */
+  rawOutput?: RawOutputPaths;
 }
 
 export type RunnerEvent =
@@ -172,6 +177,8 @@ export interface RunnerResult {
   rawJson: unknown;
   tokenSegments: TokenSegment[];
   toolCallCounts: Record<string, number>;
+  /** Internal handoff from the runner transport to executeCase persistence. */
+  rawOutput?: RawOutputCapture | null;
 }
 
 export interface CaseTelemetry {
@@ -246,6 +253,23 @@ export interface GraderResult {
   output?: string;
   /** True when the GRADER infrastructure failed (judge unavailable, etc.) — the failure says nothing about the agent. */
   infraError?: boolean;
+  judgeSelection?: JudgeSelection;
+  /** Bounded, structured provenance for a rubric judge verdict or blocked attempt. */
+  judgeReceipt?: JudgeReceipt;
+}
+
+export interface JudgeReceipt {
+  contract: "openeval.rubric-judge";
+  version: 1;
+  status: "passed" | "failed" | "blocked";
+  selection: JudgeSelection;
+  transport: "stub" | "cli" | "openrouter";
+  score: number | null;
+  passed: boolean | null;
+  reason: string | null;
+  response?: string;
+  durationMs: number;
+  failure: { code: "backend_unavailable" | "cancelled" | "invalid_verdict"; detail: string } | null;
 }
 
 export interface CaseEvaluation {
@@ -267,6 +291,8 @@ export interface RunCaseRecord {
   ended_at: number | null;
   workdir_path: string;
   transcript_path: string | null;
+  /** Metadata-only references to the authoritative stdout/stderr files. */
+  raw_output?: RawOutputCapture | null;
   runner_kind: RunnerKind;
   runner_result: RunnerResult | null;
   grader_result: CaseEvaluation | null;
@@ -292,6 +318,7 @@ export interface RunRecord {
     model?: string;
     samples?: number;
     filter?: { caseIds?: string[]; categories?: string[]; tags?: string[]; difficulty?: string[] };
+    judge?: JudgeSelection;
   };
   summary: RunSummary | null;
   /** Captured run environment. Shape matches RunManifest in lib/manifest.ts. */

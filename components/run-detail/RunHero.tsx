@@ -4,6 +4,7 @@ import clsx from "clsx";
 import HarnessBadge from "../HarnessBadge";
 import CopyButton from "./CopyButton";
 import { CircleDot, Loader2, XCircle } from "lucide-react";
+import type { JudgeSelection } from "@/lib/grader/selection";
 
 export interface StatusCounts {
   passed: number;
@@ -23,6 +24,7 @@ export default function RunHero({
   model,
   harness,
   harnessInfo,
+  judge,
   live,
   cancelPhase,
   onCancel,
@@ -37,6 +39,7 @@ export default function RunHero({
   model?: string;
   harness?: string;
   harnessInfo?: { id: string; bin: string | null; version: string | null };
+  judge?: JudgeSelection;
   live: boolean;
   cancelPhase: CancelPhase;
   onCancel: () => void;
@@ -65,6 +68,7 @@ export default function RunHero({
               <CopyButton text={runId} label="Copy run id" />
             </span>
             {model && <span className="mono text-fg">{model}</span>}
+            {judge && <span className="inline-flex items-center rounded border border-ok/30 bg-ok/5 px-2 py-1 text-ok" title="Immutable judge selection for this run">Judge: {judge.judgeName}</span>}
             <a
               href={`/api/runs/${runId}/report?redact=1`}
               className="inline-flex items-center gap-1 rounded border border-bd-subtle bg-bg/60 px-2 py-1 text-fg-muted hover:text-fg"

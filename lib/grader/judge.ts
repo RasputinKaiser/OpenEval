@@ -5,7 +5,17 @@ import { z } from "zod";
 import { getAdapter } from "../adapters/registry";
 import type { RunnerContext } from "../types";
 import { spawnHarnessProcess, emptyRunnerResult } from "../runner/spawn";
-import { readAppSettings } from "../settings";
+import {
+  CODEX_JUDGE_MODEL,
+  CODEX_JUDGE_REASONING_EFFORT,
+  defaultJudgeModelForSource,
+  defaultJudgeReasoningForSource,
+  DETERMINISTIC_JUDGE_SOURCE,
+  resolveJudgeSelection,
+  type JudgeSelection,
+} from "./selection";
+
+export type { JudgeSelection } from "./selection";
 
 export interface JudgeResult {
   ok: boolean;
@@ -54,17 +64,15 @@ export interface RubricJudgeFailureRecord {
 
 export const OPENROUTER_DEFAULT_JUDGE_MODEL = "tencent/hy3:free";
 /** The Codex subscription-backed judge used by the current Evaluate workflow. */
-export const CODEX_DEFAULT_JUDGE_MODEL = "gpt-5.6-luna";
-export const CODEX_DEFAULT_JUDGE_REASONING_EFFORT = "high";
+export const CODEX_DEFAULT_JUDGE_MODEL = CODEX_JUDGE_MODEL;
+export const CODEX_DEFAULT_JUDGE_REASONING_EFFORT = CODEX_JUDGE_REASONING_EFFORT;
 
 export function defaultJudgeModel(harness: string): string | undefined {
-  if (harness === "openrouter") return OPENROUTER_DEFAULT_JUDGE_MODEL;
-  if (harness === "codex") return CODEX_DEFAULT_JUDGE_MODEL;
-  return undefined;
+  return defaultJudgeModelForSource(harness) || undefined;
 }
 
 export function defaultJudgeReasoningEffort(harness: string): string | undefined {
-  return harness === "codex" ? CODEX_DEFAULT_JUDGE_REASONING_EFFORT : undefined;
+  return defaultJudgeReasoningForSource(harness) ?? undefined;
 }
 
 /**
@@ -116,6 +124,7 @@ export function parseRubricJudgeVerdict(text: string): RubricJudgeParseResult {
 export function serializeRubricJudgeFailure(input: {
   harness: string;
   model?: string;
+  reasoningEffort?: string | null;
   code: RubricJudgeFailureCode;
   detail: string;
   response?: string;
@@ -149,17 +158,9 @@ export function validJudgeScore(score: unknown): number | null {
  * "openrouter" is an HTTP backend, not a harness adapter, and must be selected
  * explicitly; a merely-present API key does not move local judging elsewhere.
  */
-export function resolveJudge(): { harness: string; model?: string; reasoningEffort?: string; judgeName: string } {
-  const settings = readAppSettings();
-  // Prefer the local Codex subscription by default. OpenRouter remains an
-  // explicit environment/settings choice; a merely-present API key should not
-  // silently move evaluation judging to a different provider.
-  const harness = process.env.JUDGE_HARNESS || settings.judgeSource || "codex";
-  // A concrete Codex default avoids inheriting a configured model an older CLI
-  // cannot run. Per-harness defaults also apply to explicit grader overrides.
-  const model = process.env.JUDGE_MODEL || settings.judgeModel || defaultJudgeModel(harness);
-  const reasoningEffort = process.env.JUDGE_REASONING_EFFORT || defaultJudgeReasoningEffort(harness);
-  return { harness, model, reasoningEffort, judgeName: `${harness}${model ? "/" + model : ""}${reasoningEffort ? ` (${reasoningEffort})` : ""}` };
+export function resolveJudge(): { harness: string; model?: string; reasoningEffort?: string; judgeName: string; selection: JudgeSelection } {
+  const selection = resolveJudgeSelection();
+  return { harness: selection.source, model: selection.model || undefined, reasoningEffort: selection.reasoningEffort ?? undefined, judgeName: selection.judgeName, selection };
 }
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
@@ -234,6 +235,7 @@ export async function runOpenRouterJudge(prompt: string, model: string, timeoutM
 export async function runJudge(opts: {
   harness: string;
   model?: string;
+  reasoningEffort?: string | null;
   prompt: string;
   timeoutMs: number;
   signal?: AbortSignal;
@@ -255,7 +257,7 @@ export async function runJudge(opts: {
     // Codex exposes reasoning effort as a config override rather than a
     // dedicated exec flag. Keep the judge setting explicit and reproducible.
     extraArgs: opts.harness === "codex"
-      ? ["-c", `model_reasoning_effort=${JSON.stringify(process.env.JUDGE_REASONING_EFFORT || CODEX_DEFAULT_JUDGE_REASONING_EFFORT)}`]
+      ? ["-c", `model_reasoning_effort=${JSON.stringify(opts.reasoningEffort || CODEX_DEFAULT_JUDGE_REASONING_EFFORT)}`]
       : [],
     harness: opts.harness,
     signal: opts.signal,
@@ -298,13 +300,27 @@ export async function runJudge(opts: {
 export async function runJudgeBackend(opts: {
   harness: string;
   model?: string;
+  reasoningEffort?: string | null;
   prompt: string;
   timeoutMs: number;
   signal?: AbortSignal;
 }): Promise<{ ok: boolean; text: string; error?: string }> {
+  if (opts.harness === DETERMINISTIC_JUDGE_SOURCE) {
+    // Deterministic transport is intentionally boring: it exercises the exact
+    // receipt/parser path without spending provider tokens or creating a CLI
+    // trace. Keep the response shape valid for both session and rubric judges.
+    const score = deterministicScore(opts.prompt);
+    return { ok: true, text: JSON.stringify({ passed: score >= 0.7, score, reason: "deterministic judge stub" }) };
+  }
   if (opts.harness === "openrouter") {
     return runOpenRouterJudge(opts.prompt, opts.model ?? OPENROUTER_DEFAULT_JUDGE_MODEL, opts.timeoutMs, opts.signal);
   }
   const res = await runJudge(opts);
   return { ok: res.ok, text: res.text, error: res.error };
+}
+
+function deterministicScore(prompt: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < prompt.length; i++) hash = Math.imul(hash ^ prompt.charCodeAt(i), 16777619);
+  return 0.5 + ((hash >>> 0) % 5) / 10;
 }

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { collectionSessionIdentity, type CollectionSessionItem } from "@/lib/collection/aggregate";
 import { discoverAll } from "@/lib/collection/discover";
 import { getCollectionSnapshot } from "@/lib/collection/snapshot-service";
+import { internalError } from "@/lib/api-http";
 
 export const dynamic = "force-dynamic";
 
@@ -10,7 +11,7 @@ const SNAPSHOT_LIMIT = 10_000;
 const PAGE_DEFAULT = 160;
 const PAGE_MAX = 500;
 
-/** Decoded cursor: position (lastEventAt) + identity (path when present, else sessionId). */
+/** Decoded cursor: position (lastEventAt) + source-qualified session identity. */
 interface CursorPayload {
   t: number;
   id: string;
@@ -23,7 +24,6 @@ interface CursorPayload {
 
 function encodeCursor(s: CollectionSessionItem, generation: number): string {
   const payload: CursorPayload = { t: s.lastEventAt, id: s.sessionId, s: s.sourceId, g: generation };
-  if (s.path) payload.p = s.path;
   return Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
 }
 
@@ -58,7 +58,10 @@ function isAfterCursor(session: CollectionSessionItem, cursor: CursorPayload): b
   // vanished cursor would skip every row sharing its timestamp.
   if (cursor.s === undefined) return false;
   const itemIdentity = collectionSessionIdentity(session);
-  const cursorIdentity = `${cursor.s}\u0000${cursor.p ?? cursor.id}`;
+  // Older clients supplied a path tie-breaker. Keep accepting it as a
+  // pagination-order hint; new cursors use only the source/session identity.
+  if (cursor.p !== undefined) return (session.path ?? session.sessionId) > cursor.p;
+  const cursorIdentity = `${cursor.s}\u0000${cursor.id}`;
   return itemIdentity > cursorIdentity;
 }
 
@@ -72,6 +75,8 @@ function isAfterCursor(session: CollectionSessionItem, cursor: CursorPayload): b
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const mode = searchParams.get("mode");
+
+  try {
 
   if (mode === "discover") {
     const report = discoverAll();
@@ -158,4 +163,7 @@ export async function GET(request: Request) {
     },
     { headers: { "Cache-Control": "private, no-store" } },
   );
+  } catch (error) {
+    return internalError("Collection snapshot unavailable", error);
+  }
 }

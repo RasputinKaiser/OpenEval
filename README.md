@@ -3,7 +3,7 @@
 [![CI](https://github.com/RasputinKaiser/OpenEval/actions/workflows/ci.yml/badge.svg)](https://github.com/RasputinKaiser/OpenEval/actions/workflows/ci.yml)
 [![GitHub release](https://img.shields.io/github/v/release/RasputinKaiser/OpenEval?display_name=tag)](https://github.com/RasputinKaiser/OpenEval/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-7c5cff.svg)](LICENSE)
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/W7W7C9TC7)
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/rasputinkaiser)
 
 OpenEval is a local-first, harness-agnostic evaluation dashboard for agent CLIs. Every harness is a JSON descriptor; the bundled Claude Code, Codex, and ncode adapters use the same format as user descriptors under `harnesses/`. OpenEval runs repeatable cases, grades results with deterministic and rubric-based checks, persists run history to SQLite, and turns the results into an operator-friendly Next.js dashboard.
 
@@ -13,9 +13,9 @@ The project is designed for people who want to compare agent behavior on practic
 
 https://github.com/user-attachments/assets/97375fda-e019-451b-b15b-8d914792f0c7
 
-The 29.5-second v0.1.1 launch film shows the real OpenEval dashboard: live sessions, collection history, repeatable runs, comparisons, coverage, telemetry, and accuracy audits. The current application release is [v0.1.4](https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.4).
+The 29.5-second v0.1.1 launch film shows the real OpenEval dashboard: live sessions, collection history, repeatable runs, comparisons, coverage, telemetry, and accuracy audits. The current application release is [v0.1.5](https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.5).
 
-[Download the full-resolution MP4](https://github.com/RasputinKaiser/OpenEval/releases/download/v0.1.1/openeval-launch-v0.1.1.mp4) · [Open the v0.1.1 media release](https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.1) · [Latest release: v0.1.4](https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.4)
+[Download the full-resolution MP4](https://github.com/RasputinKaiser/OpenEval/releases/download/v0.1.1/openeval-launch-v0.1.1.mp4) · [Open the v0.1.1 media release](https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.1) · [Latest release: v0.1.5](https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.5)
 
 ### Build Credits
 
@@ -23,6 +23,34 @@ The 29.5-second v0.1.1 launch film shows the real OpenEval dashboard: live sessi
 - **Launch film:** GPT-5.6 Sol (High) led the edit, composition, visual QA, and final release pass; GPT-5.6 Luna (xhigh) contributed additional iteration passes.
 - **Production stack:** Codex, ImageGen, TouchDesigner, HyperFrames, GSAP, CDP Recorder, and FFmpeg.
 - **Acknowledgment:** huge thanks to [@KingBootoshi](https://x.com/KingBootoshi) from [righttointelligence.org](https://righttointelligence.org).
+
+## What's New in v0.1.5
+
+OpenEval v0.1.5 is the release-hardening pass: clean installs are documented and gated, evidence delivery is bounded, judge jobs are durable, API recovery is more consistent, and the dense observation surfaces are easier to read on desktop and mobile.
+
+### Safer installation and release checks
+
+- Supported Node 20 and npm 10 versions are explicit in the package engines, `.nvmrc`, doctor output, README, and contributor guide.
+- `.env.example` documents data roots, harness defaults, judge settings, host allowlists, scan budgets, and transcript streaming controls.
+- `npm run verify:ci` and `npm run verify:release` provide one repeatable validation path from clean install through production build.
+- The full dependency audit is clean, and the candidate-scope public-upload audit checks tracked and untracked release material for local paths, identities, and secret-like leakage.
+
+### More durable evidence
+
+- Judge selections and lease ownership are persisted and fenced, so a stale or interrupted worker cannot silently replace current evidence.
+- Transcript records, artifact previews, byte ranges, and report bundles stay bounded or stream from disk with explicit truncation, range, hash, and provenance metadata.
+- Collection, report, artifact, cancel, and event-stream failures share readable JSON/SSE recovery envelopes.
+- Polling coalesces duplicate requests, and source revisions invalidate stale outcome judgments instead of displaying old scores as current.
+
+### Easier to operate
+
+- Harness selection falls back to an available configured harness when no explicit harness is supplied and gives a concrete install/configuration error when none is available.
+- Onboarding, judge setup, retry/readiness states, review receipts, mixed-method explanations, Timeline copy, and evidence denominators are clearer.
+- Mobile navigation, New Run ordering, evidence grouping, and compact status/recovery surfaces are less crowded.
+
+The release gate verifies deterministic and corpus-backed evidence while preserving `Unknown` for trace, visual, LLM-judge, provider, assistive-technology, and human-review surfaces that were not exercised by the corresponding runtime proof.
+
+[Read the complete v0.1.5 release notes](https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.5) · [Compare v0.1.4...v0.1.5](https://github.com/RasputinKaiser/OpenEval/compare/v0.1.4...v0.1.5)
 
 ## What's New in v0.1.4
 
@@ -108,10 +136,26 @@ OpenEval v0.1.3 makes large local transcript collections faster to inspect and m
 Start the app and open the dashboard:
 
 ```bash
-npm install
+nvm use 20
+npm ci
+npm run doctor
 npm run dev
-open http://localhost:3000
 ```
+
+Open [http://localhost:3000](http://localhost:3000) (or the port printed by
+Next.js). Node 20 and npm 10 are the supported release toolchain. The
+dashboard itself is local-first, but running an evaluation requires at least
+one supported agent CLI installed and authenticated on the same machine.
+
+For a clean release-style check, stop the dev server before running the build:
+
+```bash
+npm run verify:release
+npm start
+```
+
+`next dev` and `next build` both write `.next`; always restart the server after
+switching between them.
 
 The dashboard currently exposes these primary routes:
 
@@ -250,8 +294,14 @@ Discovery probes `PATH`, well-known paths declared by each adapter, and `<bin> -
 Run one case:
 
 ```bash
-npm run run:case -- swe-fix-fizzbuzz
+npm run run:case -- --harness codex swe-fix-fizzbuzz
 ```
+
+Replace `codex` with an available harness from
+`npm run run:eval -- --list-harnesses`. If you omit `--harness`, OpenEval uses
+`OPENEVAL_DEFAULT_HARNESS` when set and otherwise selects an available built-in
+harness after probing. If no supported CLI is installed, the command reports
+the missing binaries and the discovery command to run next.
 
 Run the full suite with the default harness:
 
@@ -319,10 +369,14 @@ The fixture files under `fixtures/` may contain intentionally fake secret-like s
 Run the public upload audit before publishing:
 
 ```bash
-bash scripts/public-upload-audit.sh
+bash scripts/public-upload-audit.sh --all
 ```
 
-The audit checks for tracked local-only files, the disallowed public-facing identity string, private machine paths, and an inventory of secret-like fixture files that should be reviewed when fixtures change.
+The audit checks the tracked and untracked non-ignored candidate files for
+local-only data, the disallowed public-facing identity string, private machine
+paths, and an inventory of secret-like fixture files that should be reviewed
+when fixtures change. Run it against the exact candidate you intend to stage or
+archive; do not rely on a clean result from an older tag.
 
 ## GitHub Project Hygiene
 
@@ -478,9 +532,16 @@ Use a descriptor when a CLI emits Claude stream JSON, Codex JSONL, generic JSONL
 
 ## Operating Notes
 
-- Node 20 or newer is expected.
+- Node 20 with npm 10 is the supported release toolchain. Node 22+ may work,
+  but it is outside the release-tested range and native modules should be
+  rebuilt after a runtime change.
 - The app uses `better-sqlite3`, so native dependency installation must succeed for the local platform.
+- macOS and Linux are the release-tested platforms. Windows may work when a
+  compatible `better-sqlite3` prebuild is available; otherwise install the
+  platform's native Node build prerequisites before running `npm ci`.
+- The optional `tmux` runner also requires `bash` and `tmux`; use the default
+  headless runner when either is unavailable.
 - `rubric_llm` uses a separate judge harness; it should not silently reuse the harness under test.
 - Missing usage data is shown as missing, not as a real zero.
 - Local path redaction is for display; raw local paths may still exist server-side in local-only transcripts.
-- Public repository cleanup should be validated with `bash scripts/public-upload-audit.sh` before pushing.
+- Public repository cleanup should be validated with `bash scripts/public-upload-audit.sh --all` before pushing.

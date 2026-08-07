@@ -78,7 +78,7 @@ test("transcript and Live surfaces keep reasoning distinct from ordinary prose",
   assert.match(transcript, /<AgentReasoningBlock/);
   assert.match(drawer, /<AgentReasoningBlock/);
   assert.match(drawer, /errors and agent reasoning/);
-  assert.match(table, /No sessions were parsed in this scan/);
+  assert.match(table, /No parsed sessions are available in this scan/);
   assert.match(livePage, /ERRORING_TURN_CAP/);
   assert.match(livePage, /isAgentReasoningTurn/);
   assert.match(sessionPage, /Agent reasoning/);

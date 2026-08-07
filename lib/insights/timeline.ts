@@ -1,5 +1,7 @@
+import fs from "node:fs";
 import type { LiveSession, MetricSource } from "../live";
 import type { StoredJudgment } from "../live-cache";
+import type { JudgeSelection } from "../grader/selection";
 import { scoreOutcome } from "./outcome";
 
 export type OutcomeProvenance = "heuristic" | "judged" | "unavailable";
@@ -35,6 +37,8 @@ export interface SessionPoint {
   durationMin: number;
   skills: string[];
   mcpServers: string[];
+  judgeSelection?: JudgeSelection;
+  judgePromptVersion?: number | null;
 }
 
 export type MarkerKind = "skill" | "mcp" | "subagent" | "model";
@@ -83,6 +87,18 @@ const lowerBoundAt = (points: SessionPoint[], t: number): number => {
   return lo;
 };
 
+/** A receipt is only comparable to the transcript revision it judged. */
+function judgmentMatchesSession(session: LiveSession, judgment: StoredJudgment): boolean {
+  // Pre-revision receipts used 0 as an informational timestamp. Keep those
+  // readable for backwards compatibility; new receipts always persist mtime.
+  if (judgment.mtimeMs <= 0 || !session.path) return true;
+  try {
+    return fs.statSync(session.path).mtimeMs === judgment.mtimeMs;
+  } catch {
+    return false;
+  }
+}
+
 /** Insert v into an ascending-sorted array, keeping it sorted. */
 const insertSorted = (arr: number[], v: number): void => {
   let lo = 0, hi = arr.length;
@@ -127,7 +143,7 @@ export function toPoints(
     .map((s) => {
       const o = scoreOutcome(s);
       const candidate = s.path ? judgments?.get(s.path) : undefined;
-      const j = candidate && Number.isFinite(candidate.score) && candidate.score >= 0 && candidate.score <= 1
+      const j = candidate && judgmentMatchesSession(s, candidate) && Number.isFinite(candidate.score) && candidate.score >= 0 && candidate.score <= 1
         ? candidate
         : undefined;
       const costSource = s.metricSources?.cost ?? "missing";
@@ -147,6 +163,8 @@ export function toPoints(
         outcomeHasSignal: j ? true : o.hasSignal,
         outcomeProvenance: (j ? "judged" : o.hasSignal ? "heuristic" : "unavailable") as OutcomeProvenance,
         outcomeReasons: j ? j.reasons : o.reasons,
+        judgeSelection: j?.selection,
+        judgePromptVersion: j?.promptVersion ?? null,
         costUsd: rawCost,
         costSource,
         costAvailable,

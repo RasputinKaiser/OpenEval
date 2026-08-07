@@ -23,9 +23,9 @@ export function parseBoundedInt(raw: string, min = RUN_INT_MIN, max = RUN_INT_MA
   return { value: n, error: null };
 }
 
-export type RunField = "caseIds" | "harness" | "model" | "parallel" | "samples" | "runner" | "name";
+export type RunField = "caseIds" | "harness" | "model" | "parallel" | "samples" | "runner" | "name" | "judgeSource" | "judgeModel" | "judgeReasoningEffort";
 
-const RUN_FIELDS: RunField[] = ["caseIds", "harness", "model", "parallel", "samples", "runner", "name"];
+const RUN_FIELDS: RunField[] = ["caseIds", "harness", "model", "parallel", "samples", "runner", "name", "judgeSource", "judgeModel", "judgeReasoningEffort"];
 
 export function isRunField(value: unknown): value is RunField {
   return typeof value === "string" && (RUN_FIELDS as string[]).includes(value);
@@ -39,6 +39,9 @@ export function inferErrorField(message: string): RunField | null {
   const m = message.toLowerCase();
   if (m.includes("caseid") || m.includes("case id") || m.includes("no cases match")) return "caseIds";
   if (m.includes("harness")) return "harness";
+  if (m.includes("judge.reasoningeffort") || m.includes("judge reasoning") || m.includes("reasoning effort")) return "judgeReasoningEffort";
+  if (m.includes("judge.source") || m.includes("judge source")) return "judgeSource";
+  if (m.includes("judge.model") || m.includes("judge model")) return "judgeModel";
   if (m.includes("model")) return "model";
   if (m.includes("parallel")) return "parallel";
   if (m.includes("sample")) return "samples";

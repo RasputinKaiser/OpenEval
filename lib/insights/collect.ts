@@ -1,11 +1,32 @@
 import { collectSourceSessions, type LiveSession } from "../live";
 import { allCollectionSources, defToSpec } from "../collection/sources";
-import { loadCurrentJudgments } from "./judge";
+import { JUDGE_PROMPT_VERSION, loadCurrentJudgments } from "./judge";
+import { loadJudgments } from "../live-cache";
 import {
   toPoints, detectMarkers, metricSeries, markerImpact,
   type Marker, type MarkerImpact, type SeriesPoint, type SessionPoint, type OutcomeProvenance, type OutcomeSeriesEvidence,
 } from "./timeline";
 import { detectChangePoints, type ChangePoint } from "./changepoints";
+
+export interface JudgeSelectionDistribution {
+  source: string;
+  model: string;
+  reasoningEffort: string | null;
+  promptVersion: number | null;
+  count: number;
+}
+
+export interface JudgeComparability {
+  homogeneous: boolean;
+  mixed: boolean;
+  warning: string | null;
+  /** Current-prompt rows that are eligible for the comparable score view. */
+  denominator: number;
+  /** All judgment receipts matched to the current top-level session population. */
+  receiptDenominator: number;
+  /** Matched receipts produced under a prompt contract other than the current one. */
+  staleReceiptCount: number;
+}
 
 export interface TimelineReport {
   totalSessions: number;
@@ -37,6 +58,8 @@ export interface TimelineReport {
   outcomeSeries: SeriesPoint[]; // downsampled for a sparkline
   /** Exact source denominator and provenance for the downsampled outcome chart. */
   outcomeSeriesEvidence?: OutcomeSeriesEvidence;
+  judgeSelectionDistribution?: JudgeSelectionDistribution[];
+  judgeComparability?: JudgeComparability;
 }
 
 function downsample<T>(xs: T[], max: number): T[] {
@@ -195,6 +218,40 @@ export function buildTimeline(sessionsIn?: TimelineSession[]): TimelineReport {
   const heuristicSignalSessions = withSignal.length - judgedSessions;
   const noSignalSessions = points.length - withSignal.length;
 
+  // Score points deliberately use current-prompt judgments above. The receipt
+  // view is broader: retain every persisted judgment that matches a current
+  // top-level session, including stale/legacy prompt versions, without letting
+  // those rows replace the comparable score.
+  const persistedJudgments = loadJudgments();
+  const receipts = points
+    .map((point) => point.path ? persistedJudgments.get(point.path) : undefined)
+    .filter((judgment): judgment is NonNullable<typeof judgment> => Boolean(judgment));
+  const distribution = new Map<string, JudgeSelectionDistribution>();
+  for (const judgment of receipts) {
+    const selection = judgment.selection;
+    const source = selection?.source ?? "unknown";
+    const model = selection?.model ?? "unknown";
+    const reasoningEffort = selection?.reasoningEffort ?? null;
+    const promptVersion = judgment.promptVersion ?? null;
+    const key = `${source}\u0000${model}\u0000${reasoningEffort ?? ""}\u0000${promptVersion ?? ""}`;
+    const current = distribution.get(key);
+    if (current) current.count++;
+    else distribution.set(key, { source, model, reasoningEffort, promptVersion, count: 1 });
+  }
+  const judgeSelectionDistribution = [...distribution.values()].sort((a, b) => b.count - a.count || a.source.localeCompare(b.source));
+  const mixed = judgeSelectionDistribution.length > 1;
+  const staleReceiptCount = receipts.filter((judgment) => judgment.promptVersion !== JUDGE_PROMPT_VERSION).length;
+  const judgeComparability: JudgeComparability = {
+    homogeneous: judgeSelectionDistribution.length <= 1,
+    mixed,
+    denominator: judgedSessions,
+    receiptDenominator: receipts.length,
+    staleReceiptCount,
+    warning: mixed
+      ? "This judged population mixes backend, model, or prompt-version receipts; do not collapse it into one comparable denominator."
+      : null,
+  };
+
   return {
     totalSessions: points.length,
     excludedSubagentSessions,
@@ -226,5 +283,7 @@ export function buildTimeline(sessionsIn?: TimelineSession[]): TimelineReport {
       pool: seriesPool,
       provenance: selected.provenance,
     },
+    judgeSelectionDistribution,
+    judgeComparability,
   };
 }

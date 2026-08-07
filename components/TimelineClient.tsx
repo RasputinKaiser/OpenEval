@@ -16,6 +16,8 @@ import type { JudgeJobStatus } from "@/lib/insights/judge";
 import { shouldPollJudgeStatus, timelinePollError, timelineRefreshPhase } from "@/lib/timeline-poll-state";
 import { EvidenceComposition } from "./evidence/EvidenceComposition";
 import { EvidenceReview } from "./evidence/EvidenceReview";
+import JudgePicker from "./JudgePicker";
+import type { JudgeSelectionInput } from "@/lib/grader/selection";
 
 
 const MARKER_KINDS: MarkerKind[] = ["skill", "mcp", "subagent", "model"];
@@ -84,6 +86,9 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
   const [timelineStale, setTimelineStale] = useState(Boolean(error || initialData.stale || initialData.refreshing || initialData.refreshError));
   const [timelineError, setTimelineError] = useState<string | null>(error ?? initialData.refreshError ?? null);
   const [jobStatusError, setJobStatusError] = useState<string | null>(null);
+  const [judgeSelection, setJudgeSelection] = useState<JudgeSelectionInput>({ source: "codex", model: "gpt-5.6-luna", reasoningEffort: "high" });
+  const [judgeReadiness, setJudgeReadiness] = useState<{ readiness: string; detail: string }>({ readiness: "unknown", detail: "Checking judge readiness…" });
+  const handleJudgeReadiness = useCallback((next: { readiness: string; detail: string }) => setJudgeReadiness(next), []);
   const [timelineUpdatedAt, setTimelineUpdatedAt] = useState<number | null>(initialData.generatedAtMs ?? null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollInFlightRef = useRef(false);
@@ -146,11 +151,11 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
   }, [kindFilter]);
 
   const sections = useMemo(() => [
-    { id: "overview", label: "Start here", description: "Confirm corpus size, signal coverage, and outcome provenance." },
-    { id: "outcome", label: "Outcome trend", description: "Read the longitudinal outcome series and its evidence limits." },
-    { id: "impact", label: "Measure impact", description: "Compare before-and-after windows around adoption markers." },
-    ...((data.changePoints ?? []).length > 0 ? [{ id: "shifts", label: "Explain shifts", description: "Inspect population-level change points without causal attribution." }] : []),
-    { id: "adoptions", label: "Adoption history", description: "Review when skills, plugins, models, and subagents appeared." },
+    { id: "outcome", label: "Outcome trend", description: "Read the trend and its limits." },
+    { id: "overview", label: "Start here", description: "Check the corpus, signal coverage, and provenance." },
+    { id: "impact", label: "Compare before/after", description: "Compare before/after windows around adoption." },
+    ...((data.changePoints ?? []).length > 0 ? [{ id: "shifts", label: "Explain shifts", description: "See population shifts without claiming a cause." }] : []),
+    { id: "adoptions", label: "Adoption history", description: "See when skills, plugins, models, and subagents first appeared." },
   ], [data.changePoints]);
   const { activeSection, selectSection, isVisible } = useProgressiveSection(sections);
 
@@ -275,7 +280,7 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
       const res = await fetch("/api/collection/timeline/judge", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ all: true }),
+        body: JSON.stringify({ all: true, selection: judgeSelection }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const r = await res.json();
@@ -297,7 +302,7 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
       const res = await fetch("/api/collection/timeline/judge", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ max: 10 }),
+        body: JSON.stringify({ max: 10, selection: judgeSelection }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const r = await res.json();
@@ -340,59 +345,77 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
           : "heuristic",
   };
   const seriesBasis = seriesEvidence.pool === "judged"
-    ? "LLM-judged"
+    ? "model-reviewed"
     : seriesEvidence.provenance === "mixed"
       ? "mixed signal"
       : seriesEvidence.provenance === "judged"
-        ? "judged signal"
+        ? "model-reviewed signal"
       : "signal";
+  const seriesBasisCopy = seriesEvidence.pool === "judged"
+    ? "model-reviewed sessions"
+    : seriesEvidence.provenance === "mixed"
+      ? "a mix of model-reviewed and rule-based signals"
+      : seriesEvidence.provenance === "judged"
+        ? "model-reviewed outcome signals"
+        : "outcome signals";
   const seriesN = seriesEvidence.n;
   const seriesDenominator = seriesEvidence.denominator;
   const seriesCoverage = seriesEvidence.coverage;
+  const retainedJudgeReceiptCount = data.judgeSelectionDistribution?.length
+    ? data.judgeSelectionDistribution.reduce((total, group) => total + group.count, 0)
+    : data.judgedSessions ?? 0;
+  const reviewScoreCount = data.judgeComparability?.denominator ?? data.judgedSessions ?? 0;
+  const reviewMethodCopy = data.judgeComparability?.mixed
+    ? "Saved review records use more than one source or model. Receipts remain intact, but the comparable score uses only the shared denominator."
+    : "Saved review records share one source, model, and prompt version. Receipt count and comparable score count are intentionally different.";
 
   return (
     <div className="min-w-0 p-4 md:p-6 max-w-6xl mx-auto">
       <Link href="/collection" className="inline-flex items-center gap-1 text-xs text-fg-muted hover:text-fg mb-2"><ArrowLeft className="size-3.5" /> Collection</Link>
       <PageHeader
         icon={Activity}
-        title={<>Timeline &amp; Impact</>}
-        subtitle="A longitudinal evidence view for what changed around adoption — descriptive, windowed, and not causal."
+        title={<>Timeline &amp; comparisons</>}
+        subtitle="See what changed around adoption. These are descriptive windows, not causal proof."
         actions={
           <div className="flex flex-wrap items-center gap-2" aria-label="Timeline actions">
             <button
               type="button"
               onClick={() => { void refreshData(); }}
               disabled={timelineLoading}
-              title="Refresh the timeline snapshot and preserve the current report while it loads."
+              title="Refresh the timeline while keeping the current report visible."
               className="inline-flex min-h-10 items-center gap-1.5 rounded-md border border-bd px-2.5 py-2 text-sm text-fg-muted hover:bg-bg-elev hover:text-fg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50"
             >
               <RefreshCw className={clsx("size-3.5", timelineLoading && "animate-spin")} /> {timelineLoading ? "Refreshing…" : "Refresh"}
             </button>
             <details className="relative">
             <summary className="inline-flex min-h-10 cursor-pointer list-none items-center gap-1.5 rounded-md border border-bd px-2.5 py-2 text-sm text-fg-muted hover:bg-bg-elev hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent [&::-webkit-details-marker]:hidden">
-                <Gavel className="size-3.5" /> Evidence tools <ChevronDown className="size-3.5" />
+                <Gavel className="size-3.5" /> Add outcome evidence <ChevronDown className="size-3.5" />
               </summary>
-              <div className="absolute right-0 top-full z-40 mt-2 w-72 rounded-lg border border-bd bg-bg-subtle p-2 shadow-xl">
-                <p className="px-2 py-1 text-[11px] leading-snug text-fg-dim">Judging improves outcome provenance around adoption windows; it does not turn an association into a causal claim.</p>
+              <div className="timeline-judge-popover absolute right-0 top-full z-40 mt-2 rounded-xl border border-bd bg-bg-subtle p-3 shadow-2xl">
+                <p className="px-1 py-1 text-[11px] leading-snug text-fg-dim">Add model-reviewed outcome labels around adoption. They show association, not cause.</p>
+                <div className="my-3 rounded-lg border border-bd-subtle bg-bg/40 px-3 py-3">
+                  <div className="mb-3 text-[10px] font-medium uppercase tracking-wider text-fg-muted">Review method</div>
+                  <JudgePicker value={judgeSelection} onChange={(next) => { setJudgeSelection(next); setJudgeReadiness({ readiness: "unknown", detail: "Checking judge readiness…" }); }} onReadinessChange={handleJudgeReadiness} idPrefix="timeline-judge" />
+                </div>
                 <button
                   type="button"
                   onClick={refineWithJudge}
-                  disabled={judging || !!job?.running}
-                  title="Incrementally judge up to 10 new sessions around adoption windows."
+                  disabled={judging || !!job?.running || judgeReadiness.readiness !== "ready"}
+                  title="Judge up to 10 new sessions in the adoption windows."
                   className="mt-1 flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-fg-muted hover:bg-bg-elev hover:text-fg transition-colors disabled:opacity-50"
                 >
                   <Gavel className={clsx("size-3.5", judging && "animate-pulse")} />
-                  <span><span className="block">{judging ? "Judging…" : "Judge a sample"}</span><span className="block text-[10px] text-fg-dim">Up to 10 new sessions</span></span>
+                  <span><span className="block">{judging ? "Reviewing…" : "Review a sample"}</span><span className="block text-[10px] text-fg-dim">Up to 10 new sessions</span></span>
                 </button>
                 <button
                   type="button"
                   onClick={judgeAllWindows}
-                  disabled={judging || !!job?.running}
-                  title="Background job: judge every unjudged session in the impact windows."
+                  disabled={judging || !!job?.running || judgeReadiness.readiness !== "ready"}
+                  title="Judge every unjudged session in the adoption windows."
                   className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-fg-muted hover:bg-bg-elev hover:text-fg transition-colors disabled:opacity-50"
                 >
                   <Scale className={clsx("size-3.5", job?.running && "animate-pulse")} />
-                  <span><span className="block">{job?.running ? "Judging all…" : "Judge all windows"}</span><span className="block text-[10px] text-fg-dim">Runs in the background and resumes</span></span>
+                  <span><span className="block">{job?.running ? "Reviewing all…" : "Review all windows"}</span><span className="block text-[10px] text-fg-dim">Runs in the background; you can leave this page</span></span>
                 </button>
               </div>
             </details>
@@ -402,26 +425,82 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
         <div className="mt-3 grid gap-2 rounded-lg border border-bd-subtle bg-bg-subtle p-3 md:grid-cols-3" aria-label="How to read this page">
           <div className="flex gap-2">
             <span className="mono text-[10px] text-accent-soft">01</span>
-            <p className="text-[11px] leading-snug text-fg-muted"><span className="font-medium text-fg">Start with outcome.</span> Check whether the inferred trend is comparable before reading deltas.</p>
+            <p className="text-[11px] leading-snug text-fg-muted"><span className="font-medium text-fg">Start with the outcome.</span> Check that the two halves are comparable before reading changes.</p>
           </div>
           <div className="flex gap-2">
             <span className="mono text-[10px] text-accent-soft">02</span>
-            <p className="text-[11px] leading-snug text-fg-muted"><span className="font-medium text-fg">Compare windows.</span> Adoption rows show before/after medians with exact usable n.</p>
+            <p className="text-[11px] leading-snug text-fg-muted"><span className="font-medium text-fg">Compare windows.</span> Each adoption row shows before/after medians and usable sample sizes.</p>
           </div>
           <div className="flex gap-2">
             <span className="mono text-[10px] text-accent-soft">03</span>
-            <p className="text-[11px] leading-snug text-fg-muted"><span className="font-medium text-fg">Check context.</span> Global shifts are population signals, not attribution.</p>
+            <p className="text-[11px] leading-snug text-fg-muted"><span className="font-medium text-fg">Check context.</span> Global shifts show what changed across the corpus, not what caused it.</p>
           </div>
         </div>
       </PageHeader>
 
-      <ProgressiveSectionNav
-        sections={sections}
-        activeSection={activeSection}
-        onSelect={selectSection}
-        summary={`${data.totalSessions} top-level sessions · ${pct(data.signalCoverage)} signal${data.excludedSubagentSessions ? ` · ${data.excludedSubagentSessions} child traces retained` : ""}`}
-      />
+      <div className="lg:hidden">
+        <ProgressiveSectionNav
+          sections={sections}
+          activeSection={activeSection}
+          onSelect={selectSection}
+          summary={`${data.totalSessions} top-level sessions · ${pct(data.signalCoverage)} signal${data.excludedSubagentSessions ? ` · ${data.excludedSubagentSessions} child traces retained` : ""}`}
+        />
+      </div>
 
+      <div className="lg:grid lg:grid-cols-[minmax(11rem,13rem)_minmax(0,1fr)] lg:items-start lg:gap-6">
+        <aside className="hidden lg:sticky lg:top-4 lg:block lg:self-start" aria-label="Timeline evidence rail">
+          <nav className="rounded-lg border border-bd bg-bg-subtle p-2" aria-label="Timeline evidence navigation">
+            <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-fg-muted">Evidence room</div>
+            <div className="mt-2 rounded-md border border-bd-subtle bg-bg-elev px-2 py-2" aria-label="Timeline evidence status">
+              <div className="text-[9px] uppercase tracking-wider text-fg-dim">Current status</div>
+              <div className={clsx("mt-1 text-[11px] font-medium", timelinePhase === "fresh" ? "text-ok" : timelinePhase === "error" ? "text-err" : "text-warn")}>
+                {timelinePhase === "fresh" ? "Up to date" : timelinePhase === "loading" ? "Updating" : timelinePhase === "stale" ? "May be out of date" : "Update needs attention"}
+              </div>
+            </div>
+            <div className="mt-3 space-y-1" aria-label="Timeline sections">
+              <button
+                type="button"
+                onClick={() => selectSection("all")}
+                aria-pressed={activeSection === "all"}
+                aria-current={activeSection === "all" ? "page" : undefined}
+                className={clsx(
+                  "flex min-h-10 w-full items-start justify-between gap-2 rounded-md border px-2 py-1.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
+                  activeSection === "all" ? "border-accent/50 bg-accent/10 text-accent-soft" : "border-transparent text-fg-muted hover:bg-bg-elev hover:text-fg",
+                )}
+              >
+                <span className="min-w-0"><span className="block text-xs font-medium">All evidence</span><span className="block truncate text-[10px] text-fg-dim">Full report</span></span>
+                <span className="mono shrink-0 text-[9px] text-fg-dim">{sections.length}</span>
+              </button>
+              {sections.map((section, index) => (
+                <button
+                  key={section.id}
+                  type="button"
+                  onClick={() => selectSection(section.id)}
+                  aria-pressed={activeSection === section.id}
+                  aria-current={activeSection === section.id ? "page" : undefined}
+                  className={clsx(
+                    "flex min-h-10 w-full items-start gap-2 rounded-md border px-2 py-1.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
+                    activeSection === section.id ? "border-accent/50 bg-accent/10 text-accent-soft" : "border-transparent text-fg-muted hover:bg-bg-elev hover:text-fg",
+                  )}
+                >
+                  <span className="mono w-5 shrink-0 pt-0.5 text-[9px] text-fg-dim">{String(index + 1).padStart(2, "0")}</span>
+                  <span className="min-w-0"><span className="block text-xs font-medium">{section.label}</span><span className="block truncate text-[10px] text-fg-dim">{section.description}</span></span>
+                </button>
+              ))}
+            </div>
+            <div className="mt-3 border-t border-bd-subtle px-2 pt-3" aria-label="Score and receipt counts">
+              <div className="text-[9px] font-medium uppercase tracking-wider text-fg-muted">Outcome source</div>
+              <div className="mt-1 mono text-sm font-semibold tabular-nums text-fg">{seriesN}/{seriesDenominator}</div>
+              <div className="text-[10px] leading-snug text-fg-dim">top-level sessions with signal</div>
+              <div className="mt-2 text-[9px] font-medium uppercase tracking-wider text-fg-muted">Judge receipts</div>
+              <div className="mt-1 mono text-sm font-semibold tabular-nums text-fg">{retainedJudgeReceiptCount}</div>
+              <div className="text-[10px] leading-snug text-fg-dim">saved review records</div>
+              <p className="mt-2 text-[10px] leading-snug text-fg-dim">Receipt count ≠ comparable score denominator.</p>
+            </div>
+          </nav>
+        </aside>
+
+        <div className="min-w-0">
       <div
         className={clsx(
           "mb-4 flex flex-wrap items-center gap-2 rounded-lg border p-3 text-sm",
@@ -439,7 +518,7 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
         {(timelinePhase === "stale" || timelinePhase === "error") && <AlertTriangle className="size-4 shrink-0" />}
         <span className="min-w-0 flex-1">
           {timelinePhase === "fresh" && <>Timeline evidence fresh{timelineUpdatedAt ? ` · updated ${new Date(timelineUpdatedAt).toLocaleTimeString()}` : " · loaded from the server"}.</>}
-          {timelinePhase === "loading" && <>Refreshing timeline evidence… The current report remains visible until the refresh completes.</>}
+          {timelinePhase === "loading" && <>Refreshing timeline… The current report stays visible.</>}
           {timelinePhase === "stale" && <>Timeline evidence may be stale while judge-window results finish. The current report remains visible.</>}
           {timelinePhase === "error" && <><span className="font-medium">{timelineError ? "Timeline evidence refresh failed." : "Judge-window status unavailable."}</span> <span className="text-fg-muted">{timelineStatusError ?? "The current report may be stale."}</span></>}
         </span>
@@ -455,33 +534,28 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
         )}
       </div>
 
-      {err && <div className="card p-3 mb-4 text-sm text-err flex items-center gap-2"><AlertTriangle className="size-4" /> {err}</div>}
-      {judgeMsg && <div className="card p-3 mb-4 text-sm text-fg-muted flex items-center gap-2"><Gavel className="size-4 text-accent-soft" /> {judgeMsg}</div>}
-      {job && job.startedAt && (job.running || job.total > 0 || job.failed > 0) && (
-        <div className="card p-3 mb-4 text-sm text-fg-muted">
-          <div className="flex items-center gap-2">
-            <Scale className={clsx("size-4 text-accent-soft shrink-0", job.running && "animate-pulse")} />
-            {job.running
-              ? <>Judging marker windows: <span className="mono tabular-nums text-fg">{job.done}/{job.total}</span>{job.failed > 0 && <span className="text-warn"> ({job.failed} failed)</span>} via {job.judge} — safe to leave this page.</>
-              : <>Background judging finished: {job.judged}/{job.total} judged{job.failed > 0 && <span className="text-warn"> ({job.failed} failed{job.lastError ? ` — ${job.lastError}` : ""})</span>} via {job.judge}.</>}
+      {isVisible("outcome") && <section id="outcome" className={clsx("scroll-mt-16 mb-6", sectionVisibilityClass(true))}>
+        <SectionHeader
+          icon={LineChart}
+          title="Outcome trend"
+          desc="Outcome over time. Adoption and global shifts provide context, not causal proof."
+          right={`${seriesN}/${seriesDenominator} ${seriesBasis} sessions · ${trendComparable ? "comparable" : "not comparable"} · ${data.outcomeSeries.length} plotted`}
+        />
+        <div className="card min-w-0 p-4">
+          <div className="mb-3 flex items-start gap-2 rounded-md border border-bd-subtle bg-bg-elev p-2.5 text-[11px] leading-snug text-fg-muted" role="note">
+            <Info className="mt-0.5 size-3.5 shrink-0 text-accent-soft" aria-hidden />
+            <span><span className="font-medium text-fg">Read this line as a bounded summary.</span> It is a trailing median from {seriesBasisCopy}, using {seriesN}/{seriesDenominator} top-level sessions ({pct(seriesCoverage)}). The two halves are {trendComparable ? "comparable" : "not comparable"}. {retainedJudgeReceiptCount} judge receipts are retained separately, and missing-signal sessions are not counted as zero. {data.outcomeSeries.length} points are plotted after downsampling.</span>
           </div>
-          {job.running && job.total > 0 && (
-            <div className="mt-2 h-[5px] rounded-full bg-bg-elev overflow-hidden" role="progressbar" aria-label="Judge-window progress" aria-valuemin={0} aria-valuemax={job.total} aria-valuenow={job.done} aria-valuetext={`${job.done} of ${job.total} sessions judged`}>
-              <div
-                className="h-full rounded-full transition-[width] duration-500"
-                style={{ width: `${Math.min(100, (job.done / job.total) * 100)}%`, background: "var(--color-accent)" }}
-              />
-            </div>
-          )}
+          <OutcomeChart series={data.outcomeSeries} markers={visibleMarkers} changePoints={data.changePoints ?? []} evidence={seriesEvidence} />
         </div>
-      )}
+      </section>}
 
       {isVisible("overview") && <section id="overview" aria-label="Timeline evidence overview" className={clsx("scroll-mt-16 stagger-grid grid grid-cols-1 md:grid-cols-3 gap-3 mb-6", sectionVisibilityClass(true))}>
         <div className="col-span-full mb-1 flex flex-wrap items-end justify-between gap-2">
           <div>
             <div className="text-[10px] uppercase tracking-[0.16em] text-accent-soft">Decision snapshot</div>
-            <h2 className="mt-1 text-base font-semibold tracking-tight">How much evidence is usable?</h2>
-            <p className="mt-1 max-w-2xl text-xs leading-relaxed text-fg-muted">Observed adoption, inferred outcomes, and judge provenance stay separate so a strong-looking delta is never mistaken for a causal result.</p>
+            <h2 className="mt-1 text-base font-semibold tracking-tight">Evidence at a glance</h2>
+            <p className="mt-1 max-w-2xl text-xs leading-relaxed text-fg-muted">Adoption, outcome, and judge evidence stay separate so a promising change is not mistaken for a causal result.</p>
           </div>
           <div className="text-right text-[10px] text-fg-dim">
             <div>Observed window</div>
@@ -535,32 +609,32 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
             <span className="mono tabular-nums">{data.signalSessions ?? Math.round(data.signalCoverage * data.totalSessions)}</span> of {data.totalSessions} sessions with outcome signal
             {(data.judgedSessions ?? 0) > 0 && (
               <span className="text-accent-soft">
-                {" "}· <span className="mono tabular-nums">{data.judgedSessions}</span> LLM-judged
+                {" "}· <span className="mono tabular-nums">{data.judgedSessions}</span> model-reviewed
               </span>
             )}
           </div>
           <EvidenceComposition
             className="mt-2"
-            label="Outcome provenance"
+            label="Outcome basis"
             total={data.totalSessions}
-            note="Judged and heuristic scores are different evidence sources."
+            note={`Model-reviewed and rule-based scores use different evidence sources; the comparable score denominator is separate from the ${retainedJudgeReceiptCount} saved review record${retainedJudgeReceiptCount === 1 ? "" : "s"}.`}
             segments={[
-              { label: "judged", value: data.judgedSessions ?? Math.round(data.judgedCoverage * data.totalSessions), tone: "judged" },
-              { label: "heuristic", value: data.heuristicSignalSessions ?? Math.round(Math.max(0, data.signalCoverage - data.judgedCoverage) * data.totalSessions), tone: "heuristic" },
-              { label: "no signal", value: data.noSignalSessions ?? Math.round(Math.max(0, 1 - data.signalCoverage) * data.totalSessions), tone: "none" },
+              { label: "Model-reviewed", value: data.judgedSessions ?? Math.round(data.judgedCoverage * data.totalSessions), tone: "judged" },
+              { label: "Rule-based", value: data.heuristicSignalSessions ?? Math.round(Math.max(0, data.signalCoverage - data.judgedCoverage) * data.totalSessions), tone: "heuristic" },
+              { label: "No outcome signal", value: data.noSignalSessions ?? Math.round(Math.max(0, 1 - data.signalCoverage) * data.totalSessions), tone: "none" },
             ]}
           />
         </div>
         <div className="card p-3">
-          <div className="text-[10px] uppercase tracking-wider text-fg-muted">Impact candidates</div>
+          <div className="text-[10px] uppercase tracking-wider text-fg-muted">Comparisons</div>
           <div className="text-lg mono font-semibold tabular-nums mt-0.5">{data.impacts.length}</div>
           <div className="text-[11px] text-fg-dim">adoptions with comparison history</div>
           <div className="mt-2 space-y-1.5 border-t border-bd-subtle pt-2 text-[10px] text-fg-dim">
             <div className="flex items-center justify-between gap-2"><span>Low-confidence rows</span><span className="mono tabular-nums text-warn">{lowConfidenceImpactCount}</span></div>
-            <div className="flex items-center justify-between gap-2"><span>LLM-judged coverage</span><span className="mono tabular-nums text-accent-soft">{pct(data.judgedCoverage)}</span></div>
+            <div className="flex items-center justify-between gap-2"><span>Model-reviewed coverage</span><span className="mono tabular-nums text-accent-soft">{pct(data.judgedCoverage)}</span></div>
             <div className="flex items-center justify-between gap-2"><span>Window basis</span><span className="mono tabular-nums">20 / 20</span></div>
           </div>
-          <p className="mt-2 text-[10px] leading-snug text-fg-dim">Rows without enough outcome evidence stay visible as not comparable.</p>
+          <p className="mt-2 text-[10px] leading-snug text-fg-dim">Rows with too little outcome evidence stay visible and are marked not comparable.</p>
         </div>
       </section>}
 
@@ -571,7 +645,7 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
               <Filter className="size-3.5 text-accent-soft" aria-hidden />
               <h2 id="adoption-scope-title" className="text-xs font-semibold">Adoption scope</h2>
             </div>
-            <p className="mt-1 max-w-2xl text-[11px] leading-snug text-fg-dim">Filter adoption overlays, comparison rows, and history by marker kind. Global shifts remain visible and are never attributed by this control.</p>
+            <p className="mt-1 max-w-2xl text-[11px] leading-snug text-fg-dim">Filter adoption markers, comparison rows, and history by kind. Global shifts stay visible and are never attributed by this filter.</p>
           </div>
           <div className="text-[10px] text-fg-dim mono tabular-nums" aria-live="polite">{visibleMarkers.length} markers · {visibleImpacts.length} comparisons</div>
         </div>
@@ -609,27 +683,111 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
         </div>
       </section>
 
-      {isVisible("outcome") && <section id="outcome" className={clsx("scroll-mt-16 mb-6", sectionVisibilityClass(true))}>
-        <SectionHeader
-          icon={LineChart}
-          title="Outcome trend"
-          desc="Inferred outcome over time; adoption markers and global shifts are context, not proof of cause"
-          right={`${seriesN}/${seriesDenominator} ${seriesBasis} sessions · ${data.outcomeSeries.length} plotted`}
-        />
-        <div className="card min-w-0 p-4">
-          <div className="mb-3 flex items-start gap-2 rounded-md border border-bd-subtle bg-bg-elev p-2.5 text-[11px] leading-snug text-fg-muted" role="note">
-            <Info className="mt-0.5 size-3.5 shrink-0 text-accent-soft" aria-hidden />
-            <span><span className="font-medium text-fg">Read the line as bounded evidence.</span> The series is a trailing median over {seriesBasis === "LLM-judged" ? "LLM-judged sessions only" : seriesBasis === "mixed signal" ? "sessions with mixed judged and heuristic signal" : seriesBasis === "judged signal" ? "sessions with judged outcome signal (the legacy report does not identify a judged-only pool)" : "sessions with outcome signal"}; source n={seriesN}/{seriesDenominator} top-level ({pct(seriesCoverage)}). {data.outcomeSeries.length} points are plotted after downsampling; missing-signal sessions are not silently treated as zero.</span>
+      {err && <div className="card p-3 mb-4 text-sm text-err flex items-center gap-2"><AlertTriangle className="size-4" /> {err}</div>}
+      {judgeMsg && (
+        <div className="timeline-judge-result mb-4 rounded-xl border" role="status">
+          <div className="timeline-judge-result__icon" aria-hidden>
+            <Gavel className="size-4" />
           </div>
-          <OutcomeChart series={data.outcomeSeries} markers={visibleMarkers} changePoints={data.changePoints ?? []} evidence={seriesEvidence} />
+          <div className="min-w-0">
+            <div className="timeline-judge-result__eyebrow">Latest review run</div>
+            <div className="timeline-judge-result__message">{judgeMsg}</div>
+          </div>
         </div>
-      </section>}
+      )}
+      {data.judgeSelectionDistribution && data.judgeSelectionDistribution.length > 0 && (
+        <div className={clsx("timeline-review-status mb-4 rounded-xl border p-3 text-sm", data.judgeComparability?.mixed && "timeline-review-status--mixed")} role="status">
+          <div className="timeline-review-status__main">
+            <div className="timeline-review-status__summary">
+              <div className="timeline-review-status__title-row">
+                <span className={clsx("timeline-review-status__icon shrink-0", data.judgeComparability?.mixed ? "text-warn" : "text-ok")} aria-hidden>
+                  {data.judgeComparability?.mixed ? <Info className="size-4" /> : <CheckCircle2 className="size-4" />}
+                </span>
+                <div className="min-w-0">
+                  <div className="timeline-review-status__eyebrow">Review evidence</div>
+                  <div className="font-medium text-fg">{data.judgeComparability?.mixed ? "Multiple review methods" : "Review method recorded"}</div>
+                </div>
+              </div>
+              <p className={clsx("timeline-review-status__copy", data.judgeComparability?.mixed ? "text-warn" : "text-fg-muted")}>
+                {data.judgeComparability?.mixed ? `${data.judgeComparability.warning} ${reviewMethodCopy}` : reviewMethodCopy}
+              </p>
+            </div>
+            <div className="timeline-review-status__stats" aria-label="Review evidence counts">
+              <span className="timeline-review-stat"><span>Saved receipts</span><strong>{retainedJudgeReceiptCount}</strong></span>
+              <span className="timeline-review-stat"><span>Comparable scores</span><strong>{reviewScoreCount}</strong></span>
+            </div>
+          </div>
+          <div className="timeline-review-status__methods" aria-label="Recorded review methods">
+            <div className="timeline-review-status__methods-heading">Saved review methods</div>
+            <div className="timeline-review-status__method-list">
+              {data.judgeSelectionDistribution.map((group) => {
+                const sourceLabel = group.source === "unknown" ? "Source unavailable" : group.source;
+                const modelLabel = group.model === "unknown" ? "Model unavailable" : group.model;
+                return (
+                  <span key={`${group.source}-${group.model}-${group.promptVersion}`} className="timeline-review-method">
+                    <span className="timeline-review-method__identity">{sourceLabel} · {modelLabel}</span>
+                    <span className="timeline-review-method__meta">{group.reasoningEffort ? `${group.reasoningEffort} · ` : ""}prompt v{group.promptVersion ?? "?"} · {group.count} receipt{group.count === 1 ? "" : "s"}</span>
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+      {job && job.startedAt && (job.running || job.total > 0 || job.failed > 0) && (
+        <div className="timeline-job-receipt mb-4 rounded-xl border">
+          <div className="timeline-job-receipt__summary">
+            <div className="timeline-job-receipt__icon" aria-hidden>
+              <Scale className={clsx("size-4", job.running && "animate-pulse")} />
+            </div>
+            <div className="min-w-0">
+              <div className="timeline-job-receipt__eyebrow">{job.running ? "Background review in progress" : "Background review finished"}</div>
+              <div className="timeline-job-receipt__message">
+                {job.running
+                  ? <>Judging marker windows: <span className="mono tabular-nums text-fg">{job.done}/{job.total}</span>{job.failed > 0 && <span className="text-warn"> ({job.failed} failed)</span>} via {job.selection?.judgeName ?? job.judge} — safe to leave this page.</>
+                  : <>Background judging finished: {job.judged}/{job.total} judged{job.failed > 0 && <span className="text-warn"> ({job.failed} failed{job.lastError ? ` — ${job.lastError}` : ""})</span>} via {job.selection?.judgeName ?? job.judge}.</>}
+              </div>
+            </div>
+            <span className={clsx("timeline-job-receipt__state", job.running && "timeline-job-receipt__state--live", !job.running && job.state === "interrupted" && "timeline-job-receipt__state--warn")}>{job.running ? "running" : job.state}</span>
+          </div>
+          <div className="timeline-job-receipt__details" aria-label="Durable judge job receipt">
+            <div className="timeline-job-receipt__details-heading">
+              <div className="timeline-job-receipt__details-title">Durable job receipt</div>
+              <div className="timeline-job-receipt__details-caption">Persisted run metadata</div>
+            </div>
+            <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 text-[10px] sm:grid-cols-4">
+              <div><dt className="text-fg-dim">State</dt><dd className="mono text-fg-muted">{job.state}</dd></div>
+              <div><dt className="text-fg-dim">Judge source</dt><dd className="mono break-all text-fg-muted">{job.selection?.source ?? "legacy"}</dd></div>
+              <div><dt className="text-fg-dim">Model</dt><dd className="mono break-all text-fg-muted">{(job.selection?.model ?? job.judge) || "—"}</dd></div>
+              <div><dt className="text-fg-dim">Effort</dt><dd className="mono text-fg-muted">{job.selection?.reasoningEffort ?? "—"}</dd></div>
+              <div><dt className="text-fg-dim">Started</dt><dd className="mono text-fg-muted">{new Date(job.startedAt).toLocaleString()}</dd></div>
+              <div><dt className="text-fg-dim">Finished</dt><dd className="mono text-fg-muted">{job.finishedAt ? new Date(job.finishedAt).toLocaleString() : "in progress"}</dd></div>
+              <div><dt className="text-fg-dim">Lease</dt><dd className="mono text-fg-muted">{job.running ? (job.leaseExpiresAt ? `until ${new Date(job.leaseExpiresAt).toLocaleTimeString()}` : "active") : "released"}</dd></div>
+              <div><dt className="text-fg-dim">Counts</dt><dd className="mono tabular-nums text-fg-muted">{job.judged} judged · {job.failed} failed</dd></div>
+            </dl>
+            {job.lastError && (
+              <div className="timeline-job-receipt__recovery text-warn">
+                <AlertTriangle className="size-3.5 shrink-0" aria-hidden />
+                <span><span className="font-medium">Recovery detail:</span> {job.lastError}</span>
+              </div>
+            )}
+          </div>
+          {job.running && job.total > 0 && (
+            <div className="mt-2 h-[5px] rounded-full bg-bg-elev overflow-hidden" role="progressbar" aria-label="Judge-window progress" aria-valuemin={0} aria-valuemax={job.total} aria-valuenow={job.done} aria-valuetext={`${job.done} of ${job.total} sessions judged`}>
+              <div
+                className="h-full rounded-full transition-[width] duration-500"
+                style={{ width: `${Math.min(100, (job.done / job.total) * 100)}%`, background: "var(--color-accent)" }}
+              />
+            </div>
+          )}
+        </div>
+      )}
 
       {isVisible("impact") && <section id="impact" className={clsx("scroll-mt-16 mb-6", sectionVisibilityClass(true))}>
         <SectionHeader
           icon={GitCompareArrows}
           title="Adoption comparisons"
-          desc="Windowed before/after evidence around first use — correlational, with caveats kept in view"
+          desc="Before/after windows around first use. Correlation only; caveats stay visible."
           right={`${renderedImpacts.length}/${visibleImpacts.length} rows${kindFilter === "all" ? "" : ` · ${data.impacts.length} total`}`}
         />
         <div className="card min-w-0 overflow-hidden">
@@ -691,10 +849,10 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
                           outcome n={im.outcomeNBefore ?? im.signalBefore ?? im.nBefore}/{im.outcomeNAfter ?? im.signalAfter ?? im.nAfter} · pool {im.outcomePoolBefore}/{im.outcomePoolAfter}
                         </span>
                         {im.judgedBefore > 0 || im.judgedAfter > 0 ? (
-                          <span className={im.judgedBefore >= 5 && im.judgedAfter >= 5 ? "text-accent-soft" : "text-fg-dim"} title={im.judgedBefore >= 5 && im.judgedAfter >= 5 ? "Outcome medians on both sides use LLM-judged verdicts only" : "Some sessions are LLM-judged; judged-only medians require 5 per side"}>
-                            judged {im.judgedBefore}/{im.judgedAfter}
+                          <span className={im.judgedBefore >= 5 && im.judgedAfter >= 5 ? "text-accent-soft" : "text-fg-dim"} title={im.judgedBefore >= 5 && im.judgedAfter >= 5 ? "Outcome medians on both sides use model-reviewed verdicts only" : "Some sessions are model-reviewed; reviewed-only medians require 5 per side"}>
+                            reviewed {im.judgedBefore}/{im.judgedAfter}
                           </span>
-                        ) : <span>judged 0/0</span>}
+                        ) : <span>reviewed 0/0</span>}
                       </div>
                       {/* Keep the legacy title-level sample explanation available to pointer users. */}
                       <span className="sr-only">
@@ -750,12 +908,12 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
           <SectionHeader
             icon={Zap}
             title="Global shifts (context)"
-            desc="Population-level change points, independent of adoption filters and not attribution"
+            desc="Population changes that add context; not attribution."
             right={`${(data.changePoints ?? []).length} detected`}
           />
           <div className="card min-w-0 overflow-hidden">
           <div className="border-b border-bd-subtle px-3 py-3 text-[11px] leading-snug text-fg-dim">
-            <span className="font-medium text-fg">What this section means.</span> These are two-window mean shifts (z ≥ 3) detected across the outcome metrics. Nearby markers are listed as context only; no row claims that an adoption caused the shift.
+            <span className="font-medium text-fg">What this section means.</span> These are two-window outcome shifts (z ≥ 3). Nearby markers add context; no row claims that an adoption caused the shift.
           </div>
           <div className="overflow-x-auto">
             <table className="data-table min-w-[640px]">
@@ -809,12 +967,12 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
         <SectionHeader
           icon={CalendarPlus}
           title="Adoption history"
-          desc="Observed first-use markers — descriptive history, not a causal ranking"
+          desc="When each adoption first appeared. Not an effectiveness ranking."
           right={`${renderedMarkers.length}/${visibleMarkers.length} shown${kindFilter === "all" ? "" : ` · ${data.markers.length} total`}`}
         />
         <div className="card min-w-0 overflow-hidden">
         <div className="border-b border-bd-subtle px-4 py-3 text-[11px] leading-snug text-fg-dim">
-          Each marker records when it first appeared and how often it was observed. Child-only and both-scope labels preserve where the evidence came from; frequency is not effectiveness.
+          Each marker records when it first appeared and how often it was seen. Scope labels show where it came from; frequency is not effectiveness.
         </div>
         <div className="max-h-[480px] overflow-y-auto px-4 py-3" aria-label="Adoption history list">
           {(() => {
@@ -903,6 +1061,8 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
         )}
         </div>
       </section>}
+        </div>
+      </div>
     </div>
   );
 }

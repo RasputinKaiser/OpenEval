@@ -1,4 +1,6 @@
 import { getRun, listEvents, recentEventCursor } from "@/lib/db";
+import type { RunRecord } from "@/lib/types";
+import { internalError } from "@/lib/api-http";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -70,9 +72,17 @@ function resolveLastEventId(request: Request): number {
 
 export async function GET(request: Request, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
-  const run = getRun(params.id);
+  let run: RunRecord | null;
+  try {
+    run = getRun(params.id);
+  } catch (error) {
+    return internalError("Run event stream unavailable", error);
+  }
   if (!run) {
-    return new Response("Run not found", { status: 404 });
+    return new Response(JSON.stringify({ error: "Run not found", detail: `No run with id "${params.id}".` }), {
+      status: 404,
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+    });
   }
 
   const pollMs = envInt("OPENEVAL_SSE_POLL_MS", 600, 25);
@@ -81,7 +91,12 @@ export async function GET(request: Request, props: { params: Promise<{ id: strin
 
   let sinceId = resolveLastEventId(request);
   const recentActivity = new URL(request.url).searchParams.get("activity") === "recent";
-  const boundedCursor = recentActivity && sinceId === 0 ? recentEventCursor(params.id, EVENT_BATCH) : 0;
+  let boundedCursor = 0;
+  try {
+    boundedCursor = recentActivity && sinceId === 0 ? recentEventCursor(params.id, EVENT_BATCH) : 0;
+  } catch (error) {
+    return internalError("Run event stream unavailable", error);
+  }
   if (boundedCursor > 0) sinceId = boundedCursor;
   let closed = false;
   let interval: ReturnType<typeof setInterval> | undefined;
@@ -155,7 +170,16 @@ export async function GET(request: Request, props: { params: Promise<{ id: strin
         }
         // Guaranteed close: a terminal (or deleted) run ends the stream even
         // when no run_completed/run_fatal event was ever written.
-        const current = getRun(params.id);
+        let current: RunRecord | null;
+        try {
+          current = getRun(params.id);
+        } catch (error) {
+          try {
+            controller.enqueue(encoder.encode(`event: run_stream_error\ndata: ${JSON.stringify({ kind: "run_stream_error", case_id: null, at: Date.now(), data: { error: "Run event stream unavailable", detail: error instanceof Error ? error.message : String(error) } })}\n\n`));
+          } catch {}
+          stop();
+          return;
+        }
         if (current && isTerminalRun(current)) {
           // A run can become terminal without persisting a lifecycle event
           // (crash, force-cancel, or an older runner). Emit a control frame so

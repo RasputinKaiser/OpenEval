@@ -89,6 +89,11 @@ test("collection session identity is source-qualified when harness ids collide",
   const second = { sourceId: "claude", sessionId: "same-session", path: undefined };
   assert.notEqual(collectionSessionIdentity(first), collectionSessionIdentity(second));
   assert.equal(collectionSessionIdentity(first), "codex\u0000same-session");
+  assert.equal(
+    collectionSessionIdentity({ sourceId: "codex", sessionId: "same-session", path: "/old/session.jsonl" }),
+    collectionSessionIdentity({ sourceId: "codex", sessionId: "same-session", path: "/current/session.jsonl" }),
+    "a moved transcript remains the same source-qualified session",
+  );
 });
 
 test("curated extras never duplicate an adapter's root", () => {

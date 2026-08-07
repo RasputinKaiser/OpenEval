@@ -62,7 +62,7 @@ export default function RecentSessions({ sessions, referenceTimeMs }: { sessions
         );
         const cls = "group flex min-h-14 min-w-0 items-center gap-3 rounded-lg py-2.5 outline-none transition-colors focus-visible:bg-bg-elev focus-visible:ring-2 focus-visible:ring-accent";
         return s.path ? (
-          <Link key={`${s.sourceId}-${s.sessionId}-${i}`} href={`/collection/session?file=${encodeURIComponent(s.path)}`} className={clsx(cls, "recent-session-row -mx-2 px-2 hover:bg-bg-elev")}>
+          <Link key={`${s.sourceId}-${s.sessionId}-${i}`} href={`/collection/session?sourceId=${encodeURIComponent(s.sourceId)}&sessionId=${encodeURIComponent(s.sessionId)}`} className={clsx(cls, "recent-session-row -mx-2 px-2 hover:bg-bg-elev")}>
             {inner}
           </Link>
         ) : (

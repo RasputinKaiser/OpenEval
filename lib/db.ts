@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { DB_PATH, ROOT, TRANSCRIPTS_DIR, WORKDIRS_DIR, ensureDirs } from "./config";
 import type { RunCaseRecord, RunRecord, RunSummary } from "./types";
+import type { RawOutputCapture } from "./runner/raw-output";
 
 let db: Database.Database | null = null;
 let triedCorruptionRecovery = false;
@@ -128,6 +129,7 @@ CREATE TABLE IF NOT EXISTS run_cases (
   ended_at INTEGER,
   workdir_path TEXT NOT NULL,
   transcript_path TEXT,
+  raw_output_json TEXT,
   runner_kind TEXT NOT NULL,
   runner_result_json TEXT,
   grader_result_json TEXT,
@@ -175,6 +177,7 @@ const MIGRATIONS: Array<{ version: number; apply: (conn: Database.Database) => v
       conn.exec("UPDATE run_cases SET evaluation_json = NULL WHERE evaluation_json = grader_result_json");
     },
   },
+  { version: 2, apply: () => {} },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.reduce((max, m) => Math.max(max, m.version), 0);
@@ -214,6 +217,7 @@ function migrate(conn: Database.Database) {
   add("budget_exceeded", "INTEGER DEFAULT 0");
   add("sample", "INTEGER DEFAULT 0");
   add("harness_info_json", "TEXT");
+  add("raw_output_json", "TEXT");
 
   const legacyVersion = Number(conn.prepare("PRAGMA user_version").pluck().get() ?? 0);
   const applied = new Set(
@@ -541,6 +545,24 @@ export interface RunQuery {
   tags?: string[];
 }
 
+export const PERSISTED_TRANSCRIPT_CAP = 240;
+export const PERSISTED_TOOL_CALL_CAP = 128;
+export const PERSISTED_TOKEN_SEGMENT_CAP = 256;
+export const PERSISTED_TEXT_CAP = 4_000;
+export const PERSISTED_TOOL_TEXT_CAP = 2_000;
+export const PERSISTED_GRADER_RESULT_CAP = 64;
+export const PERSISTED_GRADER_TEXT_CAP = 4_000;
+function boundedText(value: unknown, max = PERSISTED_TEXT_CAP): string { return typeof value === "string" ? value.slice(0, max) : String(value ?? ""); }
+function boundedJson(value: unknown, max = PERSISTED_TOOL_TEXT_CAP): unknown { if (typeof value === "string") return value.slice(0, max); try { const json = JSON.stringify(value); return !json || json.length <= max ? value : json.slice(0, max) + "…[projection truncated]"; } catch { return "[unserializable projection]"; } }
+export function boundRunnerResult(result: any): any {
+  if (!result || typeof result !== "object") return null;
+  return { ...result, rawJson: null, rawOutput: undefined,
+    transcript: Array.isArray(result.transcript) ? result.transcript.slice(0, PERSISTED_TRANSCRIPT_CAP).map((e: any) => ({ role: e?.role, uuid: boundedText(e?.uuid, 256), atMs: e?.atMs, textLen: e?.textLen, content: Array.isArray(e?.content) ? e.content.slice(0, 8).map((b: any) => ({ type: b?.type, id: b?.id, name: b?.name, text: b?.text === undefined ? undefined : boundedText(b.text, PERSISTED_TOOL_TEXT_CAP), input: b?.input === undefined ? undefined : boundedJson(b.input), tool_use_id: b?.tool_use_id, content: b?.content === undefined ? undefined : boundedText(b.content, PERSISTED_TOOL_TEXT_CAP), is_error: b?.is_error })) : [] })) : [],
+    toolCalls: Array.isArray(result.toolCalls) ? result.toolCalls.slice(0, PERSISTED_TOOL_CALL_CAP).map((t: any) => ({ id: boundedText(t?.id, 256), name: boundedText(t?.name, 256), input: t?.input === undefined ? undefined : boundedJson(t.input), output: t?.output === undefined ? undefined : boundedText(t.output, PERSISTED_TOOL_TEXT_CAP), isError: !!t?.isError, atMs: t?.atMs, durationMs: t?.durationMs })) : [],
+    finalText: boundedText(result.finalText), resultText: boundedText(result.resultText), tokenSegments: Array.isArray(result.tokenSegments) ? result.tokenSegments.slice(0, PERSISTED_TOKEN_SEGMENT_CAP) : [], toolCallCounts: Object.fromEntries(Object.entries(result.toolCallCounts ?? {}).slice(0, PERSISTED_TOOL_CALL_CAP).map(([k, v]) => [boundedText(k, 256), Number(v) || 0])) };
+}
+export function boundEvaluation(evaluation: any): any { if (!evaluation || typeof evaluation !== "object") return null; return { passed: !!evaluation.passed, passRatio: Number(evaluation.passRatio) || 0, durationMs: Number(evaluation.durationMs) || 0, results: Array.isArray(evaluation.results) ? evaluation.results.slice(0, PERSISTED_GRADER_RESULT_CAP).map((r: any) => ({ ...r, detail: boundedText(r?.detail, 1_000), output: r?.output === undefined ? undefined : boundedText(r.output, PERSISTED_GRADER_TEXT_CAP), spec: r?.spec })) : [] }; }
+
 export function insertRun(run: RunRecord): void {
   getDb().prepare(
     `INSERT INTO runs (id, name, status, created_at, ended_at, params_json, summary_json, manifest_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
@@ -643,14 +665,13 @@ export function getRunCaseBySeq(runId: string, seq: number): RunCaseRecord | nul
 
 export function insertRunCase(rc: RunCaseRecord & { seq: number }): void {
   getDb().prepare(
-    `INSERT INTO run_cases (id, run_id, case_id, case_name, category, difficulty, status, started_at, ended_at, workdir_path, transcript_path, runner_kind, runner_result_json, grader_result_json, evaluation_json, budget_exceeded, case_def_json, error_msg, seq, sample, harness_info_json)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO run_cases (id, run_id, case_id, case_name, category, difficulty, status, started_at, ended_at, workdir_path, transcript_path, raw_output_json, runner_kind, runner_result_json, grader_result_json, evaluation_json, budget_exceeded, case_def_json, error_msg, seq, sample, harness_info_json)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     rc.id, rc.run_id, rc.case_id, rc.case_name, rc.category, rc.difficulty ?? null, rc.status,
     rc.started_at, rc.ended_at, rc.workdir_path, rc.transcript_path,
-    rc.runner_kind, rc.runner_result ? JSON.stringify(rc.runner_result) : null,
-    rc.grader_result ? JSON.stringify(rc.grader_result) : null,
-    rc.evaluation ? JSON.stringify(rc.evaluation) : null, rc.budget_exceeded ? 1 : 0, JSON.stringify(rc.case_def), rc.error_msg, rc.seq, rc.sample ?? 0,
+    rc.raw_output ? JSON.stringify(rc.raw_output) : null, rc.runner_kind, rc.runner_result ? JSON.stringify(boundRunnerResult(rc.runner_result)) : null,
+    rc.grader_result ? JSON.stringify(boundEvaluation(rc.grader_result)) : null, rc.evaluation ? JSON.stringify(boundEvaluation(rc.evaluation)) : null, rc.budget_exceeded ? 1 : 0, JSON.stringify(rc.case_def), rc.error_msg, rc.seq, rc.sample ?? 0,
     rc.harness_info ? JSON.stringify(rc.harness_info) : null
   );
 }
@@ -660,12 +681,11 @@ export function updateRunCase(id: string, patch: Partial<RunCaseRecord>): void {
   if (!cur) return;
   const next = { ...cur, ...patch };
   getDb().prepare(
-    `UPDATE run_cases SET status=?, started_at=?, ended_at=?, transcript_path=?, runner_result_json=?, grader_result_json=?, evaluation_json=?, budget_exceeded=?, error_msg=?, harness_info_json=? WHERE id=?`
+    `UPDATE run_cases SET status=?, started_at=?, ended_at=?, transcript_path=?, raw_output_json=?, runner_result_json=?, grader_result_json=?, evaluation_json=?, budget_exceeded=?, error_msg=?, harness_info_json=? WHERE id=?`
   ).run(
     next.status, next.started_at, next.ended_at, next.transcript_path,
-    next.runner_result ? JSON.stringify(next.runner_result) : null,
-    next.grader_result ? JSON.stringify(next.grader_result) : null,
-    next.evaluation ? JSON.stringify(next.evaluation) : null,
+    next.raw_output ? JSON.stringify(next.raw_output) : null, next.runner_result ? JSON.stringify(boundRunnerResult(next.runner_result)) : null,
+    next.grader_result ? JSON.stringify(boundEvaluation(next.grader_result)) : null, next.evaluation ? JSON.stringify(boundEvaluation(next.evaluation)) : null,
     next.budget_exceeded ? 1 : 0,
     next.error_msg, next.harness_info ? JSON.stringify(next.harness_info) : null, id
   );
@@ -727,6 +747,7 @@ function rowToRunCase(r: any): RunCaseRecord {
     ended_at: r.ended_at,
     workdir_path: r.workdir_path,
     transcript_path: r.transcript_path,
+    raw_output: r.raw_output_json ? safeParse<RawOutputCapture | undefined>(r.raw_output_json, undefined) : undefined,
     runner_kind: r.runner_kind,
     runner_result: r.runner_result_json ? safeParse(r.runner_result_json, null) : null,
     grader_result: r.grader_result_json ? safeParse(r.grader_result_json, null) : null,

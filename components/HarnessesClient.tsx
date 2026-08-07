@@ -10,13 +10,16 @@ import {
   CheckCircle2,
   Database,
   Eye,
+  FileJson,
   Gauge,
   Loader2,
   Plug,
   RefreshCw,
   Search,
   ShieldCheck,
+  Trash2,
   Terminal,
+  Upload,
   XCircle,
 } from "lucide-react";
 import type { DescriptorIssue } from "@/lib/adapters/schema";
@@ -32,6 +35,38 @@ type HarnessPayload = {
   defaultHarness: string;
   availableCount: number;
   descriptorIssues: DescriptorIssue[];
+};
+
+type ReadinessLayer = {
+  id: "registration" | "binary" | "execution" | "observation" | "judge";
+  label: string;
+  state: "ready" | "partial" | "unavailable" | "unknown";
+  summary: string;
+  diagnostic: string;
+  action: string;
+};
+
+type ConnectionHarness = DiscoveredHarness & {
+  registration?: {
+    provenance: "user-managed" | "user-override" | "bundled-reference";
+    enabled: boolean;
+    revision: string | null;
+    file: string | null;
+  };
+  readiness?: ReadinessLayer[];
+};
+
+type NormalizedPreview = {
+  descriptor: {
+    id: string;
+    label: string;
+    binNames: string[];
+    parser: string;
+    prompt: { mode: string; flag?: string };
+    liveTrace?: { format: string; roots: string[]; maxDepth?: number; inferredModel?: string };
+    capabilities: { reportsCost: boolean; reportsTokens: boolean; reportsTurns: boolean; supportsVisionInput: boolean | null; permissionModes: string[] };
+    models?: { aliases?: Array<{ id: string; label: string; family: string }>; default?: string };
+  };
 };
 
 type Filter = "all" | "available" | "attention";
@@ -57,6 +92,10 @@ export default function HarnessesClient() {
   const [filter, setFilter] = useState<Filter>("all");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [descriptorText, setDescriptorText] = useState("");
+  const [descriptorPreview, setDescriptorPreview] = useState<NormalizedPreview | null>(null);
+  const [descriptorError, setDescriptorError] = useState<string | null>(null);
+  const [managing, setManaging] = useState<"preview" | "save" | "disconnect" | null>(null);
   const requestId = useRef(0);
 
   async function load(refresh = false) {
@@ -145,6 +184,96 @@ export default function HarnessesClient() {
     }
   }
 
+  async function previewDescriptor() {
+    setManaging("preview");
+    setDescriptorError(null);
+    setDescriptorPreview(null);
+    try {
+      const response = await fetch("/api/harnesses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "validate", descriptor: descriptorText }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(body?.error ?? `Descriptor validation failed (${response.status})`);
+      setDescriptorPreview(body as NormalizedPreview);
+    } catch (cause) {
+      setDescriptorError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setManaging(null);
+    }
+  }
+
+  async function saveDescriptor() {
+    setManaging("save");
+    setDescriptorError(null);
+    try {
+      const parsed = JSON.parse(descriptorText) as unknown;
+      const existingId = typeof parsed === "object" && parsed !== null && "id" in parsed ? String(parsed.id) : "";
+      const existing = payload.harnesses.find((h) => h.id === existingId) as ConnectionHarness | undefined;
+      const response = await fetch("/api/harnesses", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ descriptor: parsed, expectedRevision: existing?.registration?.revision ?? undefined }),
+      });
+      const body = await response.json().catch(() => null);
+      if (response.status === 409) throw new Error(`${body?.error ?? "Descriptor changed elsewhere."} Refresh the registry, then review and retry.`);
+      if (!response.ok) throw new Error(body?.error ?? `Connection failed (${response.status})`);
+      setDescriptorPreview(null);
+      setDescriptorText("");
+      await load(true);
+      setNotice(`${body?.descriptor?.label ?? existingId} connected and saved. Safe probes are still separate from provider readiness.`);
+    } catch (cause) {
+      setDescriptorError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setManaging(null);
+    }
+  }
+
+  async function reconnect(id: string) {
+    setNotice("Refreshing the saved descriptor, binary, and observation roots, then rerunning safe probes. No model request is sent.");
+    await load(true);
+    await probe(id);
+  }
+
+  async function disconnect(id: string) {
+    const harness = payload.harnesses.find((item) => item.id === id) as ConnectionHarness | undefined;
+    if (!harness || harness.registration?.provenance === "bundled-reference") return;
+    setManaging("disconnect");
+    setDescriptorError(null);
+    try {
+      const params = new URLSearchParams({ id });
+      if (harness.registration?.revision) params.set("expectedRevision", harness.registration.revision);
+      const response = await fetch(`/api/harnesses?${params.toString()}`, { method: "DELETE" });
+      const body = await response.json().catch(() => null);
+      if (response.status === 409) throw new Error(`${body?.error ?? "Descriptor changed elsewhere."} Refresh the registry before disconnecting.`);
+      if (!response.ok) throw new Error(body?.error ?? `Disconnect failed (${response.status})`);
+      await load(true);
+      setNotice(body?.fallback === "bundled-reference"
+        ? `${harness.label} disconnected. The bundled reference is visible again; saved evidence was preserved.`
+        : `${harness.label} disconnected. Saved evidence was preserved.`);
+    } catch (cause) {
+      setDescriptorError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setManaging(null);
+    }
+  }
+
+  function loadTemplate() {
+    setDescriptorText(JSON.stringify({
+      id: "my-harness",
+      label: "My Harness",
+      binNames: ["my-harness"],
+      parser: "text",
+      argTemplate: ["{prompt}"],
+      prompt: { mode: "arg" },
+      capabilities: { reportsCost: false, reportsTokens: false, reportsTurns: false },
+      liveTrace: { format: "jsonl-dir", roots: ["~/.my-harness/sessions"] },
+    }, null, 2));
+    setDescriptorError(null);
+    setDescriptorPreview(null);
+  }
+
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return payload.harnesses.filter((h) => {
@@ -168,6 +297,8 @@ export default function HarnessesClient() {
   );
   const { show } = useRedactedShow(harvestedPaths, { secrets: true });
 
+  const activeConnection = active as ConnectionHarness | undefined;
+
   return (
     <div className="mx-auto max-w-7xl px-4 py-5 sm:p-6 lg:p-8">
       <PageHeader
@@ -189,6 +320,18 @@ export default function HarnessesClient() {
         }
       />
       <SystemNav />
+
+      <ConnectionCenter
+        descriptorText={descriptorText}
+        descriptorPreview={descriptorPreview}
+        descriptorError={descriptorError}
+        managing={managing}
+        onTextChange={(text) => { setDescriptorText(text); setDescriptorPreview(null); setDescriptorError(null); }}
+        onFile={(file) => { void file.text().then((text) => { setDescriptorText(text); setDescriptorPreview(null); setDescriptorError(null); }); }}
+        onTemplate={loadTemplate}
+        onPreview={() => void previewDescriptor()}
+        onSave={() => void saveDescriptor()}
+      />
 
       <div aria-live="polite" className="sr-only">{notice}</div>
       {error && (
@@ -342,9 +485,12 @@ export default function HarnessesClient() {
             <HarnessDetail
               harness={active}
               isDefault={active.id === payload.defaultHarness}
+              connection={activeConnection}
               probing={probing === active.id}
               show={show}
               onProbe={() => void probe(active.id)}
+              onReconnect={() => void reconnect(active.id)}
+              onDisconnect={() => void disconnect(active.id)}
             />
           )}
         </div>
@@ -356,15 +502,21 @@ export default function HarnessesClient() {
 function HarnessDetail({
   harness,
   isDefault,
+  connection,
   probing,
   show,
   onProbe,
+  onReconnect,
+  onDisconnect,
 }: {
   harness: DiscoveredHarness;
   isDefault: boolean;
+  connection?: ConnectionHarness;
   probing: boolean;
   show: (value: unknown) => string;
   onProbe: () => void;
+  onReconnect: () => void;
+  onDisconnect: () => void;
 }) {
   const meta = STATUS_META[harness.status] ?? STATUS_META.not_found;
   const command = harness.sampleCommand ? commandText(harness.sampleCommand) : "";
@@ -397,6 +549,25 @@ function HarnessDetail({
                 New run <ArrowUpRight aria-hidden="true" className="size-3.5" />
               </Link>
             )}
+            {connection?.registration?.provenance !== "bundled-reference" && (
+              <button
+                type="button"
+                onClick={onReconnect}
+                disabled={probing}
+                className="flex min-h-10 items-center gap-2 rounded-lg border border-accent/30 px-3 text-sm text-accent-soft hover:bg-accent/10 disabled:opacity-50"
+              >
+                <RefreshCw aria-hidden="true" className={clsx("size-3.5", probing && "animate-spin")} /> Reconnect
+              </button>
+            )}
+            {connection?.registration?.provenance !== "bundled-reference" && (
+              <button
+                type="button"
+                onClick={onDisconnect}
+                className="flex min-h-10 items-center gap-2 rounded-lg border border-bd px-3 text-sm text-fg-muted hover:border-err/35 hover:bg-err/5 hover:text-err"
+              >
+                <Trash2 aria-hidden="true" className="size-3.5" /> Disconnect
+              </button>
+            )}
             <button
               type="button"
               onClick={onProbe}
@@ -417,6 +588,8 @@ function HarnessDetail({
           <Fact label="Output parser" value={harness.integration.parser} />
         </dl>
       </div>
+
+      <ReadinessPanel harness={connection ?? (harness as ConnectionHarness)} probing={probing} onProbe={onProbe} />
 
       <section aria-labelledby="capability-title" className="card p-4 sm:p-5">
         <SectionHeading icon={Gauge} id="capability-title" title="Capability evidence" detail="Descriptor declarations, kept separate from runtime probe evidence." />
@@ -507,6 +680,155 @@ function HarnessDetail({
       </section>
     </section>
   );
+}
+
+function ConnectionCenter({
+  descriptorText,
+  descriptorPreview,
+  descriptorError,
+  managing,
+  onTextChange,
+  onFile,
+  onTemplate,
+  onPreview,
+  onSave,
+}: {
+  descriptorText: string;
+  descriptorPreview: NormalizedPreview | null;
+  descriptorError: string | null;
+  managing: "preview" | "save" | "disconnect" | null;
+  onTextChange: (value: string) => void;
+  onFile: (file: File) => void;
+  onTemplate: () => void;
+  onPreview: () => void;
+  onSave: () => void;
+}) {
+  return (
+    <section className="card mb-5 overflow-hidden" aria-labelledby="connection-center-title">
+      <div className="border-b border-bd-subtle bg-gradient-to-r from-accent/10 via-transparent to-transparent p-4 sm:p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 id="connection-center-title" className="flex items-center gap-2 text-base font-semibold">
+              <FileJson aria-hidden="true" className="size-4 text-accent-soft" /> Connection Center
+            </h2>
+            <p className="mt-1 max-w-3xl text-xs leading-5 text-fg-muted">
+              Import or paste one complete <span className="mono text-fg">.harness.json</span> descriptor. OpenEval validates it, previews the normalized execution and observation contract, then saves it atomically as a user-managed local connection.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-lg border border-bd px-3 text-xs text-fg-muted hover:bg-bg-elev hover:text-fg">
+              <Upload aria-hidden="true" className="size-3.5" /> Import JSON
+              <input
+                type="file"
+                accept=".json,.harness.json,application/json"
+                className="sr-only"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) onFile(file);
+                  event.currentTarget.value = "";
+                }}
+              />
+            </label>
+            <button type="button" onClick={onTemplate} className="min-h-10 rounded-lg border border-bd px-3 text-xs text-fg-muted hover:bg-bg-elev hover:text-fg">Load template</button>
+          </div>
+        </div>
+      </div>
+      <div className="grid gap-4 p-4 sm:p-5 lg:grid-cols-[minmax(0,1.1fr)_minmax(280px,.9fr)]">
+        <div className="min-w-0">
+          <label htmlFor="descriptor-json" className="text-xs font-medium text-fg">Descriptor JSON</label>
+          <textarea
+            id="descriptor-json"
+            value={descriptorText}
+            onChange={(event) => onTextChange(event.target.value)}
+            spellCheck={false}
+            placeholder={'{\n  "id": "my-harness",\n  "label": "My Harness",\n  "binNames": ["my-harness"],\n  "parser": "text",\n  "argTemplate": ["{prompt}"]\n}'}
+            className="mt-2 min-h-48 w-full resize-y rounded-lg border border-bd bg-bg px-3 py-2 font-mono text-[11px] leading-5 text-fg-muted outline-none placeholder:text-fg-dim focus:border-accent focus-visible:ring-2 focus-visible:ring-accent"
+          />
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button type="button" onClick={onPreview} disabled={!descriptorText.trim() || managing !== null} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-accent/40 bg-accent/10 px-3 text-xs font-medium text-accent-soft hover:bg-accent/15 disabled:opacity-50">
+              {managing === "preview" ? <Loader2 className="size-3.5 animate-spin" /> : <Braces className="size-3.5" />} Validate descriptor
+            </button>
+            <button type="button" onClick={onSave} disabled={!descriptorPreview || managing !== null} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-accent px-3 text-xs font-medium text-white hover:bg-accent/90 disabled:opacity-50">
+              {managing === "save" ? <Loader2 className="size-3.5 animate-spin" /> : <Plug className="size-3.5" />} Connect and save
+            </button>
+          </div>
+          {descriptorError && <div role="alert" className="mt-3 rounded-lg border border-err/30 bg-err/5 p-3 text-xs leading-5 text-err">{descriptorError}</div>}
+        </div>
+        <div className="min-w-0 rounded-xl border border-bd-subtle bg-bg/40 p-4" aria-live="polite">
+          <h3 className="flex items-center gap-2 text-xs font-semibold"><ShieldCheck className="size-4 text-accent-soft" /> Normalized contract preview</h3>
+          {!descriptorPreview ? (
+            <p className="mt-3 text-xs leading-5 text-fg-dim">Validate a complete descriptor to inspect its execution, parser, model, and observation declarations before saving.</p>
+          ) : (
+            <div className="mt-3 space-y-2 text-xs">
+              <PreviewFact label="Identity" value={`${descriptorPreview.descriptor.label} · ${descriptorPreview.descriptor.id}`} />
+              <PreviewFact label="Execution" value={`${descriptorPreview.descriptor.binNames.join(", ")} · ${descriptorPreview.descriptor.prompt.mode} prompt`} />
+              <PreviewFact label="Parser" value={descriptorPreview.descriptor.parser} />
+              <PreviewFact label="Observation" value={descriptorPreview.descriptor.liveTrace ? `${descriptorPreview.descriptor.liveTrace.format} · ${descriptorPreview.descriptor.liveTrace.roots.length} root${descriptorPreview.descriptor.liveTrace.roots.length === 1 ? "" : "s"}` : "No liveTrace declared"} />
+              <PreviewFact label="Judge inputs" value={`${descriptorPreview.descriptor.models?.aliases?.length ?? 0} model aliases · ${descriptorPreview.descriptor.capabilities.reportsTokens ? "token telemetry" : "token telemetry unknown"}`} />
+              <p className="border-t border-bd-subtle pt-3 text-[11px] leading-5 text-fg-dim">A declaration is not runtime proof. After saving, use safe probes and the separate readiness layers below.</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function PreviewFact({ label, value }: { label: string; value: string }) {
+  return <div className="flex min-w-0 items-start justify-between gap-3"><span className="shrink-0 text-fg-dim">{label}</span><span className="min-w-0 break-words text-right text-fg-muted mono">{value}</span></div>;
+}
+
+function ReadinessPanel({ harness, probing, onProbe }: { harness: ConnectionHarness; probing: boolean; onProbe: () => void }) {
+  const layers = harness.readiness ?? [];
+  return (
+    <section aria-labelledby="readiness-title" className="card p-4 sm:p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 id="readiness-title" className="flex items-center gap-2 text-sm font-semibold"><Gauge className="size-4 text-accent-soft" /> Layered readiness</h2>
+          <p className="mt-1 max-w-3xl text-[11px] leading-5 text-fg-dim">These are independent evidence layers. A safe binary probe never claims provider authentication, parse coverage, or a completed judge verdict.</p>
+        </div>
+        <div className="flex items-center gap-2 text-[10px] text-fg-dim">
+          <span className="mono">{registrationLabel(harness.registration?.provenance)}</span>
+          {harness.registration?.revision && <span title={harness.registration.revision}>rev {harness.registration.revision.slice(0, 8)}</span>}
+        </div>
+      </div>
+      {layers.length === 0 ? (
+        <div className="mt-4 rounded-lg border border-warn/25 bg-warn/5 p-3 text-xs text-warn">Readiness is unavailable while the registry response is being refreshed.</div>
+      ) : (
+        <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+          {layers.map((layer) => <ReadinessCard key={layer.id} layer={layer} probing={probing && layer.id === "binary"} onProbe={onProbe} />)}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ReadinessCard({ layer, probing, onProbe }: { layer: ReadinessLayer; probing: boolean; onProbe: () => void }) {
+  const meta = readinessMeta(layer.state);
+  return (
+    <div className={clsx("min-w-0 rounded-xl border p-3", meta.border, meta.bg)}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-fg-dim">{layer.label}</span>
+        <span className={clsx("inline-flex items-center gap-1 rounded border px-1.5 py-1 text-[9px] font-medium uppercase tracking-wider", meta.badge)}><span className={clsx("size-1.5 rounded-full", meta.dot)} />{layer.state}</span>
+      </div>
+      <p className="mt-2 text-xs font-medium leading-4">{layer.summary}</p>
+      <p className="mt-1 text-[10px] leading-4 text-fg-muted">{layer.diagnostic}</p>
+      <button type="button" onClick={layer.id === "binary" ? onProbe : undefined} disabled={layer.id !== "binary" || probing} className={clsx("mt-3 min-h-9 rounded-md border px-2.5 text-[10px] font-medium", layer.id === "binary" ? "border-bd text-fg-muted hover:bg-bg-elev hover:text-fg" : "cursor-default border-transparent px-0 text-fg-dim")}>{probing ? "Probing…" : layer.action}</button>
+    </div>
+  );
+}
+
+function readinessMeta(state: ReadinessLayer["state"]): { border: string; bg: string; badge: string; dot: string } {
+  if (state === "ready") return { border: "border-ok/25", bg: "bg-ok/5", badge: "border-ok/30 bg-ok/10 text-ok", dot: "bg-ok" };
+  if (state === "partial") return { border: "border-warn/30", bg: "bg-warn/5", badge: "border-warn/30 bg-warn/10 text-warn", dot: "bg-warn" };
+  if (state === "unavailable") return { border: "border-err/25", bg: "bg-err/5", badge: "border-err/30 bg-err/10 text-err", dot: "bg-err" };
+  return { border: "border-bd", bg: "bg-bg/40", badge: "border-bd bg-bg-elev text-fg-dim", dot: "bg-fg-dim" };
+}
+
+function registrationLabel(provenance?: "user-managed" | "user-override" | "bundled-reference"): string {
+  if (provenance === "user-managed") return "user-managed";
+  if (provenance === "user-override") return "user override of bundled";
+  return "bundled reference";
 }
 
 function SummaryMetric({ icon: Icon, label, value, detail, tone }: { icon: typeof Gauge; label: string; value: string; detail: string; tone?: "ok" | "warn" }) {

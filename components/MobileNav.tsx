@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import clsx from "clsx";
 import { Activity, LayoutDashboard, MoreHorizontal, Radio, X } from "lucide-react";
 import { SECTIONS } from "./Sidebar";
+import SupportLinks from "./SupportLinks";
 import { useFocusTrap } from "@/lib/use-focus-trap";
 
 const PRIMARY_ITEMS = [
@@ -163,6 +164,9 @@ export default function MobileNav() {
                 );
               })}
             </nav>
+            <div className="mt-4 border-t border-bd pt-2">
+              <SupportLinks headingId="mobile-support-links-title" />
+            </div>
           </div>
         </div>
       )}

@@ -14,7 +14,7 @@ export class HeadlessRunner implements Runner {
     const adapter = getAdapter(ctx.harness);
     const fallbackModel = ctx.model ?? resolveDefaultModel(adapter.id).id ?? null;
 
-    const { acc, stderr, exitCode, durationMs, timedOut, aborted } = await spawnHarnessProcess(ctx, (line, accumulator) => {
+    const { acc, stderr, exitCode, durationMs, timedOut, aborted, rawOutput } = await spawnHarnessProcess(ctx, (line, accumulator) => {
       for (const ev of adapter.parseLine(line, accumulator)) emit(ctx, ev);
     });
 
@@ -23,10 +23,10 @@ export class HeadlessRunner implements Runner {
     if (isCompleteResult(acc.result)) {
       emit(ctx, { kind: "finished", at: Date.now(), durationMs, exitCode });
       const parsed = { ...acc.result, exitCode, durationMs, startedAt, endedAt: startedAt + durationMs } as RunnerResult;
-      return normalizeParsedResult(parsed, fallbackModel);
+      return normalizeParsedResult({ ...parsed, rawOutput }, fallbackModel);
     }
     return normalizeParsedResult(
-      failure(ctx, acc, startedAt, durationMs, exitCode, stderr, timedOut, aborted),
+      failure(ctx, acc, startedAt, durationMs, exitCode, stderr, timedOut, aborted, rawOutput),
       fallbackModel,
     );
   }
@@ -69,6 +69,7 @@ function failure(
   stderr: string,
   timedOut = false,
   aborted = false,
+  rawOutput?: import("./raw-output").RawOutputCapture | null,
 ): RunnerResult {
   emit(ctx, { kind: "finished", at: Date.now(), durationMs, exitCode });
   const msg = aborted
@@ -97,5 +98,6 @@ function failure(
     rawJson: null,
     tokenSegments: [],
     toolCallCounts: {},
+    rawOutput: rawOutput ?? undefined,
   };
 }

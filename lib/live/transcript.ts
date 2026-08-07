@@ -2,14 +2,26 @@ import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { hermesJsonToRecords } from "../adapters/hermes";
-import type { LiveTraceFormat, LiveTranscriptTurn, TranscriptNormalization, TranscriptResult } from "./types";
-import { NON_WS_RE, codexToolOutputError, jsonPreview, parseTimestamp, readFileLines } from "./util";
+import type { LiveTraceFormat, LiveTranscriptTurn, TranscriptCursorState, TranscriptNormalization, TranscriptResult } from "./types";
+import {
+  isTruncatedJsonlRecord,
+  MAX_JSONL_RECORD_BYTES,
+  NON_WS_RE,
+  codexToolOutputError,
+  jsonPreview,
+  parseTimestamp,
+  readFileLineRecords,
+  readFileLines,
+  TRUNCATED_JSONL_RECORD_PREFIX,
+} from "./util";
 
 const TRANSCRIPT_TURN_CAP = 20_000;
 /** Error context is useful only as a bounded drawer timeline, not a transcript dump. */
 export const ERRORING_TURN_CAP = 240;
 
 const HERMES_TRANSCRIPT_MAX_BYTES = 32 * 1024 * 1024;
+
+export const TRANSCRIPT_WINDOW_CAP = 240;
 
 interface TranscriptParseState {
   calls: Map<string, { name: string; at?: number }>;
@@ -21,41 +33,63 @@ interface TranscriptParseState {
   };
 }
 
-function parseTranscriptRecords(records: Iterable<string>): TranscriptResult {
+interface ParseRecordsOptions {
+  state?: TranscriptParseState;
+  startRecordIndex?: number;
+  maxTurns?: number;
+}
+
+interface ParseRecordsResult extends TranscriptResult {
+  state: TranscriptParseState;
+  recordIndex: number;
+}
+
+function parseTranscriptRecords(records: Iterable<string>, options: ParseRecordsOptions = {}): ParseRecordsResult {
   const turns: LiveTranscriptTurn[] = [];
-  const state: TranscriptParseState = { calls: new Map() };
+  const state: TranscriptParseState = options.state ?? { calls: new Map() };
   const normalization: TranscriptNormalization = {
     rawRecords: 0,
     suppressedMirrors: 0,
     compoundRecords: 0,
   };
-  let index = 0;
+  let index = options.startRecordIndex ?? 0;
   for (const line of records) {
     if (!NON_WS_RE.test(line)) continue;
     index++;
     normalization.rawRecords++;
-    try {
-      const obj = JSON.parse(line);
-      const expanded = expandCompoundTranscriptRecord(obj, state);
-      const candidates = expanded ?? [toTranscriptTurn(obj, index, state)];
-      if (expanded && expanded.length > 1) normalization.compoundRecords++;
-      for (const turn of candidates) {
-        if (suppressCodexMirror(obj, turn, index, state)) {
-          normalization.suppressedMirrors++;
-          continue;
-        }
-        turns.push(turn);
-        if (turns.length >= TRANSCRIPT_TURN_CAP) break;
-      }
-    } catch {
+    if (isTruncatedJsonlRecord(line)) {
       turns.push({
-        type: "malformed",
+        type: "truncated",
         severity: "warning",
-        label: `Malformed line ${index}`,
-        preview: line.slice(0, 420),
+        label: `Malformed/truncated JSONL record ${index}`,
+        preview: `Record exceeded the ${MAX_JSONL_RECORD_BYTES}-byte ingestion limit and was not parsed. ${line.slice(TRUNCATED_JSONL_RECORD_PREFIX.length, 420)}`,
       });
+    } else {
+      try {
+        const obj = JSON.parse(line);
+        const expanded = expandCompoundTranscriptRecord(obj, state);
+        const candidates = expanded ?? [toTranscriptTurn(obj, index, state)];
+        if (expanded && expanded.length > 1) normalization.compoundRecords++;
+        for (const turn of candidates) {
+          if (options.maxTurns != null && turns.length >= options.maxTurns) break;
+          if (suppressCodexMirror(obj, turn, index, state)) {
+            normalization.suppressedMirrors++;
+            continue;
+          }
+          turns.push(turn);
+          if (turns.length >= (options.maxTurns ?? TRANSCRIPT_TURN_CAP)) break;
+        }
+      } catch {
+        turns.push({
+          type: "malformed",
+          severity: "warning",
+          label: `Malformed line ${index}`,
+          preview: line.slice(0, 420),
+        });
+      }
     }
-    if (turns.length >= TRANSCRIPT_TURN_CAP) {
+    if (turns.length >= (options.maxTurns ?? TRANSCRIPT_TURN_CAP)) {
+      if (options.maxTurns != null) break;
       turns.push({
         type: "truncated",
         severity: "info",
@@ -69,6 +103,109 @@ function parseTranscriptRecords(records: Iterable<string>): TranscriptResult {
     turns,
     truncated: turns.some((turn) => turn.type === "truncated"),
     normalization,
+    state,
+    recordIndex: index,
+  };
+}
+
+function serializeCursorState(parsed: ParseRecordsResult): TranscriptCursorState {
+  return {
+    calls: [...parsed.state.calls.entries()].slice(-512),
+    ...(parsed.state.lastCodexMessage ? { lastCodexMessage: parsed.state.lastCodexMessage } : {}),
+    recordIndex: parsed.recordIndex,
+    semanticTurns: parsed.turns.length,
+  };
+}
+
+function restoreCursorState(state: TranscriptCursorState | undefined): TranscriptParseState {
+  return {
+    calls: new Map(state?.calls ?? []),
+    ...(state?.lastCodexMessage ? { lastCodexMessage: state.lastCodexMessage } : {}),
+  };
+}
+
+export interface TranscriptWindowOptions {
+  byteOffset?: number;
+  state?: TranscriptCursorState;
+}
+
+export interface TranscriptWindowResult extends TranscriptResult {
+  offset: number;
+  nextByteOffset: number;
+  nextState?: TranscriptCursorState;
+  done: boolean;
+  revision: { size: number; mtimeMs: number; fingerprint: string };
+}
+
+function boundedFileFingerprint(filePath: string, stat: fs.Stats): string {
+  const hash = createHash("sha256");
+  const fd = fs.openSync(filePath, "r");
+  try {
+    const sampleSize = Math.min(64 * 1024, stat.size);
+    const head = Buffer.alloc(sampleSize);
+    if (sampleSize > 0) hash.update(head.subarray(0, fs.readSync(fd, head, 0, sampleSize, 0)));
+    if (stat.size > sampleSize) {
+      const tailSize = Math.min(64 * 1024, stat.size);
+      const tail = Buffer.alloc(tailSize);
+      hash.update(tail.subarray(0, fs.readSync(fd, tail, 0, tailSize, Math.max(0, stat.size - tailSize))));
+    }
+  } finally {
+    fs.closeSync(fd);
+  }
+  return hash.digest("hex");
+}
+
+function* readFileLinesWithOffsets(filePath: string, startOffset: number): Generator<{ line: string; nextOffset: number }> {
+  yield* readFileLineRecords(filePath, startOffset);
+}
+
+/** Read one bounded semantic window without reparsing records before the cursor. */
+export function readTranscriptWindow(filePath: string, format: LiveTraceFormat | undefined, options: TranscriptWindowOptions = {}): TranscriptWindowResult {
+  const stat = fs.statSync(filePath);
+  const byteOffset = options.byteOffset ?? 0;
+  if (!Number.isInteger(byteOffset) || byteOffset < 0 || byteOffset > stat.size) throw new Error("Invalid transcript cursor position");
+  const cursor = options.state;
+  const startRecordIndex = cursor?.recordIndex ?? 0;
+  const revision = { size: stat.size, mtimeMs: stat.mtimeMs, fingerprint: boundedFileFingerprint(filePath, stat) };
+  const isHermes = format === "hermes-json" || path.extname(filePath).toLowerCase() === ".json";
+  if (isHermes) {
+    const parsed = parseSessionTranscript(filePath, format);
+    const offset = cursor?.semanticTurns ?? 0;
+    const turns = parsed.turns.slice(offset, offset + TRANSCRIPT_WINDOW_CAP);
+    const done = parsed.error ? true : offset + turns.length >= parsed.turns.length;
+    return {
+      ...parsed,
+      turns,
+      offset,
+      done,
+      nextByteOffset: stat.size,
+      ...(!done ? { nextState: { calls: [], recordIndex: parsed.normalization?.rawRecords ?? 0, semanticTurns: offset + turns.length } } : {}),
+      revision,
+    };
+  }
+  let nextByteOffset = byteOffset;
+  const records = (function* () {
+    for (const record of readFileLinesWithOffsets(filePath, byteOffset)) {
+      nextByteOffset = record.nextOffset;
+      yield record.line;
+    }
+  })();
+  const parsed = parseTranscriptRecords(records, {
+    state: restoreCursorState(cursor),
+    startRecordIndex,
+    maxTurns: TRANSCRIPT_WINDOW_CAP,
+  });
+  const done = nextByteOffset >= stat.size;
+  const semanticTurns = (cursor?.semanticTurns ?? 0) + parsed.turns.length;
+  return {
+    turns: parsed.turns,
+    truncated: parsed.truncated,
+    normalization: parsed.normalization,
+    offset: cursor?.semanticTurns ?? 0,
+    nextByteOffset,
+    done,
+    ...(done ? {} : { nextState: { ...serializeCursorState(parsed), semanticTurns } }),
+    revision,
   };
 }
 

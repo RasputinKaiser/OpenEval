@@ -36,5 +36,5 @@ test("collection search hands the user off to the session catalog", () => {
   const collection = read("components/CollectionClient.tsx");
 
   assert.match(collection, /if \(q\.trim\(\) && hits !== null\) selectSection\("sessions"\)/);
-  assert.match(collection, /Filter, sort, and open the bounded transcript catalog/);
+  assert.match(collection, /Search and open retained transcript summaries/);
 });

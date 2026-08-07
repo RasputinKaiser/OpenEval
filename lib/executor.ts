@@ -10,6 +10,7 @@ import { discoverHarnesses } from "./adapters/discover";
 import { describeRunnerFailure } from "./runner/diagnostics";
 import type { CaseDefinition, RunCaseRecord, RunnerKind, RunnerResult } from "./types";
 import type { HarnessAdapter } from "./adapters/types";
+import type { JudgeSelection } from "./grader/selection";
 
 const harnessInfoCache = new Map<string, { id: string; bin: string | null; version: string | null }>();
 
@@ -149,6 +150,7 @@ export async function executeCase(
   sample: number = 0,
   harness?: string,
   signal?: AbortSignal,
+  judgeSelection?: JudgeSelection,
 ): Promise<RunCaseRecord> {
   const rcId = randomUUID();
   let workdir: string;
@@ -173,6 +175,7 @@ export async function executeCase(
     return errRec;
   }
   const transcriptPath = path.join(TRANSCRIPTS_DIR, `${runId}_${def.id}__s${sample}.jsonl`);
+  const rawOutputPaths = { stdoutPath: path.join(TRANSCRIPTS_DIR, `${runId}_${def.id}__s${sample}.stdout.log`), stderrPath: path.join(TRANSCRIPTS_DIR, `${runId}_${def.id}__s${sample}.stderr.log`) };
 
   const rec: RunCaseRecord & { seq: number } = {
     id: rcId,
@@ -186,6 +189,7 @@ export async function executeCase(
     ended_at: null,
     workdir_path: workdir,
     transcript_path: transcriptPath,
+    raw_output: undefined,
     runner_kind: runnerKind,
     runner_result: null,
     grader_result: null,
@@ -241,6 +245,7 @@ export async function executeCase(
     images,
     harness,
     signal,
+    rawOutput: rawOutputPaths,
     onEvent: (ev: any) => {
       transcriptWrites = transcriptWrites
         .then(() => fs.appendFile(transcriptPath, JSON.stringify(ev) + "\n"))
@@ -301,18 +306,22 @@ export async function executeCase(
     }
   }
 
+  rec.raw_output = runnerResult.rawOutput;
+  const rawCaptureError = runnerResult.rawOutput?.writeError;
+  runnerResult = { ...runnerResult, rawOutput: undefined };
   rec.runner_result = runnerResult;
+  if (rawCaptureError) rec.error_msg = (rec.error_msg ? rec.error_msg + " | " : "") + `Raw output write failed: ${rawCaptureError.slice(0, 300)}`;
   rec.status = "grading";
-  updateRunCase(rcId, { status: "grading", runner_result: runnerResult, budget_exceeded: rec.budget_exceeded, error_msg: rec.error_msg });
+  updateRunCase(rcId, { status: "grading", raw_output: rec.raw_output, runner_result: runnerResult, budget_exceeded: rec.budget_exceeded, error_msg: rec.error_msg });
   appendEvent(runId, "case_grading", { case_id: def.id, sample, duration_ms: runnerResult.durationMs }, def.id);
 
   try {
     const transcriptText = transcriptToText(runnerResult);
     const graderResults = [];
     for (const spec of def.graders) {
-      const r = await runGrader(spec, { workdir, runner: runnerResult, transcriptText, fixtureSrc, signal });
+      const r = await runGrader(spec, { workdir, runner: runnerResult, transcriptText, fixtureSrc, signal, judgeSelection });
       graderResults.push(r);
-      appendEvent(runId, "grader_result", { case_id: def.id, sample, type: (spec as any).type, passed: r.passed, detail: r.detail.slice(0, 200) }, def.id);
+      appendEvent(runId, "grader_result", { case_id: def.id, sample, type: (spec as any).type, passed: r.passed, detail: r.detail.slice(0, 200), judge: r.judgeSelection ?? null, receipt: r.judgeReceipt ?? null }, def.id);
     }
     const evaluation = evaluate(graderResults, def.pass_threshold ?? 1);
     rec.evaluation = evaluation;
@@ -323,6 +332,8 @@ export async function executeCase(
       // A runner that never completed cannot pass vacuously through negated or
       // absence-based graders. Preserve partial grader evidence, but status is
       // an infrastructure error regardless of the computed pass ratio.
+      rec.status = "error";
+    } else if (rawCaptureError) {
       rec.status = "error";
     } else if (rec.budget_exceeded) {
       rec.status = "failed";
@@ -361,7 +372,7 @@ export async function executeCase(
   }
 
   rec.ended_at = Date.now();
-  updateRunCase(rcId, { status: rec.status, ended_at: rec.ended_at, grader_result: rec.grader_result, evaluation: rec.evaluation, budget_exceeded: rec.budget_exceeded, error_msg: rec.error_msg });
+  updateRunCase(rcId, { status: rec.status, ended_at: rec.ended_at, raw_output: rec.raw_output, grader_result: rec.grader_result, evaluation: rec.evaluation, budget_exceeded: rec.budget_exceeded, error_msg: rec.error_msg });
   appendEvent(runId, "case_finished", { case_id: def.id, seq, sample, status: rec.status }, def.id);
   return rec;
 }

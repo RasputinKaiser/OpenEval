@@ -71,7 +71,9 @@ async function redactJsonValue(value: unknown, redactor: Redactor): Promise<unkn
 
 function manifestRows(run: RunRecord): Array<[string, string]> | null {
   const manifest = run.manifest as any;
-  if (!manifest || typeof manifest !== "object") return null;
+  if (!manifest || typeof manifest !== "object") {
+    return run.params.judge ? [["Judge", run.params.judge.judgeName ?? `${run.params.judge.source}/${run.params.judge.model}`]] : null;
+  }
   return [
     ["OpenEval version", manifest.openevalVersion],
     ["Node version", manifest.nodeVersion],
@@ -83,6 +85,7 @@ function manifestRows(run: RunRecord): Array<[string, string]> | null {
     ["Harness bin", manifest.harness?.bin ?? "not found"],
     ["Harness version", manifest.harness?.version ?? "unknown"],
     ["Model", manifest.model ?? "not set"],
+    ["Judge", manifest.judge?.judgeName ?? (manifest.judge ? `${manifest.judge.source}/${manifest.judge.model}` : run.params.judge?.judgeName ?? "not captured")],
     ["Git SHA", manifest.repo?.gitSha ?? "unknown"],
     ["Git branch", manifest.repo?.gitBranch ?? "unknown"],
     ["Git dirty", manifest.repo?.dirty == null ? "unknown" : String(manifest.repo.dirty)],
@@ -122,15 +125,18 @@ function categoryTable(summary: RunSummary | null): string[] {
 async function graderTable(c: RunCaseRecord, redactor: Redactor): Promise<string[]> {
   const evaluation: CaseEvaluation | null = c.evaluation ?? c.grader_result;
   const results = evaluation?.results ?? [];
-  const lines = ["| Type | Weight | Passed | Evidence tier | Detail |", "| --- | ---: | --- | --- | --- |"];
+  const lines = ["| Type | Weight | Passed | Evidence tier | Judge | Receipt | Detail |", "| --- | ---: | --- | --- | --- | --- | --- |"];
   if (results.length === 0) {
-    lines.push("| not captured | 0 | unknown | unknown |  |");
+    lines.push("| not captured | 0 | unknown | unknown |  |  |  |");
     return lines;
   }
   for (const result of results as GraderResult[]) {
     const spec = result.spec as any;
     const detail = truncate(await redactor(result.detail), 200);
-    lines.push(`| ${escapeTable(spec?.type ?? "unknown")} | ${escapeTable(spec?.weight ?? 1)} | ${result.passed ? "yes" : "no"} | ${escapeTable(result.evidenceTier ?? "unknown")} | ${escapeTable(detail)} |`);
+    const receipt = result.judgeReceipt
+      ? `${result.judgeReceipt.status}${result.judgeReceipt.score == null ? "" : ` score=${result.judgeReceipt.score}`}`
+      : "—";
+    lines.push(`| ${escapeTable(spec?.type ?? "unknown")} | ${escapeTable(spec?.weight ?? 1)} | ${result.passed ? "yes" : "no"} | ${escapeTable(result.evidenceTier ?? "unknown")} | ${escapeTable(result.judgeSelection?.judgeName ?? "—")} | ${escapeTable(receipt)} | ${escapeTable(detail)} |`);
   }
   return lines;
 }

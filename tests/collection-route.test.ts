@@ -8,7 +8,7 @@ import { defToSpec, type CollectionSourceDef } from "../lib/collection/sources";
 import type { DiscoveredSource } from "../lib/collection/discover";
 import { _setCacheDbForTest } from "../lib/live-cache";
 import { collectSourceFiles } from "../lib/live";
-import { _setCollectionHooksForTest, type CollectionSessionItem } from "../lib/collection/aggregate";
+import { _setCollectionHooksForTest, collectionSessionIdentity, type CollectionSessionItem } from "../lib/collection/aggregate";
 import { _clearSnapshotServicesForTest } from "../lib/collection/snapshot-service";
 
 // Every scan goes through the live-cache; an in-memory DB keeps parallel test
@@ -77,7 +77,7 @@ async function getCollection(query: string): Promise<Response> {
 }
 
 function identity(s: CollectionSessionItem): string {
-  return s.path ?? s.sessionId;
+  return collectionSessionIdentity(s);
 }
 
 test("?limit= response keeps its full-aggregate shape and gains nextCursor", async () => {
@@ -124,7 +124,7 @@ test("cursor page-walk unions to exactly the corpus with no duplicates", async (
   }
   assert.equal(new Set(seen).size, seen.length, "no duplicates across pages");
   assert.deepEqual(
-    seen.map((p) => path.basename(p, ".jsonl")),
+    seen.map((identity) => identity.split("\u0000")[1]),
     ALL_IDS,
     "union of all pages is the whole corpus, newest first",
   );

@@ -9,6 +9,7 @@ import { isTerminalCaseStatus } from '../status';
 import { hasAdapter, listAdapters, getDefaultHarness } from '../adapters/registry';
 import { discoverHarnesses } from '../adapters/discover';
 import type { RunnerKind } from '../types';
+import type { JudgeSelection, JudgeSelectionInput } from '../grader/selection';
 
 interface Args {
   case?: string;
@@ -17,6 +18,9 @@ interface Args {
   parallel: number;
   samples: number;
   model?: string;
+  judgeSource?: string;
+  judgeModel?: string;
+  judgeReasoningEffort?: string;
   name?: string;
   categories: string[];
   tags: string[];
@@ -47,6 +51,9 @@ function parseArgs(argv: string[]): ParsedArgs {
       case '--parallel': a.parallel = parseBoundedCliInt(requiredValue(argv, ++i, arg), arg); break;
       case '--samples': a.samples = parseBoundedCliInt(requiredValue(argv, ++i, arg), arg); break;
       case '--model': a.model = requiredValue(argv, ++i, arg); break;
+      case '--judge-source': a.judgeSource = requiredValue(argv, ++i, arg); break;
+      case '--judge-model': a.judgeModel = requiredValue(argv, ++i, arg); break;
+      case '--judge-reasoning-effort': a.judgeReasoningEffort = requiredValue(argv, ++i, arg); break;
       case '--name': a.name = requiredValue(argv, ++i, arg); break;
       case '--category': a.categories.push(requiredValue(argv, ++i, arg)); break;
       case '--tag': a.tags.push(requiredValue(argv, ++i, arg)); break;
@@ -90,6 +97,9 @@ Options:
   --parallel <n>       Concurrent cases        (default: 1)
   --samples <k>        Trials per case for pass@k  (default: 1, max 8)
   --model <id|alias>   Model for the harness sessions (default: harness default)
+  --judge-source <id>  Judge backend, separate from the evaluated harness
+  --judge-model <id>   Judge model, scoped to --judge-source
+  --judge-reasoning-effort <id>  Optional judge reasoning effort
   --name <name>        Run name
   --category <cat>     Filter by category (repeatable)
   --tag <tag>          Filter by tag (repeatable)
@@ -157,6 +167,20 @@ function printError(e: unknown, json: boolean, verbose: boolean, code: number): 
   process.exit(code);
 }
 
+async function resolveHarnesses(requested: string[]): Promise<string[]> {
+  if (requested.length > 0) return requested;
+  const configured = getDefaultHarness();
+  const discovered = await discoverHarnesses(true);
+  const configuredProbe = discovered.find((harness) => harness.id === configured);
+  if (configuredProbe?.status === "available") return [configured];
+  const available = discovered.find((harness) => harness.status === "available");
+  if (available) return [available.id];
+  const details = discovered
+    .map((harness) => `${harness.id}: ${harness.detail ?? harness.status}`)
+    .join("; ");
+  throw new Error(`No supported harness CLI is available. Probed ${discovered.length} harnesses. ${details}`);
+}
+
 
 async function main(): Promise<number> {
   const argv = process.argv.slice(2);
@@ -170,7 +194,7 @@ async function main(): Promise<number> {
     await listHarnesses(outputJson);
     return 0;
   }
-  const harnesses = args.harnesses.length > 0 ? args.harnesses : [getDefaultHarness()];
+  const harnesses = await resolveHarnesses(args.harnesses);
   const unknownHarnesses = harnesses.filter((harness) => !hasAdapter(harness));
   if (unknownHarnesses.length > 0) {
     throw new Error(`Unknown harness${unknownHarnesses.length === 1 ? "" : "es"} "${unknownHarnesses.join('", "')}". Registered harnesses: ${listAdapters().map((a) => a.id).join(", ")}`);
@@ -185,6 +209,12 @@ async function main(): Promise<number> {
   if (selected.length === 0) {
     throw new Error('No cases match. Try without filters, or check lib/cases.ts.');
   }
+  if ((args.judgeSource && !args.judgeModel) || (!args.judgeSource && args.judgeModel) || (args.judgeReasoningEffort && (!args.judgeSource || !args.judgeModel))) {
+    throw new Error('--judge-source and --judge-model must be supplied together');
+  }
+  const judge: JudgeSelectionInput | undefined = args.judgeSource
+    ? { source: args.judgeSource, model: args.judgeModel, reasoningEffort: args.judgeReasoningEffort }
+    : undefined;
 
   const fanOut = harnesses.length > 1;
   if (fanOut) {
@@ -194,7 +224,7 @@ async function main(): Promise<number> {
   const started: Array<{ id: string; harness: string }> = [];
   for (const harness of harnesses) {
     const label = fanOut ? `[${harness}] ` : '';
-    log(label + 'Starting run: ' + selected.length + ' case(s) × ' + args.samples + ' sample(s) — runner=' + args.runner + ' parallel=' + args.parallel + (args.model ? ' model=' + args.model : ''));
+    log(label + 'Starting run: ' + selected.length + ' case(s) × ' + args.samples + ' sample(s) — runner=' + args.runner + ' parallel=' + args.parallel + (args.model ? ' model=' + args.model : '') + (judge ? ` judge=${judge.source}/${judge.model}` : ''));
     const runName = args.name ? (fanOut ? `${args.name} · ${harness}` : args.name) : (fanOut ? `Run ${new Date().toISOString().replace('T', ' ').slice(0, 19)} · ${harness}` : undefined);
     const { id } = await createAndStartRun({
       name: runName,
@@ -204,6 +234,7 @@ async function main(): Promise<number> {
       model: args.model,
       samples: args.samples,
       filter,
+      judge,
     });
     started.push({ id, harness });
     log(label + 'Run started: ' + id);
@@ -220,7 +251,7 @@ async function main(): Promise<number> {
   await Promise.all(started.map((s) => waitForRun(s.id, showLive, fanOut ? `[${s.harness}] ` : '')));
 
   let worstCode = 0;
-  const jsonSummaries: Array<{ harness: string; id: string; summary: ReturnType<typeof computeSummary> }> = [];
+  const jsonSummaries: Array<{ harness: string; id: string; judge: JudgeSelection | null; summary: ReturnType<typeof computeSummary> }> = [];
   for (const s of started) {
     const finalRun = getRun(s.id);
     const finalCases = listRunCases(s.id);
@@ -235,13 +266,14 @@ async function main(): Promise<number> {
         console.log(label + '  ' + cat + ': ' + c.passed + '/' + c.total);
       }
     }
-    jsonSummaries.push({ harness: s.harness, id: s.id, summary });
+    jsonSummaries.push({ harness: s.harness, id: s.id, judge: finalRun?.params.judge ?? null, summary });
     if (finalRun?.status === 'failed') log(label + 'Run did not complete due to an unexpected failure.');
     worstCode = Math.max(worstCode, exitCodeForRun(finalRun?.status ?? null, finalCases));
   }
 
   if (outputJson) {
-    console.log(JSON.stringify(fanOut ? { runs: jsonSummaries } : (jsonSummaries[0]?.summary ?? null)));
+    const single = jsonSummaries[0];
+    console.log(JSON.stringify(fanOut ? { runs: jsonSummaries } : (single ? { ...single.summary, judge: single.judge } : null)));
   }
   return worstCode;
   } catch (e) {

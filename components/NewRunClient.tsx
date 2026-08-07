@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, Play, Check, Filter, Search, History, AlertCircle, AlertTriangle } from "lucide-react";
 import clsx from "clsx";
@@ -14,6 +14,8 @@ import { describeHarnessSelection } from "@/lib/adapters/diagnostics";
 import { readRunDefaults } from "@/lib/run-defaults";
 import { buildRunSentence, inferErrorField, isRunField, parseBoundedInt, type RunField } from "./newRunValidation";
 import EvaluateNav from "./EvaluateNav";
+import JudgePicker from "./JudgePicker";
+import type { JudgeSelectionInput } from "@/lib/grader/selection";
 
 interface Props { cases: CaseDefinition[]; initialCaseIds?: string[]; }
 
@@ -52,6 +54,8 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
   const [samplesRaw, setSamplesRaw] = useState("1");
   const [name, setName] = useState("");
   const [model, setModel] = useState<string | undefined>(() => searchParams.get("model") ?? undefined);
+  const [judge, setJudge] = useState<JudgeSelectionInput>({ source: "codex", model: "gpt-5.6-luna", reasoningEffort: "high" });
+  const [judgeReadiness, setJudgeReadiness] = useState<{ readiness: string; detail: string }>({ readiness: "unknown", detail: "Checking judge readiness…" });
   const [selected, setSelected] = useState<Record<string, boolean>>(() => Object.fromEntries(initialCaseIds.map((id) => [id, true])));
   const [filterCats, setFilterCats] = useState<Set<string>>(() => new Set(
     initialCaseIds.length > 0 ? cases.map((c) => c.category) : ["agentic-swe", "single-tool", "reasoning"],
@@ -69,6 +73,7 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
   const [lastRun, setLastRun] = useState<{ id: string; name: string } | null | undefined>(undefined);
   const [prefilling, setPrefilling] = useState(false);
   const [prefillNote, setPrefillNote] = useState<string | null>(null);
+  const handleJudgeReadiness = useCallback((next: { readiness: string; detail: string }) => setJudgeReadiness(next), []);
   useEffect(() => {
     let alive = true;
     fetch("/api/runs")
@@ -148,6 +153,7 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
   if (samplesParsed.error) blockers.push({ field: "samples", message: `Samples: ${samplesParsed.error}` });
   if (plannedCaseCount === 0) blockers.push({ field: "caseIds", message: "No cases to run — select cases or widen the filters." });
   if (harnessIssue && (!harnessInfo || harnessIssue.level === "error")) blockers.push({ field: "harness", message: `Harness: ${harnessIssue.message}` });
+  if (judgeReadiness.readiness !== "ready") blockers.push({ field: "judgeSource", message: `Judge: ${judgeReadiness.detail}` });
   const canSubmit = !submitting && blockers.length === 0;
 
   const plannedExecutions = samplesParsed.value != null ? plannedCaseCount * samplesParsed.value : null;
@@ -221,6 +227,7 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
       if (p.runner === "headless" || p.runner === "tmux") setRunner(p.runner);
       setHarness(typeof p.harness === "string" && p.harness ? p.harness : undefined);
       setModel(typeof p.model === "string" && p.model ? p.model : undefined);
+      if (p.judge && typeof p.judge === "object") setJudge({ source: p.judge.source, model: p.judge.model, reasoningEffort: p.judge.reasoningEffort });
       if (Number.isFinite(p.parallel)) setParallelRaw(String(p.parallel));
       if (Number.isFinite(p.samples)) setSamplesRaw(String(p.samples));
       // Re-select exactly the cases that ran (params.filter can be any shape;
@@ -272,6 +279,7 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
           parallel: parallelParsed.value,
           samples: samplesParsed.value,
           model,
+          judge,
           caseIds,
         }),
       });
@@ -359,7 +367,7 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
       </section>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4">
-        <div className="space-y-4">
+        <div className="new-run-summary-panel order-first space-y-4 lg:order-none">
 
           <section className="card p-5" aria-labelledby="execution-settings-title">
             <div className="mb-4">
@@ -457,6 +465,12 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
                 </div>
               )}
               {fieldErrors.harness && <div role="alert" className="text-[11px] text-err mt-1">{fieldErrors.harness}</div>}
+            </div>
+
+            <div className="mt-5 border-t border-bd-subtle pt-4" aria-labelledby="judge-settings-title">
+              <h3 id="judge-settings-title" className="text-xs font-medium uppercase tracking-wider text-fg-muted">Judge setup</h3>
+              <p className="mt-1 text-xs leading-5 text-fg-muted">This is the independent judge for rubric evidence, not the agent harness above. The exact source, model, and effort are frozen into this run before launch.</p>
+              <div className="mt-3"><JudgePicker value={judge} onChange={(next) => { setJudge(next); setJudgeReadiness({ readiness: "unknown", detail: "Checking judge readiness…" }); }} onReadinessChange={handleJudgeReadiness} error={fieldErrors.judgeSource ?? fieldErrors.judgeModel ?? fieldErrors.judgeReasoningEffort} idPrefix="run-judge" /></div>
             </div>
 
             <div className="mt-4">
@@ -608,6 +622,7 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
               <Row label="Runner" value={runner} />
               <Row label="Harness" value={harness || "default"} />
               <Row label="Model" value={model || "default"} />
+              <Row label="Judge" value={`${judge.source || "automatic"} / ${judge.model || "default"}`} />
               <Row label="Parallel" value={parallelParsed.value != null ? `${parallelParsed.value}×` : "invalid"} />
               <Row label="Samples" value={samplesParsed.value == null ? "invalid" : samplesParsed.value > 1 ? `${samplesParsed.value} (pass@k)` : "1"} />
             </dl>

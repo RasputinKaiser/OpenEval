@@ -46,3 +46,9 @@ fixtures/**/.DS_Store
 
 # Local Claude Code launch/config surfaces.
 .claude/
+
+# Local orchestration and browser inspection state. Public screenshots and
+# deliberate fixtures should live outside these generated surfaces.
+.clonk/
+.playwright-cli/
+.superpowers/

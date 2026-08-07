@@ -3,6 +3,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { ROOT } from "./config";
 import type { LiveSession } from "./live";
+import type { JudgeSelection } from "./grader/selection";
 
 /**
  * Persistent cache of parsed live sessions, keyed by (file, mtime, size).
@@ -65,8 +66,11 @@ function openCacheDb(): Database.Database {
   try { conn.exec("ALTER TABLE session_cache ADD COLUMN context_key TEXT NOT NULL DEFAULT ''"); } catch {}
   // Additive migration for DBs created before prompt versioning existed.
   try { conn.exec("ALTER TABLE outcome_judgments ADD COLUMN prompt_version INTEGER"); } catch {}
+  try { conn.exec("ALTER TABLE outcome_judgments ADD COLUMN selection_json TEXT"); } catch {}
+  try { conn.exec("ALTER TABLE judge_jobs ADD COLUMN selection_json TEXT"); } catch {}
   // Permanent means the SESSION itself is unjudgeable (missing file or no
-  // conversational text). Backend outages remain retryable after recovery.
+  // conversational text). Backend failures remain retryable until the
+  // bounded MAX_JUDGE_ATTEMPTS threshold is reached.
   try { conn.exec("ALTER TABLE judge_failures ADD COLUMN permanent INTEGER NOT NULL DEFAULT 0"); } catch {}
   // Additive migration: remember each file's fts rowid so re-indexing can
   // delete by rowid instead of scanning the UNINDEXED `file` column.
@@ -146,6 +150,7 @@ CREATE TABLE IF NOT EXISTS outcome_judgments (
   score REAL NOT NULL,
   reasons_json TEXT NOT NULL,
   judge TEXT NOT NULL,
+  selection_json TEXT,
   judged_at INTEGER NOT NULL,
   prompt_version INTEGER
 );
@@ -164,6 +169,7 @@ CREATE TABLE IF NOT EXISTS judge_jobs (
   judged INTEGER NOT NULL,
   failed INTEGER NOT NULL,
   judge TEXT NOT NULL,
+  selection_json TEXT,
   started_at INTEGER,
   finished_at INTEGER,
   last_error TEXT,
@@ -308,6 +314,15 @@ export interface StoredJudgment {
   judgedAt: number;
   /** JUDGE_PROMPT_VERSION the verdict was produced under (null = pre-versioning). */
   promptVersion?: number | null;
+  selection?: JudgeSelection;
+}
+
+function safeParseSelection(value: string): JudgeSelection | undefined {
+  try {
+    const parsed = JSON.parse(value) as Partial<JudgeSelection>;
+    if (typeof parsed?.source !== "string" || typeof parsed?.model !== "string") return undefined;
+    return parsed as JudgeSelection;
+  } catch { return undefined; }
 }
 
 /** All persisted LLM-judge outcome scores, keyed by session file. */
@@ -318,7 +333,7 @@ export function loadJudgments(): Map<string, StoredJudgment> {
   try {
     const rows = conn.prepare("SELECT * FROM outcome_judgments").all() as Array<{
       file: string; session_id: string | null; mtime_ms: number; score: number;
-      reasons_json: string; judge: string; judged_at: number; prompt_version: number | null;
+      reasons_json: string; judge: string; judged_at: number; prompt_version: number | null; selection_json: string | null;
     }>;
     for (const r of rows) {
       let reasons: string[] = [];
@@ -332,26 +347,40 @@ export function loadJudgments(): Map<string, StoredJudgment> {
         judge: r.judge,
         judgedAt: r.judged_at,
         promptVersion: r.prompt_version ?? null,
+        selection: r.selection_json ? safeParseSelection(r.selection_json) : undefined,
       });
     }
   } catch {}
   return out;
 }
 
-export function saveJudgment(j: StoredJudgment): void {
+/**
+ * Persist a verdict and report whether the durable receipt was actually
+ * written. When a lease is supplied, the ownership check and the upsert share
+ * one SQLite transaction so a worker that lost takeover cannot write a stale
+ * verdict into the new job's population.
+ */
+export function saveJudgment(j: StoredJudgment, opts: { leaseId?: string | null } = {}): boolean {
   const conn = getCacheDb();
-  if (!conn) return;
+  if (!conn) return false;
   try {
-    conn
-      .prepare(
-        `INSERT INTO outcome_judgments (file, session_id, mtime_ms, score, reasons_json, judge, judged_at, prompt_version)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(file) DO UPDATE SET session_id = excluded.session_id, mtime_ms = excluded.mtime_ms,
-           score = excluded.score, reasons_json = excluded.reasons_json, judge = excluded.judge,
-           judged_at = excluded.judged_at, prompt_version = excluded.prompt_version`,
-      )
-      .run(j.file, j.sessionId, j.mtimeMs, j.score, JSON.stringify(j.reasons), j.judge, j.judgedAt, j.promptVersion ?? null);
-  } catch {}
+    const write = () => {
+      if (opts.leaseId != null && !judgeJobLeaseOwnedOnConnection(conn, opts.leaseId)) return false;
+      return conn
+        .prepare(
+          `INSERT INTO outcome_judgments (file, session_id, mtime_ms, score, reasons_json, judge, judged_at, prompt_version, selection_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(file) DO UPDATE SET session_id = excluded.session_id, mtime_ms = excluded.mtime_ms,
+             score = excluded.score, reasons_json = excluded.reasons_json, judge = excluded.judge,
+             judged_at = excluded.judged_at, prompt_version = excluded.prompt_version, selection_json = excluded.selection_json`,
+        )
+        .run(j.file, j.sessionId, j.mtimeMs, j.score, JSON.stringify(j.reasons), j.judge, j.judgedAt, j.promptVersion ?? null, j.selection ? JSON.stringify(j.selection) : null)
+        .changes === 1;
+    };
+    return opts.leaseId == null ? write() : conn.transaction(write)() === true;
+  } catch {
+    return false;
+  }
 }
 
 // ---------- Judge failure ledger ----------
@@ -372,6 +401,27 @@ export interface JudgeFailure {
 /** A lease is considered detached after this interval without a heartbeat. */
 export const JUDGE_JOB_LEASE_MS = 30_000;
 
+function judgeJobLeaseOwnedOnConnection(conn: Database.Database, leaseId: string, now = Date.now()): boolean {
+  try {
+    const row = conn.prepare("SELECT state, lease_id, heartbeat_at FROM judge_jobs WHERE id = 1").get() as
+      | { state: string; lease_id: string | null; heartbeat_at: number | null }
+      | undefined;
+    return row?.state === "running"
+      && row.lease_id === leaseId
+      && typeof row.heartbeat_at === "number"
+      && Number.isFinite(row.heartbeat_at)
+      && now - row.heartbeat_at <= JUDGE_JOB_LEASE_MS;
+  } catch {
+    return false;
+  }
+}
+
+/** Read-only lease fence used by workers immediately before provider work. */
+export function judgeJobLeaseOwned(leaseId: string, now = Date.now()): boolean {
+  const conn = getCacheDb();
+  return conn != null && leaseId.length > 0 && judgeJobLeaseOwnedOnConnection(conn, leaseId, now);
+}
+
 export type StoredJudgeJobState = "running" | "finished" | "interrupted";
 
 /** Durable status for the singleton marker-window judge-all pass. */
@@ -382,6 +432,7 @@ export interface StoredJudgeJob {
   judged: number;
   failed: number;
   judge: string;
+  selection?: JudgeSelection;
   startedAt: number | null;
   finishedAt: number | null;
   lastError: string | null;
@@ -399,6 +450,7 @@ type JudgeJobRow = {
   judged: number;
   failed: number;
   judge: string;
+  selection_json: string | null;
   started_at: number | null;
   finished_at: number | null;
   last_error: string | null;
@@ -425,6 +477,7 @@ function parseJudgeJob(row: JudgeJobRow | undefined): StoredJudgeJob | null {
     judged: Math.max(0, Number(row.judged) || 0),
     failed: Math.max(0, Number(row.failed) || 0),
     judge: row.judge || "",
+    selection: row.selection_json ? safeParseSelection(row.selection_json) : undefined,
     startedAt: row.started_at == null ? null : Number(row.started_at),
     finishedAt: row.finished_at == null ? null : Number(row.finished_at),
     lastError: row.last_error ?? null,
@@ -437,7 +490,7 @@ function parseJudgeJob(row: JudgeJobRow | undefined): StoredJudgeJob | null {
 
 const judgeJobSelect = (conn: Database.Database): StoredJudgeJob | null => {
   try {
-    return parseJudgeJob(conn.prepare("SELECT state, total, done, judged, failed, judge, started_at, finished_at, last_error, queue_json, lease_id, owner_pid, heartbeat_at FROM judge_jobs WHERE id = 1").get() as JudgeJobRow | undefined);
+    return parseJudgeJob(conn.prepare("SELECT state, total, done, judged, failed, judge, selection_json, started_at, finished_at, last_error, queue_json, lease_id, owner_pid, heartbeat_at FROM judge_jobs WHERE id = 1").get() as JudgeJobRow | undefined);
   } catch {
     return null;
   }
@@ -455,14 +508,14 @@ export function saveJudgeJob(job: StoredJudgeJob): void {
   if (!conn) return;
   try {
     conn.prepare(
-      `INSERT INTO judge_jobs (id, state, total, done, judged, failed, judge, started_at, finished_at, last_error, queue_json, lease_id, owner_pid, heartbeat_at)
-       VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO judge_jobs (id, state, total, done, judged, failed, judge, selection_json, started_at, finished_at, last_error, queue_json, lease_id, owner_pid, heartbeat_at)
+       VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET state = excluded.state, total = excluded.total, done = excluded.done,
-         judged = excluded.judged, failed = excluded.failed, judge = excluded.judge, started_at = excluded.started_at,
+         judged = excluded.judged, failed = excluded.failed, judge = excluded.judge, selection_json = excluded.selection_json, started_at = excluded.started_at,
          finished_at = excluded.finished_at, last_error = excluded.last_error, queue_json = excluded.queue_json,
          lease_id = excluded.lease_id, owner_pid = excluded.owner_pid, heartbeat_at = excluded.heartbeat_at`,
     ).run(
-      job.state, job.total, job.done, job.judged, job.failed, job.judge, job.startedAt, job.finishedAt,
+      job.state, job.total, job.done, job.judged, job.failed, job.judge, job.selection ? JSON.stringify(job.selection) : null, job.startedAt, job.finishedAt,
       job.lastError, JSON.stringify(job.queue), job.leaseId, job.ownerPid, job.heartbeatAt,
     );
   } catch {}
@@ -483,24 +536,24 @@ export function claimJudgeJob(job: StoredJudgeJob, opts: { takeoverLeaseId?: str
         const takeover = opts.takeoverLeaseId != null && current.leaseId === opts.takeoverLeaseId;
         if (!takeover) return false;
         const result = conn.prepare(
-          `UPDATE judge_jobs SET state = ?, total = ?, done = ?, judged = ?, failed = ?, judge = ?, started_at = ?,
+          `UPDATE judge_jobs SET state = ?, total = ?, done = ?, judged = ?, failed = ?, judge = ?, selection_json = ?, started_at = ?,
              finished_at = ?, last_error = ?, queue_json = ?, lease_id = ?, owner_pid = ?, heartbeat_at = ?
            WHERE id = 1 AND state = 'running' AND lease_id = ?`,
         ).run(
-          job.state, job.total, job.done, job.judged, job.failed, job.judge, job.startedAt, job.finishedAt,
+          job.state, job.total, job.done, job.judged, job.failed, job.judge, job.selection ? JSON.stringify(job.selection) : null, job.startedAt, job.finishedAt,
           job.lastError, JSON.stringify(job.queue), job.leaseId, job.ownerPid, job.heartbeatAt, current.leaseId,
         );
         return result.changes === 1;
       }
       const result = conn.prepare(
-        `INSERT INTO judge_jobs (id, state, total, done, judged, failed, judge, started_at, finished_at, last_error, queue_json, lease_id, owner_pid, heartbeat_at)
-         VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO judge_jobs (id, state, total, done, judged, failed, judge, selection_json, started_at, finished_at, last_error, queue_json, lease_id, owner_pid, heartbeat_at)
+         VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET state = excluded.state, total = excluded.total, done = excluded.done,
-           judged = excluded.judged, failed = excluded.failed, judge = excluded.judge, started_at = excluded.started_at,
+           judged = excluded.judged, failed = excluded.failed, judge = excluded.judge, selection_json = excluded.selection_json, started_at = excluded.started_at,
            finished_at = excluded.finished_at, last_error = excluded.last_error, queue_json = excluded.queue_json,
            lease_id = excluded.lease_id, owner_pid = excluded.owner_pid, heartbeat_at = excluded.heartbeat_at`,
       ).run(
-        job.state, job.total, job.done, job.judged, job.failed, job.judge, job.startedAt, job.finishedAt,
+        job.state, job.total, job.done, job.judged, job.failed, job.judge, job.selection ? JSON.stringify(job.selection) : null, job.startedAt, job.finishedAt,
         job.lastError, JSON.stringify(job.queue), job.leaseId, job.ownerPid, job.heartbeatAt,
       );
       return result.changes === 1;
@@ -565,7 +618,7 @@ export function interruptJudgeJob(leaseId: string, error: string, finishedAt = D
 
 /**
  * Failed judge attempts, keyed by session file. Without this ledger, a file
- * that can never be judged (deleted, unparseable, or a judge-killing prompt)
+ * that can never be judged (deleted, unparseable, or an unavailable judge)
  * is retried on EVERY pass and judge-all never converges.
  */
 export function loadJudgeFailures(): Map<string, JudgeFailure> {

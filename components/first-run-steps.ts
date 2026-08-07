@@ -7,6 +7,22 @@
 export const ONBOARDING_DISMISSED_KEY = "openeval-onboarding-dismissed";
 /** Window event Settings dispatches to re-open the welcome tour. */
 export const SHOW_ONBOARDING_EVENT = "openeval-show-onboarding";
+/** Stable marker shared with the dashboard's inline first-run guide. */
+export const FIRST_RUN_GUIDE_ARIA_LABEL = "Getting started";
+export const FIRST_RUN_GUIDE_SELECTOR = `[aria-label="${FIRST_RUN_GUIDE_ARIA_LABEL}"]`;
+
+/**
+ * The dashboard guide is the primary clean-install surface. The global tour
+ * may still be replayed manually, but it should yield when that guide is
+ * already rendered so a new operator does not get two overlapping tours.
+ */
+export function shouldShowOnboardingOverlay(input: {
+  runCount: number;
+  parseableSessionCount: number;
+  inlineGuideVisible: boolean;
+}): boolean {
+  return !input.inlineGuideVisible && input.runCount === 0 && input.parseableSessionCount === 0;
+}
 
 export type Probe<T> =
   | { phase: "checking" }
@@ -66,23 +82,23 @@ export function buildGuideSteps(
 
   const harnessDetail =
     harness.phase === "checking" ? "Probing PATH for agent CLIs…"
-    : harness.phase === "unavailable" ? "Detection status unavailable — could not reach the server."
+    : harness.phase === "unavailable" ? "Could not check agent CLIs — the server is unavailable."
     : harnessDone
       ? `${harness.data.available.length} of ${harness.data.total} known ${harness.data.total === 1 ? "harness" : "harnesses"} available: ${harness.data.available.join(", ")}`
       : "No agent CLIs found on PATH. Install one (ncode, Claude Code, or Codex), then re-check.";
 
   const sessionsDetail =
     sessions.phase === "checking" ? "Scanning this machine for existing transcripts…"
-    : sessions.phase === "unavailable" ? "Detection status unavailable — could not reach the server."
+    : sessions.phase === "unavailable" ? "Could not confirm session history — the scan is unavailable."
     : sessionsDone
       ? `${sessions.data.totalKnownSessions.toLocaleString()} past ${sessions.data.totalKnownSessions === 1 ? "session" : "sessions"} found across ${sessions.data.presentSources} ${sessions.data.presentSources === 1 ? "source" : "sources"} — insights are ready before your first eval.`
       : sessions.data.detectOnlySessions > 0
         ? `${sessions.data.detectOnlySessions.toLocaleString()} ${sessions.data.detectOnlySessions === 1 ? "session" : "sessions"} detected in sources OpenEval can't parse for metrics yet. Parseable transcripts appear after a supported harness runs once.`
-        : "No transcripts yet. They appear here automatically after any harness runs once.";
+        : "No parseable transcripts yet. They appear here automatically after a supported harness runs once.";
 
   const runsDetail =
     runs.phase === "checking" ? "Checking for recorded runs…"
-    : runs.phase === "unavailable" ? "Detection status unavailable — could not reach the server."
+    : runs.phase === "unavailable" ? "Could not confirm recorded runs — the server is unavailable."
     : runsDone
       ? `${runs.data.runCount} eval ${runs.data.runCount === 1 ? "run" : "runs"} recorded.`
       : "Pick cases and a harness, then launch. Results stream in live.";

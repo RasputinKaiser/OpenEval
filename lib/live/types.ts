@@ -356,6 +356,19 @@ export interface TranscriptResult {
   normalization?: TranscriptNormalization;
 }
 
+/** Minimal parser checkpoint serialized inside a revision-bound transcript cursor. */
+export interface TranscriptCursorState {
+  calls: Array<[string, { name: string; at?: number }]>;
+  lastCodexMessage?: {
+    envelope: "event_msg" | "response_item";
+    fingerprint: string;
+    recordIndex: number;
+    role: "user" | "assistant";
+  };
+  recordIndex: number;
+  semanticTurns: number;
+}
+
 export interface LiveSessionDetailResult {
   session?: LiveSession;
   error?: string;

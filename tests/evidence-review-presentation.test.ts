@@ -11,8 +11,8 @@ test("evidence review stays metadata-only and bounded", () => {
   assert.match(src, /source-qualified identity/);
   assert.match(src, /slice\(0, 3\)/);
   assert.match(src, /never renders transcript text/);
-  assert.match(src, /Transcript lookup/);
-  assert.match(src, /Caveats/);
+  assert.match(src, /Find matching sessions/);
+  assert.match(src, /Limits/);
 });
 
 test("Collection and Timeline wire source-qualified review handoffs", () => {
@@ -21,7 +21,7 @@ test("Collection and Timeline wire source-qualified review handoffs", () => {
 
   assert.match(collection, /<EvidenceReview/);
   assert.match(collection, /identity=\{`\$\{s\.sourceId\} \/ \$\{s\.sessionId\}`\}/);
-  assert.match(collection, /\/collection\/session\?file=\$\{encodeURIComponent\(s\.path\)\}/);
+  assert.match(collection, /\/collection\/session\?sourceId=\$\{encodeURIComponent\(s\.sourceId\)\}&sessionId=\$\{encodeURIComponent\(s\.sessionId\)\}/);
   assert.match(collection, /s\.archived \? "archived" : "available"/);
 
   assert.match(timeline, /<EvidenceReview/);

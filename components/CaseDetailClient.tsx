@@ -40,7 +40,7 @@ export default function CaseDetailClient({ caseId, runId, initial }: Props) {
   const [openTools, setOpenTools] = useState(true);
   const [openTranscript, setOpenTranscript] = useState(true);
   const [openPreview, setOpenPreview] = useState(true);
-  const [previewContent, setPreviewContent] = useState<{ path: string; content: string } | null>(null);
+  const [previewContent, setPreviewContent] = useState<{ path: string; content: string; contentTruncated?: boolean } | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const lastEnd = useRef(initial?.ended_at ?? 0);
   const redactionSeed = useMemo(() => [JSON.stringify(rc)], [rc]);
@@ -77,10 +77,11 @@ export default function CaseDetailClient({ caseId, runId, initial }: Props) {
         return;
       }
       const data = await res.json();
-      if (data.content) {
+      if (typeof data.content === "string") {
         setPreviewContent({
           path: artifactPath,
           content: data.content,
+          contentTruncated: Boolean(data.contentTruncated),
         });
       }
     } catch {
@@ -147,7 +148,14 @@ export default function CaseDetailClient({ caseId, runId, initial }: Props) {
             </div>
             {previewLoading && <div className="text-xs text-fg-muted">Loading artifact…</div>}
             {previewContent && (
-              <ArtifactPreview path={show(previewContent.path)} content={show(previewContent.content)} />
+              <>
+                {previewContent.contentTruncated && (
+                  <div className="text-xs text-warn" role="status">
+                    This is a bounded preview of a larger artifact; the byte receipt is complete, but the rendered content is not.
+                  </div>
+                )}
+                <ArtifactPreview path={show(previewContent.path)} content={show(previewContent.content)} />
+              </>
             )}
             {!previewContent && !previewLoading && (
               <div className="text-xs text-fg-muted">

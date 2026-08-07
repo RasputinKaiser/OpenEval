@@ -5,7 +5,16 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ArrowRight, Check, Terminal, X } from "lucide-react";
 import { cachedFetch } from "@/lib/cached-fetch";
-import { ONBOARDING_DISMISSED_KEY, SHOW_ONBOARDING_EVENT } from "./first-run-steps";
+import {
+  FIRST_RUN_GUIDE_SELECTOR,
+  ONBOARDING_DISMISSED_KEY,
+  SHOW_ONBOARDING_EVENT,
+  shouldShowOnboardingOverlay,
+} from "./first-run-steps";
+
+function inlineFirstRunGuideVisible(): boolean {
+  return document.querySelector(FIRST_RUN_GUIDE_SELECTOR) !== null;
+}
 
 export default function OnboardingOverlay() {
   const pathname = usePathname();
@@ -20,14 +29,21 @@ export default function OnboardingOverlay() {
       const dismissed = localStorage.getItem(ONBOARDING_DISMISSED_KEY);
       if (!dismissed) {
         Promise.all([
-          cachedFetch<{ runs: unknown[] }>("/api/runs"),
+          cachedFetch<{ runs?: unknown[] }>("/api/runs"),
           cachedFetch<{ known?: { parseable?: boolean; sessionCount?: number }[] }>("/api/collection?mode=discover"),
         ])
           .then(([runs, collection]) => {
-            const parseableSessions = (collection.known ?? [])
+            // A malformed or partial response is unknown, not proof of a new
+            // install. The inline dashboard guide owns the same empty state.
+            if (!Array.isArray(runs.runs) || !Array.isArray(collection.known)) return;
+            const parseableSessions = collection.known
               .filter((source) => source.parseable)
               .reduce((total, source) => total + (source.sessionCount ?? 0), 0);
-            if ((runs.runs ?? []).length === 0 && parseableSessions === 0) setShow(true);
+            if (shouldShowOnboardingOverlay({
+              runCount: runs.runs.length,
+              parseableSessionCount: parseableSessions,
+              inlineGuideVisible: inlineFirstRunGuideVisible(),
+            })) setShow(true);
           })
           // A failed poll is "unknown", not "new user" — never pop a modal
           // over the app because the API was briefly unreachable.
@@ -35,6 +51,20 @@ export default function OnboardingOverlay() {
       }
     } catch {}
   }, [pathname]);
+
+  // The dashboard guide is server-rendered alongside this root-level client
+  // component. Hide a pending automatic modal if that guide becomes visible
+  // while the discovery requests are settling; manual Settings replay wins.
+  useEffect(() => {
+    if (!show || manual || pathname !== "/") return;
+    const hideIfInlineGuideAppears = () => {
+      if (inlineFirstRunGuideVisible()) setShow(false);
+    };
+    hideIfInlineGuideAppears();
+    const observer = new MutationObserver(hideIfInlineGuideAppears);
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [manual, pathname, show]);
 
   // Re-entry: Settings dispatches this event to replay the tour on demand.
   useEffect(() => {
@@ -103,7 +133,7 @@ export default function OnboardingOverlay() {
           </div>
           <h2 id="onboarding-title" className="text-lg font-semibold mb-1">Welcome to OpenEval</h2>
           <p id="onboarding-description" className="text-sm text-fg-muted mb-6">
-            Evaluate agent CLIs across SWE, single-tool, reasoning, and visual-code tasks. Here&apos;s how to get started:
+            Connect a harness, inspect any existing evidence, then run a focused benchmark. Here&apos;s the short path:
           </p>
           <div className="space-y-3 text-left mb-6">
             <div className="flex items-center gap-3 p-3 rounded-lg border border-bd-subtle bg-bg/40">

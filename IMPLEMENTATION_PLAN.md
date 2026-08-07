@@ -7,6 +7,17 @@
 
 OpenEval provides one complete local-first evidence loop: an operator can connect or verify any descriptor-compatible CLI, collect trustworthy source-aware observations, understand a session through a summary-first brief and bounded expert transcript, select Codex/Claude (or configured OpenRouter) explicitly for each judge job, hand the evidence into one linked evaluation, and return to the original and re-check results with raw/derived provenance intact. The product remains free, responsive, and usable without an account or hosted service.
 
+### Release-hardening checkpoint — 2026-08-06
+
+The current dirty checkout has completed a release-hardening pass across installation, evidence delivery, judge persistence, API recovery, onboarding, and responsive presentation. The exact gate is `npm run verify:release`; it covers the automated checks and production build, while live browser proof remains a separate release decision. This checkpoint does not mark the broader First Evidence Loop acceptance criteria below as complete unless their individual evidence is present.
+
+- [x] Make supported Node/npm versions, environment configuration, clean install, doctor checks, CI, release commands, and public-upload scanning explicit.
+- [x] Preserve raw-run authority while bounding transcript JSONL, artifact previews/ranges, and report generation/streaming.
+- [x] Persist judge selection and fence stale or interrupted leases so mixed receipts and infrastructure failures remain legible.
+- [x] Normalize JSON/API/SSE error envelopes and prevent overlapping visibility/live polling.
+- [x] Apply onboarding, mobile navigation, review-state, and evidence-copy polish with focused regression coverage.
+- [ ] Decide the release commit/tag/push after reviewing the complete dirty diff and any remaining browser-matrix gaps.
+
 ### Acceptance Criteria
 
 - [ ] AC1: From `/harnesses`, a user can validate and persist a custom descriptor, see separate registration/binary/execution/observation/judge readiness, reconnect it after a recoverable failure, and disconnect it without deleting any transcript or evaluation evidence; bundled adapters remain available as immutable references.
@@ -23,9 +34,9 @@ OpenEval provides one complete local-first evidence loop: an operator can connec
 ## Phase 1 — MVP
 
 - [ ] Build the managed harness connection center and layered readiness model per `specs/harness-connection-and-onboarding.md#connection-center` [id:harness-connection-center] [wave:1] (UI: `frontend-design:frontend-design`; use `frontend-app-builder` and Playwright MCP/Chrome when available)
-- [ ] Preserve authoritative raw CLI output while bounding SQLite and run/list/Compare API projections per `specs/observation-ingestion.md#raw-authority-for-openeval-launched-runs` [id:raw-run-authority] [wave:1]
-- [ ] Replace path-authoritative Collection hydration with the shared source-qualified resolver, revision-bound transcript cursor, and hermetic route fixtures per `specs/transcript-evidence.md` [id:trusted-transcript-windowing] [wave:1]
-- [ ] Add canonical in-app support/contact touchpoints per `specs/product-shell-and-validation.md#support-and-contact` [id:product-links] [wave:1] (UI: `frontend-design:frontend-design`; verify external-link and mobile keyboard contracts)
+- [x] Preserve authoritative raw CLI output while bounding SQLite and run/list/Compare API projections per `specs/observation-ingestion.md#raw-authority-for-openeval-launched-runs` [id:raw-run-authority] [wave:1]
+- [x] Replace path-authoritative Collection hydration with the shared source-qualified resolver, revision-bound transcript cursor, and hermetic route fixtures per `specs/transcript-evidence.md` [id:trusted-transcript-windowing] [wave:1]
+- [x] Add canonical in-app support/contact touchpoints per `specs/product-shell-and-validation.md#support-and-contact` [id:product-links] [wave:1] (UI: `frontend-design:frontend-design`; verify external-link and mobile keyboard contracts)
 - [ ] Add immutable per-job judge selection and mixed-population receipts for New Run, CLI, and Timeline jobs per `specs/judge-jobs.md` [id:explicit-judge-jobs] [needs:raw-run-authority] (UI: `frontend-design:frontend-design`; use deterministic judge stubs)
 - [ ] Complete descriptor-driven semantic normalization parity across runner, summary, transcript, and FTS paths per `specs/observation-ingestion.md#universal-semantic-mapping` [id:universal-observation-normalization] [needs:trusted-transcript-windowing]
 - [ ] Unify the overlay and Dashboard guide into the resumable first-evidence state machine per `specs/harness-connection-and-onboarding.md#onboarding-state-machine` [id:first-evidence-onboarding] [needs:harness-connection-center] [needs:trusted-transcript-windowing] (UI: `frontend-design:frontend-design`; verify with Playwright MCP/Chrome)

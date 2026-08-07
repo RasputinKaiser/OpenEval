@@ -13,6 +13,7 @@ export function useVisibilityPoll(
 
   useEffect(() => {
     cancelledRef.current = false;
+    let inFlight = false;
 
     function scheduleNext() {
       if (cancelledRef.current || !enabled) return;
@@ -22,12 +23,16 @@ export function useVisibilityPoll(
     async function poll() {
       if (cancelledRef.current || !enabled) return;
       if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      if (inFlight) return;
+      inFlight = true;
       try {
         await callbackRef.current();
       } catch {
         // swallow — poller errors are non-fatal
+      } finally {
+        inFlight = false;
+        if (!cancelledRef.current && enabled) scheduleNext();
       }
-      if (!cancelledRef.current && enabled) scheduleNext();
     }
 
     if (enabled) poll();

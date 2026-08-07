@@ -111,6 +111,37 @@ export function checkNodeVersion(
   return { id, label, status: "ok", detail: `Node ${currentVersion}${nvmrc ? ` matches .nvmrc (${nvmrc})` : ""}.` };
 }
 
+/** npm major check keeps clean installs aligned with the lockfile-tested toolchain. */
+export function checkNpmVersion(
+  repoRoot: string,
+  currentVersion: string = process.env.npm_config_user_agent?.match(/npm\/([0-9.]+)/)?.[1] ?? "",
+): CheckResult {
+  const id = "npm-version";
+  const label = "npm version";
+  if (!currentVersion) {
+    return { id, label, status: "info", detail: "npm version was not exposed by the current invocation; run doctor through npm for a full check." };
+  }
+  const currentMajor = Number.parseInt(currentVersion.split(".")[0] ?? "", 10);
+  if (!Number.isFinite(currentMajor)) {
+    return { id, label, status: "warn", detail: `Could not parse the active npm version (${currentVersion}).`, hint: "Use npm 10 with the project lockfile, then rerun `npm run doctor`." };
+  }
+  let range = "npm 10";
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, "package.json"), "utf8")) as { engines?: { npm?: string } };
+    range = pkg.engines?.npm ?? range;
+  } catch {
+    // Keep the useful default message when package metadata is unavailable.
+  }
+  if (currentMajor !== 10) {
+    return {
+      id, label, status: "warn",
+      detail: `npm ${currentVersion} is outside the release-tested toolchain (${range}).`,
+      hint: "Use npm 10 with Node 20, then rerun `npm ci` so the lockfile install is authoritative.",
+    };
+  }
+  return { id, label, status: "ok", detail: `npm ${currentVersion} matches the release-tested npm 10 major.` };
+}
+
 /** Loads the native binding and runs a trivial query against `:memory:`. */
 export async function checkBetterSqlite3(): Promise<CheckResult> {
   const id = "better-sqlite3";
@@ -335,6 +366,7 @@ export async function runDoctor(opts: DoctorOptions = {}): Promise<{ results: Ch
   );
   const results: CheckResult[] = [
     checkNodeVersion(repoRoot),
+    checkNpmVersion(repoRoot),
     await checkBetterSqlite3(),
     checkNextCache(repoRoot, { fix: opts.fix }),
     checkPort3000(opts.port ?? 3000),

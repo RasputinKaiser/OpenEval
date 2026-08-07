@@ -7,6 +7,7 @@ interface StreamUsageState {
   cumulativeOutput: number;
   lastAt: number;
 }
+const MAX_STREAM_USAGE_SEGMENTS = 256;
 
 function streamUsageState(into: ParseAccumulator): StreamUsageState {
   const internal = into as ParseAccumulator & { _streamUsage?: StreamUsageState };
@@ -96,7 +97,7 @@ export function parseStreamLine(
       const elapsedSec = Math.max((at - state.lastAt) / 1000, 0.001);
       state.cumulativeInput += deltaInput;
       state.cumulativeOutput += deltaOutput;
-      state.segments.push({
+      if (state.segments.length < MAX_STREAM_USAGE_SEGMENTS) state.segments.push({
         atMs: at,
         cumulativeInput: state.cumulativeInput,
         cumulativeOutput: state.cumulativeOutput,

@@ -182,7 +182,7 @@ test("GET /api/runs/[id]?lite=1 strips heavy runner and grader payloads", async 
       durationMs: 5,
       startedAt: Date.now() - 10,
       endedAt: Date.now(),
-      transcript: [],
+      transcript: [{ role: "assistant", content: [{ type: "text", text: "AUTHORITATIVE_TRANSCRIPT_BODY_" + "x".repeat(10000) }] }],
       toolCalls: [{ name: "tool", input: "x".repeat(500), output: "y".repeat(500), at: Date.now() }],
       finalText: "z".repeat(700),
       resultText: "ok",
@@ -212,6 +212,8 @@ test("GET /api/runs/[id]?lite=1 strips heavy runner and grader payloads", async 
   const body = await res.json();
   const row = body.cases[0];
   assert.equal(row.runner_result.rawJson, null);
+  assert.deepEqual(row.runner_result.transcript, [], "lite/list projections omit transcript bodies");
+  assert.equal(row.runner_result.transcriptAvailable, false);
   assert.equal(row.runner_result.finalText.length, 500);
   assert.equal(row.runner_result.toolCalls[0].input.length, 200);
   assert.equal(row.runner_result.toolCalls[0].output.length, 200);
@@ -239,6 +241,21 @@ test("GET /api/runs/[id]/report?bundle=1 returns a portable redacted archive", a
   } finally {
     fs.rmSync(archive, { force: true });
   }
+});
+
+test("GET /api/runs/[id]/report streams the Markdown download from a bounded file body", async () => {
+  const { reportRoute, db } = await importRoutes();
+  const runId = "stream-report";
+  db.insertRun(makeRun({ id: runId, name: "Stream me", status: "completed", ended_at: Date.now() }));
+  const res = await reportRoute.GET(
+    new Request(`http://localhost:3000/api/runs/${runId}/report`),
+    { params: Promise.resolve({ id: runId }) },
+  );
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get("content-type"), "text/markdown; charset=utf-8");
+  assert.ok(Number(res.headers.get("content-length")) > 0);
+  assert.ok(res.body, "report delivery should expose a stream body");
+  assert.match(await res.text(), /^# Stream me \(stream-report\)/);
 });
 
 test("POST /api/runs/[id]/cancel: nonexistent run → 404", async () => {
@@ -336,6 +353,50 @@ test("GET artifact serves files only from the case workdir", async () => {
     { params: Promise.resolve({ id: run.id, caseId: "case-1" }) },
   );
   assert.equal(escaped.status, 400);
+});
+
+test("GET artifact bounds JSON previews and supports safe byte ranges", async () => {
+  const { artifactRoute, db } = await importRoutes();
+  const run = makeRun({ status: "completed", ended_at: Date.now() });
+  const workdir = path.join(tempRoot, "workdir-bounded-artifact");
+  const artifactPath = path.join(workdir, "large.txt");
+  const previewLimit = 512 * 1024;
+  const content = `artifact-start\n${"x".repeat(previewLimit + 128)}`;
+  fs.mkdirSync(workdir, { recursive: true });
+  fs.writeFileSync(artifactPath, content, "utf8");
+  db.insertRun(run);
+  db.insertRunCase(makeRunCase(run.id, 1, { workdir_path: workdir }));
+
+  const previewResponse = await artifactRoute.GET(
+    new NextRequest(`http://localhost:3000/api/runs/${run.id}/case/case-1/artifact?path=large.txt`),
+    { params: Promise.resolve({ id: run.id, caseId: "case-1" }) },
+  );
+  assert.equal(previewResponse.status, 200);
+  const preview = await previewResponse.json();
+  assert.equal(preview.bytes, Buffer.byteLength(content));
+  assert.equal(preview.contentTruncated, true);
+  assert.ok(Buffer.byteLength(preview.content, "utf8") <= previewLimit);
+  assert.equal(preview.content, content.slice(0, preview.content.length));
+
+  const rangeResponse = await artifactRoute.GET(
+    new NextRequest(`http://localhost:3000/api/runs/${run.id}/case/case-1/artifact?path=large.txt`, {
+      headers: { range: "bytes=7-16" },
+    }),
+    { params: Promise.resolve({ id: run.id, caseId: "case-1" }) },
+  );
+  assert.equal(rangeResponse.status, 206);
+  assert.equal(rangeResponse.headers.get("accept-ranges"), "bytes");
+  assert.equal(rangeResponse.headers.get("content-range"), `bytes 7-16/${Buffer.byteLength(content)}`);
+  assert.equal(Buffer.from(await rangeResponse.arrayBuffer()).toString("utf8"), content.slice(7, 17));
+
+  const invalidRange = await artifactRoute.GET(
+    new NextRequest(`http://localhost:3000/api/runs/${run.id}/case/case-1/artifact?path=large.txt`, {
+      headers: { range: "bytes=not-a-range" },
+    }),
+    { params: Promise.resolve({ id: run.id, caseId: "case-1" }) },
+  );
+  assert.equal(invalidRange.status, 416);
+  assert.equal(invalidRange.headers.get("content-range"), `bytes */${Buffer.byteLength(content)}`);
 });
 
 test("GET artifact rejects symlinks that escape the case workdir", async () => {

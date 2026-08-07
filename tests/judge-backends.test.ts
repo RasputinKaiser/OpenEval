@@ -199,7 +199,7 @@ test("loadJudgeFailures round-trips file, attempts, error, and timestamp", () =>
   });
 });
 
-test("judgeSkipSet contains current judgments and permanent file failures, while transient backend failures recover", () => {
+test("judgeSkipSet honors current judgments, permanent failures, and the retry cap", () => {
   withMemoryCacheDb(() => {
     saveJudgment({
       file: "/tmp/judged.jsonl",
@@ -223,15 +223,15 @@ test("judgeSkipSet contains current judgments and permanent file failures, while
     });
     recordJudgeFailure("/tmp/one-failure.jsonl", "transient");
     recordJudgeFailure("/tmp/capped.jsonl", "dead", { permanent: true });
-    for (let i = 0; i < MAX_JUDGE_ATTEMPTS + 1; i++) recordJudgeFailure("/tmp/over-cap.jsonl", "dead");
+    for (let i = 0; i < MAX_JUDGE_ATTEMPTS; i++) recordJudgeFailure("/tmp/over-cap.jsonl", "dead");
 
     const skip = judgeSkipSet();
     assert.ok(skip.has("/tmp/judged.jsonl"), "judged file skipped");
     assert.ok(skip.has("/tmp/capped.jsonl"), "permanent failure skipped");
-    assert.equal(skip.has("/tmp/over-cap.jsonl"), false, "repeated transient failures remain retryable");
+    assert.ok(skip.has("/tmp/over-cap.jsonl"), "a transient failure at the retry cap is skipped");
     assert.equal(skip.has("/tmp/one-failure.jsonl"), false, "single transient failure is retried");
     assert.equal(skip.has("/tmp/old-prompt.jsonl"), false, "old prompt verdict is queued for re-judging");
-    assert.equal(skip.size, 2);
+    assert.equal(skip.size, 3);
     assert.equal(loadCurrentJudgments().size, 1);
   });
 });

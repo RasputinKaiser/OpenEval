@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { probeHarness } from "./adapters/discover";
 import { getAdapter } from "./adapters/registry";
+import type { JudgeSelection } from "./grader/selection";
 
 export interface RunManifest {
   openevalVersion: string;
@@ -16,6 +17,7 @@ export interface RunManifest {
   model: string | null;
   repo: { gitSha: string | null; gitBranch: string | null; dirty: boolean | null };
   defaultsApplied: string[];
+  judge?: JudgeSelection;
 }
 
 async function readOpenEvalVersion(): Promise<string> {
@@ -43,7 +45,7 @@ function execGit(args: string[]): Promise<string | null> {
 export async function collectRunManifest(
   harnessId: string,
   model?: string,
-  opts?: { harnessWasDefault?: boolean; modelWasDefault?: boolean; modelDefaultSource?: "descriptor" | "config" | "none" }
+  opts?: { harnessWasDefault?: boolean; modelWasDefault?: boolean; modelDefaultSource?: "descriptor" | "config" | "none"; judge?: JudgeSelection }
 ): Promise<RunManifest> {
   const [openevalVersion, harnessProbe, gitSha, gitBranch, gitStatus] = await Promise.all([
     readOpenEvalVersion(),
@@ -83,5 +85,6 @@ export async function collectRunManifest(
       dirty: gitStatus == null ? null : gitStatus.length > 0,
     },
     defaultsApplied,
+    judge: opts?.judge,
   };
 }

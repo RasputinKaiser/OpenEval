@@ -129,7 +129,22 @@ test("Timeline marker filter persists its state in the URL", () => {
   assert.match(src, /renderedImpacts\.map/, "the impact table must render its window instead of the full corpus");
   assert.match(src, /for \(const m of renderedMarkers\)/, "the adoption rail must render its newest window");
   assert.match(src, /Global shifts \(context\)/, "kind filters must explicitly preserve global shift semantics");
-  assert.match(src, /independent of adoption filters and not attribution/, "global shifts must remain explicitly non-attributed");
+  assert.match(src, /Population changes that add context; not attribution\./, "global shifts must remain explicitly non-attributed");
+});
+
+test("mobile Observe surfaces avoid competing persistent rails and stacked caveat banners", () => {
+  const nav = read("components/mobile/ProgressiveSectionNav.tsx");
+  const css = read("app/globals.css");
+  const collection = read("components/CollectionClient.tsx");
+  const live = read("components/LiveClient.tsx");
+  const newRun = read("components/NewRunClient.tsx");
+  assert.match(nav, /relative -mx-4 mb-3/);
+  assert.match(nav, /md:sticky md:top-0/);
+  assert.match(css, /\.timeline-section-nav__context \{\n    display: none;/);
+  assert.match(collection, /mb-4 hidden min-w-0 max-w-full lg:sticky/);
+  assert.match(collection, /Collection coverage has caveats/);
+  assert.match(live, /hasLiveCoverageNotes/);
+  assert.match(newRun, /new-run-summary-panel order-first/);
 });
 
 test("Compare explains its empty and one-run states", () => {

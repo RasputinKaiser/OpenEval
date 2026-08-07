@@ -263,12 +263,12 @@ export default function OutcomeChart({
     <div className="timeline-chart relative">
       <div className="timeline-chart-toolbar flex items-center justify-between gap-3 mb-2">
         <div className="timeline-chart-toolbar-copy min-w-0">
-          <span className="text-[10px] uppercase tracking-[0.12em] text-fg-dim">Observed outcome trend</span>
+          <span className="timeline-chart-toolbar-label text-[10px] uppercase tracking-[0.12em] text-fg-dim">Observed outcome trend</span>
           <span className="timeline-chart-toolbar-subcopy">Trailing median · outcome 0–1 · {evidenceCopy}</span>
         </div>
-        <div className="timeline-chart-toolbar-actions">
-          <div className="timeline-chart-kpi" title={`Latest observed trailing median on ${fmtDate(latest.at)}`}>
-            <span>Latest</span>
+        <div className="timeline-chart-toolbar-actions" aria-label="Trend summary">
+          <div className="timeline-chart-kpi timeline-chart-kpi-latest" title={`Latest observed trailing median on ${fmtDate(latest.at)}`}>
+            <span>Latest median</span>
             <strong>{latest.value.toFixed(2)}</strong>
           </div>
           <div className="timeline-chart-kpi timeline-chart-kpi-range" title={`Observed range from ${fmtDate(t0)} to ${fmtDate(t1)}`}>
@@ -366,12 +366,12 @@ export default function OutcomeChart({
         <desc id={descriptionId}>Observed trailing median outcome points from {fmtDate(t0)} to {fmtDate(t1)}. Evidence basis: {evidenceCopy}. Straight segments connect observed points; values between observations are not measured.</desc>
         {/* y gridlines at 0 / .5 / 1 — labels live in the pinned overlay so they survive panning */}
         {[0, 0.5, 1].map((v) => (
-          <line key={v} x1={PAD_L} y1={y(v)} x2={W - PAD_R} y2={y(v)} stroke="var(--color-bd)" strokeWidth={v === 0.5 ? 1 : 0.5} strokeDasharray={v === 0.5 ? "3 4" : undefined} />
+          <line key={v} className={v === 0.5 ? "timeline-chart-gridline timeline-chart-gridline-major" : "timeline-chart-gridline"} x1={PAD_L} y1={y(v)} x2={W - PAD_R} y2={y(v)} stroke="var(--color-bd)" strokeWidth={v === 0.5 ? 1 : 0.5} strokeDasharray={v === 0.5 ? "3 4" : undefined} />
         ))}
         {/* month gridlines */}
         {axisTicks.map((m, index) => (
           <g key={m}>
-            <line x1={x(m)} y1={PAD_T} x2={x(m)} y2={H - PAD_B} stroke="var(--color-bd)" strokeWidth={0.5} opacity={0.6} />
+            <line className="timeline-chart-monthline" x1={x(m)} y1={PAD_T} x2={x(m)} y2={H - PAD_B} stroke="var(--color-bd)" strokeWidth={0.5} opacity={0.6} />
             <text x={x(m)} y={H - PAD_B + 12} textAnchor={index === 0 ? "start" : index === axisTicks.length - 1 ? "end" : "middle"} fontSize={9} fill="var(--color-fg-dim)" fontFamily="ui-monospace, monospace">
               {tickLabel(m, index)}
             </text>
@@ -431,9 +431,9 @@ export default function OutcomeChart({
           );
         })}
 
-        <path d={area} fill={`url(#${areaGradientId})`} />
-        <path d={path} fill="none" stroke="var(--color-accent)" strokeWidth={4.5} strokeLinejoin="round" strokeLinecap="round" opacity={0.16} />
-        <path d={path} fill="none" stroke="var(--color-accent-soft)" strokeWidth={2.25} strokeLinejoin="round" strokeLinecap="round" />
+        <path className="timeline-chart-area" d={area} fill={`url(#${areaGradientId})`} />
+        <path className="timeline-chart-series-glow" d={path} fill="none" stroke="var(--color-accent)" strokeWidth={5} strokeLinejoin="round" strokeLinecap="round" opacity={0.16} />
+        <path className="timeline-chart-series" d={path} fill="none" stroke="var(--color-accent-soft)" strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
         <circle cx={x(latest.at)} cy={y(latest.value)} r={4.25} fill="var(--color-accent-soft)" stroke="var(--color-bg)" strokeWidth={2} className="timeline-chart-latest-point" />
         <g className="timeline-chart-latest-label" pointerEvents="none">
           <rect x={Math.max(PAD_L + 4, x(latest.at) - 42)} y={Math.max(PAD_T + 5, y(latest.value) - 28)} width={36} height={17} rx={8.5} fill="var(--color-accent)" />
@@ -528,15 +528,15 @@ export default function OutcomeChart({
 
       <ChartTooltip tip={tip} />
 
-      <div className="timeline-chart-legend flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-[10px] text-fg-dim" role="list" aria-label="Outcome chart legend">
-        <span className="inline-flex items-center gap-1.5" role="listitem"><span className="w-4 h-0.5 rounded" style={{ background: "var(--color-accent-soft)" }} /> outcome (trailing median)</span>
+      <div className="timeline-chart-legend" role="list" aria-label="Outcome chart legend">
+        <span className="timeline-chart-legend-item timeline-chart-legend-item--outcome" role="listitem"><span className="w-4 h-0.5 rounded" style={{ background: "var(--color-accent-soft)" }} /> outcome (trailing median)</span>
         {shownKinds.map((k) => (
-          <span key={k} className="inline-flex items-center gap-1.5" role="listitem">
+          <span key={k} className="timeline-chart-legend-item timeline-chart-legend-item--adoption" role="listitem">
             <span className="size-2 rounded-full" style={{ background: KIND_COLOR[k] }} /> {KIND_LABEL[k]} adopted
           </span>
         ))}
-        {shownShifts.length > 0 && <span className="inline-flex items-center gap-1.5" role="listitem"><span className="inline-flex items-center gap-0.5"><span className="w-2 h-0.5 rounded bg-ok" /><span className="w-2 h-0.5 rounded bg-err" /></span> global detected shift (up / down)</span>}
-        {shownKinds.length === 0 && <span className="timeline-chart-legend-note" role="listitem">No adoption markers in this range</span>}
+        {shownShifts.length > 0 && <span className="timeline-chart-legend-item timeline-chart-legend-item--context" role="listitem"><span className="inline-flex items-center gap-0.5"><span className="w-2 h-0.5 rounded bg-ok" /><span className="w-2 h-0.5 rounded bg-err" /></span> global detected shift (up / down)</span>}
+        {shownKinds.length === 0 && <span className="timeline-chart-legend-item timeline-chart-legend-note" role="listitem">No adoption markers in this range</span>}
       </div>
     </div>
   );

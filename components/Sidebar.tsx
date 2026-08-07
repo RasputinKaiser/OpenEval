@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { Activity, FileText, GitCompareArrows, LayoutDashboard, Radio, Plus, ShieldCheck, Terminal, Plug, Trophy, PanelLeftClose, PanelLeftOpen, Settings, Boxes, TrendingUp } from "lucide-react";
 import clsx from "clsx";
 import ThemeToggle from "./ThemeToggle";
+import SupportLinks from "./SupportLinks";
 import { cachedFetch } from "@/lib/cached-fetch";
 import packageMetadata from "@/package.json";
 
@@ -83,7 +84,7 @@ export default function Sidebar() {
 
   return (
     <aside className={clsx(
-      "sidebar-shell hidden shrink-0 border-b border-bd backdrop-blur md:flex md:min-h-screen md:flex-col md:border-b-0 md:border-r transition-[width]",
+      "sidebar-shell relative z-[130] hidden shrink-0 border-b border-bd backdrop-blur md:flex md:min-h-screen md:flex-col md:border-b-0 md:border-r transition-[width]",
       collapsed ? "md:w-14" : "md:w-60"
     )}>
       <div className="px-4 py-3 md:border-b md:border-bd md:py-5">
@@ -143,6 +144,9 @@ export default function Sidebar() {
           </div>
         ))}
       </nav>
+      <div className="hidden border-t border-bd md:block">
+        <SupportLinks collapsed={collapsed} headingId="desktop-support-links-title" />
+      </div>
       <div className="hidden border-t border-bd p-3 md:flex md:items-center md:justify-between">
         {!collapsed && (
           <a

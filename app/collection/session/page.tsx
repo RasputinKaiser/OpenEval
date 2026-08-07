@@ -1,134 +1,126 @@
-import fs from "node:fs";
 import path from "node:path";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { ArrowLeft, FileText, AlertTriangle, Archive, MessageSquare, Wrench } from "lucide-react";
-import { parseSessionTranscript } from "@/lib/live";
-import { isPathInAnyCollectionSource } from "@/lib/collection/sources";
+import { readTranscriptWindow } from "@/lib/live";
+import { resolveCollectionSession, resolveLegacyCollectionFile } from "@/lib/collection/resolver";
+import { encodeTranscriptCursor, transcriptDescriptorHash } from "@/lib/collection/transcript-cursor";
+import { PARSER_VERSION } from "@/lib/live-cache";
 import { fmtNum, fmtRel } from "@/lib/format";
 import PageHeader from "@/components/PageHeader";
 import TranscriptClient from "@/components/TranscriptClient";
-import { RedactedPath } from "@/components/RedactToggle";
 
 export const dynamic = "force-dynamic";
 
-/** Keep the initial RSC/HTML payload small; later windows are user-triggered. */
 const RENDER_CAP = 240;
 
-/**
- * Read-only transcript viewer for ANY discovered session (search hits, the
- * Collection tables). The file path comes from the URL, so it is only honored
- * when it sits inside a known collection source root.
- */
-export default async function SessionViewerPage({ searchParams }: { searchParams?: Promise<{ file?: string }> }) {
-  const file = (await searchParams)?.file ?? "";
+export default async function SessionViewerPage({ searchParams }: { searchParams?: Promise<{ sourceId?: string; sessionId?: string; pathHint?: string; file?: string }> }) {
+  const params = await searchParams;
+  const legacyFile = params?.file ?? params?.pathHint;
+  if ((!params?.sourceId || !params?.sessionId) && legacyFile) {
+    const resolvedLegacy = resolveLegacyCollectionFile(legacyFile);
+    if (resolvedLegacy && "file" in resolvedLegacy) {
+      redirect(`/collection/session?sourceId=${encodeURIComponent(resolvedLegacy.sourceId)}&sessionId=${encodeURIComponent(resolvedLegacy.sessionId)}`);
+    }
+  }
+
   const back = (
     <Link href="/collection" className="inline-flex items-center gap-1 text-xs text-fg-muted hover:text-fg mb-2">
       <ArrowLeft className="size-3.5" /> Collection
     </Link>
   );
+  const sourceId = params?.sourceId ?? "";
+  const sessionId = params?.sessionId ?? "";
+  const resolved = sourceId && sessionId ? resolveCollectionSession({ sourceId, sessionId }) : null;
 
-  if (!file || !path.isAbsolute(file) || !isPathInAnyCollectionSource(file)) {
+  if (!resolved) {
     return (
       <div className="p-4 md:p-6 max-w-5xl mx-auto">
         {back}
         <div className="card p-4 text-sm text-err flex items-center gap-2">
           <AlertTriangle className="size-4 shrink-0" />
-          {file ? "That path is not inside any known harness's session directory." : "No session file given."}
+          {legacyFile ? "That transcript reference is not present in the current source inventory." : "A source-qualified session reference is required."}
         </div>
       </div>
     );
   }
 
-  let st: fs.Stats | null = null;
-  try { st = fs.statSync(file); } catch {}
-
-  if (!st) {
+  if (!("file" in resolved)) {
     return (
       <div className="p-4 md:p-6 max-w-5xl mx-auto">
         {back}
-        <PageHeader icon={Archive} title={path.basename(file)} subtitle={<RedactedPath path={file} className="mono text-[12px]" />} />
+        <PageHeader icon={Archive} title={resolved.sessionId} subtitle={`${resolved.source.label} · archived summary`} />
         <div className="card p-4 text-sm text-fg-muted flex items-center gap-2">
           <Archive className="size-4 shrink-0 text-fg-dim" />
-          This session&apos;s file has been pruned from disk. Its parsed summary lives on in the archive (Collection totals, Timeline), but the full transcript is gone.
+          This session&apos;s raw file has been pruned. Its parsed summary remains in Collection, but raw transcript evidence is unavailable.
         </div>
       </div>
     );
   }
 
-  const { turns, error, normalization } = parseSessionTranscript(file);
-  const shown = turns.slice(0, RENDER_CAP);
+  const window = readTranscriptWindow(resolved.file, resolved.spec.format);
+  const shown = window.turns.slice(0, RENDER_CAP);
   const totalCounts = {
-    all: turns.length,
-    chat: turns.filter((t) => t.role === "user" || t.role === "assistant").length,
-    tools: turns.filter((t) => t.role === "tool" || t.severity === "error").length,
-    errors: turns.filter((t) => t.severity === "error").length,
+    all: shown.length,
+    chat: shown.filter((turn) => turn.role === "user" || turn.role === "assistant").length,
+    tools: shown.filter((turn) => turn.role === "tool" || turn.severity === "error").length,
+    errors: shown.filter((turn) => turn.severity === "error").length,
   };
-  const errorCount = turns.filter((t) => t.severity === "error").length;
-  const warnCount = turns.filter((t) => t.severity === "warning").length;
+  const errorCount = shown.filter((turn) => turn.severity === "error").length;
+  const warnCount = shown.filter((turn) => turn.severity === "warning").length;
+  const initialCursor = window.done || !window.nextState ? null : encodeTranscriptCursor({
+    v: 1,
+    sourceId: resolved.sourceId,
+    sessionId: resolved.sessionId,
+    file: resolved.file,
+    project: resolved.project,
+    format: resolved.spec.format,
+    parserVersion: PARSER_VERSION,
+    descriptorHash: transcriptDescriptorHash(resolved.sourceId, resolved.spec),
+    revision: window.revision,
+    byteOffset: window.nextByteOffset,
+    state: window.nextState,
+  });
 
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto">
       {back}
       <PageHeader
         icon={FileText}
-        title={path.basename(file)}
-        subtitle={
-          <span className="mono text-[12px]">
-            <RedactedPath path={file} /> · {fmtNum(st.size)}B on disk · modified {fmtRel(st.mtimeMs)} · {fmtNum(turns.length)} normalized turns
-            {errorCount > 0 && <span className="text-err"> · {errorCount} errors</span>}
-            {warnCount > 0 && <span className="text-warn"> · {warnCount} warnings</span>}
-          </span>
-        }
+        title={path.basename(resolved.file)}
+        subtitle={<span className="mono text-[12px]">{resolved.source.label} · {resolved.sessionId} · {fmtNum(resolved.size)}B on disk · modified {fmtRel(resolved.mtimeMs)}{errorCount > 0 && <span className="text-err"> · {errorCount} errors</span>}{warnCount > 0 && <span className="text-warn"> · {warnCount} warnings</span>}</span>}
       />
 
-      {error && <div className="card p-3 mb-4 text-sm text-err flex items-center gap-2"><AlertTriangle className="size-4" /> {error}</div>}
-
-      <TranscriptReadingGuide counts={totalCounts} totalTurns={turns.length} />
-
-      <TranscriptClient turns={shown} file={file} totalTurns={turns.length} totalCounts={totalCounts} normalization={normalization} />
-
-      {turns.length > RENDER_CAP && (
-        <p className="text-[11px] text-fg-dim mt-3">
-          Initial render is capped at {fmtNum(RENDER_CAP)} turns; use “Load next” to inspect the rest of this large session.
-        </p>
-      )}
+      <TranscriptReadingGuide counts={totalCounts} totalTurns={shown.length} />
+      <TranscriptClient
+        turns={shown}
+        sourceId={resolved.sourceId}
+        sessionId={resolved.sessionId}
+        initialCursor={initialCursor}
+        hasMore={initialCursor != null}
+        totalTurns={shown.length}
+        totalCounts={totalCounts}
+        normalization={window.normalization}
+      />
+      <p className="text-[11px] text-fg-dim mt-3">Transcript windows are capped at {fmtNum(RENDER_CAP)} semantic turns and are bound to the discovered source revision.</p>
     </div>
   );
 }
 
-function TranscriptReadingGuide({
-  counts,
-  totalTurns,
-}: {
-  counts: { all: number; chat: number; tools: number; errors: number };
-  totalTurns: number;
-}) {
+function TranscriptReadingGuide({ counts, totalTurns }: { counts: { all: number; chat: number; tools: number; errors: number }; totalTurns: number }) {
   return (
     <section className="mb-4 rounded-lg border border-accent/25 bg-accent/[0.04] p-3.5" aria-labelledby="transcript-reading-title">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 id="transcript-reading-title" className="text-sm font-semibold">Read the conversation first</h2>
-          <p className="mt-1 max-w-3xl text-[11px] leading-5 text-fg-muted">
-            OpenEval starts with user and assistant messages so the task and result are easy to follow. Agent reasoning is labeled separately and stays collapsed until requested; tool calls, protocol events, and errors remain available in the filters below without changing the raw transcript.
-          </p>
+          <p className="mt-1 max-w-3xl text-[11px] leading-5 text-fg-muted">OpenEval starts with user and assistant messages so the task and result are easy to follow. Agent reasoning is labeled separately and stays collapsed until requested; tool calls, protocol events, and errors remain available in the filters below without changing the raw transcript.</p>
         </div>
-        <span className="shrink-0 rounded-full border border-accent/25 bg-bg px-2 py-1 text-[10px] text-accent-soft mono">
-          {fmtNum(totalTurns)} normalized turns
-        </span>
+        <span className="shrink-0 rounded-full border border-accent/25 bg-bg px-2 py-1 text-[10px] text-accent-soft mono">{fmtNum(totalTurns)} normalized turns loaded</span>
       </div>
       <dl className="mt-3 grid grid-cols-3 gap-2 sm:max-w-xl">
-        <div className="rounded-md border border-bd-subtle bg-bg/70 px-2.5 py-2">
-          <dt className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-fg-dim"><MessageSquare className="size-3" /> Conversation</dt>
-          <dd className="mt-1 text-sm font-semibold tabular-nums">{fmtNum(counts.chat)}</dd>
-        </div>
-        <div className="rounded-md border border-bd-subtle bg-bg/70 px-2.5 py-2">
-          <dt className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-fg-dim"><Wrench className="size-3" /> Tool events</dt>
-          <dd className="mt-1 text-sm font-semibold tabular-nums">{fmtNum(counts.tools)}</dd>
-        </div>
-        <div className="rounded-md border border-bd-subtle bg-bg/70 px-2.5 py-2">
-          <dt className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-fg-dim"><AlertTriangle className="size-3" /> Error signals</dt>
-          <dd className={counts.errors > 0 ? "mt-1 text-sm font-semibold tabular-nums text-err" : "mt-1 text-sm font-semibold tabular-nums"}>{fmtNum(counts.errors)}</dd>
-        </div>
+        <div className="rounded-md border border-bd-subtle bg-bg/70 px-2.5 py-2"><dt className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-fg-dim"><MessageSquare className="size-3" /> Conversation</dt><dd className="mt-1 text-sm font-semibold tabular-nums">{fmtNum(counts.chat)}</dd></div>
+        <div className="rounded-md border border-bd-subtle bg-bg/70 px-2.5 py-2"><dt className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-fg-dim"><Wrench className="size-3" /> Tool events</dt><dd className="mt-1 text-sm font-semibold tabular-nums">{fmtNum(counts.tools)}</dd></div>
+        <div className="rounded-md border border-bd-subtle bg-bg/70 px-2.5 py-2"><dt className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-fg-dim"><AlertTriangle className="size-3" /> Error signals</dt><dd className={counts.errors > 0 ? "mt-1 text-sm font-semibold tabular-nums text-err" : "mt-1 text-sm font-semibold tabular-nums"}>{fmtNum(counts.errors)}</dd></div>
       </dl>
     </section>
   );

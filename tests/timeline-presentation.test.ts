@@ -55,3 +55,41 @@ test("Timeline coalesces refreshes and makes the narrow Impact table operable", 
   assert.match(src, /id="impact-scroll-hint"/);
   assert.match(src, /Swipe or shift-scroll to inspect all comparison metrics\./);
 });
+
+test("Timeline judge controls keep source and model choices readable in the popover", () => {
+  const timeline = read("components/TimelineClient.tsx");
+  const picker = read("components/JudgePicker.tsx");
+  const css = read("app/globals.css");
+  assert.match(timeline, /timeline-judge-popover/);
+  assert.match(timeline, /rounded-xl border border-bd bg-bg-subtle p-3 shadow-2xl/);
+  assert.match(css, /\.timeline-judge-popover[\s\S]*width: min\(36rem, calc\(100vw - 1rem\)\)/);
+  assert.match(css, /@media \(max-width: 767px\)[\s\S]*\.timeline-judge-popover[\s\S]*width: min\(20rem, calc\(100vw - 1rem\)\)/);
+  assert.match(picker, /sm:grid-cols-\[minmax\(0,1\.15fr\)_minmax\(0,0\.85fr\)\]/);
+  assert.match(picker, /min-w-0 w-full rounded-md border border-bd bg-bg px-3 text-sm/);
+  assert.match(picker, /spellCheck=\{false\}/);
+  assert.match(picker, /w-full max-w-sm text-\[11px\]/);
+});
+
+test("Outcome timeline keeps the chart hierarchy and review receipt scannable", () => {
+  const chart = read("components/OutcomeChart.tsx");
+  const css = read("app/globals.css");
+  const timeline = read("components/TimelineClient.tsx");
+  assert.match(chart, /timeline-chart-toolbar-label/);
+  assert.match(chart, /timeline-chart-kpi-latest/);
+  assert.match(chart, /aria-label="Trend summary"/);
+  assert.match(chart, /timeline-chart-legend-item--context/);
+  assert.match(chart, /timeline-chart-series/);
+  assert.match(css, /\.timeline-chart-kpi-range \{ min-width: 164px; \}/);
+  assert.match(css, /\.timeline-chart-legend-item--context/);
+  assert.match(timeline, /timeline-review-status/);
+  assert.match(timeline, /aria-label="Review evidence counts"/);
+  assert.match(timeline, /Comparable scores/);
+  assert.match(timeline, /Saved review methods/);
+  assert.match(timeline, /Source unavailable/);
+  assert.match(timeline, /Model unavailable/);
+  assert.match(timeline, /timeline-judge-result/);
+  assert.match(timeline, /timeline-job-receipt/);
+  assert.match(timeline, /Recovery detail:/);
+  assert.match(css, /\.timeline-job-receipt__details/);
+  assert.match(css, /\.timeline-job-receipt__state--warn/);
+});

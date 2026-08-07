@@ -119,15 +119,15 @@ export interface CollectionSessionItem {
 }
 
 /**
- * Stable collection-row identity. Session ids are only source-local in
- * practice, and archived rows may no longer have a usable path; qualifying
- * the transcript identity with its source prevents cross-harness collisions
- * in pagination, React keys, and client-side continuation dedupe.
+ * Stable collection-row identity. Session ids are source-local in practice;
+ * qualifying them with the source prevents cross-harness collisions in
+ * pagination, React keys, and client-side continuation dedupe. A path is a
+ * discovery detail, not part of the session identity.
  */
 export function collectionSessionIdentity(
   session: Pick<CollectionSessionItem, "sourceId" | "sessionId" | "path">,
 ): string {
-  return `${session.sourceId}\u0000${session.path ?? session.sessionId}`;
+  return `${session.sourceId}\u0000${session.sessionId}`;
 }
 
 export function toCollectionSessionItem(s: LiveSession, sourceId: string, sourceLabel: string): CollectionSessionItem {

@@ -2,7 +2,6 @@ import fs from "node:fs";
 import { randomUUID } from "node:crypto";
 import {
   extractJudgeJson,
-  resolveJudge,
   runJudgeBackend,
   validJudgeScore,
 } from "../grader/judge";
@@ -14,16 +13,19 @@ import {
   clearJudgeFailure,
   loadJudgeJob,
   claimJudgeJob,
+  judgeJobLeaseOwned,
   heartbeatJudgeJob,
   updateJudgeJobProgress,
   finishJudgeJob,
   interruptJudgeJob,
   JUDGE_JOB_LEASE_MS,
+  MAX_JUDGE_ATTEMPTS,
   type StoredJudgeJob,
 } from "../live-cache";
 import { JUDGE_PROMPT_MARKER } from "./signals";
 import type { SessionPoint, Marker } from "./timeline";
 import { readConversationMessages } from "../collection/conversation";
+import { resolveJudgeSelection, type JudgeSelection } from "../grader/selection";
 
 // Kept for the existing public test/import surface. New code should import the
 // canonical backend module directly.
@@ -219,7 +221,7 @@ export function selectJudgeSample(points: SessionPoint[], markers: Marker[], alr
 export function judgeSkipSet(judgments = loadCurrentJudgments()): Set<string> {
   const skip = new Set<string>(judgments.keys());
   for (const [file, f] of loadJudgeFailures()) {
-    if (f.permanent) skip.add(file);
+    if (f.permanent || f.attempts >= MAX_JUDGE_ATTEMPTS) skip.add(file);
   }
   return skip;
 }
@@ -230,12 +232,17 @@ export interface RefineResult {
   failed: number;
   alreadyJudged: number;
   judge: string;
+  selection: JudgeSelection;
   /** Most recent failure detail, for surfacing config problems (bad model, missing CLI). */
   lastError: string | null;
 }
 
+const JUDGE_LEASE_LOST_ERROR = "judge job lease lost";
+
 /** Judge one session; persists the verdict on success. Returns an error string on failure. */
-async function judgeOne(p: SessionPoint, harness: string, model: string | undefined, judgeName: string, timeoutMs: number): Promise<string | null> {
+async function judgeOne(p: SessionPoint, selection: JudgeSelection, timeoutMs: number, leaseId?: string): Promise<string | null> {
+  const leaseOwned = () => leaseId == null || judgeJobLeaseOwned(leaseId);
+  if (!leaseOwned()) return JUDGE_LEASE_LOST_ERROR;
   if (!p.path) return "session has no file path";
   if (!fs.existsSync(p.path)) {
     // Pruned or archived — permanently unjudgeable; never retry.
@@ -249,10 +256,17 @@ async function judgeOne(p: SessionPoint, harness: string, model: string | undefi
   }
   try {
     const prompt = buildJudgePrompt(digest, { durationMin: p.durationMin, toolErrorRate: p.toolErrorRate });
-    const res = await runJudgeBackend({ harness, model, prompt, timeoutMs });
+    // HMR/recovery can replace this worker after it prepared the prompt. Do
+    // not invoke a provider once the durable lease no longer points at us.
+    if (!leaseOwned()) return JUDGE_LEASE_LOST_ERROR;
+    const res = await runJudgeBackend({ harness: selection.source, model: selection.model, reasoningEffort: selection.reasoningEffort, prompt, timeoutMs });
+    // A provider may finish after a takeover. Its response is no longer
+    // eligible to become either a failure receipt or a verdict for this job.
+    if (!leaseOwned()) return JUDGE_LEASE_LOST_ERROR;
     const parsed = res.ok ? extractJudgeJson(res.text) : null;
     const score = parsed ? validJudgeScore(parsed.score) : null;
     if (score == null) {
+      if (!leaseOwned()) return JUDGE_LEASE_LOST_ERROR;
       const err = (res.error || res.text || "judge returned no parseable {score} in 0..1").slice(0, 300);
       recordJudgeFailure(p.path, err);
       return err;
@@ -260,19 +274,29 @@ async function judgeOne(p: SessionPoint, harness: string, model: string | undefi
     const reasons = normalizeJudgeReasons(parsed!.reasons);
     let mtimeMs = 0;
     try { mtimeMs = fs.statSync(p.path).mtimeMs; } catch {}
-    saveJudgment({
+    const persisted = saveJudgment({
       file: p.path,
       sessionId: p.sessionId,
       mtimeMs, // informational — the verdict stays valid even if the file grows
       score,
       reasons,
-      judge: judgeName,
+      judge: selection.judgeName,
       judgedAt: Date.now(),
       promptVersion: JUDGE_PROMPT_VERSION,
-    });
+      selection,
+    }, leaseId == null ? undefined : { leaseId });
+    if (!persisted) {
+      // A takeover can race the write fence; do not let the superseded worker
+      // record a new failure against the replacement job.
+      if (!leaseOwned()) return JUDGE_LEASE_LOST_ERROR;
+      const err = "judge verdict persistence failed";
+      recordJudgeFailure(p.path, err);
+      return err;
+    }
     clearJudgeFailure(p.path);
     return null;
   } catch (e) {
+    if (!leaseOwned()) return JUDGE_LEASE_LOST_ERROR;
     const err = (e instanceof Error ? e.message : String(e)).slice(0, 300);
     recordJudgeFailure(p.path, err);
     return err;
@@ -283,16 +307,17 @@ async function runJudgeQueue(
   sample: SessionPoint[],
   concurrency: number,
   timeoutMs: number,
+  selection: JudgeSelection,
   onEach?: (ok: boolean, error: string | null) => void,
+  leaseId?: string,
 ): Promise<{ ok: number; failed: number; lastError: string | null }> {
-  const { harness, model, judgeName } = resolveJudge();
   let ok = 0, failed = 0;
   let lastError: string | null = null;
   let next = 0;
   const worker = async () => {
     while (next < sample.length) {
       const p = sample[next++];
-      const error = await judgeOne(p, harness, model, judgeName, timeoutMs);
+      const error = await judgeOne(p, selection, timeoutMs, leaseId);
       if (error == null) ok++;
       else { failed++; lastError = error; }
       onEach?.(error == null, error);
@@ -306,12 +331,13 @@ async function runJudgeQueue(
  * Run one incremental judging pass over up to `max` unjudged sampled sessions.
  * Small concurrency — each judgment is a full CLI invocation.
  */
-export async function judgePoints(points: SessionPoint[], markers: Marker[], opts: { max?: number; timeoutMs?: number } = {}): Promise<RefineResult> {
+export async function judgePoints(points: SessionPoint[], markers: Marker[], opts: { max?: number; timeoutMs?: number; selection?: JudgeSelection } = {}): Promise<RefineResult> {
   const max = Math.max(1, Math.min(opts.max ?? 10, 50));
   const judged = loadCurrentJudgments();
   const sample = selectJudgeSample(points, markers, judgeSkipSet(judged), max);
-  const { ok, failed, lastError } = await runJudgeQueue(sample, 2, opts.timeoutMs ?? 90_000);
-  return { sampled: sample.length, judged: ok, failed, alreadyJudged: judged.size, judge: resolveJudge().judgeName, lastError };
+  const selection = opts.selection ?? resolveJudgeSelection();
+  const { ok, failed, lastError } = await runJudgeQueue(sample, 2, opts.timeoutMs ?? 90_000, selection);
+  return { sampled: sample.length, judged: ok, failed, alreadyJudged: judged.size, judge: selection.judgeName, selection, lastError };
 }
 
 // ---------- Background judge-all job ----------
@@ -325,6 +351,7 @@ export interface JudgeJobStatus {
   judged: number;
   failed: number;
   judge: string;
+  selection?: JudgeSelection;
   startedAt: number | null;
   finishedAt: number | null;
   /** Last durable lease heartbeat, exposed so clients can distinguish work from a frozen poll. */
@@ -364,6 +391,7 @@ function statusFromRecord(record: StoredJudgeJob | null): JudgeJobStatus {
       judged: 0,
       failed: 0,
       judge: "",
+      selection: undefined,
       startedAt: null,
       finishedAt: null,
       heartbeatAt: null,
@@ -380,6 +408,7 @@ function statusFromRecord(record: StoredJudgeJob | null): JudgeJobStatus {
     judged: record.judged,
     failed: record.failed,
     judge: record.judge,
+    selection: record.selection,
     startedAt: record.startedAt,
     finishedAt: record.finishedAt,
     heartbeatAt,
@@ -432,6 +461,7 @@ export interface JudgeAllResult {
   failed: number;
   lastError: string | null;
   judge: string;
+  selection: JudgeSelection;
 }
 
 /**
@@ -443,19 +473,20 @@ export interface JudgeAllResult {
 export async function judgeAllWindows(
   points: SessionPoint[],
   markers: Marker[],
-  opts: { cap?: number; timeoutMs?: number; onProgress?: (s: { done: number; total: number; judged: number; failed: number }) => void } = {},
+  opts: { cap?: number; timeoutMs?: number; selection?: JudgeSelection; onProgress?: (s: { done: number; total: number; judged: number; failed: number }) => void } = {},
 ): Promise<JudgeAllResult> {
   const sample = markerWindowSample(points, markers, judgeSkipSet()).slice(0, Math.min(opts.cap ?? 500, 1000));
   let done = 0, okCount = 0, failCount = 0;
-  const { ok, failed, lastError } = await runJudgeQueue(sample, 3, opts.timeoutMs ?? 90_000, (okOne) => {
+  const selection = opts.selection ?? resolveJudgeSelection();
+  const { ok, failed, lastError } = await runJudgeQueue(sample, 3, opts.timeoutMs ?? 90_000, selection, (okOne) => {
     done++;
     if (okOne) okCount++; else failCount++;
     opts.onProgress?.({ done, total: sample.length, judged: okCount, failed: failCount });
   });
-  return { total: sample.length, judged: ok, failed, lastError, judge: resolveJudge().judgeName };
+  return { total: sample.length, judged: ok, failed, lastError, judge: selection.judgeName, selection };
 }
 
-export function startJudgeAll(points: SessionPoint[], markers: Marker[], opts: { cap?: number; timeoutMs?: number } = {}): { started: boolean; status: JudgeJobStatus } {
+export function startJudgeAll(points: SessionPoint[], markers: Marker[], opts: { cap?: number; timeoutMs?: number; selection?: JudgeSelection } = {}): { started: boolean; status: JudgeJobStatus } {
   const prior = loadJudgeJob();
   if (prior?.state === "running" && ownerLeaseHealthy(prior)) {
     return { started: false, status: statusFromRecord(prior) };
@@ -479,7 +510,11 @@ export function startJudgeAll(points: SessionPoint[], markers: Marker[], opts: {
     if (p.path && !seen.has(p.path)) { seen.add(p.path); resumed.push(p); }
   }
   const sample = resumed.slice(0, Math.min(opts.cap ?? 500, 1000));
-  const { judgeName } = resolveJudge();
+  // A prior selection is immutable only for recovery of the same interrupted
+  // job. Once a job finished, a new POST is a new population receipt and must
+  // honor its newly supplied backend/model instead of silently reusing history.
+  const resuming = prior?.state === "interrupted" || (prior?.state === "running" && !ownerLeaseHealthy(prior));
+  const selection = resuming ? (prior?.selection ?? opts.selection ?? resolveJudgeSelection()) : (opts.selection ?? resolveJudgeSelection());
   const now = Date.now();
   const leaseId = `${process.pid}:${MODULE_OWNER_TOKEN}`;
   const hasWork = sample.length > 0;
@@ -489,7 +524,8 @@ export function startJudgeAll(points: SessionPoint[], markers: Marker[], opts: {
     done: 0,
     judged: 0,
     failed: 0,
-    judge: judgeName,
+    judge: selection.judgeName,
+    selection,
     startedAt: now,
     finishedAt: hasWork ? null : now,
     lastError: prior?.state === "running" || prior?.state === "interrupted"
@@ -507,9 +543,9 @@ export function startJudgeAll(points: SessionPoint[], markers: Marker[], opts: {
   if (hasWork) {
     const heartbeat = setInterval(() => { heartbeatJudgeJob(leaseId); }, Math.min(5_000, Math.max(1_000, Math.floor(JUDGE_JOB_LEASE_MS / 3))));
     heartbeat.unref?.();
-    void runJudgeQueue(sample, 3, opts.timeoutMs ?? 90_000, (ok, error) => {
+    void runJudgeQueue(sample, 3, opts.timeoutMs ?? 90_000, selection, (ok, error) => {
       updateJudgeJobProgress(leaseId, { ok, error });
-    }).then(() => {
+    }, leaseId).then(() => {
       finishJudgeJob(leaseId);
     }).catch((error) => {
       interruptJudgeJob(leaseId, error instanceof Error ? error.message : String(error));

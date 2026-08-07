@@ -11,6 +11,7 @@ import { collectRunManifest } from "./manifest";
 import type { CaseDefinition, RunnerKind } from "./types";
 import { isTerminalCaseStatus } from "./status";
 import { resolveDefaultModel } from "./models";
+import { requireReadyJudgeSelection, resolveJudgeSelection, type JudgeSelection, type JudgeSelectionInput } from "./grader/selection";
 
 // In-process cancellation fast path. The run row's status in SQLite is the
 // source of truth — dev HMR can reset this module (and this Map) mid-run, so
@@ -41,6 +42,7 @@ export interface CreateRunParams {
   model?: string;
   samples?: number;
   filter?: { caseIds?: string[]; categories?: string[]; tags?: string[]; difficulty?: string[] };
+  judge?: JudgeSelectionInput | JudgeSelection;
 }
 
 export async function createAndStartRun(params: CreateRunParams): Promise<{ id: string; caseCount: number }> {
@@ -51,6 +53,13 @@ export async function createAndStartRun(params: CreateRunParams): Promise<{ id: 
   const harness = params.harness || getDefaultHarness();
   const resolvedDefault = resolveDefaultModel(harness);
   const model = params.model || resolvedDefault.id;
+  let judge = params.judge && "resolution" in params.judge
+    ? params.judge
+    : resolveJudgeSelection({ job: params.judge });
+  // Freeze and preflight the resolved choice even when the caller omitted an
+  // explicit override. A job must not create a run row that can only discover
+  // its judge is unavailable after provider work begins.
+  judge = await requireReadyJudgeSelection(judge);
 
   const run = {
     id,
@@ -58,7 +67,7 @@ export async function createAndStartRun(params: CreateRunParams): Promise<{ id: 
     status: "running" as const,
     created_at: Date.now(),
     ended_at: null,
-    params: { runner: params.runner, harness, parallel: params.parallel, model, samples, filter: params.filter },
+    params: { runner: params.runner, harness, parallel: params.parallel, model, samples, filter: params.filter, judge },
     summary: null,
   };
   insertRun(run);
@@ -66,14 +75,14 @@ export async function createAndStartRun(params: CreateRunParams): Promise<{ id: 
   // write must not swallow its failure silently, nor land against a run row that
   // has already gone terminal (the loop finished / was aborted while
   // collectRunManifest was still probing). writeRunManifestIfLive guards both.
-  void collectRunManifest(harness, model, { harnessWasDefault: !params.harness, modelWasDefault: !params.model, modelDefaultSource: resolvedDefault.source })
+  void collectRunManifest(harness, model, { harnessWasDefault: !params.harness, modelWasDefault: !params.model, modelDefaultSource: resolvedDefault.source, judge })
     .then((m) => writeRunManifestIfLive(id, m))
     .catch((e) => {
       console.error(`[run ${id}] manifest collection/update failed:`, e?.stack || e);
     });
-  appendEvent(id, "run_started", { case_count: cases.length, samples, runner: params.runner, harness, model }, undefined);
+  appendEvent(id, "run_started", { case_count: cases.length, samples, runner: params.runner, harness, model, judge }, undefined);
 
-  void runLoop(id, cases, params.runner, harness, params.parallel, model, samples).catch((e) => finalizeFailedRun(id, e));
+  void runLoop(id, cases, params.runner, harness, params.parallel, model, samples, judge).catch((e) => finalizeFailedRun(id, e));
 
   return { id, caseCount: cases.length * samples };
 }
@@ -116,7 +125,7 @@ export function finalizeFailedRun(id: string, e: unknown): void {
   }
 }
 
-async function runLoop(runId: string, cases: CaseDefinition[], runner: RunnerKind, harness: string, parallel: number, model?: string, samples = 1) {
+async function runLoop(runId: string, cases: CaseDefinition[], runner: RunnerKind, harness: string, parallel: number, model?: string, samples = 1, judge?: JudgeSelection) {
   const cancelState: CancelState = { cancelled: false, controller: new AbortController() };
   cancelRegistry.set(runId, cancelState);
   // Tool calls and grader processes can legitimately be quiet for longer than
@@ -127,14 +136,14 @@ async function runLoop(runId: string, cases: CaseDefinition[], runner: RunnerKin
   }, 60_000);
   heartbeat.unref?.();
   try {
-    await runLoopBody(runId, cases, runner, harness, parallel, cancelState, model, samples);
+    await runLoopBody(runId, cases, runner, harness, parallel, cancelState, model, samples, judge);
   } finally {
     clearInterval(heartbeat);
     cancelRegistry.delete(runId);
   }
 }
 
-async function runLoopBody(runId: string, cases: CaseDefinition[], runner: RunnerKind, harness: string, parallel: number, cancelState: CancelState, model?: string, samples = 1) {
+async function runLoopBody(runId: string, cases: CaseDefinition[], runner: RunnerKind, harness: string, parallel: number, cancelState: CancelState, model?: string, samples = 1, judge?: JudgeSelection) {
   const work: Array<{ def: CaseDefinition; seq: number; sample: number }> = [];
   let seq = 0;
   for (const def of cases) {
@@ -167,7 +176,7 @@ async function runLoopBody(runId: string, cases: CaseDefinition[], runner: Runne
       const item = work.shift();
       if (!item) break;
       try {
-        await executeCase(runId, item.def, runner, item.seq, model, item.sample, harness, cancelState.controller.signal);
+        await executeCase(runId, item.def, runner, item.seq, model, item.sample, harness, cancelState.controller.signal, judge);
       } catch (e: any) {
         // Defense in depth: executeCase records its own failures, but never let
         // one case's unexpected throw reject the pool and abort the whole run.

@@ -7,6 +7,7 @@ import path from "node:path";
 import { getAdapter } from "../adapters/registry";
 import { resolveDefaultModel } from "../models";
 import { normalizeParsedResult } from "./headless";
+import { ensureRawOutputPaths, inspectRawOutputFiles } from "./raw-output";
 import { isCompleteResult } from "./spawn";
 import { emit, type Runner } from "./parse";
 import type { RunnerContext, RunnerResult, TranscriptEntry } from "../types";
@@ -169,7 +170,11 @@ export class TmuxRunner implements Runner {
     // artifact mid-run.
     const logPath = path.join(os.tmpdir(), `openeval-tmux-${session}.jsonl`);
     await writeFile(logPath, "", "utf8");
-    const loggedShellCmd = `${shellCmd} 2>&1 | tee ${shellQuote(logPath)}`;
+    const rawPaths = ctx.rawOutput;
+    if (rawPaths) { await ensureRawOutputPaths(rawPaths); await Promise.all([writeFile(rawPaths.stdoutPath, "", "utf8"), writeFile(rawPaths.stderrPath, "", "utf8")]); }
+    const loggedShellCmd = rawPaths
+      ? `${shellCmd} > >(tee -a ${shellQuote(rawPaths.stdoutPath)} | tee -a ${shellQuote(logPath)}) 2> >(tee -a ${shellQuote(rawPaths.stderrPath)} >&2)`
+      : `${shellCmd} 2>&1 | tee ${shellQuote(logPath)}`;
     const newSession = await tmux([
       "new-session", "-d", "-s", session, "-x", "220", "-y", "50",
       "bash -lc " + JSON.stringify(loggedShellCmd),
@@ -245,6 +250,7 @@ export class TmuxRunner implements Runner {
     }
 
     const durationMs = Date.now() - startedAt;
+    const rawOutput = rawPaths ? await inspectRawOutputFiles(rawPaths) : null;
     const exitCode = acc.result?.isError ? 1 : 0;
     emit(ctx, { kind: "finished", at: Date.now(), durationMs, exitCode });
 
@@ -252,13 +258,13 @@ export class TmuxRunner implements Runner {
     // counts as completion; an init-seeded partial result takes the fail path.
     if (isCompleteResult(acc.result)) {
       const parsed = { ...acc.result, exitCode, durationMs, startedAt, endedAt: startedAt + durationMs } as RunnerResult;
-      return normalizeParsedResult(parsed, fallbackModel);
+      return normalizeParsedResult({ ...parsed, rawOutput }, fallbackModel);
     }
     // Partial pane output stays in acc (transcript/toolCalls) either way.
     const failMsg = cancelled
       ? "Runner cancelled: tmux session killed before a result event"
       : "tmux session ended without a result event";
-    return normalizeParsedResult(fail(ctx, acc, startedAt, failMsg), fallbackModel);
+    return normalizeParsedResult({ ...fail(ctx, acc, startedAt, failMsg), rawOutput: rawOutput ?? undefined }, fallbackModel);
   }
 }
 

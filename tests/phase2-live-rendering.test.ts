@@ -108,7 +108,7 @@ test("historical inactivity and failed polling have distinct labels", () => {
   assert.equal(FILTER_MODES.find(([mode]) => mode === "stale")?.[1], "Inactive >12h");
   const primitives = fs.readFileSync(path.join(process.cwd(), "components/live/LivePrimitives.tsx"), "utf8");
   assert.match(primitives, /inactive &gt;12h/);
-  assert.match(primitives, /poll failed · last good update/);
+  assert.match(primitives, /Live updates failed · showing data from/);
   assert.match(primitives, /if \(session\.isError\)/);
   assert.doesNotMatch(primitives, /session\.isError \|\| session\.toolErrors/);
   assert.match(primitives, /tool incident/);

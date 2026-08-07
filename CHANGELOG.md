@@ -2,6 +2,40 @@
 
 All notable public changes to OpenEval are recorded here.
 
+## [0.1.5] - 2026-08-07
+
+Release hardening, bounded evidence delivery, durable judge jobs, and calmer onboarding.
+
+### Install and release hygiene
+
+- Documented the supported Node 20 and npm 10 toolchain, added a complete `.env.example`, and aligned the README, contributor guide, doctor checks, CI, and release commands around clean lockfile installs.
+- Added `npm run verify:ci` and `npm run verify:release`, with the release gate covering typecheck, lint, tests, self-test, strict accuracy, public-upload scanning, and the optimized production build.
+- Updated the dependency floor and lockfile to remove the known audit findings. Full dependency audit reports zero vulnerabilities.
+- Extended the public-upload audit to the full candidate surface while preserving explicit review notes for intentional adversarial secret fixtures.
+
+### Stability and evidence boundaries
+
+- Judge jobs now persist their effective selection, fence stale leases, respect retry caps, and surface persistence failures instead of allowing old or missing workers to rewrite evidence.
+- Transcript JSONL reads, artifact previews, artifact ranges, and report generation remain bounded or streamed; large records are disclosed as truncated rather than copied into unbounded payloads.
+- Collection, report, artifact, cancel, and event-stream failures use consistent bounded JSON/SSE error envelopes.
+- Visibility and live polling coalesce in-flight requests, while stale outcome judgments are invalidated when the source session revision changes.
+- CLI runs without an explicit harness now resolve an available configured/default harness with an actionable error when none is installed.
+
+### Product polish
+
+- Improved judge-picker readiness, recovery, and retry states.
+- Unified first-run onboarding and getting-started guidance without duplicate overlays.
+- Refined Timeline evidence copy, review receipts, mixed-method explanations, adoption context, and denominator language.
+- Reduced mobile navigation competition and improved narrow-screen New Run ordering, evidence grouping, and status recovery.
+- Added focused regressions for judge persistence, bounded artifacts/transcripts, API envelopes, onboarding, support links, Timeline presentation, and mobile layout.
+
+### Verification boundary
+
+- `npm run verify:release` passed: typecheck, lint, full test suite, self-test (71 pass / 0 fail / 14 gated LLM-judge skips), strict accuracy audit, public-upload audit, and production build.
+- The strict accuracy audit verifies 35/35 corpus, oracle, and known-bad checks while preserving `Unknown` for trace, visual, and LLM-judge evidence without corresponding runtime inputs.
+- Production API smoke covered pages, Collection/Timeline data, report delivery, bounded artifact preview/ranges, event streaming, and consistent missing-resource errors.
+- The release does not treat structural artifact receipts as pixel-quality proof, or deterministic fixtures as provider-backed harness success.
+
 ## [0.1.4] - 2026-07-31
 
 Final evaluation-flow, observation-fidelity, responsive UX, and stability pass.
@@ -132,7 +166,8 @@ OpenEval's first tagged public release.
 - Delivery master, poster, and 1280×640 GitHub/X social preview attached directly to the GitHub Release; production source stays outside the product repository.
 - Explicit application and launch-film model credits in the README.
 
-[Unreleased]: https://github.com/RasputinKaiser/OpenEval/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/RasputinKaiser/OpenEval/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/RasputinKaiser/OpenEval/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/RasputinKaiser/OpenEval/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/RasputinKaiser/OpenEval/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.2

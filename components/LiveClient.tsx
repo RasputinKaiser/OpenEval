@@ -48,10 +48,10 @@ const HARNESS_STORAGE_KEY = "openeval.live.harness";
 const POLL_VISIBLE_MS = 10000;
 const POLL_HIDDEN_MS = 30000;
 const LIVE_SECTIONS = [
-  { id: "usage", label: "Monitor", description: "Usage, cost, and throughput from the current scanned slice." },
-  { id: "quality", label: "Trust data", description: "Coverage, warnings, and parser confidence behind the totals." },
+  { id: "usage", label: "Usage", description: "Usage, cost, and throughput in this scan." },
+  { id: "quality", label: "Data quality", description: "Coverage, warnings, and parser confidence behind these totals." },
   { id: "sessions", label: "Sessions", description: "Search and inspect individual sessions, failures, and provenance." },
-  { id: "intelligence", label: "Intelligence", description: "Compare models and trace patterns across the selected harness." },
+  { id: "intelligence", label: "Patterns", description: "Compare models, tools, and trace patterns in this scan." },
 ];
 
 export default function LiveClient({ initialData, error: initialError, getTranscript, getSessionDetail, scannedAt }: LiveClientProps) {
@@ -131,7 +131,10 @@ export default function LiveClient({ initialData, error: initialError, getTransc
     let cancelled = false;
     let t: ReturnType<typeof setTimeout>;
     let activeController: AbortController | null = null;
+    let inFlight = false;
     const poll = async () => {
+      if (inFlight) return;
+      inFlight = true;
       const controller = new AbortController();
       activeController = controller;
       try {
@@ -171,6 +174,7 @@ export default function LiveClient({ initialData, error: initialError, getTransc
           setError(e instanceof Error ? e.message : String(e));
         }
       } finally {
+        inFlight = false;
         if (activeController === controller) activeController = null;
         if (!cancelled) {
           setLoading(false);
@@ -250,6 +254,7 @@ export default function LiveClient({ initialData, error: initialError, getTransc
     truncated: false,
     partial: false,
   };
+  const hasLiveCoverageNotes = data.sourceStatus !== "available" || data.scanWarnings.length > 0 || scanCoverage.truncated || scanCoverage.partial;
 
   return (
     <div className="mx-auto max-w-7xl p-4 md:p-6">
@@ -258,8 +263,8 @@ export default function LiveClient({ initialData, error: initialError, getTransc
         title="Live sessions"
         subtitle={
           <>
-            Live trace sessions from <code className="mono text-xs">{displayText(data.sourceRoots[0] ?? data.sourceLabel, redact, users)}</code>, with usage
-            provenance, parser confidence, and copy-safe redaction for local usernames.
+            Inspect recent trace sessions from <code className="mono text-xs">{displayText(data.sourceRoots[0] ?? data.sourceLabel, redact, users)}</code>. Usage,
+            parser coverage, and local-path redaction are shown when available.
           </>
         }
         actions={
@@ -270,7 +275,7 @@ export default function LiveClient({ initialData, error: initialError, getTransc
             }} />
             <div className="flex flex-wrap items-center gap-2 sm:justify-end">
               <UpdatedIndicator updatedAt={updatedAt} staleError={data ? error : undefined} />
-              <RedactToggle redact={redact} onToggle={() => setRedact((value) => !value)} />
+              <RedactToggle redact={redact} onToggle={() => setRedact((value) => !value)} compact />
               <button
                 type="button"
                 onClick={() => window.location.reload()}
@@ -290,27 +295,23 @@ export default function LiveClient({ initialData, error: initialError, getTransc
         summary={`${data.totalSessions} parsed slice · ${scanCoverage.scannedFiles}/${scanCoverage.discoveredFiles} files scanned`}
       />
 
-      {data.sourceStatus !== "available" && (
-        <div className="mb-4 rounded-lg border border-l-2 border-warn/30 bg-warn/10 p-3 text-sm text-warn">
-          {displayText(data.sourceMessage ?? "No live trace source is available for this harness.", redact, users)}
-        </div>
-      )}
-
-      {data.scanWarnings.length > 0 && (
-        <div className="mb-4 rounded-lg border border-l-2 border-warn/30 bg-warn/10 p-3 text-sm text-warn">
-          {data.scanWarnings.map((warning) => <div key={warning}>{displayText(warning, redact, users)}</div>)}
-        </div>
-      )}
-
-      {(scanCoverage.truncated || scanCoverage.partial) && (
-        <div role="status" className="mb-4 rounded-lg border border-l-2 border-accent/30 bg-accent/5 p-3 text-sm text-fg-muted">
-          <span className="font-medium text-fg">Partial corpus boundary:</span>{" "}
-          scanned <span className="mono tabular-nums">{scanCoverage.scannedFiles}</span> of{" "}
-          <span className="mono tabular-nums">{scanCoverage.discoveredFiles}</span> discovered files and parsed{" "}
-          <span className="mono tabular-nums">{scanCoverage.parsedFiles}</span> sessions
-          {scanCoverage.droppedFiles > 0 && <> ({scanCoverage.droppedFiles} non-session files dropped)</>}.
-          {scanCoverage.truncated && <>{" "}<span className="mono tabular-nums">{scanCoverage.unscannedFiles}</span> older files were not scanned;</>}
-          {" "}usage and quality totals below describe only the evidenced parsed population.
+      {hasLiveCoverageNotes && (
+        <div role={data.sourceStatus !== "available" ? "alert" : "status"} className="mb-4 rounded-lg border border-l-2 border-warn/30 bg-warn/10 p-3 text-sm text-warn">
+          <div className="font-medium">{data.sourceStatus !== "available" ? "Live source needs attention" : "Live scan notes"}</div>
+          <ul className="mt-1 space-y-0.5 text-[11px] leading-4 text-fg-muted">
+            {data.sourceStatus !== "available" && <li>{displayText(data.sourceMessage ?? "No live trace source is available for this harness.", redact, users)}</li>}
+            {data.scanWarnings.map((warning) => <li key={warning}>{displayText(warning, redact, users)}</li>)}
+            {(scanCoverage.truncated || scanCoverage.partial) && (
+              <li>
+                This view is a partial slice: scanned <span className="mono tabular-nums">{scanCoverage.scannedFiles}</span> of{" "}
+                <span className="mono tabular-nums">{scanCoverage.discoveredFiles}</span> discovered files and parsed{" "}
+                <span className="mono tabular-nums">{scanCoverage.parsedFiles}</span> sessions
+                {scanCoverage.droppedFiles > 0 && <> ({scanCoverage.droppedFiles} non-session files dropped)</>}.
+                {scanCoverage.truncated && <> <span className="mono tabular-nums">{scanCoverage.unscannedFiles}</span> older files were not scanned.</>}{" "}
+                Totals below describe only the parsed evidence in this slice, not complete history.
+              </li>
+            )}
+          </ul>
         </div>
       )}
 

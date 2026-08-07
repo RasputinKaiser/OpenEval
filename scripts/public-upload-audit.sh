@@ -4,6 +4,14 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
 
+scope="tracked"
+if [ "${1:-}" = "--all" ]; then
+  scope="candidate"
+elif [ "${1:-}" != "" ]; then
+  echo "usage: bash scripts/public-upload-audit.sh [--all]" >&2
+  exit 2
+fi
+
 fail=0
 
 # rg is preferred but optional. A missing binary must NOT read as "no matches":
@@ -25,7 +33,29 @@ tracked_local_patterns='^data(/|$)|(^|/)(\.codex|\.ncode|\.next|node_modules)(/|
 echo "== OpenEval public upload audit =="
 echo "repo: $root"
 echo "scan engine: $scan_engine"
+echo "scope: $scope"
 echo
+
+candidate_files() {
+  if [ "$scope" = "candidate" ]; then
+    git ls-files --cached --others --exclude-standard
+  else
+    git ls-files
+  fi
+}
+
+candidate_grep() {
+  local pattern="$1"
+  local file
+  while IFS= read -r file; do
+    [ -f "$file" ] || continue
+    if command -v rg >/dev/null 2>&1; then
+      rg -n -I -e "$pattern" -- "$file" || true
+    else
+      grep -nE "$pattern" -- "$file" || true
+    fi
+  done < <(candidate_files)
+}
 
 echo "== Tracked local-only files =="
 if git ls-files | pattern_scan "$tracked_local_patterns"; then
@@ -34,13 +64,23 @@ if git ls-files | pattern_scan "$tracked_local_patterns"; then
 else
   echo "ok: no local-only generated files are tracked."
 fi
+if [ "$scope" = "candidate" ] && candidate_files | pattern_scan "$tracked_local_patterns"; then
+  echo "ERROR: local-only generated files are present in the candidate.";
+  fail=1
+fi
 echo
 
 echo "== Public identity scan =="
 # Keep the blocked value out of the public source while still enforcing it at
 # runtime. Hex escapes are decoded by bash before git grep receives the value.
 blocked_identity=$'\x49\x61\x6e\x20\x5a\x76\x69\x72\x62\x75\x6c\x69\x73'
-if git grep -n -i -I -- "$blocked_identity" -- . ':!scripts/public-upload-audit.sh'; then
+if [ "$scope" = "candidate" ]; then
+  identity_matches="$(candidate_grep "$blocked_identity" | grep -v 'scripts/public-upload-audit.sh' || true)"
+else
+  identity_matches="$(git grep -n -i -I -- "$blocked_identity" -- . ':!scripts/public-upload-audit.sh' || true)"
+fi
+if [ -n "$identity_matches" ]; then
+  printf '%s\n' "$identity_matches"
   echo "ERROR: disallowed public-facing identity string found."
   fail=1
 else
@@ -52,7 +92,14 @@ echo "== Private machine path scan =="
 blocked_user=$'\x69\x61\x6e\x7a\x76\x69\x72\x62\x75\x6c\x69\x73'
 blocked_given=$'\x49\x61\x6e'
 blocked_given_lower=$'\x69\x61\x6e'
-if git grep -n -I -E "/Users/${blocked_user}|/Users/${blocked_given}|/Users/${blocked_given_lower}" -- . ':!scripts/public-upload-audit.sh'; then
+path_pattern="/Users/${blocked_user}|/Users/${blocked_given}|/Users/${blocked_given_lower}"
+if [ "$scope" = "candidate" ]; then
+  path_matches="$(candidate_grep "$path_pattern" | grep -v 'scripts/public-upload-audit.sh' || true)"
+else
+  path_matches="$(git grep -n -I -E "$path_pattern" -- . ':!scripts/public-upload-audit.sh' || true)"
+fi
+if [ -n "$path_matches" ]; then
+  printf '%s\n' "$path_matches"
   echo "ERROR: private machine path found in tracked files."
   fail=1
 else
@@ -61,7 +108,7 @@ fi
 echo
 
 echo "== Secret-like fixture inventory =="
-git ls-files 'fixtures/**/*.env' 'fixtures/**/*SECRET*' 'fixtures/**/*LOCK*' | sed 's/^/fixture: /' || true
+candidate_files | grep -E '(^|/)fixtures/.+\.(env|secret|lock)$|(^|/)fixtures/.+(SECRET|LOCK)' | sed 's/^/fixture: /' || true
 echo "note: the listed fixture files are intentional adversarial test data; review before publishing if the fixture set changes."
 echo
 

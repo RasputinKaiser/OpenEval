@@ -5,6 +5,7 @@ import { hasAdapter, listAdapters } from "@/lib/adapters/registry";
 import { probeHarness } from "@/lib/adapters/discover";
 import type { RunnerKind } from "@/lib/types";
 import { badRequest, internalError } from "@/lib/api-http";
+import { makeJudgeSelection, requireReadyJudgeSelection, type JudgeSelectionInput } from "@/lib/grader/selection";
 
 export const dynamic = "force-dynamic";
 
@@ -59,6 +60,8 @@ export async function POST(req: Request) {
       return badRequest("caseIds must include at least one case id (omit the field entirely to run the filtered set)", { field: "caseIds" });
     }
     const harness = typeof body.harness === "string" && body.harness.trim() ? body.harness.trim() : undefined;
+    const judge = parseJudgeSelection(body);
+    if (judge.error) return badRequest(judge.error.message, { field: judge.error.field });
     // An unknown harness would otherwise create a run whose every case errors
     // at spawn time — reject it up front with the registered ids.
     if (harness && !hasAdapter(harness)) {
@@ -72,6 +75,10 @@ export async function POST(req: Request) {
         return badRequest(`Harness "${harness}" is unavailable.${detail}`, { field: "harness" });
       }
     }
+    if (judge.value) {
+      try { await requireReadyJudgeSelection(makeJudgeSelection({ ...judge.value, resolution: "job" })); }
+      catch (error) { return badRequest(error instanceof Error ? error.message : String(error), { field: "judgeSource" }); }
+    }
     const normalizedFilter = Object.fromEntries(
       Object.entries(filter).filter(([, value]) => value.length > 0)
     );
@@ -82,12 +89,28 @@ export async function POST(req: Request) {
       parallel: parallel.value,
       samples: samples.value,
       model: typeof body.model === "string" && body.model.trim() ? body.model.trim() : undefined,
+      judge: judge.value,
       filter: normalizedFilter,
     });
     return NextResponse.json(result, { status: 201 });
   } catch (error) {
     return startRunErrorResponse(error);
   }
+}
+
+function parseJudgeSelection(body: Record<string, unknown>): { value?: JudgeSelectionInput; error?: { message: string; field: string } } {
+  const raw = body.judge ?? (body.judgeSource !== undefined || body.judgeModel !== undefined
+    ? { source: body.judgeSource, model: body.judgeModel, reasoningEffort: body.judgeReasoningEffort }
+    : undefined);
+  if (raw === undefined) return {};
+  if (!isRecord(raw)) return { error: { message: "judge must be an object with source, model, and optional reasoningEffort", field: "judgeSource" } };
+  const source = typeof raw.source === "string" ? raw.source.trim() : "";
+  const model = typeof raw.model === "string" ? raw.model.trim() : "";
+  const reasoningEffort = raw.reasoningEffort === undefined || raw.reasoningEffort === null ? undefined : typeof raw.reasoningEffort === "string" ? raw.reasoningEffort.trim() : null;
+  if (!source) return { error: { message: "judge.source is required for an explicit job selection", field: "judgeSource" } };
+  if (!model) return { error: { message: "judge.model is required for an explicit job selection", field: "judgeModel" } };
+  if (reasoningEffort === null || reasoningEffort === "") return { error: { message: "judge.reasoningEffort must be a non-empty string when provided", field: "judgeReasoningEffort" } };
+  return { value: { source, model, reasoningEffort } };
 }
 
 function startRunErrorResponse(error: unknown): NextResponse {

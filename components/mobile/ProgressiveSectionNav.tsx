@@ -24,8 +24,11 @@ function scrollSectionIntoView(sectionId: string): void {
  * panel keeps every viewport task-sized; the explicit All choice remains the
  * full-report fallback for scanning and print.
  */
-export function useProgressiveSection(sections: ProgressiveSection[]) {
-  const [activeSection, setActiveSection] = useState<ProgressiveSectionId>(sections[0]?.id ?? "all");
+export function useProgressiveSection(
+  sections: ProgressiveSection[],
+  initialSection: ProgressiveSectionId = sections[0]?.id ?? "all",
+) {
+  const [activeSection, setActiveSection] = useState<ProgressiveSectionId>(initialSection);
   const beforePrintSection = useRef<ProgressiveSectionId | null>(null);
 
   useEffect(() => {
@@ -168,7 +171,7 @@ export function ProgressiveSectionNav({
       aria-label="Page sections"
       data-can-scroll-left={scrollState.left}
       data-can-scroll-right={scrollState.right}
-      className="timeline-section-nav sticky top-0 z-30 -mx-4 mb-5 flex flex-wrap items-center gap-x-2 gap-y-1.5 border-b border-bd-subtle px-4 py-2 md:-mx-6 md:px-6"
+      className="timeline-section-nav relative -mx-4 mb-3 flex flex-wrap items-center gap-x-2 gap-y-1.5 border-b border-bd-subtle px-4 py-2 md:sticky md:top-0 md:z-30 md:-mx-6 md:mb-5 md:px-6"
       style={{
         background: "color-mix(in srgb, var(--color-bg) 88%, transparent)",
         backdropFilter: "blur(8px)",
@@ -213,7 +216,7 @@ export function ProgressiveSectionNav({
           </button>
         ))}
       </div>
-      <div className="timeline-section-nav__context flex w-full min-w-0 items-center gap-2 px-1">
+      <div className="timeline-section-nav__context hidden w-full min-w-0 items-center gap-2 px-1 md:flex">
         <span className="shrink-0 text-[9px] font-medium uppercase tracking-[0.14em] text-accent-soft">
           {selectedIndex === null ? "Full report" : `${String(selectedIndex + 1).padStart(2, "0")} / ${String(sections.length).padStart(2, "0")}`}
         </span>

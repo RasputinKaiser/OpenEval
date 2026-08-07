@@ -126,10 +126,10 @@ export function UpdatedIndicator({ updatedAt, staleError }: { updatedAt: number 
       <span
         role="status"
         className="inline-flex items-center gap-1.5 rounded border border-warn/30 bg-warn/10 px-2 py-1 text-[10px] tabular-nums text-warn"
-        title={`Live poll failing: ${redactSensitiveText(staleError)} — showing last good data`}
+        title={`The latest live update failed: ${redactSensitiveText(staleError)} — showing data from the last successful update.`}
       >
         <AlertTriangle className="size-3" aria-hidden />
-        {updatedAt == null ? "poll failed · no successful update" : `poll failed · last good update ${age} ago`}
+        {updatedAt == null ? "Live updates failed · no successful update" : `Live updates failed · showing data from ${age} ago`}
       </span>
     );
   }

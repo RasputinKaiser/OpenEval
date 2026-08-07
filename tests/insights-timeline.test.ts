@@ -1,9 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import Database from "better-sqlite3";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { scoreOutcome } from "../lib/insights/outcome";
 import { toPoints, detectMarkers, metricSeries, markerImpact } from "../lib/insights/timeline";
 import { buildTimeline } from "../lib/insights/collect";
 import type { LiveSession, OutcomeSignals } from "../lib/live";
+import { _setCacheDbForTest, saveJudgment } from "../lib/live-cache";
+import { makeJudgeSelection } from "../lib/grader/selection";
 import type { StoredJudgment } from "../lib/live-cache";
 
 function session(over: Partial<LiveSession> & { startedAt: number }): LiveSession & { sourceLabel: string } {
@@ -60,6 +66,26 @@ test("toPoints orders by time and flattens fields", () => {
   const pts = toPoints([session({ startedAt: 300 }), session({ startedAt: 100 }), session({ startedAt: 200 })]);
   assert.deepEqual(pts.map((p) => p.at), [100, 200, 300]);
   assert.equal(pts[0].source, "Claude Code");
+});
+
+test("toPoints does not apply a receipt from an older transcript revision", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "openeval-judge-revision-"));
+  const file = path.join(root, "session.jsonl");
+  try {
+    fs.writeFileSync(file, "first\n", "utf8");
+    fs.utimesSync(file, new Date(1_000), new Date(1_000));
+    const judged = new Map<string, StoredJudgment>([[file, {
+      file, sessionId: "s1", mtimeMs: 1_000, score: 0.9, reasons: ["current"],
+      judge: "test/judge", judgedAt: 1_000, promptVersion: 2,
+    }]]);
+    const current = session({ startedAt: 1, path: file });
+    assert.equal(toPoints([current], judged)[0].outcomeProvenance, "judged");
+    fs.writeFileSync(file, "changed\n", "utf8");
+    fs.utimesSync(file, new Date(2_000), new Date(2_000));
+    assert.equal(toPoints([current], judged)[0].outcomeProvenance, "unavailable");
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("buildTimeline keeps child traces out of human outcome denominators", () => {
@@ -236,6 +262,42 @@ test("buildTimeline exposes exact signal, judged, heuristic, and no-signal count
   assert.equal(report.noSignalSessions, 1);
   assert.equal(report.signalCoverage, 2 / 3);
 });
+
+test("buildTimeline preserves mixed judge source/model/prompt receipts and denominator", () => {
+  const conn = new Database(":memory:");
+  _setCacheDbForTest(conn);
+  try {
+    const codex = makeJudgeSelection({ source: "codex", model: "gpt-5.6-luna", reasoningEffort: "high", resolution: "job" });
+    const claude = makeJudgeSelection({ source: "claude-code", model: "sonnet", resolution: "job" });
+    const sessions = [100, 200, 300, 400].map((startedAt) => session({ startedAt, path: `/judge-${startedAt}.jsonl` }));
+    const judgments: Array<StoredJudgment> = sessions.map((s, index) => ({
+      file: s.path!, sessionId: s.sessionId, mtimeMs: 0, score: index % 2 ? 0.8 : 0.6, reasons: ["bounded receipt"],
+      judge: index < 2 ? codex.judgeName : claude.judgeName, judgedAt: startedAtFor(index), promptVersion: index < 2 ? 2 : 3,
+      selection: index < 2 ? codex : claude,
+    }));
+    for (const judgment of judgments) saveJudgment(judgment);
+
+    const report = buildTimeline(sessions);
+    assert.equal(report.judgedSessions, 2, "only current-prompt receipts enter the comparable score view");
+    assert.equal(report.judgeComparability?.mixed, true);
+    assert.equal(report.judgeComparability?.homogeneous, false);
+    assert.equal(report.judgeComparability?.denominator, 2);
+    assert.equal(report.judgeComparability?.receiptDenominator, 4);
+    assert.equal(report.judgeComparability?.staleReceiptCount, 2);
+    assert.deepEqual(report.judgeSelectionDistribution?.map((group) => [group.source, group.model, group.promptVersion, group.count]), [
+      ["claude-code", "sonnet", 3, 2],
+      ["codex", "gpt-5.6-luna", 2, 2],
+    ]);
+    assert.match(report.judgeComparability?.warning ?? "", /mixes backend, model, or prompt-version/);
+  } finally {
+    _setCacheDbForTest(null);
+    conn.close();
+  }
+});
+
+function startedAtFor(index: number): number {
+  return (index + 1) * 100;
+}
 
 test("buildTimeline keeps overall trend unavailable until both homogeneous halves are thick enough", () => {
   const none = buildTimeline([session({ startedAt: 1 }), session({ startedAt: 2 })]);

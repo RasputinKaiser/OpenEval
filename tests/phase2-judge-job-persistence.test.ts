@@ -15,9 +15,11 @@ import {
   saveJudgment,
   saveJudgeJob,
   updateJudgeJobProgress,
+  judgeJobLeaseOwned,
 } from "../lib/live-cache";
-import { judgeJobStatus, startJudgeAll } from "../lib/insights/judge";
+import { judgeJobStatus, judgePoints, startJudgeAll } from "../lib/insights/judge";
 import type { Marker, SessionPoint } from "../lib/insights/timeline";
+import { makeJudgeSelection } from "../lib/grader/selection";
 
 async function withFileCache(fn: (dbPath: string) => void | Promise<void>): Promise<void> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "openeval-judge-job-"));
@@ -138,6 +140,33 @@ test("only one live lease claims the singleton; stale lease can be superseded", 
   });
 });
 
+test("a superseded lease cannot persist a stale verdict receipt", async () => {
+  await withFileCache(() => {
+    saveJudgeJob(stored({ ownerPid: process.pid, heartbeatAt: Date.now() }));
+    assert.equal(judgeJobLeaseOwned("lease-a"), true);
+
+    const replacement = stored({ leaseId: "lease-b", ownerPid: process.pid, heartbeatAt: Date.now() });
+    assert.equal(claimJudgeJob(replacement, { takeoverLeaseId: "lease-a" }), true);
+    assert.equal(judgeJobLeaseOwned("lease-a"), false);
+    assert.equal(judgeJobLeaseOwned("lease-b"), true);
+
+    const judgment = {
+      file: "/tmp/stale-lease-verdict.jsonl",
+      sessionId: "stale-session",
+      mtimeMs: 1,
+      score: 0.9,
+      reasons: ["stale worker must not write"],
+      judge: "stub/deterministic-v1",
+      judgedAt: 1,
+      promptVersion: 2,
+    };
+    assert.equal(saveJudgment(judgment, { leaseId: "lease-a" }), false);
+    assert.equal(loadJudgments().has(judgment.file), false);
+    assert.equal(saveJudgment(judgment, { leaseId: "lease-b" }), true);
+    assert.equal(loadJudgments().get(judgment.file)?.score, 0.9);
+  });
+});
+
 function point(at: number, file: string): SessionPoint {
   return {
     sessionId: `s-${at}`,
@@ -191,6 +220,35 @@ test("startJudgeAll supersedes an interrupted row and persists progress/finish",
       poll();
     });
   });
+});
+
+test("judgePoints reports a failed result when its durable verdict receipt cannot be written", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "openeval-judge-receipt-"));
+  const file = path.join(dir, "session.jsonl");
+  fs.writeFileSync(file, [
+    JSON.stringify({ type: "event_msg", payload: { type: "user_message", message: "complete the task" } }),
+    JSON.stringify({ type: "event_msg", payload: { type: "agent_message", message: "completed" } }),
+  ].join("\n"));
+  try {
+    await withFileCache(async (dbPath) => {
+      // The deterministic backend still returns a valid response, but this
+      // scratch cache has no receipt table for the verdict write.
+      const breaker = new Database(dbPath);
+      breaker.exec("DROP TABLE outcome_judgments");
+      breaker.close();
+      const result = await judgePoints(
+        [point(1, file)],
+        [{ kind: "skill", name: "durable-test", firstSeenAt: 1, sessionCount: 3 }],
+        { selection: makeJudgeSelection({ source: "stub", model: "deterministic-v1", resolution: "job" }), timeoutMs: 100 },
+      );
+      assert.equal(result.sampled, 1);
+      assert.equal(result.judged, 0);
+      assert.equal(result.failed, 1);
+      assert.equal(result.lastError, "judge verdict persistence failed");
+    });
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("concurrent judge-all starts share one durable lease and do not duplicate a queue", async () => {

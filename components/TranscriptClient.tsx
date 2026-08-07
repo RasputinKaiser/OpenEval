@@ -69,24 +69,34 @@ type TranscriptPage = {
   total?: number;
   counts?: Partial<TurnCounts>;
   normalization?: TranscriptNormalization;
-  revision?: string;
+  revision?: string | { size: number; mtimeMs: number; fingerprint: string };
+  nextCursor?: string | null;
+  hasMore?: boolean;
 };
 
 export default function TranscriptClient({
   turns,
-  file,
+  sourceId,
+  sessionId,
+  initialCursor,
+  hasMore: initialHasMore = false,
   totalTurns = turns.length,
   totalCounts,
   normalization,
 }: {
   turns: LiveTranscriptTurn[];
-  file?: string;
+  sourceId: string;
+  sessionId: string;
+  initialCursor?: string | null;
+  hasMore?: boolean;
   totalTurns?: number;
   totalCounts?: Partial<TurnCounts>;
   normalization?: TranscriptNormalization;
 }) {
   const [loadedTurns, setLoadedTurns] = useState(turns);
   const [knownTotal, setKnownTotal] = useState(() => Math.max(totalTurns, turns.length));
+  const [nextCursor, setNextCursor] = useState<string | null>(initialCursor ?? null);
+  const [hasMore, setHasMore] = useState(initialHasMore);
   const [knownCounts, setKnownCounts] = useState<TurnCounts>(() => initialCounts(turns, totalTurns, totalCounts));
   const defaultFilter: Filter = (totalCounts?.chat ?? countTurns(turns).chat) > 0 ? "chat" : "all";
   const [filter, setFilter] = useState<Filter>(defaultFilter);
@@ -95,7 +105,6 @@ export default function TranscriptClient({
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [sourceNotice, setSourceNotice] = useState<string | null>(null);
-  const [sourceRevision, setSourceRevision] = useState<string | null>(null);
   const [knownNormalization, setKnownNormalization] = useState(normalization);
   const requestGeneration = useRef(0);
   const requestInFlight = useRef(false);
@@ -119,14 +128,15 @@ export default function TranscriptClient({
     setQ("");
     setLoadError(null);
     setSourceNotice(null);
-    setSourceRevision(null);
     setKnownNormalization(normalization);
-  }, [defaultFilter, file, turns, totalTurns, totalCounts, normalization]);
+    setNextCursor(initialCursor ?? null);
+    setHasMore(initialHasMore);
+  }, [defaultFilter, sourceId, sessionId, turns, totalTurns, totalCounts, normalization, initialCursor, initialHasMore]);
 
   // Harvest from the file path and the transcript itself so bare mentions in
   // prompts/output get scrubbed; secrets on — session logs are exactly where
   // pasted keys and tokens end up.
-  const harvestFrom = useMemo(() => [file, ...loadedTurns.flatMap((t) => [t.preview, t.label])], [loadedTurns, file]);
+  const harvestFrom = useMemo(() => [sourceId, sessionId, ...loadedTurns.flatMap((t) => [t.preview, t.label])], [loadedTurns, sourceId, sessionId]);
   const { redact, setRedact, show } = useRedactedShow(harvestFrom, { secrets: true });
 
   const counts = knownCounts;
@@ -184,9 +194,8 @@ export default function TranscriptClient({
   ];
 
   async function loadMore() {
-    const sourceFile = file;
     const currentTurns = loadedTurnsRef.current;
-    if (!sourceFile || requestInFlight.current || currentTurns.length >= knownTotalRef.current) return;
+    if (requestInFlight.current || !hasMore) return;
     requestInFlight.current = true;
     const generation = requestGeneration.current + 1;
     requestGeneration.current = generation;
@@ -194,17 +203,22 @@ export default function TranscriptClient({
     setLoadingMore(true);
     setLoadError(null);
     try {
-      const params = new URLSearchParams({ file: sourceFile, offset: String(offset), limit: String(PAGE_SIZE) });
+      const params = new URLSearchParams({ sourceId, sessionId, limit: String(PAGE_SIZE) });
+      if (nextCursor) {
+        params.set("cursor", nextCursor);
+        params.delete("sourceId");
+        params.delete("sessionId");
+      }
       const response = await fetch(`/api/collection/transcript?${params.toString()}`, { cache: "no-store" });
       const result = await response.json() as TranscriptPage;
       if (generation !== requestGeneration.current) return;
       if (!response.ok) throw new Error(result.error ?? "Transcript window could not be loaded.");
       const nextTurns = result.turns ?? [];
-      if (result.offset !== undefined && result.offset !== offset) {
+      if (result.offset !== undefined && result.offset !== offset && !nextCursor) {
         throw new Error("Transcript window offset changed; reload the transcript.");
       }
       const previousTotal = knownTotalRef.current;
-      if (result.total !== undefined && (!isCount(result.total) || result.total < offset || result.total < previousTotal)) {
+      if (result.total !== undefined && (!isCount(result.total) || result.total < offset || result.total < currentTurns.length)) {
         throw new Error("Transcript changed on disk; reload the transcript.");
       }
       if (nextTurns.length === 0 && (result.total ?? offset) > offset) {
@@ -220,6 +234,8 @@ export default function TranscriptClient({
       knownTotalRef.current = nextTotal;
       setLoadedTurns(next);
       setKnownTotal(nextTotal);
+      setNextCursor(result.nextCursor ?? null);
+      setHasMore(result.hasMore === true && result.nextCursor != null);
       setKnownCounts({
         ...countTurns(next),
         all: nextTotal,
@@ -228,12 +244,9 @@ export default function TranscriptClient({
         ...(result.counts?.errors !== undefined && isCount(result.counts.errors) ? { errors: result.counts.errors } : {}),
       });
       if (result.normalization) setKnownNormalization(result.normalization);
-      if (result.revision && sourceRevision && result.revision !== sourceRevision) {
-        setSourceNotice("Transcript changed while open; counts updated from the current file.");
-      } else if (result.total !== undefined && result.total > previousTotal) {
+      if (result.total !== undefined && result.total > previousTotal) {
         setSourceNotice("Transcript grew while open; counts updated from the current file.");
       }
-      if (result.revision) setSourceRevision(result.revision);
     } catch (error) {
       if (generation !== requestGeneration.current) return;
       setLoadError(error instanceof Error ? error.message : "Transcript window could not be loaded.");
@@ -428,7 +441,7 @@ export default function TranscriptClient({
           );
         })}
       </div>
-      {file && loadedTurns.length < knownTotal && (
+      {hasMore && (
         <div className="mt-4 flex flex-col items-center gap-2">
           <button
             type="button"
@@ -439,9 +452,9 @@ export default function TranscriptClient({
             {loadingMore && <Loader2 className="size-3.5 animate-spin" />}
                 {loadingMore
                   ? "Loading transcript…"
-                  : `Load next ${fmtNum(Math.min(PAGE_SIZE, knownTotal - loadedTurns.length))} turns${dq ? " to continue search" : ""}`}
+                  : `Load next ${fmtNum(PAGE_SIZE)} turns${dq ? " to continue search" : ""}`}
           </button>
-          <p className="text-[10px] text-fg-dim mono tabular-nums">Showing {fmtNum(loadedTurns.length)} of {fmtNum(knownTotal)} parsed turns</p>
+          <p className="text-[10px] text-fg-dim mono tabular-nums">Showing {fmtNum(loadedTurns.length)} parsed turns{hasMore ? " · more available" : ""}</p>
           {loadError && <p className="text-[11px] text-err" role="alert">{show(loadError)}</p>}
         </div>
       )}

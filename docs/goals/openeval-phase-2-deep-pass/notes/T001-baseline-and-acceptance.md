@@ -33,5 +33,5 @@ Status: `current`
 
 ## Evidence
 
-- Audit captures: `/Users/ianzvirbulis/.codex/visualizations/2026/07/28/019fa968-8fe1-75d2-a127-b12ad15f0801/openeval-ux-audit/`
+- Audit captures: `<local-visualization-dir>/openeval-ux-audit/`
 - Strategy board: `openeval-phase-2-improvement-board.png` in the same directory.
