@@ -140,6 +140,22 @@ test("leaderboard preserves workload identity and metric provenance within lates
   assert.equal(codex.workload.caseIds[0].caseId, "case-visual");
   assert.equal(codex.costCoverage.unspecified, 1);
   assert.equal(codex.costCoverage.available, 1);
+  const query = async (value: string) => (await route.GET(new Request(`http://localhost/api/harnesses/leaderboard?${value}`))).json();
+  const emptyShared = await query("matched=1");
+  assert.equal(emptyShared.overlap.sharedPairs, 0);
+  assert.equal(emptyShared.harnesses.length, 0, "no shared pairs must not fall back to unfiltered results");
+  const reasoning = await query("category=reasoning&model=gpt-5.6");
+  assert.equal(reasoning.harnesses.length, 1);
+  assert.equal(reasoning.harnesses[0].totalCases, 2);
+  assert.deepEqual(reasoning.options.categories, ["agentic-swe", "reasoning", "visual-code"]);
+  db.insertRunCase(makeCase("codex-one", "case-alpha", "reasoning", 0, "failed", { costUsd: 0.25, costSource: "measured", durationMs: 500, model: "gpt-5.5" }));
+  const shared = await query("matched=1");
+  assert.equal(shared.overlap.sharedPairs, 1);
+  assert.equal(shared.harnesses.length, 2);
+  assert.equal(shared.harnesses.find((row: any) => row.harness === "claude-code").totalCases, 2, "repeat attempts remain explicit, not silently deduplicated");
+  assert.equal(shared.harnesses.find((row: any) => row.harness === "codex").totalCases, 1);
+  assert.ok(shared.harnesses.every((row: any) => row.workload.caseIds.every((item: any) => item.caseId === "case-alpha")));
+  assert.equal((await route.GET(new Request("http://localhost/api/harnesses/leaderboard?matched=invalid"))).status, 400);
 });
 
 after(() => {

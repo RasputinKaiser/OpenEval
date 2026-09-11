@@ -6,6 +6,7 @@ import clsx from "clsx";
 import StatusBadge from "./StatusBadge";
 import HarnessBadge from "./HarnessBadge";
 import { ChevronDown, Search, X } from "lucide-react";
+import { MetricDistribution } from "./charts/MetricDistribution";
 import { ChartFrame } from "./charts/ChartFrame";
 import { SelectableBars } from "./charts/SelectableBars";
 import { statusCounts } from "@/lib/run-chart-analysis";
@@ -36,6 +37,7 @@ const STATUSES: { key: StatusFilter; label: string }[] = [
 export default function RunsClient({ runs, referenceTimeMs }: { runs: RunRecord[]; referenceTimeMs?: number }) {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [sort, setSort] = useState<SortKey>("newest");
+  const [comparison, setComparison] = useState<string[]>([]);
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, 200);
@@ -55,14 +57,15 @@ export default function RunsClient({ runs, referenceTimeMs }: { runs: RunRecord[
       setStatusFilter(STATUSES.some((item) => item.key === status) ? status as StatusFilter : "all");
       setSort(SORTS.some((item) => item.key === order) ? order as SortKey : "newest");
       setSearch(params.get("q") ?? "");
+      setComparison([...new Set((params.get("compare") ?? "").split(",").filter(id => runs.some(run => run.id === id)))].slice(0, 2));
       setPageSize([25,50,100,200].includes(limit) ? limit : 50);
     };
     restore(); window.addEventListener("popstate", restore); return () => window.removeEventListener("popstate", restore);
-  }, []);
+  }, [runs]);
   const changeFilter = (patch: Record<string, string | null>, replace = false) => {
     const url = new URL(window.location.href);
     for (const [key,value] of Object.entries(patch)) { if (value === null) url.searchParams.delete(key); else url.searchParams.set(key,value); }
-    if (replace) window.history.replaceState(window.history.state, "", url); else window.history.pushState(window.history.state, "", url);
+    if (replace) window.history.replaceState(null, "", url); else window.history.pushState(null, "", url);
     window.dispatchEvent(new PopStateEvent("popstate"));
   };
   const distribution = statusCounts(runs);
@@ -130,10 +133,6 @@ export default function RunsClient({ runs, referenceTimeMs }: { runs: RunRecord[
 
   return (
     <div>
-      <div className="mb-4"><ChartFrame title="Recent run status" description={`Counts describe the ${runs.length} runs loaded on this page (at most the latest 50), before search and status filtering.`} unit="Run status is separate from case pass rate."
-        table={{ headers: ["Run status", "Count"], rows: distribution.map((item) => ({ id: item.status, cells: [item.status, item.count] })) }}>
-        <SelectableBars rows={distribution.map((item) => ({ id: item.status, label: item.status, value: item.count, tone: item.status === "failed" ? "err" : item.status === "completed" ? "ok" : "accent" }))} noun="runs" onExplore={(status) => changeFilter({ status })} selectedId={statusFilter} />
-      </ChartFrame></div>
       {statusFilter !== "all" && <div className="flex gap-2 items-center text-xs mb-3"><span>Run status: {statusFilter}</span><button type="button" className="analysis-control" onClick={() => changeFilter({ status: null })}>Remove status filter</button></div>}
       {runs.length > 3 && (
         <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -144,7 +143,7 @@ export default function RunsClient({ runs, referenceTimeMs }: { runs: RunRecord[
                 onClick={() => changeFilter({ status: s.key === "all" ? null : s.key })}
                 aria-pressed={statusFilter === s.key}
                 className={clsx(
-                  "text-[11px] px-2.5 py-1.5 rounded-md border transition-colors",
+                  "min-h-11 sm:min-h-8 text-xs px-2.5 py-1.5 rounded-md border transition-colors",
                   statusFilter === s.key
                     ? "border-accent bg-accent/10 text-accent-soft"
                     : "border-bd text-fg-muted hover:bg-bg-elev"
@@ -160,7 +159,7 @@ export default function RunsClient({ runs, referenceTimeMs }: { runs: RunRecord[
               onClick={() => setOpen(!open)}
               aria-expanded={open}
               aria-haspopup="menu"
-              className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1.5 rounded-md border border-bd text-fg-muted hover:bg-bg-elev"
+              className="inline-flex min-h-11 sm:min-h-8 items-center gap-1 text-xs px-2.5 py-1.5 rounded-md border border-bd text-fg-muted hover:bg-bg-elev"
             >
               {SORTS.find((s) => s.key === sort)?.label}
               <ChevronDown className={clsx("size-3 transition-transform", open && "rotate-180")} />
@@ -178,7 +177,7 @@ export default function RunsClient({ runs, referenceTimeMs }: { runs: RunRecord[
                       onClick={() => { changeFilter({ sort: s.key === "newest" ? null : s.key }); setOpen(false); }}
                       aria-pressed={sort === s.key}
                       className={clsx(
-                        "w-full text-left px-3 py-1.5 text-xs hover:bg-bg-elev",
+                        "w-full min-h-11 sm:min-h-8 text-left px-3 py-1.5 text-xs hover:bg-bg-elev",
                         sort === s.key && "text-accent-soft"
                       )}
                     >
@@ -197,7 +196,7 @@ export default function RunsClient({ runs, referenceTimeMs }: { runs: RunRecord[
               onChange={(e) => changeFilter({ q: e.target.value || null }, true)}
               aria-label="Search runs"
               placeholder="Search runs…"
-              className="w-32 lg:w-44 pl-8 pr-2 py-1.5 text-[11px] bg-bg border border-bd rounded-md focus:outline-none focus:border-accent focus:w-40 lg:focus:w-52 transition-[width,border-color] placeholder:text-fg-dim"
+              className="w-32 lg:w-44 min-h-11 sm:min-h-8 pl-8 pr-2 py-1.5 text-xs bg-bg border border-bd rounded-md focus:outline-none focus:border-accent transition-colors placeholder:text-fg-dim"
             />
             {search && (
               <button onClick={() => changeFilter({ q: null })} className="absolute right-2 top-1/2 -translate-y-1/2 text-fg-dim hover:text-fg" aria-label="Clear search">
@@ -210,7 +209,7 @@ export default function RunsClient({ runs, referenceTimeMs }: { runs: RunRecord[
               value={pageSize}
               onChange={(e) => changeFilter({ limit: e.target.value === "50" ? null : e.target.value })}
               aria-label="Runs per page"
-              className="text-[11px] bg-bg border border-bd rounded-md px-1.5 py-1 focus:outline-none focus:border-accent"
+              className="min-h-11 sm:min-h-8 text-xs bg-bg border border-bd rounded-md px-1.5 py-1 focus:outline-none focus:border-accent"
             >
               <option value={25}>25</option>
               <option value={50}>50</option>
@@ -222,6 +221,19 @@ export default function RunsClient({ runs, referenceTimeMs }: { runs: RunRecord[
         </div>
       )}
 
+      <details className="card p-4 mb-3"><summary className="cursor-pointer text-sm font-medium">Run status across loaded history</summary><div className="mt-3"><ChartFrame title="Recent run status" description={`Counts describe the ${runs.length} runs loaded on this page (at most the latest 50), before search and status filtering.`} unit="Run status is separate from case pass rate."
+        table={{ headers: ["Run status", "Count"], rows: distribution.map((item) => ({ id: item.status, cells: [item.status, item.count] })) }}>
+        <SelectableBars rows={distribution.map((item) => ({ id: item.status, label: item.status, value: item.count, tone: item.status === "failed" ? "err" : item.status === "completed" ? "ok" : "accent" }))} noun="runs" onExplore={(status) => changeFilter({ status })} selectedId={statusFilter} />
+      </ChartFrame></div></details>
+      <details className="card p-4 mb-4">
+        <summary className="cursor-pointer text-sm font-medium">Analyze filtered runs · {visible.length} runs</summary>
+        <p className="text-xs text-fg-muted mt-2">Run totals can reflect different workloads. Compare matching cases to assess changes.</p>
+        <div className="grid md:grid-cols-2 gap-3 mt-3 analysis-reveal">
+          <MetricDistribution title="Elapsed run time" values={visible.map(run => run.ended_at != null ? run.ended_at - run.created_at : null)} format={value => `${(value / 1000).toFixed(1)}s`} unit="Seconds from creation to recorded end" description="Includes setup and grading time. Runs without a recorded end are excluded." />
+          <MetricDistribution title="Recorded cost per run" values={visible.map(run => run.summary && run.summary.missingCostCases === 0 ? run.summary.totalCostUsd : null)} format={value => `$${value.toFixed(3)}`} unit="USD · measured and estimated costs" description="Runs with missing or unspecified cost coverage are excluded from this distribution." />
+        </div>
+      </details>
+      {comparison.length > 0 && <div className="card flex flex-wrap gap-3 items-center p-3 mb-4 analysis-reveal" aria-live="polite"><span className="text-xs">{comparison.length}/2 runs selected · first selection is baseline A</span><Link className="analysis-control" aria-disabled={comparison.length !== 2} href={comparison.length === 2 ? `/runs/compare?a=${encodeURIComponent(comparison[0])}&b=${encodeURIComponent(comparison[1])}` : "#"} onClick={event => { if (comparison.length !== 2) event.preventDefault(); }}>Compare selected runs</Link><button className="analysis-control" type="button" onClick={() => changeFilter({ compare: null })}>Clear selection</button></div>}
       {visible.length === 0 ? (
         <div className="card p-8 text-center text-sm text-fg-muted">
           No runs match. <button type="button" className="analysis-control mr-2" onClick={() => changeFilter({ status: null, q: null })}>Clear filters</button><Link href="/runs/new" className="text-accent-soft hover:underline">Start one</Link>.
@@ -235,10 +247,11 @@ export default function RunsClient({ runs, referenceTimeMs }: { runs: RunRecord[
               )}
               <div className="card overflow-hidden">
                 {group.items.map((r) => (
+                  <div key={r.id} className="flex items-center border-b border-bd-subtle last:border-0">
+                  <label className="p-3 flex items-center min-h-11" title="Select for comparison"><input type="checkbox" aria-label={`Compare ${r.name}`} checked={comparison.includes(r.id)} disabled={comparison.length === 2 && !comparison.includes(r.id)} onChange={() => changeFilter({ compare: (comparison.includes(r.id) ? comparison.filter(id => id !== r.id) : [...comparison, r.id]).join(",") || null })} /></label>
                   <Link
-                    key={r.id}
                     href={`/runs/${r.id}`}
-                    className="flex items-center justify-between gap-4 border-b border-bd-subtle px-4 py-3 transition-colors last:border-0 hover:bg-bg-elev"
+                    className="flex min-w-0 flex-1 items-center justify-between gap-4 px-4 py-3 transition-colors hover:bg-bg-elev"
                   >
                     <div className="min-w-0 flex-1">
                       <div className="truncate font-medium">{r.name}</div>
@@ -278,6 +291,7 @@ export default function RunsClient({ runs, referenceTimeMs }: { runs: RunRecord[
                       <StatusBadge status={r.status} />
                     </div>
                   </Link>
+                  </div>
                 ))}
               </div>
             </div>

@@ -24,21 +24,11 @@ function isActive(pathname: string, href: string): boolean {
 
 export default function EvaluateNav() {
   const pathname = usePathname();
-  const active = EVALUATE_ITEMS.find((item) => isActive(pathname, item.href));
 
   return (
-    <section className="evaluate-nav mb-6 rounded-xl p-2" data-testid="evaluate-workflow-nav" aria-label="Evaluate workflow">
-      <div className="flex items-center justify-between gap-3 px-2 pb-2">
-        <div className="min-w-0">
-          <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-accent-soft">Evaluate workflow</div>
-          <p className="mt-0.5 truncate text-[11px] text-fg-dim">
-            Run a suite, inspect evidence, then compare what changed.
-          </p>
-        </div>
-        {active && <span className="hidden shrink-0 text-[10px] text-fg-dim mono sm:block">{active.description}</span>}
-      </div>
+    <section className="evaluate-nav mb-5 rounded-xl p-2" data-testid="evaluate-workflow-nav" aria-label="Evaluate workflow">
       <nav className="evaluate-nav__scroller flex min-w-0 gap-1.5 overflow-x-auto" aria-label="Evaluate pages">
-        {EVALUATE_ITEMS.map((item, index) => {
+        {EVALUATE_ITEMS.map((item) => {
           const selected = isActive(pathname, item.href);
           const Icon = item.icon;
           return (
@@ -55,7 +45,7 @@ export default function EvaluateNav() {
                 <Icon aria-hidden="true" className="size-3.5" />
               </span>
               <span className="min-w-0">
-                <span className="block text-xs font-medium">{String(index + 1).padStart(2, "0")} · {item.label}</span>
+                <span className="block text-xs font-medium">{item.label}</span>
                 <span className="block truncate text-[10px] text-fg-dim">{item.description}</span>
               </span>
             </Link>

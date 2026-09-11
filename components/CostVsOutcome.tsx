@@ -50,7 +50,7 @@ export function CostVsOutcome({ points, evidence }: { points: ScatterPoint[]; ev
   const inspectFilter = (key: "scatterOutcome" | "scatterCost", value: string) => {
     const url = new URL(window.location.href);
     if (value === "all") url.searchParams.delete(key); else url.searchParams.set(key, value);
-    window.history.pushState(window.history.state, "", url);
+    window.history.pushState(null, "", url);
     if (key === "scatterOutcome") setProvenance(value); else setCostSource(value);
   };
   const height = compact ? 240 : 280;

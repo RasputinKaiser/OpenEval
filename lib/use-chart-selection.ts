@@ -27,7 +27,10 @@ export function useChartSelection() {
     if (parsed.error) { setError(parsed.error); return; }
     const query = params.toString();
     const url = `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`;
-    if (url !== `${window.location.pathname}${window.location.search}${window.location.hash}`) window.history.pushState(window.history.state, "", url);
+    // Next copies its router state for external history writes. Passing its
+    // existing private state would bypass that sync and let a later render
+    // restore an obsolete URL.
+    if (url !== `${window.location.pathname}${window.location.search}${window.location.hash}`) window.history.pushState(null, "", url);
     window.dispatchEvent(new Event(CHANGE));
   }, []);
   return { selection, setSelection, ready, error };

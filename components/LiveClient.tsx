@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useChartSelection } from "@/lib/use-chart-selection";
 import { inRange } from "@/lib/chart-analysis";
 import { DateRangeControls, SelectionChips } from "./charts/SelectionControls";
+import { MetricDistribution } from "./charts/MetricDistribution";
 import { ChartFrame } from "./charts/ChartFrame";
 import { SelectableBars } from "./charts/SelectableBars";
 import clsx from "clsx";
@@ -102,7 +103,7 @@ export default function LiveClient({ initialData, error: initialError, getTransc
   const setToolFailureFilter = (value: "all" | "errors" | "clear") => {
     const url = new URL(window.location.href);
     if (value === "all") url.searchParams.delete("liveTools"); else url.searchParams.set("liveTools", value);
-    window.history.pushState(window.history.state, "", url); setFailureFilter(value);
+    window.history.pushState(null, "", url); setFailureFilter(value);
   };
   const [filter, setFilter] = useState<FilterMode>("all");
   const [sort, setSort] = useState<SortMode>("recent");
@@ -495,6 +496,10 @@ export default function LiveClient({ initialData, error: initialError, getTransc
           {failureFilter !== "all" && <button type="button" className="analysis-control mt-2" onClick={() => setToolFailureFilter("all")}>Clear {failureFilter === "errors" ? "with failures" : "no reported failures"} filter</button>}
         </ChartFrame>
       </div>
+      <details className="card p-4 mb-4"><summary className="cursor-pointer text-sm font-medium">Session distributions · {visibleSessions.length} filtered sessions</summary><div className="grid md:grid-cols-2 gap-3 mt-3 analysis-reveal">
+        <MetricDistribution title="Session duration" values={visibleSessions.map(session => ["measured", "inferred"].includes(session.metricSources.duration) ? session.durationMs : null)} format={value => `${(value / 60000).toFixed(1)}m`} unit="Minutes · measured and inferred" description="Current session filters apply. An active session duration can still grow." />
+        <MetricDistribution title="Session cost" values={visibleSessions.map(session => ["measured", "inferred"].includes(session.metricSources.cost) ? session.costUsd : null)} format={value => `$${value.toFixed(3)}`} unit="USD · measured and inferred" description="Missing and malformed cost records are excluded. Zero recorded costs remain visible." />
+      </div></details>
       <SectionHeader
         icon={FolderGit2}
         title="Sessions"

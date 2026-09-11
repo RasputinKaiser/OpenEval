@@ -7,6 +7,7 @@ import { AlertTriangle, Loader2, Trophy, GitCompareArrows, ArrowUp, ArrowDown } 
 import HarnessBadge from "./HarnessBadge";
 import PageHeader from "./PageHeader";
 import { cachedFetch } from "@/lib/cached-fetch";
+import { wilsonInterval } from "@/lib/stats";
 import { fmtDuration, fmtNum, fmtNumFull, fmtPct, fmtUsd } from "@/lib/format";
 import EvaluateNav from "./EvaluateNav";
 import { ChartFrame } from "./charts/ChartFrame";
@@ -102,6 +103,8 @@ interface LeaderboardScope {
 interface LeaderboardPayload {
   harnesses: HarnessAggregate[];
   scope: LeaderboardScope;
+  options?: { categories: string[]; models: string[] };
+  overlap?: { harnesses: number; unionPairs: number; sharedPairs: number };
 }
 
 function useLeaderboardSelection() {
@@ -125,7 +128,7 @@ function useLeaderboardSelection() {
     const query = params.toString();
     const url = `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`;
     const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-    if (url !== current) window.history.pushState(window.history.state, "", url);
+    if (url !== current) window.history.pushState(null, "", url);
     window.dispatchEvent(new Event("openeval:leaderboard-selection"));
   }, []);
   return { harness, setHarness };
@@ -147,7 +150,7 @@ function metricValue(coverage: MetricCoverage, kind: "cost" | "duration"): strin
 
 function metricTitle(coverage: MetricCoverage, kind: "cost" | "duration"): string {
   const metric = kind === "cost" ? "cost" : "duration";
-  const zero = coverage.zero ? `; ${fmtNum(coverage.zero)} measured value${coverage.zero === 1 ? "" : "s"} are exactly zero` : "";
+  const zero = coverage.zero ? `; ${fmtNum(coverage.zero)} recorded value${coverage.zero === 1 ? "" : "s"} are exactly zero` : "";
   return `${metric} coverage: ${fmtNum(coverage.available)} of ${fmtNum(coverage.total)} available · ${coverageSources(coverage)}${zero}`;
 }
 
@@ -234,6 +237,9 @@ function WorkloadDetails({ row }: { row: HarnessAggregate }) {
 export default function LeaderboardClient() {
   const [rows, setRows] = useState<HarnessAggregate[]>([]);
   const [scope, setScope] = useState<LeaderboardScope | null>(null);
+  const [workloadQuery, setWorkloadQuery] = useState("");
+  const [workloadOptions, setWorkloadOptions] = useState<LeaderboardPayload["options"]>();
+  const [overlap, setOverlap] = useState<LeaderboardPayload["overlap"]>();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<keyof HarnessAggregate>("passRate");
@@ -241,14 +247,20 @@ export default function LeaderboardClient() {
   const { harness: selectedHarness, setHarness: setSelectedHarness } = useLeaderboardSelection();
 
   useEffect(() => {
-    let cancelled = false;
-    cachedFetch<LeaderboardPayload>("/api/harnesses/leaderboard")
-      .then((d) => { if (!cancelled) { setRows(d.harnesses || []); setScope(d.scope ?? null); setLoadError(null); } })
+    const read = () => { const url = new URL(window.location.href), params = new URLSearchParams(); for (const key of ["category", "model", "matched"]) { const value = url.searchParams.get(key); if (value) params.set(key, value); } setWorkloadQuery(params.toString()); };
+    read(); window.addEventListener("popstate", read); return () => window.removeEventListener("popstate", read);
+  }, []);
+  const changeWorkload = (key: string, value: string) => { const url = new URL(window.location.href); if (value) url.searchParams.set(key, value); else url.searchParams.delete(key); window.history.pushState(null, "", url); window.dispatchEvent(new PopStateEvent("popstate")); };
+  const workloadParams = new URLSearchParams(workloadQuery);
+  useEffect(() => {
+    let cancelled = false; setLoading(true);
+    cachedFetch<LeaderboardPayload>(`/api/harnesses/leaderboard?${workloadQuery}`)
+      .then((d) => { if (!cancelled) { setRows(d.harnesses || []); setScope(d.scope ?? null); setWorkloadOptions(d.options); setOverlap(d.overlap); setLoadError(null); } })
       // Never surface a failed fetch as a runtime overlay — show a retryable banner.
       .catch((e) => { if (!cancelled) setLoadError(e instanceof Error ? e.message : String(e)); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, []);
+  }, [workloadQuery]);
 
   const sortedRows = useMemo(() => {
     const sorted = [...rows].sort((a, b) => {
@@ -295,6 +307,11 @@ export default function LeaderboardClient() {
         subtitle="Explore observed pass rates, cost, tokens, and speed. These aggregates can contain different cases, samples, and models."
       />
       <EvaluateNav />
+      <section className="card p-4 mb-4" aria-label="Leaderboard workload controls"><div className="flex flex-wrap items-end gap-3">
+        <label className="text-xs">Category<select aria-label="Leaderboard category" className="analysis-input block mt-1" value={workloadParams.get("category") ?? ""} onChange={event => changeWorkload("category", event.target.value)}><option value="">All categories</option>{workloadOptions?.categories.map(item => <option key={item}>{item}</option>)}</select></label>
+        <label className="text-xs">Model<select aria-label="Leaderboard model" className="analysis-input block mt-1 max-w-64" value={workloadParams.get("model") ?? ""} onChange={event => changeWorkload("model", event.target.value)}><option value="">All models</option>{workloadOptions?.models.map(item => <option key={item}>{item}</option>)}</select></label>
+        <label className="text-xs min-h-10 flex items-center gap-2"><input type="checkbox" checked={workloadParams.get("matched") === "1"} onChange={event => changeWorkload("matched", event.target.checked ? "1" : "")} />Shared case/sample pairs only</label>
+      </div>{overlap && <p className="text-xs text-fg-muted mt-3">Workload overlap: {overlap.sharedPairs}/{overlap.unionPairs} graded case/sample pairs shared across {overlap.harnesses} harnesses. Repeat-run counts and model mixes can still differ; matching pairs does not make these independent trials.</p>}</section>
 
       {loadError && (
         <div className="mb-4 rounded-lg border border-err/40 bg-err/10 p-3 flex items-start gap-2.5" role="alert">
@@ -310,7 +327,7 @@ export default function LeaderboardClient() {
         <div role="status" aria-live="polite" className="flex items-center gap-2 text-sm text-fg-muted"><Loader2 className="size-4 animate-spin" /> Aggregating runs…</div>
       ) : loadError ? null : rows.length === 0 ? (
         <section className="card p-10 text-center">
-          <div className="text-sm text-fg-muted mb-2">No runs yet. Fan a suite across harnesses to populate the leaderboard:</div>
+          <div className="text-sm text-fg-muted mb-2">No runs match the current workload selection. Change the filters or run matching cases across harnesses:</div>
           <pre className="text-[11px] mono bg-bg border border-bd-subtle rounded-md p-3 inline-block text-left mt-2">{`npx tsx lib/cli/run.ts \\\n  --harness claude-code --harness codex \\\n  --parallel 4 --category agentic-swe`}</pre>
           <div className="mt-4"><Link href="/runs/new" className="text-xs text-accent-soft hover:underline">Start a run instead →</Link></div>
         </section>
@@ -329,7 +346,7 @@ export default function LeaderboardClient() {
               <div className="text-sm">
                 <span className="text-fg-muted">Highest observed pass rate: </span>
                 <HarnessBadge harness={best.harness} />
-                <span className="ml-1.5 text-[11px] mono text-fg-dim">{best.workload.modelCount > 1 ? `mixed · ${best.workload.modelCount} models` : best.model ?? "model unavailable"}</span>
+                <span className="ml-1.5 text-[11px] mono text-fg-dim">{best.workload.modelCount > 1 ? `mixed · ${best.workload.modelCount} models` : best.workload.models[0]?.model ?? best.model ?? "model unavailable"}</span>
                 <span className="ml-2 mono font-medium tabular-nums">{fmtPct(best.passRate)}</span>
                 <span className="text-fg-dim"> across {fmtNum(best.totalCases)} case{best.totalCases === 1 ? "" : "s"} in {fmtNum(best.runCount)} run{best.runCount === 1 ? "" : "s"}</span>
               </div>
@@ -341,9 +358,10 @@ export default function LeaderboardClient() {
               title="Pass rate by harness"
               description="Click a bar to pin it, then use the explicit Explore action to open that harness's workload and retained run references."
               evidence={{ population: rows.reduce((sum, row) => sum + row.totalCases, 0), eligible: rows.reduce((sum, row) => sum + row.totalCases, 0), plotted: rows.length, scope: "graded cases in latest-run leaderboard scope", provenance: "graded case pass rates" }}
-              table={{ headers: ["Harness", "Pass rate", "Cases", "Runs"], rows: rows.map((row) => ({ id: row.harness, cells: [row.harness, fmtPct(row.passRate), fmtNum(row.totalCases), fmtNum(row.runCount)] })) }}
+              table={{ headers: ["Harness", "Pass rate", "95% Wilson interval", "Cases", "Runs"], rows: rows.map((row) => { const interval = wilsonInterval(row.passed, row.totalCases); return { id: row.harness, cells: [row.harness, fmtPct(row.passRate), row.totalCases ? `${fmtPct(interval.lo)}–${fmtPct(interval.hi)}` : "Unavailable", fmtNum(row.totalCases), fmtNum(row.runCount)] }; }) }}
             >
               <SelectableBars rows={passRows} format={(value) => fmtPct(value)} selectedId={selectedHarness} noun="harness runs" onExplore={setSelectedHarness} />
+              <p className="text-[11px] text-fg-muted mt-3">The data table includes descriptive 95% Wilson intervals over graded attempts. Repeated cases may be correlated; these intervals do not establish a harness ranking.</p>
               {selectedHarness && <div className="mt-3"><LeaderboardSelectionChip harness={selectedHarness} onClear={() => setSelectedHarness(undefined)} /></div>}
             </ChartFrame>
             <ChartFrame
@@ -417,11 +435,11 @@ export default function LeaderboardClient() {
                       <td className="px-4 py-2.5 text-right mono">{r.totalCases}</td>
                       <td className="px-4 py-2.5 text-right"><div className="flex items-center justify-end gap-2"><div className="h-1.5 w-16 overflow-hidden rounded-full bg-bg-elev" role="img" aria-label={`${r.harness}: ${fmtPct(r.passRate)} pass rate; ${r.passed} passed, ${r.failed} failed, ${r.errored} infra errors out of ${r.totalCases} cases`}><div className="h-full flex" aria-hidden="true"><div className="bg-ok" style={{ width: `${boundedPercent(r.passRate)}%` }} />{r.failed > 0 && <div className="bg-err" style={{ width: `${boundedPercent(r.totalCases > 0 ? r.failed / r.totalCases : 0)}%` }} />}{r.errored > 0 && <div className="bg-warn" style={{ width: `${boundedPercent(r.totalCases > 0 ? r.errored / r.totalCases : 0)}%` }} />}</div></div><span className={clsx("mono font-semibold tabular-nums", r.passRate >= 0.8 ? "text-ok" : r.passRate >= 0.5 ? "text-fg-muted" : "text-err")}>{fmtPct(r.passRate)}</span></div></td>
                       <td className="px-4 py-2.5 text-right mono text-xs"><span className="text-ok">{r.passed}</span> / <span className="text-err">{r.failed}</span>{r.errored > 0 && <span className="text-fg-dim"> · {r.errored} err</span>}</td>
-                      <td className="px-4 py-2.5 text-right mono" title={metricTitle(r.costCoverage, "cost")}>{metricValue(r.costCoverage, "cost")}</td>
+                      <td className="px-4 py-2.5 text-right mono" title={metricTitle(r.costCoverage, "cost")}>{metricValue(r.costCoverage, "cost")}{r.costCoverage.missing > 0 && r.costCoverage.available > 0 && <span className="block text-[10px] text-fg-dim">partial · {r.costCoverage.available}/{r.costCoverage.total}</span>}</td>
                       <td className="px-4 py-2.5 text-right mono text-xs" title={`${fmtNumFull(r.totalTokensIn)} input / ${fmtNumFull(r.totalTokensOut)} output`}>{fmtNum(r.totalTokensIn)} / {fmtNum(r.totalTokensOut)}</td>
                       <td className="px-4 py-2.5 text-right mono">{Number.isFinite(r.avgTokPerSec) && r.durationCoverage.available > 0 ? r.avgTokPerSec.toFixed(1) : "—"}</td>
                       <td className="px-4 py-2.5 text-right mono" title={metricTitle(r.durationCoverage, "duration")}>{metricValue(r.durationCoverage, "duration")}</td>
-                      <td className="px-4 py-2.5 text-[11px] text-fg-dim mono">{r.workload.modelCount > 1 ? `mixed · ${fmtNum(r.workload.modelCount)}` : r.model || r.workload.models[0]?.model || "—"}</td>
+                      <td className="px-4 py-2.5 text-[11px] text-fg-dim mono">{r.workload.modelCount > 1 ? `mixed · ${fmtNum(r.workload.modelCount)}` : r.workload.models[0]?.model || r.model || "—"}</td>
                     </tr>
                   ))}
                 </tbody>

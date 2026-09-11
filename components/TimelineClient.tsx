@@ -1,5 +1,8 @@
 "use client";
 
+import { TimelineReviewQueue } from "./TimelineReviewQueue";
+import type { JudgeQueueFilters } from "@/lib/insights/judge-queue";
+import { SessionEvidenceExplorer } from "./SessionEvidenceExplorer";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import clsx from "clsx";
@@ -138,7 +141,7 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
     const url = new URL(window.location.href);
     if (kind === "all") url.searchParams.delete("kind");
     else url.searchParams.set("kind", kind);
-    window.history.pushState(window.history.state, "", url);
+    window.history.pushState(null, "", url);
   }, []);
 
   const visibleMarkers = useMemo(
@@ -181,6 +184,7 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
   const sections = useMemo(() => [
     { id: "overview", label: "Start here", description: "Check the corpus, signal coverage, and provenance." },
     { id: "outcome", label: "Outcome trend", description: "Read the trend and its limits." },
+    { id: "evidence", label: "Session evidence", description: "Inspect task episodes, receipts, and review history." },
     { id: "impact", label: "Compare before/after", description: "Compare before/after windows around adoption." },
     ...((data.changePoints ?? []).length > 0 ? [{ id: "shifts", label: "Explain shifts", description: "See population shifts without claiming a cause." }] : []),
     { id: "adoptions", label: "Adoption history", description: "See when skills, plugins, models, and subagents first appeared." },
@@ -318,44 +322,31 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
     if (refreshed && !wasRunning) setJobStatusError(null);
   }, [job?.running, loadJobStatus, refreshData, startPolling]);
 
-  async function judgeAllWindows() {
-    try {
-      const res = await fetch("/api/collection/timeline/judge", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ all: true, selection: judgeSelection }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const r = await res.json();
-      setJob(r.status);
-      setJobStatusError(null);
-      setTimelineStale(Boolean(r.status.running));
-      if (r.started && shouldPollJudgeStatus(r.status)) startPolling();
-      else if (!r.status.running) setJudgeMsg("Every marker-window session is already judged.");
-      setErr(undefined);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    }
-  }
-
-  async function refineWithJudge() {
+  async function refineWithJudge(filters: JudgeQueueFilters) {
     setJudging(true);
     setJudgeMsg(null);
     try {
       const res = await fetch("/api/collection/timeline/judge", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ max: 10, selection: judgeSelection }),
+        body: JSON.stringify({ all: true, max: filters.limit ?? 10, selection: judgeSelection, filters }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const r = await res.json();
+      if (r.mode === "all") {
+        setJob(r.status); setJobStatusError(null); setTimelineStale(Boolean(r.status.running));
+        if (r.started && shouldPollJudgeStatus(r.status)) startPolling();
+        setJudgeMsg(r.started ? `Queued ${r.status.total} sessions for serial background review. You can leave this page.` : "No eligible sessions remain in this review selection.");
+        if (!r.status.running) await refreshData();
+        return;
+      }
       setJudgeMsg(
         r.judged > 0
-          ? `Judged ${r.judged}/${r.sampled} sessions via ${r.judge}${r.failed ? ` (${r.failed} failed)` : ""}.`
+          ? `Reviewed ${r.judged}/${r.sampled} sessions via ${r.judge}${r.failed ? ` (${r.failed} failed)` : ""}.`
           : r.sampled === 0
-            ? "Every sampled session is already judged."
+            ? "No eligible sessions remain in this review selection."
             : r.lastError && /usage limit/i.test(r.lastError)
-              ? `Judge backend is out of plan budget — ${r.lastError.match(/try again at ([^)]+)\.?$/i)?.[1] ? `resets ${r.lastError.match(/try again at ([^)]+)\.?$/i)![1]}` : "try again later"}. Stale receipts keep their old scores until a pass succeeds.`
+              ? `Judge backend is out of plan budget — ${r.lastError.match(/try again at ([^)]+)\.?$/i)?.[1] ? `resets ${r.lastError.match(/try again at ([^)]+)\.?$/i)![1]}` : "try again later"}. Historical receipts remain available; stale results do not become current scores.`
               : `No verdicts returned (${r.failed} failed via ${r.judge}).${r.lastError ? ` Last error: ${r.lastError}` : ""}`,
       );
       const refreshed = await refreshData();
@@ -447,26 +438,7 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
                   <div className="mb-3 text-[10px] font-medium uppercase tracking-[0.12em] text-fg-muted">Review method</div>
                   <JudgePicker value={judgeSelection} onChange={(next) => { setJudgeSelection(next); setJudgeReadiness({ readiness: "unknown", detail: "Checking judge readiness…" }); }} onReadinessChange={handleJudgeReadiness} idPrefix="timeline-judge" />
                 </div>
-                <button
-                  type="button"
-                  onClick={refineWithJudge}
-                  disabled={judging || !!job?.running || judgeReadiness.readiness !== "ready"}
-                  title="Judge up to 10 new sessions in the adoption windows."
-                  className="mt-1 flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-fg-muted hover:bg-bg-elev hover:text-fg transition-colors disabled:opacity-50"
-                >
-                  <Gavel className={clsx("size-3.5", judging && "animate-pulse")} />
-                  <span><span className="block">{judging ? "Reviewing…" : "Review a sample"}</span><span className="block text-[10px] text-fg-dim">Up to 10 new sessions</span></span>
-                </button>
-                <button
-                  type="button"
-                  onClick={judgeAllWindows}
-                  disabled={judging || !!job?.running || judgeReadiness.readiness !== "ready"}
-                  title="Judge every unjudged session in the adoption windows."
-                  className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-fg-muted hover:bg-bg-elev hover:text-fg transition-colors disabled:opacity-50"
-                >
-                  <Scale className={clsx("size-3.5", job?.running && "animate-pulse")} />
-                  <span><span className="block">{job?.running ? "Reviewing all…" : "Review all windows"}</span><span className="block text-[10px] text-fg-dim">Runs in the background; you can leave this page</span></span>
-                </button>
+                <TimelineReviewQueue selection={selection} method={judgeSelection} disabled={judging || !!job?.running || judgeReadiness.readiness !== "ready"} running={judging} onRun={refineWithJudge} />
               </div>
             </details>
           </div>
@@ -763,15 +735,15 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
               <span className="timeline-review-stat"><span>Saved receipts</span><strong>{retainedJudgeReceiptCount}</strong></span>
               <span className="timeline-review-stat"><span>Comparable scores</span><strong>{reviewScoreCount}</strong></span>
               {(data.judgeComparability?.staleReceiptCount ?? 0) > 0 && (
-                <span className="timeline-review-stat" title="Receipts saved under an older prompt version. They stay on disk but cannot be compared with current scores; the next review pass re-judges them.">
-                  <span>Stale (re-judging)</span>
+                <span className="timeline-review-stat" title="Receipts whose prompt, packet version, or source revision is stale. They stay in history; use the changed-evidence review queue to inspect eligible sessions.">
+                  <span>Stale / historical</span>
                   <strong className="text-warn">{data.judgeComparability!.staleReceiptCount}</strong>
                 </span>
               )}
             </div>
             {(data.judgeComparability?.staleReceiptCount ?? 0) > 0 && (
               <p className="timeline-review-status__copy mt-1 text-[11px] text-fg-dim">
-                {data.judgeComparability!.staleReceiptCount} receipt{(data.judgeComparability!.staleReceiptCount) === 1 ? " was" : "s were"} saved under an older prompt contract — excluded from judged provenance and comparable scores until re-reviewed.
+                {data.judgeComparability!.staleReceiptCount} receipt{(data.judgeComparability!.staleReceiptCount) === 1 ? " has" : "s have"} an older review contract or changed source revision — retained in history and excluded from current comparable scores.
               </p>
             )}
           </div>
@@ -1001,6 +973,8 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
         </div>
       </section>
       }
+
+      {isVisible("evidence") && <section id="evidence" className="scroll-mt-16 observe-section"><SessionEvidenceExplorer selection={selection} /></section>}
 
       {/* Does spend buy success? Cost (log) vs deterministic outcome, per session.
           Judged cloud on top so model-reviewed sessions stay visible. */}

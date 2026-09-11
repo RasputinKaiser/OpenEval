@@ -59,7 +59,7 @@ export default function CompareClient({ runs, initialA, initialB }: Props) {
     const url = new URL(window.location.href); url.searchParams.set("a", side === "a" ? value : a); url.searchParams.set("b", side === "b" ? value : b);
     for (const key of ["cmpCase", "cmpTransition", "cmpView"]) url.searchParams.delete(key);
     setTransitionFilter(null); setCaseFilter(null); setViewMode("all");
-    window.history.pushState(window.history.state, "", url);
+    window.history.pushState(null, "", url);
   };
   const applyFilter = (view: typeof viewMode, transition: string | null, caseKey: string | null) => {
     setViewMode(view); setTransitionFilter(transition); setCaseFilter(caseKey);
@@ -68,7 +68,7 @@ export default function CompareClient({ runs, initialA, initialB }: Props) {
       if (value === null) url.searchParams.delete(key); else url.searchParams.set(key, value);
     }
     url.searchParams.set("a", a); url.searchParams.set("b", b);
-    window.history.pushState(window.history.state, "", url);
+    window.history.pushState(null, "", url);
   };
 
   useEffect(() => {

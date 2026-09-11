@@ -67,6 +67,15 @@ function openCacheDb(): Database.Database {
   // Additive migration for DBs created before prompt versioning existed.
   try { conn.exec("ALTER TABLE outcome_judgments ADD COLUMN prompt_version INTEGER"); } catch {}
   try { conn.exec("ALTER TABLE outcome_judgments ADD COLUMN selection_json TEXT"); } catch {}
+  try { conn.exec("ALTER TABLE outcome_judgments ADD COLUMN evidence_digest TEXT"); } catch {}
+  try { conn.exec("ALTER TABLE outcome_judgments ADD COLUMN evidence_version TEXT"); } catch {}
+  try { conn.exec("ALTER TABLE outcome_judgments ADD COLUMN revision TEXT"); } catch {}
+  try { conn.exec("ALTER TABLE outcome_judgments ADD COLUMN source_id TEXT"); } catch {}
+  try { conn.exec("ALTER TABLE outcome_judgments ADD COLUMN verdict_status TEXT"); } catch {}
+  try { conn.exec("ALTER TABLE outcome_judgments ADD COLUMN confidence TEXT"); } catch {}
+  try { conn.exec("ALTER TABLE outcome_judgments ADD COLUMN evidence_ids_json TEXT"); } catch {}
+  try { conn.exec("ALTER TABLE outcome_judgments ADD COLUMN contradiction_ids_json TEXT"); } catch {}
+  try { conn.exec("ALTER TABLE outcome_judgments ADD COLUMN dimensions_json TEXT"); } catch {}
   try { conn.exec("ALTER TABLE judge_jobs ADD COLUMN selection_json TEXT"); } catch {}
   // Permanent means the SESSION itself is unjudgeable (missing file or no
   // conversational text). Backend failures remain retryable until the
@@ -152,8 +161,46 @@ CREATE TABLE IF NOT EXISTS outcome_judgments (
   judge TEXT NOT NULL,
   selection_json TEXT,
   judged_at INTEGER NOT NULL,
-  prompt_version INTEGER
+  prompt_version INTEGER,
+  evidence_digest TEXT,
+  evidence_version TEXT,
+  revision TEXT,
+  source_id TEXT,
+  verdict_status TEXT,
+  confidence TEXT,
+  evidence_ids_json TEXT,
+  contradiction_ids_json TEXT,
+  dimensions_json TEXT
 );
+CREATE TABLE IF NOT EXISTS judge_receipts (
+  receipt_id TEXT PRIMARY KEY,
+  file TEXT NOT NULL,
+  source_id TEXT,
+  session_id TEXT,
+  revision TEXT NOT NULL,
+  evidence_digest TEXT,
+  evidence_version TEXT NOT NULL,
+  prompt_version INTEGER NOT NULL,
+  verdict_status TEXT NOT NULL,
+  score REAL,
+  confidence TEXT NOT NULL,
+  reasons_json TEXT NOT NULL,
+  evidence_ids_json TEXT NOT NULL,
+  contradiction_ids_json TEXT NOT NULL,
+  dimensions_json TEXT,
+  judge TEXT NOT NULL,
+  selection_json TEXT,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS judge_receipts_file_idx ON judge_receipts(file, created_at);
+CREATE TABLE IF NOT EXISTS judge_legacy_history (
+  history_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  file TEXT NOT NULL,
+  judged_at INTEGER NOT NULL,
+  archived_at INTEGER NOT NULL,
+  judgment_json TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS judge_legacy_history_file_idx ON judge_legacy_history(file, archived_at, history_id);
 CREATE TABLE IF NOT EXISTS judge_failures (
   file TEXT PRIMARY KEY,
   attempts INTEGER NOT NULL,
@@ -315,6 +362,39 @@ export interface StoredJudgment {
   /** JUDGE_PROMPT_VERSION the verdict was produced under (null = pre-versioning). */
   promptVersion?: number | null;
   selection?: JudgeSelection;
+  /** Current packet identity used by the v4 evidence judge. */
+  evidenceDigest?: string | null;
+  evidenceVersion?: string | null;
+  revision?: string | null;
+  sourceId?: string | null;
+  verdictStatus?: "achieved" | "partial" | "not_achieved" | "insufficient_evidence";
+  confidence?: "high" | "medium" | "low";
+  evidenceIds?: string[];
+  contradictionEvidenceIds?: string[];
+  dimensions?: Record<string, unknown>;
+}
+
+export interface StoredJudgeReceipt {
+  receiptId: string;
+  file: string;
+  sourceId: string | null;
+  sessionId: string | null;
+  revision: string;
+  evidenceDigest: string | null;
+  evidenceVersion: string;
+  promptVersion: number;
+  outcome: "achieved" | "partial" | "not_achieved" | "insufficient_evidence";
+  /** Compatibility alias for queue/status consumers written against v3. */
+  status?: "achieved" | "partial" | "not_achieved" | "insufficient_evidence";
+  score: number | null;
+  confidence: "high" | "medium" | "low";
+  reasons: string[];
+  evidenceIds: string[];
+  contradictionEvidenceIds: string[];
+  dimensions?: Record<string, unknown>;
+  judge: string;
+  selection?: JudgeSelection;
+  createdAt: number;
 }
 
 function safeParseSelection(value: string): JudgeSelection | undefined {
@@ -334,6 +414,8 @@ export function loadJudgments(): Map<string, StoredJudgment> {
     const rows = conn.prepare("SELECT * FROM outcome_judgments").all() as Array<{
       file: string; session_id: string | null; mtime_ms: number; score: number;
       reasons_json: string; judge: string; judged_at: number; prompt_version: number | null; selection_json: string | null;
+      evidence_digest?: string | null; evidence_version?: string | null; revision?: string | null; source_id?: string | null;
+      verdict_status?: string | null; confidence?: string | null; evidence_ids_json?: string | null; contradiction_ids_json?: string | null;
     }>;
     for (const r of rows) {
       let reasons: string[] = [];
@@ -348,10 +430,188 @@ export function loadJudgments(): Map<string, StoredJudgment> {
         judgedAt: r.judged_at,
         promptVersion: r.prompt_version ?? null,
         selection: r.selection_json ? safeParseSelection(r.selection_json) : undefined,
+        evidenceDigest: r.evidence_digest ?? null,
+        evidenceVersion: r.evidence_version ?? null,
+        revision: r.revision ?? null,
+        sourceId: r.source_id ?? null,
+        verdictStatus: r.verdict_status === "achieved" || r.verdict_status === "partial" || r.verdict_status === "not_achieved" || r.verdict_status === "insufficient_evidence" ? r.verdict_status : undefined,
+        confidence: r.confidence === "high" || r.confidence === "medium" || r.confidence === "low" ? r.confidence : undefined,
+        evidenceIds: parseJsonArray(r.evidence_ids_json),
+        contradictionEvidenceIds: parseJsonArray(r.contradiction_ids_json),
       });
     }
   } catch {}
   return out;
+}
+
+function parseJsonArray(value: string | null | undefined): string[] {
+  try {
+    const parsed = value ? JSON.parse(value) : [];
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string").slice(0, 24) : [];
+  } catch { return []; }
+}
+
+function parseStoredJudgmentJson(value: unknown): StoredJudgment | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const row = value as Record<string, unknown>;
+  if (typeof row.file !== "string" || typeof row.judge !== "string") return null;
+  const score = Number(row.score);
+  const judgedAt = Number(row.judgedAt);
+  const mtimeMs = Number(row.mtimeMs);
+  if (!Number.isFinite(score) || !Number.isFinite(judgedAt) || !Number.isFinite(mtimeMs) || !Array.isArray(row.reasons)) return null;
+  const reasons = row.reasons.filter((item): item is string => typeof item === "string").slice(0, 24);
+  const result: StoredJudgment = {
+    file: row.file,
+    sessionId: typeof row.sessionId === "string" || row.sessionId === null ? row.sessionId : null,
+    mtimeMs,
+    score,
+    reasons,
+    judge: row.judge,
+    judgedAt,
+  };
+  if (typeof row.promptVersion === "number" || row.promptVersion === null) result.promptVersion = row.promptVersion;
+  if (row.selection && typeof row.selection === "object") {
+    const selection = safeParseSelection(JSON.stringify(row.selection));
+    if (selection) result.selection = selection;
+  }
+  for (const [key, field] of [["evidenceDigest", "evidenceDigest"], ["evidenceVersion", "evidenceVersion"], ["revision", "revision"], ["sourceId", "sourceId"]] as const) {
+    if (typeof row[field] === "string" || row[field] === null) (result as unknown as Record<string, unknown>)[key] = row[field];
+  }
+  if (row.verdictStatus === "achieved" || row.verdictStatus === "partial" || row.verdictStatus === "not_achieved" || row.verdictStatus === "insufficient_evidence") result.verdictStatus = row.verdictStatus;
+  if (row.confidence === "high" || row.confidence === "medium" || row.confidence === "low") result.confidence = row.confidence;
+  if (Array.isArray(row.evidenceIds)) result.evidenceIds = row.evidenceIds.filter((item): item is string => typeof item === "string").slice(0, 24);
+  if (Array.isArray(row.contradictionEvidenceIds)) result.contradictionEvidenceIds = row.contradictionEvidenceIds.filter((item): item is string => typeof item === "string").slice(0, 24);
+  if (row.dimensions && typeof row.dimensions === "object" && !Array.isArray(row.dimensions)) result.dimensions = row.dimensions as Record<string, unknown>;
+  return result;
+}
+
+function storedJudgmentFromProjectionRow(row: Record<string, unknown>): StoredJudgment | null {
+  let selection: unknown;
+  try { selection = row.selection_json ? JSON.parse(String(row.selection_json)) : undefined; } catch { selection = undefined; }
+  let dimensions: unknown;
+  try { dimensions = row.dimensions_json ? JSON.parse(String(row.dimensions_json)) : undefined; } catch { dimensions = undefined; }
+  const value: Record<string, unknown> = {
+    file: row.file,
+    sessionId: row.session_id,
+    mtimeMs: row.mtime_ms,
+    score: row.score,
+    reasons: (() => { try { const parsed = row.reasons_json ? JSON.parse(String(row.reasons_json)) : []; return Array.isArray(parsed) ? parsed : []; } catch { return []; } })(),
+    judge: row.judge,
+    judgedAt: row.judged_at,
+  };
+  if (row.prompt_version != null) value.promptVersion = row.prompt_version;
+  if (selection !== undefined) value.selection = selection;
+  if (row.evidence_digest != null) value.evidenceDigest = row.evidence_digest;
+  if (row.evidence_version != null) value.evidenceVersion = row.evidence_version;
+  if (row.revision != null) value.revision = row.revision;
+  if (row.source_id != null) value.sourceId = row.source_id;
+  if (row.verdict_status != null) value.verdictStatus = row.verdict_status;
+  if (row.confidence != null) value.confidence = row.confidence;
+  if (row.evidence_ids_json != null) {
+    const evidenceIds = parseJsonArray(row.evidence_ids_json as string);
+    if (evidenceIds.length) value.evidenceIds = evidenceIds;
+  }
+  if (row.contradiction_ids_json != null) {
+    const contradictionIds = parseJsonArray(row.contradiction_ids_json as string);
+    if (contradictionIds.length) value.contradictionEvidenceIds = contradictionIds;
+  }
+  if (dimensions !== undefined) value.dimensions = dimensions;
+  return parseStoredJudgmentJson(value);
+}
+
+/** All v4 evidence receipts, retaining multiple historical reviews per file. */
+export function loadJudgeReceipts(file?: string): StoredJudgeReceipt[] {
+  const conn = getCacheDb();
+  if (!conn) return [];
+  try {
+    const rows = (file
+      ? conn.prepare("SELECT * FROM judge_receipts WHERE file = ? ORDER BY created_at ASC, receipt_id ASC").all(file)
+      : conn.prepare("SELECT * FROM judge_receipts ORDER BY created_at ASC, receipt_id ASC").all()) as Array<{
+        receipt_id: string; file: string; source_id: string | null; session_id: string | null; revision: string;
+        evidence_digest: string | null; evidence_version: string; prompt_version: number; verdict_status: string;
+        score: number | null; confidence: string; reasons_json: string; evidence_ids_json: string;
+        contradiction_ids_json: string; judge: string; selection_json: string | null; created_at: number;
+        dimensions_json: string | null;
+      }>;
+    return rows.map((row) => ({
+      receiptId: row.receipt_id,
+      file: row.file,
+      sourceId: row.source_id,
+      sessionId: row.session_id,
+      revision: row.revision,
+      evidenceDigest: row.evidence_digest,
+      evidenceVersion: row.evidence_version,
+      promptVersion: Number(row.prompt_version),
+      outcome: row.verdict_status === "achieved" || row.verdict_status === "partial" || row.verdict_status === "not_achieved" ? row.verdict_status : "insufficient_evidence",
+      status: row.verdict_status === "achieved" || row.verdict_status === "partial" || row.verdict_status === "not_achieved" ? row.verdict_status : "insufficient_evidence",
+      score: row.score == null || !Number.isFinite(row.score) ? null : row.score,
+      confidence: row.confidence === "high" || row.confidence === "medium" ? row.confidence : "low",
+      reasons: parseJsonArray(row.reasons_json),
+      evidenceIds: parseJsonArray(row.evidence_ids_json),
+      contradictionEvidenceIds: parseJsonArray(row.contradiction_ids_json),
+      dimensions: (() => { try { const parsed = row.dimensions_json ? JSON.parse(row.dimensions_json) : undefined; return parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : undefined; } catch { return undefined; } })(),
+      judge: row.judge,
+      selection: row.selection_json ? safeParseSelection(row.selection_json) : undefined,
+      createdAt: Number(row.created_at),
+    }));
+  } catch { return []; }
+}
+
+/** Superseded numeric projections retained without inventing v4 evidence fields. */
+export function loadLegacyJudgeHistory(file?: string): StoredJudgment[] {
+  const conn = getCacheDb();
+  if (!conn) return [];
+  try {
+    const rows = (file
+      ? conn.prepare("SELECT judgment_json FROM judge_legacy_history WHERE file = ? ORDER BY archived_at ASC, history_id ASC").all(file)
+      : conn.prepare("SELECT judgment_json FROM judge_legacy_history ORDER BY archived_at ASC, history_id ASC").all()) as Array<{ judgment_json: string }>;
+    const out: StoredJudgment[] = [];
+    for (const row of rows) {
+      try {
+        const judgment = parseStoredJudgmentJson(JSON.parse(row.judgment_json));
+        if (judgment) out.push(judgment);
+      } catch {}
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+/** Most recent v4 receipt per source file, retaining unknown receipts. */
+export function loadLatestJudgeReceipts(): Map<string, StoredJudgeReceipt> {
+  const out = new Map<string, StoredJudgeReceipt>();
+  for (const receipt of loadJudgeReceipts()) out.set(receipt.file, receipt);
+  return out;
+}
+
+/** Persist an evidence-bound receipt without overwriting historical reviews. */
+export function saveJudgeReceipt(receipt: StoredJudgeReceipt, opts: { leaseId?: string | null } = {}): boolean {
+  const conn = getCacheDb();
+  if (!conn) return false;
+  try {
+    const write = () => {
+      if (opts.leaseId != null && !judgeJobLeaseOwnedOnConnection(conn, opts.leaseId)) return false;
+      // Keep the historical receipt and current projection stores as one
+      // durable contract. A cache missing the projection table is not a
+      // successful judge persistence, even when the additive history table
+      // happens to remain available.
+      const projection = conn.prepare("SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'outcome_judgments'").get() as { present?: number } | undefined;
+      if (!projection?.present) return false;
+      return conn.prepare(
+        `INSERT INTO judge_receipts
+          (receipt_id, file, source_id, session_id, revision, evidence_digest, evidence_version, prompt_version,
+           verdict_status, score, confidence, reasons_json, evidence_ids_json, contradiction_ids_json, dimensions_json, judge, selection_json, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(
+        receipt.receiptId, receipt.file, receipt.sourceId, receipt.sessionId, receipt.revision, receipt.evidenceDigest,
+        receipt.evidenceVersion, receipt.promptVersion, receipt.outcome, receipt.score, receipt.confidence,
+        JSON.stringify(receipt.reasons), JSON.stringify(receipt.evidenceIds), JSON.stringify(receipt.contradictionEvidenceIds),
+        receipt.dimensions ? JSON.stringify(receipt.dimensions) : null, receipt.judge, receipt.selection ? JSON.stringify(receipt.selection) : null, receipt.createdAt,
+      ).changes === 1;
+    };
+    return opts.leaseId == null ? write() : conn.transaction(write)() === true;
+  } catch { return false; }
 }
 
 /**
@@ -368,16 +628,134 @@ export function saveJudgment(j: StoredJudgment, opts: { leaseId?: string | null 
       if (opts.leaseId != null && !judgeJobLeaseOwnedOnConnection(conn, opts.leaseId)) return false;
       return conn
         .prepare(
-          `INSERT INTO outcome_judgments (file, session_id, mtime_ms, score, reasons_json, judge, judged_at, prompt_version, selection_json)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `INSERT INTO outcome_judgments
+             (file, session_id, mtime_ms, score, reasons_json, judge, judged_at, prompt_version, selection_json,
+              evidence_digest, evidence_version, revision, source_id, verdict_status, confidence, evidence_ids_json, contradiction_ids_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(file) DO UPDATE SET session_id = excluded.session_id, mtime_ms = excluded.mtime_ms,
              score = excluded.score, reasons_json = excluded.reasons_json, judge = excluded.judge,
-             judged_at = excluded.judged_at, prompt_version = excluded.prompt_version, selection_json = excluded.selection_json`,
+             judged_at = excluded.judged_at, prompt_version = excluded.prompt_version, selection_json = excluded.selection_json,
+             evidence_digest = excluded.evidence_digest, evidence_version = excluded.evidence_version, revision = excluded.revision,
+             source_id = excluded.source_id, verdict_status = excluded.verdict_status, confidence = excluded.confidence,
+             evidence_ids_json = excluded.evidence_ids_json, contradiction_ids_json = excluded.contradiction_ids_json`,
         )
-        .run(j.file, j.sessionId, j.mtimeMs, j.score, JSON.stringify(j.reasons), j.judge, j.judgedAt, j.promptVersion ?? null, j.selection ? JSON.stringify(j.selection) : null)
+        .run(
+          j.file, j.sessionId, j.mtimeMs, j.score, JSON.stringify(j.reasons), j.judge, j.judgedAt, j.promptVersion ?? null,
+          j.selection ? JSON.stringify(j.selection) : null, j.evidenceDigest ?? null, j.evidenceVersion ?? null, j.revision ?? null,
+          j.sourceId ?? null, j.verdictStatus ?? "pass", j.confidence ?? null, JSON.stringify(j.evidenceIds ?? []), JSON.stringify(j.contradictionEvidenceIds ?? []),
+        )
         .changes === 1;
     };
     return opts.leaseId == null ? write() : conn.transaction(write)() === true;
+  } catch {
+    return false;
+  }
+}
+
+/** Remove the current numeric projection while retaining historical receipts. */
+export function clearJudgmentProjection(file: string, opts: { leaseId?: string | null } = {}): boolean {
+  const conn = getCacheDb();
+  if (!conn) return false;
+  try {
+    const write = () => {
+      if (opts.leaseId != null && !judgeJobLeaseOwnedOnConnection(conn, opts.leaseId)) return false;
+      conn.prepare("DELETE FROM outcome_judgments WHERE file = ?").run(file);
+      return true;
+    };
+    return opts.leaseId == null ? write() : conn.transaction(write)() === true;
+  } catch {
+    return false;
+  }
+}
+
+function projectionHasEquivalentReceipt(conn: Database.Database, projection: StoredJudgment): boolean {
+  if (!projection.evidenceDigest || !projection.evidenceVersion || projection.promptVersion == null || !projection.revision) return false;
+  try {
+    const rows = conn.prepare(
+      "SELECT evidence_digest, evidence_version, prompt_version, revision FROM judge_receipts WHERE file = ?",
+    ).all(projection.file) as Array<{ evidence_digest: string | null; evidence_version: string; prompt_version: number; revision: string }>;
+    return rows.some((row) => row.evidence_digest === projection.evidenceDigest
+      && row.evidence_version === projection.evidenceVersion
+      && Number(row.prompt_version) === projection.promptVersion
+      && row.revision === projection.revision);
+  } catch {
+    return false;
+  }
+}
+
+function archiveLegacyProjection(conn: Database.Database, projection: StoredJudgment): boolean {
+  const judgmentJson = JSON.stringify(projection);
+  const duplicate = conn.prepare(
+    "SELECT 1 AS present FROM judge_legacy_history WHERE file = ? AND judged_at = ? AND judgment_json = ? LIMIT 1",
+  ).get(projection.file, projection.judgedAt, judgmentJson) as { present?: number } | undefined;
+  if (duplicate?.present) return true;
+  return conn.prepare(
+    "INSERT INTO judge_legacy_history (file, judged_at, archived_at, judgment_json) VALUES (?, ?, ?, ?)",
+  ).run(projection.file, projection.judgedAt, Date.now(), judgmentJson).changes === 1;
+}
+
+/**
+ * Atomically retain a new evidence receipt and update its current numeric
+ * projection. A null projection deliberately deletes the old score while
+ * preserving the receipt and any superseded legacy projection.
+ */
+export function saveEvidenceJudgment(
+  receipt: StoredJudgeReceipt,
+  projection: StoredJudgment | null,
+  opts: { leaseId?: string | null } = {},
+): boolean {
+  const conn = getCacheDb();
+  if (!conn) return false;
+  try {
+    const tx = conn.transaction(() => {
+      if (opts.leaseId != null && !judgeJobLeaseOwnedOnConnection(conn, opts.leaseId)) return false;
+      if (projection != null && (projection.file !== receipt.file || projection.sessionId !== receipt.sessionId || projection.score !== receipt.score || projection.promptVersion !== receipt.promptVersion)) return false;
+      if ((projection == null) !== (receipt.score == null)) return false;
+      const existingRow = conn.prepare("SELECT * FROM outcome_judgments WHERE file = ?").get(receipt.file) as Record<string, unknown> | undefined;
+      const existing = existingRow ? storedJudgmentFromProjectionRow(existingRow) : null;
+      if (existing && !projectionHasEquivalentReceipt(conn, existing) && !archiveLegacyProjection(conn, existing)) throw new Error("legacy archive write was ignored");
+
+      const receiptInsert = conn.prepare(
+        `INSERT INTO judge_receipts
+          (receipt_id, file, source_id, session_id, revision, evidence_digest, evidence_version, prompt_version,
+           verdict_status, score, confidence, reasons_json, evidence_ids_json, contradiction_ids_json, dimensions_json, judge, selection_json, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(
+        receipt.receiptId, receipt.file, receipt.sourceId, receipt.sessionId, receipt.revision, receipt.evidenceDigest,
+        receipt.evidenceVersion, receipt.promptVersion, receipt.outcome, receipt.score, receipt.confidence,
+        JSON.stringify(receipt.reasons), JSON.stringify(receipt.evidenceIds), JSON.stringify(receipt.contradictionEvidenceIds),
+        receipt.dimensions ? JSON.stringify(receipt.dimensions) : null, receipt.judge, receipt.selection ? JSON.stringify(receipt.selection) : null, receipt.createdAt,
+      );
+      if (receiptInsert.changes !== 1) throw new Error("receipt write was ignored");
+
+      if (projection == null) {
+        const deleted = conn.prepare("DELETE FROM outcome_judgments WHERE file = ?").run(receipt.file);
+        if (existing && deleted.changes !== 1) throw new Error("projection deletion was ignored");
+        return true;
+      }
+      const projectionWrite = conn.prepare(
+        `INSERT INTO outcome_judgments
+           (file, session_id, mtime_ms, score, reasons_json, judge, judged_at, prompt_version, selection_json,
+            evidence_digest, evidence_version, revision, source_id, verdict_status, confidence, evidence_ids_json, contradiction_ids_json, dimensions_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(file) DO UPDATE SET session_id = excluded.session_id, mtime_ms = excluded.mtime_ms,
+           score = excluded.score, reasons_json = excluded.reasons_json, judge = excluded.judge,
+           judged_at = excluded.judged_at, prompt_version = excluded.prompt_version, selection_json = excluded.selection_json,
+           evidence_digest = excluded.evidence_digest, evidence_version = excluded.evidence_version, revision = excluded.revision,
+           source_id = excluded.source_id, verdict_status = excluded.verdict_status, confidence = excluded.confidence,
+           evidence_ids_json = excluded.evidence_ids_json, contradiction_ids_json = excluded.contradiction_ids_json,
+           dimensions_json = excluded.dimensions_json`,
+      ).run(
+        projection.file, projection.sessionId, projection.mtimeMs, projection.score, JSON.stringify(projection.reasons), projection.judge,
+        projection.judgedAt, projection.promptVersion ?? null, projection.selection ? JSON.stringify(projection.selection) : null,
+        projection.evidenceDigest ?? null, projection.evidenceVersion ?? null, projection.revision ?? null, projection.sourceId ?? null,
+        projection.verdictStatus ?? "pass", projection.confidence ?? null, JSON.stringify(projection.evidenceIds ?? []),
+        JSON.stringify(projection.contradictionEvidenceIds ?? []), projection.dimensions ? JSON.stringify(projection.dimensions) : null,
+      );
+      if (projectionWrite.changes !== 1) throw new Error("projection write was ignored");
+      return true;
+    });
+    return tx() === true;
   } catch {
     return false;
   }

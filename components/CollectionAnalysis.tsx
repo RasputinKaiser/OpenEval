@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, ChevronRight, Loader2, RefreshCw } from "lucide-react";
+import { SavedAnalysisViews } from "./charts/SavedAnalysisViews";
 import { ChartFrame } from "./charts/ChartFrame";
 import { SelectableBars, type AnalysisBar } from "./charts/SelectableBars";
 import { DateRangeControls, SelectionChips } from "./charts/SelectionControls";
@@ -309,6 +310,7 @@ export default function CollectionAnalysis() {
         <div className="mt-3"><SelectionChips selection={selection} onChange={select} /></div>
         {loading && <p className="mt-3 flex items-center gap-2 text-xs text-fg-muted" role="status"><Loader2 className="size-3.5 animate-spin" /> Updating the selected snapshot…</p>}
         {notice && <p className="mt-3 text-xs text-warn" role="status">{notice}</p>}
+        <SavedAnalysisViews selection={selection} />
         {error && <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-err/30 bg-err/5 p-3 text-xs text-err" role="alert"><AlertTriangle className="size-3.5 shrink-0" /> Collection analysis unavailable: {error}<button type="button" className="analysis-control" onClick={() => void fetchReport(0, false)}><RefreshCw className="size-3" /> Retry</button></div>}
       </section>
 

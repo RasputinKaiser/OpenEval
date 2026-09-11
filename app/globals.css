@@ -29,7 +29,7 @@ html { scroll-behavior: smooth; }
   --color-fg-muted: #8b8b94;
   --color-fg-muted-rgb: 139 139 148;
   --color-fg-dim: #82828c;
-  --color-fg-dim-rgb: 116 116 126;
+  --color-fg-dim-rgb: 130 130 140;
   --color-accent: #7c5cff;
   --color-accent-rgb: 124 92 255;
   --color-accent-soft: #a78bff;
@@ -851,6 +851,9 @@ button:active:not(:disabled) { transform: scale(0.96); }
 }
 .timeline-judge-popover {
   width: min(36rem, calc(100vw - 1rem));
+  max-height: min(44rem, calc(100dvh - 8rem));
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .timeline-review-status {
   border-color: var(--color-bd-subtle);
@@ -1468,3 +1471,38 @@ details.evidence-accordion[open]::details-content {
 @media (prefers-reduced-motion: reduce) { .analysis-chart *, .analysis-bar__track > span { animation: none !important; transition: none !important; } }
 
 .analysis-chart label { min-width: 0; max-width: 100%; }
+
+/* App refinement: stable hit targets and quiet, interruptible feedback. */
+:root { --motion-fast: 120ms; --motion-panel: 180ms; --motion-ease: cubic-bezier(.16,1,.3,1); }
+input, textarea { caret-color: var(--color-accent-soft); }
+input::placeholder, textarea::placeholder { opacity: 1; }
+a { text-underline-offset: 3px; }
+main :is(button, a, input, select, textarea, summary):focus-visible { outline: 2px solid var(--color-accent-soft); outline-offset: 3px; }
+main :is(button, a, summary) { -webkit-tap-highlight-color: transparent; }
+.analysis-chart__header h2 { font-size: 14px; font-weight: 600; line-height: 1.45; }
+.analysis-chart__header p { line-height: 1.6; }
+.analysis-bar, .analysis-bar:active:not(:disabled) { transform: none; }
+.analysis-bar { transition: background-color var(--motion-fast), color var(--motion-fast); }
+.analysis-control { transition-duration: var(--motion-fast); }
+.analysis-control:active:not(:disabled) { transform: translateY(1px); }
+.analysis-table tbody tr { transition: background-color var(--motion-fast); }
+.analysis-table tbody tr:hover, .analysis-table tbody tr:focus-within { background: color-mix(in srgb, var(--color-accent) 5%, var(--color-bg)); }
+.analysis-reveal { animation: evidence-reveal var(--motion-panel) var(--motion-ease); }
+@keyframes evidence-reveal { from { opacity: .65; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
+.analysis-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 0; }
+.analysis-summary { display: flex; flex-wrap: wrap; gap: 8px 24px; padding: 12px 0; border-bottom: 1px solid var(--color-bd-subtle); }
+.analysis-summary > div { min-width: 90px; }
+.analysis-summary dt { font-size: 11px; color: var(--color-fg-muted); }
+.analysis-summary dd { font-size: 15px; font-variant-numeric: tabular-nums; margin-top: 4px; }
+.analysis-pair { display: grid; grid-template-columns: minmax(110px,1fr) minmax(100px,2fr) minmax(70px,auto); gap: 14px; align-items: center; min-height: 48px; width: 100%; border-radius: 6px; padding: 6px; text-align: left; }
+.analysis-pair:hover, .analysis-pair[aria-pressed=true] { background: var(--color-bg-elev); }
+.analysis-pair:active:not(:disabled) { transform: none; }
+.analysis-toolbar input { min-height: 40px; }
+@media (max-width: 640px) { .analysis-pair { grid-template-columns: minmax(90px,1fr) minmax(70px,1.3fr); gap: 8px; } .analysis-pair > :last-child { grid-column: 1 / -1; font-size: 11px; } .analysis-toolbar :is(button,input,select) { min-height: 44px; } }
+@media (prefers-reduced-motion: reduce) { .analysis-reveal { animation: none; } .analysis-control:active:not(:disabled) { transform: none; } }
+
+@media (min-width: 768px) {
+  .sidebar-nav { scrollbar-width: thin; scrollbar-color: var(--color-bd) transparent; }
+  .sidebar-nav::-webkit-scrollbar { display: block; width: 4px; }
+  .sidebar-nav::-webkit-scrollbar-thumb { background: var(--color-bd); border-radius: 4px; }
+}

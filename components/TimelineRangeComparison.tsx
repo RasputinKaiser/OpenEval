@@ -46,7 +46,7 @@ export function TimelineRangeComparison({ selection, dateStart, dateEnd }: { sel
       if (bound === undefined) url.searchParams.delete(`${prefix}${suffix}`);
       else url.searchParams.set(`${prefix}${suffix}`, String(bound));
     }
-    window.history.pushState(window.history.state, "", url);
+    window.history.pushState(null, "", url);
     if (prefix === "compareBefore") setBefore(value); else setAfter(value);
   };
   const beforeKey = selectionParams({ ...selection, ...before }).toString();

@@ -11,3 +11,6 @@ Operate and Read surfaces use progressive disclosure: overview, inspect, then ex
 
 ## Data boundaries
 Date controls explicitly use UTC and exclusive upper bounds; the existing activity heatmap remains local time and says so. Redaction-safe source/session references connect to existing transcript routes. Preserve separate measured, inferred, missing, stale, partial and sampled states.
+
+## Refinement details
+The desktop sidebar fits the viewport with independently scrolling navigation and fixed support/theme controls. Runs prioritizes filtering and run selection before optional analysis. Evidence detail uses progressive disclosure for record lanes, task episodes, excerpts, and model review history. Review queue previews disclose source/date/model scope, reasons, session budget, serial execution, and freshness. An insufficient-evidence outcome has no numeric quality score.

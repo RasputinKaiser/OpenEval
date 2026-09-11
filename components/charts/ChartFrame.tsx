@@ -35,14 +35,14 @@ export function ChartFrame({ title, description, unit, evidence, actions, childr
       {evidence.generatedAtMs != null && Number.isFinite(evidence.generatedAtMs) && Math.abs(evidence.generatedAtMs) <= 8.64e15 && <span>{evidence.stale ? "Last known" : "Snapshot"}: {new Date(evidence.generatedAtMs).toISOString().replace("T", " ").slice(0, 19)} UTC</span>}
     </div>}
     <div hidden={showTable} className="min-w-0">{children}</div>
-    {table && showTable && <div id={`${id}-table`} className="analysis-table" role="region" tabIndex={0} aria-label={`${title} data`}>
+    {table && showTable && <div id={`${id}-table`} className="analysis-table analysis-reveal" role="region" tabIndex={0} aria-label={`${title} data`}>
       <table className="w-full text-xs text-left"><caption className="sr-only">{table.caption ?? title}</caption>
         <thead><tr>{table.headers.map((header) => <th key={header} scope="col">{header}</th>)}</tr></thead>
         <tbody>{table.rows.map((row) => <tr key={row.id}>{row.cells.map((cell, i) => <td key={i}>{cell}</td>)}</tr>)}</tbody>
       </table>
       {!table.rows.length && <p className="p-3 text-fg-muted">No matching evidence.</p>}
     </div>}
-    {details && expanded && <div id={`${id}-details`} className="mt-4 border-t border-bd-subtle pt-4">{details}</div>}
+    {details && expanded && <div id={`${id}-details`} className="analysis-reveal mt-4 border-t border-bd-subtle pt-4">{details}</div>}
   </section>;
 }
 

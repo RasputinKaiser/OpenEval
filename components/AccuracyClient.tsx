@@ -79,7 +79,7 @@ export default function AccuracyClient({ audit, judge }: Props) {
   const changeFilters = (patch: Record<string, string | null>, replace = false) => {
     const url = new URL(window.location.href);
     for (const [key,value] of Object.entries(patch)) { if (value === null) url.searchParams.delete(key); else url.searchParams.set(key,value); }
-    if (replace) window.history.replaceState(window.history.state, "", url); else window.history.pushState(window.history.state, "", url);
+    if (replace) window.history.replaceState(null, "", url); else window.history.pushState(null, "", url);
     window.dispatchEvent(new PopStateEvent("popstate"));
   };
   const coverage = audit.surfaces[chartSurface];
@@ -235,6 +235,7 @@ export default function AccuracyClient({ audit, judge }: Props) {
         table={{ headers: ["Evidence state", "Cases"], rows: coverageRows.map((row) => ({ id: row.id, cells: [row.label, row.value] })) }}>
         <SelectableBars rows={coverageRows} noun="cases" onExplore={(status) => changeFilters({ surface: chartSurface, evidenceStatus: status, category: null, q: null })} />
       </ChartFrame></div>
+      <details className="card p-4 mb-5"><summary className="cursor-pointer text-sm font-medium">Coverage matrix across every evidence surface</summary><p className="text-xs text-fg-muted my-3">Select a cell to inspect its case definitions. Structural coverage and runtime evidence remain separate.</p><div className="analysis-table analysis-reveal" role="region" tabIndex={0} aria-label="Accuracy coverage matrix"><table><thead><tr><th>Surface</th>{["Pass", "Fail", "Unknown", "Not applicable"].map(label => <th key={label}>{label}</th>)}</tr></thead><tbody>{ACCURACY_SURFACES.map(surface => { const row = audit.surfaces[surface]; return <tr key={surface}><th>{accuracySurfaceLabel(surface)}</th>{([{ status: "pass", count: row.passingCases }, { status: "fail", count: row.failingCases }, { status: "unknown", count: row.unknownCases }, { status: "not_applicable", count: row.notApplicableCases }]).map(cell => <td key={cell.status}><button className="analysis-control w-full justify-center" type="button" aria-label={`${accuracySurfaceLabel(surface)} ${cell.status}: ${cell.count} cases`} onClick={() => changeFilters({ surface, chartSurface: surface, evidenceStatus: cell.status, category: null, q: null })}>{cell.count}</button></td>)}</tr>; })}</tbody></table></div></details>
       <section className="card p-3 mb-5" aria-label="Case filters">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 flex-nowrap items-center gap-1.5 overflow-x-auto pb-0.5 lg:flex-wrap lg:overflow-visible" aria-label="Case categories">

@@ -6,9 +6,10 @@ import os from "node:os";
 import path from "node:path";
 import { scoreOutcome } from "../lib/insights/outcome";
 import { toPoints, detectMarkers, metricSeries, markerImpact } from "../lib/insights/timeline";
+import { JUDGE_PROMPT_VERSION } from "../lib/insights/judge";
 import { buildTimeline } from "../lib/insights/collect";
 import type { LiveSession, OutcomeSignals } from "../lib/live";
-import { _setCacheDbForTest, saveJudgment } from "../lib/live-cache";
+import { _setCacheDbForTest, saveJudgment, saveJudgeReceipt } from "../lib/live-cache";
 import { makeJudgeSelection } from "../lib/grader/selection";
 import type { StoredJudgment } from "../lib/live-cache";
 
@@ -146,7 +147,7 @@ const POOL_MIX = /outcome medians mix/;
 
 function judgmentsFor(files: string[], score: number): Map<string, StoredJudgment> {
   return new Map(files.map((file) => [file, {
-    file, sessionId: null, mtimeMs: 0, score, reasons: ["judge verdict"], judge: "test/judge", judgedAt: 0, promptVersion: 2,
+    file, sessionId: `s${path.basename(file, ".jsonl")}`, mtimeMs: 0, score, reasons: ["judge verdict"], judge: "test/judge", judgedAt: 0, promptVersion: 2,
   }]));
 }
 
@@ -272,7 +273,7 @@ test("buildTimeline preserves mixed judge source/model/prompt receipts and denom
     const sessions = [100, 200, 300, 400].map((startedAt) => session({ startedAt, path: `/judge-${startedAt}.jsonl` }));
     const judgments: Array<StoredJudgment> = sessions.map((s, index) => ({
       file: s.path!, sessionId: s.sessionId, mtimeMs: 0, score: index % 2 ? 0.8 : 0.6, reasons: ["bounded receipt"],
-      judge: index < 2 ? codex.judgeName : claude.judgeName, judgedAt: startedAtFor(index), promptVersion: index < 2 ? 2 : 3,
+      judge: index < 2 ? codex.judgeName : claude.judgeName, judgedAt: startedAtFor(index), promptVersion: index < 2 ? JUDGE_PROMPT_VERSION : JUDGE_PROMPT_VERSION - 1,
       selection: index < 2 ? codex : claude,
     }));
     for (const judgment of judgments) saveJudgment(judgment);
@@ -285,10 +286,15 @@ test("buildTimeline preserves mixed judge source/model/prompt receipts and denom
     assert.equal(report.judgeComparability?.receiptDenominator, 4);
     assert.equal(report.judgeComparability?.staleReceiptCount, 2);
     assert.deepEqual(report.judgeSelectionDistribution?.map((group) => [group.source, group.model, group.promptVersion, group.count]), [
-      ["claude-code", "sonnet", 3, 2],
-      ["codex", "gpt-5.6-luna", 2, 2],
+      ["claude-code", "sonnet", JUDGE_PROMPT_VERSION - 1, 2],
+      ["codex", "gpt-5.6-luna", JUDGE_PROMPT_VERSION, 2],
     ]);
     assert.match(report.judgeComparability?.warning ?? "", /mixes backend, model, or prompt-version/);
+    assert.equal(saveJudgeReceipt({ receiptId: "new-history", file: sessions[3].path!, sourceId: null, sessionId: sessions[3].sessionId, revision: "fixture", evidenceDigest: "fixture", evidenceVersion: "evidence-packet.v1", promptVersion: JUDGE_PROMPT_VERSION, outcome: "insufficient_evidence", score: null, confidence: "low", reasons: ["insufficient"], evidenceIds: [], contradictionEvidenceIds: [], judge: "stub", createdAt: 5000 }), true);
+    const withHistory = buildTimeline(sessions);
+    assert.equal(withHistory.judgeComparability?.receiptDenominator, 5, "one new review must not erase four legacy receipts from counts");
+    assert.equal(withHistory.judgeComparability?.unknownReceiptCount, 1);
+    assert.equal(withHistory.judgeSelectionDistribution?.reduce((sum, group) => sum + group.count, 0), 5);
   } finally {
     _setCacheDbForTest(null);
     conn.close();

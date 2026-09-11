@@ -275,14 +275,13 @@ function finalizeAggregate(aggregate: MutableAggregate): HarnessAggregate {
   };
 }
 
-function aggregateByHarness(runs = listRuns(LEADERBOARD_RUN_LIMIT)): HarnessAggregate[] {
-  const runIds = runs.map((run) => run.id);
-  const caseSummaries = getRunCaseSummariesBatch(runIds);
+function aggregateByHarness(runs = listRuns(LEADERBOARD_RUN_LIMIT), caseSummaries = getRunCaseSummariesBatch(runs.map(run => run.id))): HarnessAggregate[] {
   const byHarness = new Map<string, MutableAggregate>();
 
   for (const run of runs) {
     const harness = run.params.harness || "unknown";
     const cases = caseSummaries.get(run.id) ?? [];
+    if (cases.length === 0) continue;
     const completed = cases.filter((summary) => ["passed", "failed", "error"].includes(summary.status));
     const passed = cases.filter((summary) => summary.status === "passed").length;
     const failed = cases.filter((summary) => summary.status === "failed").length;
@@ -304,7 +303,7 @@ function aggregateByHarness(runs = listRuns(LEADERBOARD_RUN_LIMIT)): HarnessAggr
       caseCount: cases.length,
       model: run.params.model ?? null,
     });
-    addModel(aggregate.workload, run.params.model, 0, true);
+    for (const model of new Set(cases.map(item => item.model ?? run.params.model ?? null))) addModel(aggregate.workload, model, 0, true);
 
     for (const summary of cases) {
       aggregate.totalCostUsd += summary.runner_cost_usd ?? 0;
@@ -313,7 +312,7 @@ function aggregateByHarness(runs = listRuns(LEADERBOARD_RUN_LIMIT)): HarnessAggr
       aggregate.totalDurationMs += summary.runner_duration_ms ?? 0;
       addCoverage(aggregate.costCoverage, summary.runner_cost_usd, summary.runner_cost_source);
       addCoverage(aggregate.durationCoverage, summary.runner_duration_ms, summary.runner_duration_source);
-      addCaseMetadata(aggregate.workload, summary);
+      addCaseMetadata(aggregate.workload, { ...summary, model: summary.model ?? run.params.model ?? null });
     }
     byHarness.set(harness, aggregate);
   }
@@ -334,14 +333,37 @@ function leaderboardScope(runs = listRuns(LEADERBOARD_RUN_LIMIT)): LeaderboardSc
   };
 }
 
-function buildLeaderboardResponse(): LeaderboardResponse {
+interface WorkloadSelection { category?: string; model?: string; matched: boolean; }
+function buildLeaderboardResponse(selection: WorkloadSelection): LeaderboardResponse & { selection: WorkloadSelection; options: { categories: string[]; models: string[] }; overlap: { harnesses: number; unionPairs: number; sharedPairs: number } } {
   const runs = listRuns(LEADERBOARD_RUN_LIMIT);
-  return { harnesses: aggregateByHarness(runs), scope: leaderboardScope(runs) };
+  const original = getRunCaseSummariesBatch(runs.map(run => run.id));
+  const categories = new Set<string>(), models = new Set<string>();
+  const filtered = new Map<string, RunCaseSummary[]>(), harnessPairs = new Map<string, Set<string>>();
+  for (const run of runs) {
+    const cases = original.get(run.id) ?? [];
+    for (const item of cases) { categories.add(item.category ?? "unspecified"); models.add(modelKey(item.model ?? run.params.model)); }
+    const matching = cases.filter(item => (!selection.category || (item.category ?? "unspecified") === selection.category) && (!selection.model || modelKey(item.model ?? run.params.model) === selection.model));
+    filtered.set(run.id, matching);
+    if (matching.length) {
+      const harness = run.params.harness || "unknown", pairs = harnessPairs.get(harness) ?? new Set<string>();
+      for (const item of matching) if (["passed", "failed", "error"].includes(item.status)) pairs.add(`${item.case_id}\0${item.sample}`);
+      harnessPairs.set(harness, pairs);
+    }
+  }
+  const sets = [...harnessPairs.values()], union = new Set(sets.flatMap(set => [...set]));
+  const shared = new Set([...union].filter(key => sets.length >= 2 && sets.every(set => set.has(key))));
+  if (selection.matched) for (const [id, cases] of filtered) filtered.set(id, cases.filter(item => ["passed", "failed", "error"].includes(item.status) && shared.has(`${item.case_id}\0${item.sample}`)));
+  return { harnesses: aggregateByHarness(runs, filtered), scope: leaderboardScope(runs), selection, options: { categories: [...categories].sort(), models: [...models].sort() }, overlap: { harnesses: sets.length, unionPairs: union.size, sharedPairs: shared.size } };
 }
 
-export async function GET() {
+export function GET(): Promise<Response>;
+export function GET(request: Request): Promise<Response>;
+export async function GET(request: Request = new Request("http://localhost/api/harnesses/leaderboard")) {
   try {
-    return NextResponse.json(buildLeaderboardResponse(), {
+    const params = request ? new URL(request.url).searchParams : new URLSearchParams();
+    const category = params.get("category") || undefined, model = params.get("model") || undefined;
+    if ((category?.length ?? 0) > 100 || (model?.length ?? 0) > 256 || (params.has("matched") && !["0", "1"].includes(params.get("matched")!))) return NextResponse.json({ error: "Invalid workload filters" }, { status: 400 });
+    return NextResponse.json(buildLeaderboardResponse({ category, model, matched: params.get("matched") === "1" }), {
       headers: { "Cache-Control": "private, max-age=30, stale-while-revalidate=120" },
     });
   } catch (error) {

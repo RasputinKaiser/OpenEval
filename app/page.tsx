@@ -1,3 +1,4 @@
+import { DashboardUsagePeriods } from "@/components/DashboardUsagePeriods";
 import fs from "node:fs";
 import Link from "next/link";
 import clsx from "clsx";
@@ -167,14 +168,14 @@ export default async function Page() {
                     !trendAvailable ? "text-fg-dim" : trend > 0 ? "text-ok" : trend < 0 ? "text-err" : "text-fg",
                   )}
                 >
-                  {trendAvailable ? fmtSigned(trend) : "—"}
+                  {trendAvailable ? (Math.abs(trend) > 0 && Math.abs(trend) < 0.005 ? (trend < 0 ? "−<0.01" : "+<0.01") : fmtSigned(trend)) : "—"}
                 </span>
                 <span className="text-sm text-fg-muted">outcome movement, first half → second half</span>
               </div>
               <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-fg-dim">
                 <span>
                   {timeline && trendAvailable
-                    ? `${timeline.overall.firstHalfOutcome.toFixed(2)} → ${timeline.overall.secondHalfOutcome.toFixed(2)} across ${timeline.totalSessions} sessions`
+                    ? `${timeline.overall.firstHalfOutcome.toFixed(2)} → ${timeline.overall.secondHalfOutcome.toFixed(2)} across ${timeline.overall.firstHalfN ?? 0}/${timeline.overall.secondHalfN ?? 0} signal sessions (before/after)`
                     : timelineError ? "analysis unavailable — not evidence that no history exists" : "no comparable outcome evidence yet"}
                 </span>
                 {summary && summary.total > 0 && (
@@ -249,7 +250,7 @@ export default async function Page() {
         <Stat
           icon={trend >= 0 ? TrendingUp : TrendingDown}
           label="Outcome trend"
-          value={trendAvailable ? fmtSigned(trend) : "—"}
+          value={trendAvailable ? (Math.abs(trend) > 0 && Math.abs(trend) < 0.005 ? (trend < 0 ? "−<0.01" : "+<0.01") : fmtSigned(trend)) : "—"}
           tone={trendAvailable ? (trend > 0 ? "ok" : trend < 0 ? "err" : undefined) : undefined}
           sub={timeline && trendAvailable
             ? `${timeline.overall.firstHalfOutcome.toFixed(2)} → ${timeline.overall.secondHalfOutcome.toFixed(2)}`
@@ -272,6 +273,7 @@ export default async function Page() {
         <Link href="/cases" className="inline-flex items-center gap-1 hover:text-fg-muted transition-colors"><FileText className="size-3" /> {cases.length} test cases across {Object.keys(byCat).length} categories</Link>
       </div>
 
+      <DashboardUsagePeriods />
       <DashboardTrends timeline={timeline} error={timelineError} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">

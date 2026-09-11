@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { MetricDistribution } from "./charts/MetricDistribution";
 import TelemetryStrip from "./TelemetryStrip";
 import RunTimeline from "./RunTimeline";
 import { RunStatusChart } from "./run-detail/RunStatusChart";
@@ -27,7 +28,7 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
     setSelectedIdx(index);
     const item = cases[index]; if (!item) return;
     const url = new URL(window.location.href); url.searchParams.set("selectedCase", item.id);
-    window.history.pushState(window.history.state, "", url);
+    window.history.pushState(null, "", url);
     if (window.matchMedia("(max-width: 1023px)").matches) requestAnimationFrame(() => document.getElementById("run-case-evidence")?.scrollIntoView({ block: "start" }));
   };
   useEffect(() => {
@@ -166,6 +167,10 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
       />
 
       <RunStatusChart cases={cases} onSelect={selectCase} />
+      <details className="card p-4 mb-4"><summary className="cursor-pointer text-sm font-medium">Case duration and cost distributions</summary><div className="grid md:grid-cols-2 gap-3 mt-3 analysis-reveal">
+        <MetricDistribution title="Case duration" values={cases.map(item => item.runner_result?.durationMs)} format={value => `${(value / 1000).toFixed(1)}s`} unit="Seconds per case/sample" description="Each recorded case/sample result contributes one duration; missing results remain excluded." />
+        <MetricDistribution title="Case cost" values={cases.map(item => item.runner_result?.usage.costSource === "measured" || item.runner_result?.usage.costSource === "inferred" ? item.runner_result.usage.costUsd : null)} format={value => `$${value.toFixed(4)}`} unit="USD · measured and inferred" description="Missing and unspecified cost provenance is excluded, including legacy results without a source." />
+      </div></details>
       <TelemetryStrip runId={runId} />
       {cases.length > 0 && (
         <RunTimeline

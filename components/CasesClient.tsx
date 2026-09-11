@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { CaseComposition } from "./CaseComposition";
 import Link from "next/link";
 import clsx from "clsx";
 import { Gauge, Wrench, Search, X } from "lucide-react";
@@ -39,7 +40,7 @@ function visualKindLabel(kind: string): string {
 export default function CasesClient({ cases, activeCategory }: { cases: CaseDefinition[]; activeCategory?: string }) {
   const [query, setQuery] = useState("");
   useEffect(() => { const restore = () => setQuery(new URLSearchParams(window.location.search).get("q") ?? ""); restore(); window.addEventListener("popstate", restore); return () => window.removeEventListener("popstate", restore); }, []);
-  const changeQuery = (value: string) => { setQuery(value); const url = new URL(window.location.href); if (value) url.searchParams.set("q", value); else url.searchParams.delete("q"); window.history.replaceState(window.history.state, "", url); };
+  const changeQuery = (value: string) => { setQuery(value); const url = new URL(window.location.href); if (value) url.searchParams.set("q", value); else url.searchParams.delete("q"); window.history.replaceState(null, "", url); };
   const debouncedQuery = useDebouncedValue(query, 200);
   const searchRef = useRef<HTMLInputElement>(null);
   useFocusOnSlash(searchRef);
@@ -89,6 +90,7 @@ export default function CasesClient({ cases, activeCategory }: { cases: CaseDefi
         </span>
       </div>
 
+      <CaseComposition cases={Object.values(grouped).flat()} />
       <div className="space-y-8">
         {Object.entries(grouped).map(([cat, list]) => (
           <section key={cat}>
@@ -150,7 +152,7 @@ export default function CasesClient({ cases, activeCategory }: { cases: CaseDefi
           <div className="mt-2 text-xs text-fg-dim">Check the spelling — or browse the full library on the <Link href="/cases" className="text-accent-soft hover:underline">cases page</Link>.</div>
           <button
             type="button"
-            onClick={() => setQuery("")}
+            onClick={() => changeQuery("")}
             className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-bd px-3 py-1.5 text-xs text-fg-muted hover:bg-bg-elev hover:text-fg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
             <X className="size-3" /> Clear search

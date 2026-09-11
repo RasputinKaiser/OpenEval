@@ -13,7 +13,7 @@ export function RunStatusChart({ cases, onSelect }: { cases: RunCaseRecord[]; on
   const choose = (status: string | null) => {
     setFilter(status); const url = new URL(window.location.href);
     if (status === null) url.searchParams.delete("caseStatus"); else url.searchParams.set("caseStatus", status);
-    window.history.pushState(window.history.state, "", url);
+    window.history.pushState(null, "", url);
   };
   const matching = cases.flatMap((item, index) => filter === null || item.status === filter ? [{ item, index }] : []);
   return <div className="mb-4"><ChartFrame title="Case status distribution" description="Counts include every case/sample in this run. Pending, running, and skipped samples remain separate from graded outcomes."

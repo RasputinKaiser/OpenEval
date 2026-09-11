@@ -1,5 +1,6 @@
 "use client";
 
+import { CaseComposition } from "./CaseComposition";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, Play, Check, Filter, Search, History, AlertCircle, AlertTriangle } from "lucide-react";
@@ -322,6 +323,7 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
         </div>
       </header>
       <EvaluateNav />
+      <CaseComposition cases={plannedCases} executions={plannedExecutions} />
       {prefillNote && (
         <div className="mb-4 text-[11px] text-accent-soft border border-accent/30 bg-accent/5 rounded-md px-3 py-2" role="status">
           {prefillNote}
