@@ -341,8 +341,8 @@ export default function SettingsClient() {
         title="Settings"
         subtitle="Control browser defaults, global judge fallback, privacy, and local storage health."
         actions={
-          dirty ? <span className="rounded-lg border border-warn/25 bg-warn/10 px-2.5 py-1.5 text-[10px] font-medium uppercase tracking-wider text-warn">{dirtyScopes.length} unsaved scope{dirtyScopes.length === 1 ? "" : "s"}</span>
-            : <span className="rounded-lg border border-ok/20 bg-ok/10 px-2.5 py-1.5 text-[10px] font-medium uppercase tracking-wider text-ok">Up to date</span>
+          dirty ? <span className="rounded-lg border border-warn/25 bg-warn/10 px-2.5 py-1.5 text-[10px] font-medium uppercase tracking-[0.12em] text-warn">{dirtyScopes.length} unsaved scope{dirtyScopes.length === 1 ? "" : "s"}</span>
+            : <span className="rounded-lg border border-ok/20 bg-ok/10 px-2.5 py-1.5 text-[10px] font-medium uppercase tracking-[0.12em] text-ok">Up to date</span>
         }
       />
       <SystemNav />
@@ -417,7 +417,7 @@ export default function SettingsClient() {
             </div>
 
             <div className="mt-5 rounded-xl border border-bd-subtle bg-bg/40 p-4">
-              <div className="text-[10px] font-medium uppercase tracking-wider text-fg-dim">Resolution order</div>
+              <div className="text-[10px] font-medium uppercase tracking-[0.12em] text-fg-dim">Resolution order</div>
               <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto_1fr_auto_1fr] sm:items-center">
                 <ResolutionStep label="Saved" value={savedJudge ? `${savedJudge.judgeSource || "auto"}${savedJudge.judgeModel ? ` / ${savedJudge.judgeModel}` : ""}` : "loading"} active={!environmentOverrides.source && !environmentOverrides.model} />
                 <span aria-hidden="true" className="hidden text-center text-fg-dim sm:block">→</span>
@@ -461,10 +461,10 @@ export default function SettingsClient() {
                 <div className="mt-5 rounded-xl border border-bd-subtle bg-bg/40 p-4">
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
                     <div>
-                      <div className="text-[10px] font-medium uppercase tracking-wider text-fg-dim">Local data footprint</div>
+                      <div className="text-[10px] font-medium uppercase tracking-[0.12em] text-fg-dim">Local data footprint</div>
                       <div className="mt-1 text-lg font-semibold mono">{formatBytes(inventory.totalBytes)}</div>
                     </div>
-                    <span className={clsx("rounded bg-bg-elev px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider", inventory.complete ? "text-ok" : "text-warn")}>
+                    <span className={clsx("rounded bg-bg-elev px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.12em]", inventory.complete ? "text-ok" : "text-warn")}>
                       {inventory.complete ? "measured" : "lower bound"}
                     </span>
                   </div>
@@ -569,8 +569,8 @@ function SectionTitle({ icon: Icon, id, title, scope, detail, dirty }: { icon: t
       <div className="flex flex-wrap items-center gap-2">
         <span className="grid size-7 place-items-center rounded-lg bg-accent/10"><Icon aria-hidden="true" className="size-3.5 text-accent-soft" /></span>
         <h2 id={id} className="text-sm font-semibold">{title}</h2>
-        <span className="rounded bg-bg-elev px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-fg-dim">{scope}</span>
-        {dirty && <span className="ml-auto rounded bg-warn/10 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-warn">unsaved</span>}
+        <span className="rounded bg-bg-elev px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.12em] text-fg-dim">{scope}</span>
+        {dirty && <span className="ml-auto rounded bg-warn/10 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.12em] text-warn">unsaved</span>}
       </div>
       <p className="mt-1.5 text-[11px] leading-4 text-fg-dim">{detail}</p>
     </div>
@@ -580,7 +580,7 @@ function SectionTitle({ icon: Icon, id, title, scope, detail, dirty }: { icon: t
 function Field({ id, label, hint, children }: { id: string; label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div>
-      <label htmlFor={id} className="mb-1.5 block text-[10px] font-medium uppercase tracking-wider text-fg-muted">{label}</label>
+      <label htmlFor={id} className="mb-1.5 block text-[10px] font-medium uppercase tracking-[0.12em] text-fg-muted">{label}</label>
       {children}
       {hint && <p className="mt-1.5 text-[10px] leading-4 text-fg-dim">{hint}</p>}
     </div>
@@ -613,7 +613,7 @@ function Switch({ id, label, description, checked, onChange }: { id: string; lab
 function Summary({ icon: Icon, label, value, detail, tone }: { icon: typeof Wrench; label: string; value: string; detail: string; tone?: "ok" | "warn" }) {
   return (
     <div className="min-w-0 border-b border-r border-bd-subtle p-3.5 last:border-r-0 lg:border-b-0">
-      <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-fg-dim">
+      <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.12em] text-fg-dim">
         <Icon aria-hidden="true" className={clsx("size-3.5", tone === "ok" ? "text-ok" : tone === "warn" ? "text-warn" : "text-accent-soft")} /> {label}
       </div>
       <div className={clsx("mt-1 truncate text-sm font-semibold mono", tone === "warn" && "text-warn")}>{value}</div>
@@ -625,7 +625,7 @@ function Summary({ icon: Icon, label, value, detail, tone }: { icon: typeof Wren
 function ResolutionStep({ label, value, active, tone }: { label: string; value: string; active?: boolean; tone?: "ok" | "warn" }) {
   return (
     <div className={clsx("min-w-0 rounded-lg border p-3", active ? tone === "warn" ? "border-warn/30 bg-warn/5" : tone === "ok" ? "border-ok/25 bg-ok/5" : "border-accent/25 bg-accent/5" : "border-bd-subtle bg-bg")}>
-      <div className="text-[9px] font-medium uppercase tracking-wider text-fg-dim">{label}</div>
+      <div className="text-[9px] font-medium uppercase tracking-[0.12em] text-fg-dim">{label}</div>
       <div className="mt-1 break-words text-[10px] mono text-fg-muted">{value}</div>
     </div>
   );
@@ -634,7 +634,7 @@ function ResolutionStep({ label, value, active, tone }: { label: string; value: 
 function StorageMetric({ label, value, detail, tone }: { label: string; value: string; detail: string; tone?: "warn" }) {
   return (
     <div className="rounded-xl border border-bd-subtle bg-bg/40 p-3">
-      <div className="text-[9px] font-medium uppercase tracking-wider text-fg-dim">{label}</div>
+      <div className="text-[9px] font-medium uppercase tracking-[0.12em] text-fg-dim">{label}</div>
       <div className={clsx("mt-1 text-base font-semibold mono", tone === "warn" && "text-warn")}>{value}</div>
       <div className="mt-0.5 text-[9px] text-fg-dim">{detail}</div>
     </div>

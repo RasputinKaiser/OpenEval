@@ -18,7 +18,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     // data-scroll-behavior: opts into Next's smooth-scroll handling and silences its deprecation warning
     <html lang="en" suppressHydrationWarning data-scroll-behavior="smooth">
       <head>
-        <script dangerouslySetInnerHTML={{ __html: "try{const t=localStorage.getItem('openeval-theme');if(t==='light'||(!t&&matchMedia('(prefers-color-scheme: light)').matches))document.documentElement.classList.add('light')}catch(e){}" }} />
+        <script dangerouslySetInnerHTML={{ __html: "try{sessionStorage.removeItem('openeval.chunk-reload-attempt')}catch(e){};try{const t=localStorage.getItem('openeval-theme');if(t==='light'||(!t&&matchMedia('(prefers-color-scheme: light)').matches))document.documentElement.classList.add('light')}catch(e){}" }} />
       </head>
       <body className="min-h-screen bg-bg text-fg font-sans antialiased">
         <a href="#main" className="skip-link">Skip to content</a>

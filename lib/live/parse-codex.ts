@@ -179,6 +179,8 @@ export function parseCodexSession(file: string, lines: Iterable<string>, bytes: 
   let pathBytes = 0;
   let lineCount = 0;
   let malformedLineCount = 0;
+  let realRecordCount = 0;
+  let nonRecordCount = 0;
   let detailMetadataCapped = false;
   let sawSessionMeta = false;
   let originator: string | null = null;
@@ -394,6 +396,13 @@ export function parseCodexSession(file: string, lines: Iterable<string>, bytes: 
         malformedLineCount++;
         continue;
       }
+      // Bare-scalar JSON ("null"/"42") is valid but not a record — property
+      // access below would throw and drop the entire session as a tombstone.
+      if (!obj || typeof obj !== "object" || Array.isArray(obj)) {
+        nonRecordCount++;
+        continue;
+      }
+      realRecordCount++;
 
       const at = parseTimestamp(obj.timestamp) ?? parseTimestamp(obj.created_at) ?? parseTimestamp(obj.payload?.timestamp) ?? null;
       if (at) {
@@ -669,7 +678,11 @@ export function parseCodexSession(file: string, lines: Iterable<string>, bytes: 
   if (originator) parseWarnings.push(`source: ${originator}${source ? ` / ${source}` : ""}${cliVersion ? ` ${cliVersion}` : ""}`);
   const toolErrorRate = toolCalls > 0 ? toolErrors / toolCalls : 0;
 
-  return {
+    // Every line valid-JSON but none a record → no transcript at all → null
+  // tombstone. Unparseable-byte files keep the session object (damage report).
+  if (realRecordCount === 0 && nonRecordCount > 0 && malformedLineCount === 0) return null;
+
+return {
     sessionId: sessionId ?? path.basename(file, ".jsonl"),
     isSubagent,
     parentSessionId,

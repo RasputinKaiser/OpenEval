@@ -69,7 +69,7 @@ export default function ShortcutsOverlay() {
         <div tabIndex={0} data-autofocus aria-label="Shortcut list" className="max-h-[60vh] overflow-y-auto py-3">
           {GROUPS.map((group) => (
             <div key={group} className="mb-3">
-              <div className="px-4 pb-1 text-[9px] uppercase tracking-wider text-fg-dim">{group}</div>
+              <div className="px-4 pb-1 text-[9px] uppercase tracking-[0.12em] text-fg-dim">{group}</div>
               {SHORTCUTS.filter((s) => s.group === group).map((s, i) => (
                 <div key={i} className="flex items-center justify-between px-4 py-1.5 text-sm">
                   <span className="text-fg-muted">{s.label}</span>

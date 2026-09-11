@@ -45,6 +45,9 @@ export function WeeklyUsageChart({ rollup }: { rollup: RollupReport }) {
   const [metric, setMetric] = useState<WeeklyMetric>("cost");
   const [hovered, setHovered] = useState<number | null>(null);
   const [selected, setSelected] = useState(Math.max(0, (rollup.weekly?.length ?? 1) - 1));
+  const [compareMode, setCompareMode] = useState(false);
+  const [baseIdx, setBaseIdx] = useState<number | null>(null);
+  const [compareIdx, setCompareIdx] = useState<number | null>(null);
 
   const weekly = rollup.weekly ?? [];
   const hasWeeklyEvidence = weekly.some((week) => week.sessions > 0);
@@ -55,6 +58,14 @@ export function WeeklyUsageChart({ rollup }: { rollup: RollupReport }) {
   const activeValue = activeWeek ? weekValue(activeWeek, metric) : 0;
   const previousValue = activeIndex > 0 ? weekValue(weekly[activeIndex - 1], metric) : 0;
   const deltaPct = previousValue > 0 ? ((activeValue - previousValue) / previousValue) * 100 : null;
+  // Compare-mode numbers: hard deltas between the two user-picked weeks.
+  const baseWeek = baseIdx !== null ? weekly[baseIdx] : undefined;
+  const compareWeek = compareIdx !== null ? weekly[compareIdx] : undefined;
+  const baseValue = baseWeek ? weekValue(baseWeek, metric) : 0;
+  const compareValue = compareWeek ? weekValue(compareWeek, metric) : 0;
+  const compareDelta = baseWeek && compareWeek && baseValue > 0
+    ? ((compareValue - baseValue) / baseValue) * 100
+    : null;
   const activeEstimated = metric === "cost" && (activeWeek?.estimatedCostSessions ?? 0) > 0;
   const windowEstimated = metric === "cost" && weekly.some((week) => (week.estimatedCostSessions ?? 0) > 0);
   const AREA = 132; // px — explicit, because %-heights die in nested flex columns
@@ -75,7 +86,7 @@ export function WeeklyUsageChart({ rollup }: { rollup: RollupReport }) {
 
   if (!hasWeeklyEvidence) {
     return (
-      <section className="card overflow-hidden lg:col-span-2" aria-labelledby={headingId}>
+      <section className="card min-w-0 overflow-hidden lg:col-span-2" aria-labelledby={headingId}>
         <div className="px-4 pt-4">
           <h2 id={headingId} className="text-[11px] uppercase tracking-[0.12em] text-fg-muted">Usage by week</h2>
         </div>
@@ -88,14 +99,21 @@ export function WeeklyUsageChart({ rollup }: { rollup: RollupReport }) {
   }
 
   return (
-    <section className="card overflow-hidden lg:col-span-2" aria-labelledby={headingId}>
+    <section className="card min-w-0 overflow-hidden lg:col-span-2" aria-labelledby={headingId}>
       <div className="flex items-start justify-between gap-3 px-4 pt-4 flex-wrap">
         <div>
           <h2 id={headingId} className="text-[11px] uppercase tracking-[0.12em] text-fg-muted">
             Usage by week{metric === "cost" && windowEstimated ? " — API-list equivalent" : ""}
           </h2>
           <p className="mt-1 text-[11px] text-fg-dim">
-            Scale: <span className="mono text-fg-muted">{metric === "cost" ? "USD · API equivalent" : metric === "sessions" ? "sessions" : metric === "tokens" ? "tokens" : "tool calls"}</span> · select a week for its complete usage mix.
+            Scale: <span className="mono text-fg-muted">{metric === "cost" ? "USD · API equivalent" : metric === "sessions" ? "sessions" : metric === "tokens" ? "tokens" : "tool calls"}</span> ·{" "}
+            {compareMode ? "pick the base week, then one to measure against it." : "select a week for its complete usage mix."}
+            {compareMode && (
+              <span className="ml-2 inline-flex items-center gap-2 whitespace-nowrap align-baseline">
+                <span className="inline-flex items-center gap-1"><span aria-hidden="true" className="size-2 rounded-[2px]" style={{ background: "var(--color-accent)" }} /> base</span>
+                <span className="inline-flex items-center gap-1"><span aria-hidden="true" className="size-2 rounded-[2px]" style={{ background: "var(--color-ok)" }} /> compared</span>
+              </span>
+            )}
           </p>
         </div>
         <div className="flex max-w-full shrink-0 items-center gap-1 overflow-x-auto rounded-lg border border-bd-subtle bg-bg p-1" role="group" aria-label="Weekly metric">
@@ -106,7 +124,7 @@ export function WeeklyUsageChart({ rollup }: { rollup: RollupReport }) {
               aria-pressed={metric === key}
               onClick={() => setMetric(key)}
               className={clsx(
-                "min-h-9 shrink-0 rounded-md px-2.5 py-1.5 text-[10px] font-medium outline-none transition-[background-color,color,box-shadow] focus-visible:ring-2 focus-visible:ring-accent",
+                "min-h-11 shrink-0 rounded-md px-2.5 py-1.5 text-[10px] font-medium outline-none transition-[background-color,color,box-shadow] focus-visible:ring-2 focus-visible:ring-accent",
                 metric === key
                   ? "bg-bg-elev text-accent-soft shadow-sm"
                   : "text-fg-dim hover:text-fg hover:bg-bg-subtle",
@@ -115,30 +133,67 @@ export function WeeklyUsageChart({ rollup }: { rollup: RollupReport }) {
               {label}
             </button>
           ))}
-        </div>
+
+          <button
+            type="button"
+            aria-pressed={compareMode}
+            onClick={() => { setCompareMode((v) => !v); setBaseIdx(null); setCompareIdx(null); }}
+            title={compareMode ? "Exit compare mode" : "Compare two weeks: pick a base, then a week to measure against it"}
+            className={clsx(
+              "min-h-11 shrink-0 rounded-md px-2.5 py-1.5 text-[10px] font-medium outline-none transition-[background-color,color,box-shadow] focus-visible:ring-2 focus-visible:ring-accent",
+              compareMode ? "bg-bg-elev text-accent-soft shadow-sm" : "text-fg-dim hover:text-fg hover:bg-bg-subtle",
+            )}
+          >
+            Compare
+          </button></div>
       </div>
 
-      <div className="mx-4 mt-3 grid grid-cols-3 divide-x divide-bd-subtle rounded-lg border border-bd-subtle bg-bg" style={{ background: "color-mix(in srgb, var(--color-bg) 64%, var(--color-bg-subtle))" }}>
+      <div aria-live="polite" className="mx-4 mt-3 grid grid-cols-1 gap-y-0 divide-y sm:divide-y-0 sm:grid-cols-3 sm:divide-x divide-bd-subtle rounded-lg border border-bd-subtle bg-bg" style={{ background: "color-mix(in srgb, var(--color-bg) 64%, var(--color-bg-subtle))" }}>
         <div className="min-w-0 px-3 py-2.5">
-          <div className="text-[9px] uppercase tracking-wider text-fg-dim">Selected week</div>
-          <div className="mt-0.5 truncate text-lg font-semibold mono tabular-nums">{fmtMetric(activeValue, metric, activeEstimated)}</div>
+          <div className="text-[9px] uppercase tracking-[0.12em] text-fg-dim">Selected week</div>
+          <div className={clsx("mt-0.5 truncate rounded px-1 -mx-1 text-lg font-semibold mono tabular-nums transition-colors duration-150", hovered !== null ? "text-accent-soft" : undefined)}>{fmtMetric(activeValue, metric, activeEstimated)}</div>
           <div className="truncate text-[10px] text-fg-dim mono">{activeWeek?.label ?? "No data"}</div>
         </div>
         <div className="min-w-0 px-3 py-2.5">
-          <div className="text-[9px] uppercase tracking-wider text-fg-dim">vs prior</div>
-          <div className={clsx("mt-0.5 text-lg font-semibold mono tabular-nums", deltaPct !== null && deltaPct < 0 ? "text-fg-muted" : "text-accent-soft")}>
-            {deltaPct === null ? "—" : `${deltaPct >= 0 ? "+" : ""}${deltaPct.toFixed(0)}%`}
+          <div className="text-[9px] uppercase tracking-[0.12em] text-fg-dim">
+            {baseWeek && compareWeek ? "Compared weeks" : compareMode ? "Compare mode" : "vs prior week"}
           </div>
-          <div className="truncate text-[10px] text-fg-dim">week over week</div>
+          {baseWeek && compareWeek ? (
+            <>
+              <div className={clsx("mt-0.5 text-lg font-semibold mono tabular-nums", compareDelta !== null && compareDelta < 0 ? "text-fg-muted" : "text-accent-soft")}>
+                {compareDelta === null ? "—" : `${compareDelta >= 0 ? "+" : ""}${compareDelta.toFixed(0)}%`}
+              </div>
+              <div className="truncate text-[10px] text-fg-dim mono">
+                {fmtMetric(baseValue, metric, metric === "cost" && (baseWeek.estimatedCostSessions ?? 0) > 0)} → {fmtMetric(compareValue, metric, metric === "cost" && (compareWeek.estimatedCostSessions ?? 0) > 0)}
+              </div>
+            </>
+          ) : compareMode ? (
+            <>
+              <div className="mt-0.5 text-lg font-semibold text-fg-dim">—</div>
+              <div className="truncate text-[10px] text-fg-dim">{baseIdx === null ? "pick the base week" : "pick a week to compare"}</div>
+            </>
+          ) : (
+            <>
+              <div className={clsx("mt-0.5 text-lg font-semibold mono tabular-nums", deltaPct !== null && deltaPct < 0 ? "text-fg-muted" : "text-accent-soft")}>
+                {deltaPct === null ? "—" : `${deltaPct >= 0 ? "+" : ""}${deltaPct.toFixed(0)}%`}
+              </div>
+              <div className="truncate text-[10px] text-fg-dim">week over week</div>
+            </>
+          )}
         </div>
         <div className="min-w-0 px-3 py-2.5">
-          <div className="text-[9px] uppercase tracking-wider text-fg-dim">{weekly.length}w total</div>
+          <div className="text-[9px] uppercase tracking-[0.12em] text-fg-dim">{weekly.length}w total</div>
           <div className="mt-0.5 truncate text-lg font-semibold mono tabular-nums">{fmtMetric(total, metric, windowEstimated)}</div>
           <div className="truncate text-[10px] text-fg-dim">full visible window</div>
         </div>
       </div>
 
-      <div className="scroll-contain overflow-x-auto px-4 pb-4 pt-3" role="group" aria-label={`Weekly usage chart in ${metric === "cost" ? "USD API-equivalent" : metric}`} onMouseLeave={() => { hide(); setHovered(null); }}>
+      <div
+        className="chart-scroll-well scroll-contain overflow-x-auto px-4 pb-4 pt-3"
+        role="group"
+        aria-label={`Weekly usage chart in ${metric === "cost" ? "USD API-equivalent" : metric}`}
+        onMouseLeave={() => { hide(); setHovered(null); }}
+      >
         <div className="relative h-[174px] min-w-[520px] lg:min-w-0">
           {[0, 0.5, 1].map((ratio) => (
             <div
@@ -147,7 +202,7 @@ export function WeeklyUsageChart({ rollup }: { rollup: RollupReport }) {
               style={{ bottom: `${30 + ratio * AREA}px` }}
             >
               {ratio > 0 && (
-                <span className="absolute -top-3 right-0 rounded-sm bg-bg-subtle pl-1 text-[8px] text-fg-dim mono tabular-nums">
+                <span className="absolute -top-3 right-0 rounded-sm bg-bg-subtle pl-1 text-[9px] text-fg-dim mono tabular-nums">
                   {fmtMetric(max * ratio, metric, windowEstimated)}
                 </span>
               )}
@@ -162,25 +217,39 @@ export function WeeklyUsageChart({ rollup }: { rollup: RollupReport }) {
                   key={w.startMs}
                   type="button"
                   className="group flex h-full min-w-0 flex-1 flex-col items-center justify-end outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                  aria-label={`Week of ${w.label}: ${fmtMetric(v, metric, (w.estimatedCostSessions ?? 0) > 0)}`}
+                  aria-label={`Week of ${w.label}: ${fmtMetric(v, metric, (w.estimatedCostSessions ?? 0) > 0)}${compareMode && baseIdx === i ? " — base week" : compareMode && compareIdx === i ? " — comparison week" : ""}`}
                   aria-pressed={selected === i}
                   onMouseMove={(e) => { show(e, tipFor(w)); setHovered(i); }}
                   onFocus={(e) => { showAt(e.currentTarget, tipFor(w)); setHovered(i); }}
                   onBlur={() => { hide(); setHovered(null); }}
                   onClick={(e) => {
                     e.stopPropagation();
+                    if (compareMode) {
+                      // Compare flow: first click picks the base week, second picks the week
+                      // to measure against it, further clicks re-pick the comparison target.
+                      if (baseIdx === null || (baseIdx !== null && compareIdx !== null)) {
+                        setBaseIdx(i);
+                        setCompareIdx(null);
+                      } else if (i !== baseIdx) {
+                        setCompareIdx(i);
+                      }
+                      return;
+                    }
                     setSelected(i);
                     togglePin(e, tipFor(w), `week-${w.startMs}`);
                   }}
                 >
                   <span className="flex h-[132px] w-full items-end justify-center">
                     <span
-                      className="block w-[70%] min-w-[8px] rounded-t-[5px] transition-[background-color,box-shadow,transform] duration-100 group-hover:-translate-y-0.5"
+                      className="chart-grow-y block w-[70%] min-w-[8px] rounded-t-[5px] transition-[background-color,box-shadow,transform] duration-100 group-hover:-translate-y-0.5 motion-reduce:transition-none"
                       style={{
+                        "--grow-index": i,
                         height: `${v > 0 ? Math.max(3, Math.round((v / max) * AREA)) : 1}px`,
-                        background: `color-mix(in srgb, var(--color-accent) ${active ? 88 : 48}%, transparent)`,
-                        boxShadow: active ? RING : undefined,
-                      }}
+                        background: compareMode && (baseIdx === i || compareIdx === i)
+                          ? `color-mix(in srgb, ${compareIdx === i ? "var(--color-ok)" : "var(--color-accent)"} ${active ? 88 : 70}%, transparent)`
+                          : `color-mix(in srgb, var(--color-accent) ${active ? 88 : 48}%, transparent)`,
+                        boxShadow: active || (compareMode && (baseIdx === i || compareIdx === i)) ? RING : undefined,
+                      } as React.CSSProperties}
                     />
                   </span>
                   <time
@@ -212,7 +281,7 @@ export function ActivityHeatmap({ heatmap, totalSessions }: { heatmap: number[][
 
   if (!hasActivityEvidence) {
     return (
-      <section className="card overflow-hidden lg:col-span-2" aria-labelledby={headingId}>
+      <section className="card min-w-0 overflow-hidden lg:col-span-2" aria-labelledby={headingId}>
         <div className="px-4 pt-4">
           <h2 id={headingId} className="text-[11px] uppercase tracking-[0.12em] text-fg-muted">When you work — session starts</h2>
         </div>
@@ -242,7 +311,7 @@ export function ActivityHeatmap({ heatmap, totalSessions }: { heatmap: number[][
   );
 
   return (
-    <section className="card overflow-hidden lg:col-span-2" aria-labelledby={headingId}>
+    <section className="card min-w-0 overflow-hidden lg:col-span-2" aria-labelledby={headingId}>
       <div className="flex items-start justify-between gap-3 px-4 pt-4">
         <div>
           <h2 id={headingId} className="text-[11px] uppercase tracking-[0.12em] text-fg-muted">When you work — session starts</h2>
@@ -252,9 +321,9 @@ export function ActivityHeatmap({ heatmap, totalSessions }: { heatmap: number[][
       </div>
 
       <div className="mx-4 mt-3 flex items-center justify-between gap-4 rounded-lg border border-bd-subtle bg-bg px-3 py-2.5" style={{ background: "color-mix(in srgb, var(--color-bg) 64%, var(--color-bg-subtle))" }}>
-        <div className="min-w-0">
-          <div className="text-[9px] uppercase tracking-wider text-fg-dim">Selected hour</div>
-          <div className="mt-0.5 truncate text-base font-semibold">
+        <div className="min-w-0" aria-live="polite">
+          <div className="text-[9px] uppercase tracking-[0.12em] text-fg-dim">Selected hour</div>
+          <div className={clsx("mt-0.5 truncate rounded px-1 -mx-1 text-base font-semibold transition-colors duration-150", hovered !== null ? "text-accent-soft" : undefined)}>
             {DAYS[active.d]} <span className="mono tabular-nums">{String(active.h).padStart(2, "0")}:00–{String((active.h + 1) % 24).padStart(2, "0")}:00</span>
           </div>
         </div>
@@ -264,7 +333,12 @@ export function ActivityHeatmap({ heatmap, totalSessions }: { heatmap: number[][
         </div>
       </div>
 
-      <div className="scroll-contain overflow-x-auto px-4 pb-4 pt-3" role="group" aria-label="Session starts by local day and hour" onMouseLeave={() => { hide(); setHovered(null); }}>
+      <div
+        className="chart-scroll-well scroll-contain overflow-x-auto px-4 pb-4 pt-3"
+        role="group"
+        aria-label="Session starts by local day and hour"
+        onMouseLeave={() => { hide(); setHovered(null); }}
+      >
         <div className="min-w-[520px] space-y-1 lg:min-w-0">
           {heatmap.map((row, d) => (
             <div key={d} className="grid items-center gap-1" role="group" aria-label={`${DAYS[d]} session starts by hour`} style={{ gridTemplateColumns: "34px repeat(24, minmax(14px, 1fr))" }}>
@@ -275,7 +349,7 @@ export function ActivityHeatmap({ heatmap, totalSessions }: { heatmap: number[][
                   <button
                     key={h}
                     type="button"
-                    className={clsx("h-[18px] min-w-0 rounded-[3px] outline-none transition-[box-shadow,transform] duration-75 hover:-translate-y-px focus-visible:ring-2 focus-visible:ring-accent", v === 0 && "bg-bg-elev")}
+                    className={clsx("heatmap-cell chart-fade-in h-[18px] min-w-0 rounded-[3px] outline-none transition-[box-shadow,transform] duration-75 hover:-translate-y-px focus-visible:ring-2 focus-visible:ring-accent", v === 0 && "bg-bg-elev")}
                     aria-label={`${DAYS[d]} ${String(h).padStart(2, "0")}:00 — ${v} session${v === 1 ? "" : "s"}`}
                     aria-pressed={selected?.d === d && selected?.h === h}
                     onMouseMove={(e) => { setHovered({ d, h }); show(e, tipFor(d, h, v)); }}
@@ -308,7 +382,7 @@ export function ActivityHeatmap({ heatmap, totalSessions }: { heatmap: number[][
           <div className="grid items-center gap-1" style={{ gridTemplateColumns: "34px repeat(24, minmax(14px, 1fr))" }}>
             <span />
             {Array.from({ length: 24 }, (_, h) => (
-              <span key={h} className={clsx("text-center text-[8px] mono min-w-0 transition-colors", active.h === h ? "text-fg" : "text-fg-dim")}>
+              <span key={h} className={clsx("text-center text-[9px] mono min-w-0 transition-colors", active.h === h ? "text-fg" : "text-fg-dim")}>
                 {active.h === h ? h : h % 6 === 0 ? h : ""}
               </span>
             ))}
@@ -318,7 +392,7 @@ export function ActivityHeatmap({ heatmap, totalSessions }: { heatmap: number[][
             {[0, 0.25, 0.5, 0.75, 1].map((ratio) => (
               <span
                 key={ratio}
-                className="h-2.5 w-5 rounded-[2px]"
+                className="h-2.5 min-w-[14px] w-5 rounded-[2px]"
                 style={{ background: ratio === 0 ? "var(--color-bg-elev)" : `color-mix(in srgb, var(--color-accent) ${Math.round(16 + 84 * ratio)}%, transparent)` }}
               />
             ))}
@@ -342,7 +416,7 @@ export function ToolHealthList({ tools, fullWidth, hideHeading }: { tools: ToolR
   if (tools.length === 0) {
     return (
       <section className={clsx("card p-4", fullWidth && "lg:col-span-3")} aria-labelledby={hideHeading ? undefined : headingId} aria-label={hideHeading ? "Tool health" : undefined}>
-        {!hideHeading && <h2 id={headingId} className="mb-2 text-[11px] uppercase tracking-wider text-fg-muted">Tool health — top tools</h2>}
+        {!hideHeading && <h2 id={headingId} className="mb-2 text-[11px] uppercase tracking-[0.12em] text-fg-muted">Tool health — top tools</h2>}
         <div className="rounded-lg border border-dashed border-bd-subtle bg-bg-elev px-3 py-4 text-sm" role="status">
           <strong className="block text-fg">No tool-call evidence in this snapshot</strong>
           <span className="mt-1 block text-[11px] leading-snug text-fg-dim">Tool health is unavailable until a retained session contains an observed tool call.</span>
@@ -366,7 +440,7 @@ export function ToolHealthList({ tools, fullWidth, hideHeading }: { tools: ToolR
 
   return (
     <section className={clsx("card p-4", fullWidth && "lg:col-span-3")} aria-labelledby={hideHeading ? undefined : headingId} aria-label={hideHeading ? "Tool health" : undefined}>
-      {!hideHeading && <h2 id={headingId} className="mb-2 text-[11px] uppercase tracking-wider text-fg-muted">Tool health — top tools</h2>}
+      {!hideHeading && <h2 id={headingId} className="mb-2 text-[11px] uppercase tracking-[0.12em] text-fg-muted">Tool health — top tools</h2>}
       <div
         className={clsx(fullWidth ? "grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-0.5" : "space-y-0.5")}
         onMouseLeave={() => { hide(); setHovered(null); }}
@@ -388,11 +462,11 @@ export function ToolHealthList({ tools, fullWidth, hideHeading }: { tools: ToolR
                 <span className={clsx("truncate mono text-[11px]", active ? "text-fg" : "text-fg-muted")}>{t.name}</span>
                 <span className="mono tabular-nums shrink-0 text-[11px]">
                   {fmtNum(t.calls)}
-                  {t.errors > 0 && <span className={errPct >= 5 ? "text-err" : "text-fg-dim"}> · {errPct.toFixed(errPct >= 10 ? 0 : 1)}%✗</span>}
+                  {t.errors > 0 && <span className={errPct >= 5 ? "text-err" : "text-fg-dim"}> · {errPct.toFixed(errPct >= 10 ? 0 : 1)}% failed</span>}
                 </span>
               </div>
               <div
-                className="h-[3px] rounded-full mt-0.5 transition-[background]"
+                className="h-[3px] rounded-full mt-0.5 transition-[width,background] duration-500 motion-reduce:transition-none"
                 style={{
                   width: `${Math.max(2, (t.calls / maxCalls) * 100)}%`,
                   background: `color-mix(in srgb, var(--color-accent) ${active ? 70 : 45}%, transparent)`,

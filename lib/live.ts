@@ -39,7 +39,8 @@ export { compactDisplayPath, redactSensitiveText } from "./redaction";
 export { looksLikeToolError, codexToolOutputError, readFileLines, MAX_USAGE_SEGMENTS, MAX_EXTRACTED_FILE_PATHS, MAX_TRACE_METADATA_ITEMS, appendUsageSegment } from "./live/util";
 export { defaultLiveLimitForHarness, isPathInLiveSource, liveTraceFormatForHarness } from "./live/sources";
 export { summarizeLiveSessionFile, summarizeHermesSessionFile, summarizeCodexSessionFile } from "./live/summarize";
-export { parseSessionTranscript, readTranscriptWindow, getErroringTurns, ERRORING_TURN_CAP, TRANSCRIPT_WINDOW_CAP } from "./live/transcript";
+export { parseHermesDbSessions, parseHermesDbSource, resolveHermesDbSessionDetail, hermesDbMessagesToRecords } from "./live/parse-hermes-db";
+export { parseSessionTranscript, readTranscriptWindow, getErroringTurns, parseHermesDbSessionTranscript, ERRORING_TURN_CAP, TRANSCRIPT_WINDOW_CAP } from "./live/transcript";
 export { stripIdeContextWrapper } from "./live/parse-codex";
 export {
   listSourceFiles,

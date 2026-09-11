@@ -19,8 +19,8 @@
     "permissionModes": []
   },
   "liveTrace": {
-    "format": "hermes-json",
-    "roots": ["~/.hermes/sessions"],
-    "maxDepth": 1
+    "format": "hermes-sqlite",
+    "roots": ["~/.hermes"],
+    "maxDepth": 3
   }
 }

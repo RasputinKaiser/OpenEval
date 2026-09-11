@@ -42,7 +42,7 @@ export default function RunConfidencePanel({ confidence }: { confidence: RunConf
           tone={confidence.knownBadCoverage >= 80 ? "ok" : "warn"}
         />
         <div className="rounded-lg border border-bd-subtle bg-bg/60 p-3">
-          <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-fg-muted">
+          <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.12em] text-fg-muted">
             <ShieldAlert className="size-3" /> Weakness radar
           </div>
           <div className="mt-2 flex flex-wrap gap-1.5">
@@ -79,7 +79,7 @@ function TrustMeter({
     <div className="rounded-lg border border-bd-subtle bg-bg/60 p-3">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-fg-muted">
+          <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-[0.12em] text-fg-muted">
             <Icon className="size-3" /> {label}
           </div>
           <div className="mt-1 text-[11px] text-fg-dim">{help}</div>

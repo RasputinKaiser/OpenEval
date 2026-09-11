@@ -3,6 +3,22 @@
  * with the exact value available via `title` tooltips (use the *Full variants).
  */
 
+/** Human-readable byte size — "1.11 GB", not "1.11BB". */
+export function fmtBytes(n: number): string {
+  if (!Number.isFinite(n) || n < 0) return "—";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let v = n;
+  let u = 0;
+  while (v >= 1024 && u < units.length - 1) { v /= 1024; u += 1; }
+  const digits = u === 0 ? 0 : v >= 100 ? 1 : 2;
+  return `${v.toFixed(digits)} ${units[u]}`;
+}
+
+/** Exact integer with locale grouping — for denominators and counts where "3.3k" lies. */
+export function fmtInt(n: number): string {
+  return Number.isFinite(n) ? INT_FORMATTER.format(Math.round(n)) : "—";
+}
+
 export function fmtNum(n: number): string {
   if (!Number.isFinite(n)) return "—";
   const abs = Math.abs(n);
@@ -13,7 +29,7 @@ export function fmtNum(n: number): string {
 }
 
 export function fmtNumFull(n: number): string {
-  return Number.isFinite(n) ? Math.round(n).toLocaleString() : "—";
+  return fmtInt(n);
 }
 
 export function fmtUsd(n: number): string {
@@ -22,6 +38,8 @@ export function fmtUsd(n: number): string {
   if (abs >= 10_000) return "$" + (n / 1000).toFixed(1) + "k";
   if (abs >= 100) return "$" + Math.round(n).toLocaleString();
   if (abs >= 1) return "$" + n.toFixed(2);
+  // Zero needs no sub-cent precision; tiny estimates keep 4 decimals.
+  if (n === 0) return "$0.00";
   return "$" + n.toFixed(4);
 }
 
@@ -32,6 +50,8 @@ export function fmtUsdFull(n: number): string {
 /** Explicit date/time presentation for client-only updates after hydration. */
 export const DISPLAY_LOCALE = "en-US";
 export const DISPLAY_TIME_ZONE = "UTC";
+
+const INT_FORMATTER = new Intl.NumberFormat(DISPLAY_LOCALE);
 
 const DATE_TIME_FORMATTER = new Intl.DateTimeFormat(DISPLAY_LOCALE, {
   timeZone: DISPLAY_TIME_ZONE,
@@ -84,7 +104,7 @@ export function fmtDuration(ms: number): string {
 }
 
 export function fmtDate(ms: number | null | undefined): string {
-  return ms ? new Date(ms).toISOString().slice(0, 10) : "—";
+  return typeof ms === "number" && Number.isFinite(ms) ? new Date(ms).toISOString().slice(0, 10) : "—";
 }
 
 export function fmtPct(x: number, digits = 0): string {
@@ -93,7 +113,7 @@ export function fmtPct(x: number, digits = 0): string {
 
 /** Signed delta, e.g. +0.12 / -3. */
 export function fmtSigned(x: number, digits = 2): string {
-  return (x >= 0 ? "+" : "") + x.toFixed(digits);
+  return Number.isFinite(x) ? (x >= 0 ? "+" : "") + x.toFixed(digits) : "—";
 }
 
 /** Monday-first weekday labels — matches the collection heatmap's row order. */

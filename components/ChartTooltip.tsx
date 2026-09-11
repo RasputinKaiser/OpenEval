@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 /**
  * Shared pointer-following tooltip for charts. Fixed-positioned so it works
@@ -118,17 +119,20 @@ export function ChartTooltip({ tip }: { tip: TipState | null }) {
   if (!tip) return null;
   const pinned = tip.pinKey != null;
   return (
-    <div
-      ref={ref}
-      role="status"
-      className={
-        "fixed z-50 pointer-events-none rounded-md border bg-bg-elev px-2.5 py-1.5 text-[11px] shadow-lg max-w-[300px] " +
-        (pinned ? "border-accent/60" : "border-bd")
-      }
-      style={pos ? { left: pos.left, top: pos.top } : { left: -9999, top: -9999 }}
-    >
-      {tip.content}
-      {pinned && <div className="mt-1 text-[9px] text-fg-dim">pinned — esc or tap away to close</div>}
-    </div>
+    createPortal(
+      <div
+        ref={ref}
+        role="status"
+        className={
+          "fixed z-50 pointer-events-none rounded-md border bg-bg-elev px-2.5 py-1.5 text-[11px] shadow-lg max-w-[300px] " +
+          (pinned ? "border-accent/60" : "border-bd")
+        }
+        style={pos ? { left: pos.left, top: pos.top } : { left: -9999, top: -9999 }}
+      >
+        {tip.content}
+        {pinned && <div className="mt-1 text-[9px] text-fg-dim">pinned — esc or tap away to close</div>}
+      </div>,
+      document.body,
+    )
   );
 }

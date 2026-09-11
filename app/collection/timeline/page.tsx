@@ -28,6 +28,7 @@ export default async function TimelinePage() {
       signalCoverage: 0, judgedCoverage: 0, dateStart: null, dateEnd: null,
       overall: { firstHalfOutcome: 0, secondHalfOutcome: 0, trend: 0 },
       markers: [], impacts: [], changePoints: [], outcomeSeries: [],
+      outcomeScatter: [], outcomeScatterEvidence: { n: 0, denominator: 0, coverage: 0 },
     };
   }
   return <TimelineClient data={data} error={error} />;

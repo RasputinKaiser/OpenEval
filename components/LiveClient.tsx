@@ -2,11 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
-import { Activity, AlertTriangle, Clock3, Cpu, FolderGit2, Gauge, Layers, RefreshCw, ShieldAlert, Timer } from "lucide-react";
+import { Activity, AlertTriangle, Archive, ChevronDown, Clock3, Cpu, FolderGit2, Gauge, Layers, Radio, RefreshCw, Scale, ShieldAlert, Timer } from "lucide-react";
+import { useRouter } from "next/navigation";
 import HarnessPicker from "./HarnessPicker";
 import PageHeader from "./PageHeader";
 import { SectionHeader } from "./Section";
 import { EvidenceComposition } from "./evidence/EvidenceComposition";
+import { SessionFootprint } from "./live/SessionFootprint";
 import { ProgressiveSectionNav, sectionVisibilityClass, useProgressiveSection } from "./mobile/ProgressiveSectionNav";
 import { RedactToggle } from "./RedactToggle";
 import { useRedactedShow } from "@/lib/use-redaction";
@@ -30,12 +32,13 @@ import { ModelPanel, TraceIntelligencePanels } from "./live/LivePanels";
 import { SessionFilters } from "./live/SessionFilters";
 import { SessionTable } from "./live/SessionTable";
 import { SessionDrawer } from "./live/SessionDrawer";
+import { fmtInt } from "@/lib/format";
 
 type LiveClientProps = {
   initialData?: LiveAggregateList | null;
   error?: string;
-  getTranscript?: (filePath: string, harness?: string) => Promise<TranscriptResult>;
-  getSessionDetail?: (filePath: string, harness?: string) => Promise<LiveSessionDetailResult>;
+  getTranscript?: (filePath: string, harness?: string, sessionId?: string) => Promise<TranscriptResult>;
+  getSessionDetail?: (filePath: string, harness?: string, sessionId?: string) => Promise<LiveSessionDetailResult>;
   /** Server timestamp of the RSC scan; lets the client skip the redundant mount poll. */
   scannedAt?: number;
 };
@@ -55,12 +58,24 @@ const LIVE_SECTIONS = [
 ];
 
 export default function LiveClient({ initialData, error: initialError, getTranscript, getSessionDetail, scannedAt }: LiveClientProps) {
+  const router = useRouter();
   const [data, setData] = useState<LiveAggregateList | null>(initialData ?? null);
   const [error, setError] = useState<string | undefined>(initialError);
   const [loading, setLoading] = useState(!initialData && !initialError);
   const [updatedAt, setUpdatedAt] = useState<number | null>(initialData && !initialError ? scannedAt ?? null : null);
   const [selected, setSelected] = useState<LiveSessionListItem | null>(null);
-  const handleSelectSession = useCallback((s: LiveSessionListItem) => setSelected(s), []);
+  const handleSelectSession = useCallback((s: LiveSessionListItem) => {
+    // Overdrive: when the browser supports View Transitions, open the drawer inside
+    // one so the panel crossfades/slides as a single composited moment instead of a
+    // two-render pop. Reduced-motion users keep the plain path (CSS disables the
+    // transition animation globally).
+    const doc = document as Document & { startViewTransition?: (cb: () => void) => unknown };
+    if (typeof doc.startViewTransition === "function" && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      doc.startViewTransition(() => setSelected(s));
+    } else {
+      setSelected(s);
+    }
+  }, []);
   const [selectedHarness, setSelectedHarness] = useState(initialData?.sourceHarness ?? "");
   // Per-instance harvest — no module state, so nothing leaks across SSR
   // requests or component instances.
@@ -75,7 +90,7 @@ export default function LiveClient({ initialData, error: initialError, getTransc
   const [sort, setSort] = useState<SortMode>("recent");
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, 200);
-  const { activeSection, selectSection, isVisible } = useProgressiveSection(LIVE_SECTIONS);
+  const { activeSection, selectSection, isVisible } = useProgressiveSection(LIVE_SECTIONS, "all");
 
   const lastSigRef = useRef("");
   // The RSC just scanned; skip the immediate mount poll when initialData is
@@ -132,6 +147,7 @@ export default function LiveClient({ initialData, error: initialError, getTransc
     let t: ReturnType<typeof setTimeout>;
     let activeController: AbortController | null = null;
     let inFlight = false;
+    let consecutiveFailures = 0;
     const poll = async () => {
       if (inFlight) return;
       inFlight = true;
@@ -153,6 +169,7 @@ export default function LiveClient({ initialData, error: initialError, getTransc
         if (!response.ok) throw new Error(`Live poll failed: HTTP ${response.status}`);
         const d = (await response.json()) as LivePollResponse;
         if (!cancelled) {
+          consecutiveFailures = 0;
           if ("unchanged" in d && d.unchanged) {
             lastSigRef.current = d.sig;
             setError(undefined);
@@ -173,13 +190,17 @@ export default function LiveClient({ initialData, error: initialError, getTransc
         if (!cancelled && !(e instanceof DOMException && e.name === "AbortError")) {
           setError(e instanceof Error ? e.message : String(e));
         }
+        // Exponential backoff so a failing endpoint isn't hammered every cycle;
+        // reset to the normal cadence on the next successful poll.
+        consecutiveFailures += 1;
       } finally {
         inFlight = false;
         if (activeController === controller) activeController = null;
         if (!cancelled) {
           setLoading(false);
-          const delay = (typeof document !== "undefined" && document.visibilityState !== "visible") ? POLL_HIDDEN_MS : POLL_VISIBLE_MS;
-          t = setTimeout(poll, delay);
+          const base = (typeof document !== "undefined" && document.visibilityState !== "visible") ? POLL_HIDDEN_MS : POLL_VISIBLE_MS;
+          const backoff = Math.min(60_000, base * Math.pow(2, Math.min(consecutiveFailures, 4)));
+          t = setTimeout(poll, backoff);
         }
       }
     };
@@ -259,7 +280,7 @@ export default function LiveClient({ initialData, error: initialError, getTransc
   return (
     <div className="mx-auto max-w-7xl p-4 md:p-6">
       <PageHeader
-        icon={Activity}
+        icon={Radio}
         title="Live sessions"
         subtitle={
           <>
@@ -278,8 +299,16 @@ export default function LiveClient({ initialData, error: initialError, getTransc
               <RedactToggle redact={redact} onToggle={() => setRedact((value) => !value)} compact />
               <button
                 type="button"
-                onClick={() => window.location.reload()}
-                className="inline-flex min-h-10 items-center gap-2 rounded-md border border-bd bg-bg-elev px-3 py-2 text-xs text-fg-muted hover:bg-bg-subtle hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                onClick={(e) => {
+                  // Soft refresh: re-fetch server components in place (router.refresh)
+                  // so drawer position and scroll survive the update. The spin glyph
+                  // covers the fetch window; the event is claimed so it can't bubble.
+                  const icon = e.currentTarget.querySelector("svg");
+                  if (icon) icon.classList.add("anim-spin-once");
+                  window.setTimeout(() => icon?.classList.remove("anim-spin-once"), 600);
+                  router.refresh();
+                }}
+                className="inline-flex min-h-10 items-center gap-2 rounded-md border border-bd bg-bg-elev px-3 py-2 text-xs text-fg-muted hover:bg-bg-subtle hover:text-fg active:scale-[0.98] transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
               >
                 <RefreshCw className="size-4" /> Refresh
               </button>
@@ -292,26 +321,67 @@ export default function LiveClient({ initialData, error: initialError, getTransc
         sections={LIVE_SECTIONS}
         activeSection={activeSection}
         onSelect={selectSection}
-        summary={`${data.totalSessions} parsed slice · ${scanCoverage.scannedFiles}/${scanCoverage.discoveredFiles} files scanned`}
+        summary={`${fmtInt(data.totalSessions)} parsed slice · ${fmtInt(scanCoverage.scannedFiles)}/${fmtInt(scanCoverage.discoveredFiles)} files scanned`}
       />
 
       {hasLiveCoverageNotes && (
-        <div role={data.sourceStatus !== "available" ? "alert" : "status"} className="mb-4 rounded-lg border border-l-2 border-warn/30 bg-warn/10 p-3 text-sm text-warn">
+        <div role={data.sourceStatus !== "available" ? "alert" : "status"} className="mb-4 rounded-lg border border-warn/40 bg-warn/10 p-3 text-sm text-warn">
           <div className="font-medium">{data.sourceStatus !== "available" ? "Live source needs attention" : "Live scan notes"}</div>
-          <ul className="mt-1 space-y-0.5 text-[11px] leading-4 text-fg-muted">
-            {data.sourceStatus !== "available" && <li>{displayText(data.sourceMessage ?? "No live trace source is available for this harness.", redact, users)}</li>}
-            {data.scanWarnings.map((warning) => <li key={warning}>{displayText(warning, redact, users)}</li>)}
-            {(scanCoverage.truncated || scanCoverage.partial) && (
-              <li>
-                This view is a partial slice: scanned <span className="mono tabular-nums">{scanCoverage.scannedFiles}</span> of{" "}
-                <span className="mono tabular-nums">{scanCoverage.discoveredFiles}</span> discovered files and parsed{" "}
-                <span className="mono tabular-nums">{scanCoverage.parsedFiles}</span> sessions
-                {scanCoverage.droppedFiles > 0 && <> ({scanCoverage.droppedFiles} non-session files dropped)</>}.
-                {scanCoverage.truncated && <> <span className="mono tabular-nums">{scanCoverage.unscannedFiles}</span> older files were not scanned.</>}{" "}
-                Totals below describe only the parsed evidence in this slice, not complete history.
-              </li>
-            )}
-          </ul>
+          {(() => {
+            // Depth-boundary warnings repeat the same shape per directory; 30+ identical
+            // lines drown the signal. Summarize the count + group by top-level folder in
+            // a collapsed list; other warnings (source attention, coverage) stay inline —
+            // those are actionable, the boundary noise is not.
+            const boundary = data.scanWarnings.filter((w) => w.includes("Scan depth boundary"));
+            const other = data.scanWarnings.filter((w) => !w.includes("Scan depth boundary"));
+            const byDir = new Map<string, number>();
+            for (const w of boundary) {
+              const match = w.match(/Scan depth boundary at ([^;]+);/);
+              if (match) {
+                const parts = match[1].split("/");
+                // key = the last stable segment group (e.g. browser-profile, cache/browser-use, checkpoints)
+                const key = parts.slice(0, parts.length - 1).slice(-2).join("/");
+                byDir.set(key, (byDir.get(key) ?? 0) + 1);
+              }
+            }
+            return (
+              <>
+                {data.sourceStatus !== "available" && (
+                  <ul className="mt-1 space-y-0.5 text-[11px] leading-4 text-fg-muted">
+                    <li>{displayText(data.sourceMessage ?? "No live trace source is available for this harness.", redact, users)}</li>
+                  </ul>
+                )}
+                {other.length > 0 && (
+                  <ul className="mt-1 space-y-0.5 text-[11px] leading-4 text-fg-muted">
+                    {other.map((warning) => <li key={warning}>{displayText(warning, redact, users)}</li>)}
+                  </ul>
+                )}
+                {boundary.length > 0 && (
+                  <details className="evidence-accordion group mt-1 text-[11px] leading-4">
+                    <summary className="inline-flex min-h-6 cursor-pointer select-none items-center gap-1 rounded text-fg-muted transition-colors duration-150 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent [&::-webkit-details-marker]:hidden">
+                      {boundary.length} scan-depth notes (subtrees could not be proven empty)
+                      <ChevronDown aria-hidden className="size-3 transition-transform duration-200 group-open:rotate-180" />
+                    </summary>
+                    <ul className="mt-1 space-y-0.5">
+                      {[...byDir.entries()].map(([dir, count]) => (
+                        <li key={dir}>{displayText(dir, redact, users)} — {count} {count === 1 ? "path" : "paths"}</li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+                {(scanCoverage.truncated || scanCoverage.partial) && (
+                  <p className="mt-1 text-[11px] leading-4 text-fg-muted">
+                    This view is a partial slice: scanned <span className="mono tabular-nums">{scanCoverage.scannedFiles}</span> of{" "}
+                    <span className="mono tabular-nums">{scanCoverage.discoveredFiles}</span> discovered files and parsed{" "}
+                    <span className="mono tabular-nums">{scanCoverage.parsedFiles}</span> sessions
+                    {scanCoverage.droppedFiles > 0 && <> ({scanCoverage.droppedFiles} non-session files dropped)</>}.
+                    {scanCoverage.truncated && <> <span className="mono tabular-nums">{scanCoverage.unscannedFiles}</span> older files were not scanned.</>}{" "}
+                    Totals below describe only the parsed evidence in this slice, not complete history.
+                  </p>
+                )}
+              </>
+            );
+          })()}
         </div>
       )}
 
@@ -322,7 +392,7 @@ export default function LiveClient({ initialData, error: initialError, getTransc
           icon={Gauge}
           title="Data quality"
           desc="What the trace actually records — population, model evidence, and parse health"
-          right={`${Math.round(data.avgDataQuality)}% avg quality`}
+          right={`${fmtInt(data.totalSessions)} sessions`}
         />
         <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-3">
         <MetricGroup label="Population">
@@ -335,12 +405,14 @@ export default function LiveClient({ initialData, error: initialError, getTransc
         <MetricGroup label="Quality">
           <Stat label="Quality" value={`${Math.round(data.avgDataQuality)}%`} icon={Gauge} tone={qualityTone(data.avgDataQuality)} />
           <Stat label={modelEvidenceLabel} value={String(modelEvidenceValue)} icon={Cpu} tone={modelEvidenceTone} />
+          <Stat label="Cost inferred" value={fmtInt(data.sessionsWithInferredCost)} icon={Scale} tone={undefined} />
           <Stat label="Tokens missing" value={String(data.sessionsWithMissingTokens)} icon={Layers} tone={data.sessionsWithMissingTokens ? "warn" : undefined} />
         </MetricGroup>
         <MetricGroup label="Health">
           <Stat label="Tool err rate" value={`${Math.round(toolErrorRate * 100)}%`} icon={AlertTriangle} tone={toolErrorRate ? "err" : undefined} />
-          <Stat label="Inactive >12h" value={String(staleCount)} icon={Clock3} tone={staleCount ? "warn" : undefined} />
+          <Stat label="Inactive >12h" value={`${fmtInt(staleCount)} of ${fmtInt(data.totalSessions)}`} icon={Clock3} tone={staleCount ? "warn" : undefined} />
           <Stat label="Malformed" value={String(data.sessionsWithMalformedLines)} icon={ShieldAlert} tone={data.sessionsWithMalformedLines ? "err" : undefined} />
+          <Stat label="Archived" value={fmtInt(data.archivedSessions)} icon={Archive} tone={undefined} />
         </MetricGroup>
         </div>
         <div className="mt-3 grid grid-cols-1 gap-4 rounded-lg border border-bd-subtle bg-bg-subtle/30 p-4 md:grid-cols-2">
@@ -381,7 +453,15 @@ export default function LiveClient({ initialData, error: initialError, getTransc
             note="Measured and inferred remain separate; priced coverage is never relabeled as recorded spend."
           />
         </div>
+        {/* Where does the money concentrate? One dot per session on a log-cost axis. */}
+        {data.sessions.length > 0 && (
+          <div className="mt-3 rounded-lg border border-bd-subtle bg-bg-subtle/30 p-4">
+            <SessionFootprint sessions={data.sessions.map((s) => ({ sessionId: s.sessionId, costUsd: s.costUsd, durationMs: s.durationMs, dataQuality: s.dataQuality, isError: s.isError }))} total={data.totalSessions} />
+          </div>
+        )}
       </section>}
+
+      {isVisible("intelligence") && <div className="observe-section"><TraceIntelligencePanels data={data} redact={redact} users={users} /></div>}
 
       {isVisible("sessions") && <section id="sessions" className={clsx("scroll-mt-16 mb-6", sectionVisibilityClass(true))}>
       <SectionHeader
@@ -412,8 +492,6 @@ export default function LiveClient({ initialData, error: initialError, getTransc
         />
       </div>
       </section>}
-
-      {isVisible("intelligence") && <div className="observe-section"><TraceIntelligencePanels data={data} redact={redact} users={users} /></div>}
 
       {selected && (
         <SessionDrawer

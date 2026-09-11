@@ -142,7 +142,7 @@ function RunMetric({ label, value, tone }: { label: string; value: string; tone:
   return (
     <div className="rounded border border-bd-subtle bg-bg-subtle/70 px-2 py-2">
       <div className={clsx("mono text-base font-semibold tabular-nums", toneClass)}>{value}</div>
-      <div className="mt-0.5 text-[10px] uppercase tracking-wider text-fg-dim">{label}</div>
+      <div className="mt-0.5 text-[10px] uppercase tracking-[0.12em] text-fg-dim">{label}</div>
     </div>
   );
 }

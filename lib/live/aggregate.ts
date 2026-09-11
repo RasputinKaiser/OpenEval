@@ -107,6 +107,7 @@ export function aggregate(
   let archivedSessions = 0;
   let sessionsWithMalformedLines = 0;
   let staleSessions = 0;
+  const outcomeCounts = { positive: 0, negative: 0, rephrases: 0, testsPassed: 0, errorTail: 0, noSignal: 0 };
   const parseWarningCounts = emptyParseWarningCounts();
   // rateForModelInfo is a pure lookup over a static catalog; memoize per
   // aggregate() call so large session lists don't redo alias/family resolution
@@ -150,7 +151,10 @@ export function aggregate(
     if (s.metricSources.model === "missing") sessionsWithMissingModel++;
     if (s.metricSources.model === "inferred") sessionsWithInferredModel++;
     if (s.costUsd > 0) sessionsWithPricedUsage++;
-    if (s.metricSources.cost === "inferred" && s.costUsd > 0) {
+    else if (s.metricSources.cost === "inferred" && cachedRateInfo(s.model)?.confidence === "listed") sessionsWithPricedUsage++;
+    if (s.metricSources.cost === "inferred" && (s.costUsd > 0 || cachedRateInfo(s.model)?.confidence === "listed")) {
+      // A listed $0 (free tier) is real rate evidence — attribute confidence,
+      // don't let it dissolve into unpriced fallback territory.
       const confidence = cachedRateInfo(s.model)?.confidence;
       if (confidence === "listed") sessionsWithListedRate++;
       else if (confidence === "family") sessionsWithFamilyRate++;
@@ -160,6 +164,16 @@ export function aggregate(
     if (s.malformedLineCount > 0) sessionsWithMalformedLines++;
     countSessionWarnings(parseWarningCounts, s.parseWarnings);
     if (s.staleMs > 1000 * 60 * 60 * 12) staleSessions++;
+    {
+      const o = s.outcomeSignals;
+      let any = false;
+      if (o.userPositive > 0) { outcomeCounts.positive += 1; any = true; }
+      if (o.userNegative > 0) { outcomeCounts.negative += 1; any = true; }
+      if (o.rephrases > 0) { outcomeCounts.rephrases += 1; any = true; }
+      if (o.testsPassedTail) { outcomeCounts.testsPassed += 1; any = true; }
+      if (o.errorTail) { outcomeCounts.errorTail += 1; any = true; }
+      if (!any) outcomeCounts.noSignal += 1;
+    }
     if (s.modeSummary.gitBranch) increment(branchSessions, s.modeSummary.gitBranch);
     queueTotals.enqueue += s.queueSummary.enqueue;
     queueTotals.dequeue += s.queueSummary.dequeue;
@@ -194,6 +208,11 @@ export function aggregate(
       if (metricMissing(s.metricSources.tokens)) cur.missingTokens++;
       if (metricMissing(s.metricSources.cost) || (s.metricSources.cost === "inferred" && rowCost === 0 && modelUsageVolume(row) > 0)) cur.missingCost++;
       if (rowCost > 0) cur.pricedSessions++;
+      // A listed $0 is still a price: free-tier sessions carry a real catalog
+      // rate that simply costs nothing. They are priced evidence, not gaps —
+      // otherwise every OpenRouter :free model reads as an unpriced fallback.
+      const rowRateConfidence = cachedRateInfo(row.model)?.confidence;
+      if (rowCost > 0 || (s.metricSources.cost === "inferred" && rowRateConfidence === "listed" && modelUsageVolume(row) > 0)) cur.pricedSessions++;
       // A measured $0 is still a recorded cost. Do not turn a valid free run
       // into an unavailable model-row provenance marker merely because its
       // numeric value is zero.
@@ -202,11 +221,12 @@ export function aggregate(
         else cur.measuredCostSessions++;
       }
       if (s.metricSources.model === "inferred") cur.inferredModelSessions++;
-      if (s.metricSources.cost === "inferred" && rowCost > 0) {
-        const confidence = cachedRateInfo(row.model)?.confidence;
-        if (confidence === "listed") cur.listedRateSessions++;
-        else if (confidence === "family") cur.familyRateSessions++;
-        else if (confidence === "fallback") cur.fallbackRateSessions++;
+      if (s.metricSources.cost === "inferred" && (rowCost > 0 || rowRateConfidence === "listed") && modelUsageVolume(row) > 0) {
+        // Confidence attribution includes listed-$0 free tiers: the rate is a
+        // real catalog price, so the estimate is provenance-grade even at $0.
+        if (rowRateConfidence === "listed") cur.listedRateSessions++;
+        else if (rowRateConfidence === "family") cur.familyRateSessions++;
+        else if (rowRateConfidence === "fallback") cur.fallbackRateSessions++;
       }
       byModelMap.set(key, cur);
     }
@@ -277,6 +297,7 @@ export function aggregate(
     archivedSessions,
     sessionsWithMalformedLines,
     staleSessions,
+    outcomeCounts,
     avgDataQuality: sessions.length ? totalQuality / sessions.length : 0,
     scanCoverage,
     scanWarnings,

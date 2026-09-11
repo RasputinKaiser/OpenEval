@@ -4,7 +4,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from
 import { ZoomIn, ZoomOut, Shrink } from "lucide-react";
 import type { SeriesPoint, Marker, MarkerKind, OutcomeSeriesEvidence } from "@/lib/insights/timeline";
 import type { ChangePoint } from "@/lib/insights/changepoints";
-import { fmtDate, fmtPct, fmtSigned } from "@/lib/format";
+import { fmtDate, fmtInt, fmtPct, fmtSigned } from "@/lib/format";
 import { ChartTooltip, useChartTooltip } from "./ChartTooltip";
 import { KIND_COLOR, KIND_LABEL } from "./markerKinds";
 
@@ -26,8 +26,8 @@ import { KIND_COLOR, KIND_LABEL } from "./markerKinds";
 const LANES: MarkerKind[] = ["skill", "mcp", "subagent", "model"];
 const CLUSTER_PX = 14;
 const MIN_CHART_WIDTH = 480;
-const PLOT_HEIGHT = 174;
-const LANE_GAP = 12;
+const PLOT_HEIGHT = 244;
+const LANE_GAP = 14;
 // The series is downsampled to ~80 points, so extreme zoom reveals nothing new;
 // 16× is enough to pull apart the densest adoption weeks.
 const MAX_ZOOM = 16;
@@ -58,6 +58,10 @@ export default function OutcomeChart({
   changePoints: ChangePoint[];
   evidence?: OutcomeSeriesEvidence;
 }) {
+  // Defense in depth: a NaN/Infinity value anywhere in the series would silently break the
+  // SVG path ("M42,NaN"). The upstream series is NaN-safe by contract; this guard keeps a
+  // malformed snapshot from rendering a broken chart instead of an honest error state.
+  const cleanSeries = series.filter((p) => Number.isFinite(p.value) && Number.isFinite(p.at));
   const { tip, pinned, show, showAt, hide, togglePin } = useChartTooltip();
   const [cross, setCross] = useState<number | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -79,8 +83,8 @@ export default function OutcomeChart({
           ? "no usable outcome signal"
           : "outcome signal";
   const evidenceCopy = evidence
-    ? `${evidenceBasis} · source n=${evidence.n}/${evidence.denominator} top-level (${fmtPct(evidence.coverage)}) · ${series.length} plotted points`
-    : `${series.length} plotted points · source denominator unavailable in this snapshot`;
+    ? `${evidenceBasis}\u00a0· source n=${fmtInt(evidence.n)}/${fmtInt(evidence.denominator)} top-level (${fmtPct(evidence.coverage)})\u00a0· ${cleanSeries.length} plotted points`
+    : `${cleanSeries.length} plotted points · source denominator unavailable in this snapshot`;
   // Time position to keep fixed across a zoom change: {frac of content, px offset in viewport}.
   const pendingAnchor = useRef<{ frac: number; offset: number } | null>(null);
 
@@ -138,30 +142,41 @@ export default function OutcomeChart({
     return () => wrap.removeEventListener("wheel", onWheel);
   }, [zoomBy]);
 
-  if (series.length < 2) {
+  // --- Brush zoom state (must precede the early return to keep hook order stable) ---
+  const [brush, setBrush] = useState<{ x0: number; x1: number } | null>(null);
+  const brushRef = useRef<{ startX: number } | null>(null);
+  // A data refresh that changes the series invalidates any in-progress brush window.
+
+  const seriesLength = series.length;
+  const seriesFirstAt = series[0]?.at;
+  const seriesLastAt = series[seriesLength - 1]?.at;
+  useEffect(() => {
+    brushRef.current = null;
+    setBrush(null);
+  }, [seriesLength, seriesFirstAt, seriesLastAt]);
+
+  if (cleanSeries.length < 2) {
     return (
       <div className="timeline-chart-empty" role="status">
-        <strong>{series.length === 0 ? "No outcome history yet" : "Not enough history to chart yet"}</strong>
-        <span>{series.length === 0 ? `The trend appears after at least two observations with usable outcome evidence. ${evidenceCopy}.` : `One signal point is not enough to show a trend without implying a change. ${evidenceCopy}.`}</span>
+        <strong>{series.length === 0 ? "No outcome history yet" : cleanSeries.length === 0 ? "No readable outcome points in this snapshot" : "Not enough history to chart yet"}</strong>
+        <span>{series.length === 0 ? `The trend appears after at least two observations with usable outcome evidence. ${evidenceCopy}.` : cleanSeries.length === 0 ? `Every observation in this snapshot had a malformed value and was excluded from the chart rather than rendered as zero. ${evidenceCopy}.` : `One signal point is not enough to show a trend without implying a change. ${evidenceCopy}.`}</span>
       </div>
     );
   }
   const PAD_L = 42, PAD_R = 12, PAD_T = 12;
-  const t0 = series[0].at, t1 = series[series.length - 1].at;
+  const t0 = cleanSeries[0].at, t1 = cleanSeries[cleanSeries.length - 1].at;
   const span = Math.max(1, t1 - t0);
-  const latest = series[series.length - 1];
-  const minValue = Math.min(...series.map((point) => point.value));
-  const maxValue = Math.max(...series.map((point) => point.value));
+  const latest = cleanSeries[cleanSeries.length - 1];
   const x = (at: number) => PAD_L + ((at - t0) / span) * (W - PAD_L - PAD_R);
   const inRange = (at: number) => at >= t0 && at <= t1;
   const shownKinds = LANES.filter((kind) => markers.some((marker) => marker.kind === kind && inRange(marker.firstSeenAt)));
-  const shownShifts = changePoints.filter((c) => inRange(c.at) && c.metric === "outcome");
+  const shownShifts = changePoints.filter((c) => Number.isFinite(c.at) && Number.isFinite(c.delta) && inRange(c.at) && c.metric === "outcome");
   const laneCount = shownKinds.length;
   const PAD_B = laneCount > 0 ? 26 + laneCount * LANE_GAP + 4 : 28;
   const H = PAD_T + PLOT_HEIGHT + PAD_B;
   const y = (v: number) => PAD_T + (1 - v) * (H - PAD_T - PAD_B);
 
-  const path = series.map((p, i) => `${i === 0 ? "M" : "L"}${x(p.at).toFixed(1)},${y(p.value).toFixed(1)}`).join(" ");
+  const path = cleanSeries.map((p, i) => `${i === 0 ? "M" : "L"}${x(p.at).toFixed(1)},${y(p.value).toFixed(1)}`).join(" ");
   const area = `${path} L${x(t1).toFixed(1)},${y(0)} L${x(t0).toFixed(1)},${y(0)} Z`;
 
   // One fixed lane per kind; within a lane, markers closer than CLUSTER_PX
@@ -169,7 +184,7 @@ export default function OutcomeChart({
   const clusters: MarkerCluster[] = [];
   for (const kind of LANES) {
     const inLane = markers
-      .filter((m) => m.kind === kind && inRange(m.firstSeenAt))
+      .filter((m) => m.kind === kind && Number.isFinite(m.firstSeenAt) && inRange(m.firstSeenAt))
       .sort((a, b) => a.firstSeenAt - b.firstSeenAt);
     let cur: MarkerCluster | null = null;
     for (const m of inLane) {
@@ -184,25 +199,52 @@ export default function OutcomeChart({
   }
   const laneY = (kind: MarkerKind) => H - PAD_B + 26 + shownKinds.indexOf(kind) * LANE_GAP;
 
+  const maxN = Math.max(1, ...cleanSeries.map((p) => (Number.isFinite(p.n) ? Math.min(p.n, 60) : 0)));
   const months: number[] = [];
   const d = new Date(t0);
   d.setDate(1); d.setHours(0, 0, 0, 0); d.setMonth(d.getMonth() + 1);
   while (d.getTime() < t1) { months.push(d.getTime()); d.setMonth(d.getMonth() + 1); }
-  const axisTicks = [...new Set([t0, ...months, t1])];
   const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const allTicks = [...new Set([t0, ...months, t1])];
+  // Geometry-aware thinning: a 9px mono label is ~5.6px/char. Walk ticks left-to-right and drop
+  // any interior tick whose label box (mid-anchored) would overlap the previous KEPT label's
+  // box. Terminal ticks keep their year suffix and their own anchoring.
+  const labelWidth = (t: number, i: number) => {
+    const iso = fmtDate(t);
+    const m = monthNames[Number(iso.slice(5, 7)) - 1] ?? iso.slice(5, 7);
+    const withYear = i === 0 || i === allTicks.length - 1 || (i > 0 && fmtDate(allTicks[i - 1]).slice(0, 4) !== iso.slice(0, 4));
+    return (withYear ? m.length + 5 : m.length) * 5.6 + 8;
+  };
+  const axisTicks: number[] = [];
+  let prevRight = -Infinity;
+  for (let i = 0; i < allTicks.length; i++) {
+    const tx = x(allTicks[i]);
+    const w = labelWidth(allTicks[i], i);
+    const left = i === 0 ? tx : tx - w / 2;
+    const right = i === allTicks.length - 1 ? tx + w : i === 0 ? tx + w : tx + w / 2;
+    if (left >= prevRight - 4 || i === allTicks.length - 1) {
+      if (i === allTicks.length - 1 && left < prevRight - 4 && axisTicks.length >= 2) {
+        // Terminal label would collide with the previous kept tick: drop that tick instead.
+        axisTicks.pop();
+      }
+      axisTicks.push(allTicks[i]);
+      prevRight = right;
+    }
+  }
   const tickLabel = (at: number, index: number) => {
     const iso = fmtDate(at);
     const month = monthNames[Number(iso.slice(5, 7)) - 1] ?? iso.slice(5, 7);
     const previousYear = index > 0 ? fmtDate(axisTicks[index - 1]).slice(0, 4) : "";
-    return index === 0 || index === axisTicks.length - 1 || iso.slice(0, 4) !== previousYear ? `${month} ${iso.slice(0, 4)}` : month;
+    const needsYear = index === axisTicks.length - 1 || iso.slice(0, 4) !== previousYear;
+    return index === 0 || needsYear ? `${month} ${iso.slice(0, 4)}` : month;
   };
 
   const nearestIdx = (e: React.MouseEvent<SVGSVGElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const sx = ((e.clientX - rect.left) / Math.max(rect.width, 1)) * W;
     let best = 0, bestDist = Infinity;
-    for (let i = 0; i < series.length; i++) {
-      const dist = Math.abs(x(series[i].at) - sx);
+    for (let i = 0; i < cleanSeries.length; i++) {
+      const dist = Math.abs(x(cleanSeries[i].at) - sx);
       if (dist < bestDist) { bestDist = dist; best = i; }
     }
     return best;
@@ -221,7 +263,7 @@ export default function OutcomeChart({
     if (pinned) return; // a pinned tip holds the crosshair too
     const best = nearestIdx(e);
     setCross(best);
-    show(e, pointTip(series[best]));
+    show(e, pointTip(cleanSeries[best]));
   };
 
   // Tap/click anywhere on the plot pins the nearest point — hoverless devices
@@ -230,7 +272,7 @@ export default function OutcomeChart({
     e.stopPropagation();
     const best = nearestIdx(e);
     setCross(best);
-    togglePin(e, pointTip(series[best]), `pt-${series[best].at}`);
+    togglePin(e, pointTip(cleanSeries[best]), `pt-${cleanSeries[best].at}`);
   };
 
   // The plot itself is a keyboard target as well as a pointer surface. Arrow
@@ -238,25 +280,67 @@ export default function OutcomeChart({
   // Enter/Space pins the currently selected observation for touch-equivalent
   // reading without changing the underlying series or denominators.
   const onPlotFocus = (e: React.FocusEvent<SVGSVGElement>) => {
-    const best = cross ?? series.length - 1;
+    const best = cross ?? cleanSeries.length - 1;
     setCross(best);
-    showAt(e.currentTarget, pointTip(series[best]));
+    showAt(e.currentTarget, pointTip(cleanSeries[best]));
   };
   const onPlotKeyDown = (e: React.KeyboardEvent<SVGSVGElement>) => {
-    const current = cross ?? series.length - 1;
+    const current = cross ?? cleanSeries.length - 1;
     if (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "Home" || e.key === "End") {
       e.preventDefault();
-      const next = e.key === "Home" ? 0 : e.key === "End" ? series.length - 1 : Math.min(series.length - 1, Math.max(0, current + (e.key === "ArrowRight" ? 1 : -1)));
+      const next = e.key === "Home" ? 0 : e.key === "End" ? cleanSeries.length - 1 : Math.min(cleanSeries.length - 1, Math.max(0, current + (e.key === "ArrowRight" ? 1 : -1)));
       setCross(next);
-      showAt(e.currentTarget, pointTip(series[next]));
+      showAt(e.currentTarget, pointTip(cleanSeries[next]));
       return;
     }
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       e.stopPropagation();
       setCross(current);
-      togglePin({ clientX: 0, clientY: 0, currentTarget: e.currentTarget }, pointTip(series[current]), `pt-${series[current].at}`);
+      togglePin({ clientX: 0, clientY: 0, currentTarget: e.currentTarget }, pointTip(cleanSeries[current]), `pt-${cleanSeries[current].at}`);
     }
+  };
+
+  // --- Brush zoom: drag horizontally on the plot to zoom into that time range. ---
+  const svgClientX = (clientX: number, el: SVGSVGElement) => {
+    const rect = el.getBoundingClientRect();
+    return ((clientX - rect.left) / Math.max(rect.width, 1)) * W;
+  };
+  const onBrushDown = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (e.button !== 0 || pinned) return;
+    brushRef.current = { startX: svgClientX(e.clientX, e.currentTarget) };
+    setBrush(null);
+  };
+  const onBrushMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (!brushRef.current) return;
+    const startX = brushRef.current.startX;
+    const curX = svgClientX(e.clientX, e.currentTarget);
+    if (Math.abs(curX - startX) > 8) setBrush({ x0: Math.min(startX, curX), x1: Math.max(startX, curX) });
+    else setBrush(null);
+  };
+  const onBrushUp = (_e: React.MouseEvent<SVGSVGElement>) => {
+    const b = brush;
+    brushRef.current = null;
+    setBrush(null);
+    if (!b || b.x1 - b.x0 < 16) return; // too small — treat as a click (crosshair pin)
+    // Convert the brushed pixel range to the series index window it covers.
+    const atLo = t0 + ((b.x0 - PAD_L) / Math.max(1, W - PAD_L - PAD_R)) * span;
+    const atHi = t0 + ((b.x1 - PAD_L) / Math.max(1, W - PAD_L - PAD_R)) * span;
+    const idxLo = Math.max(0, cleanSeries.findIndex((p) => p.at >= atLo));
+    let idxHi = cleanSeries.length - 1;
+    for (let i = cleanSeries.length - 1; i >= 0; i--) { if (cleanSeries[i].at <= atHi) { idxHi = i; break; } }
+    if (idxHi - idxLo < 3) return; // need a meaningful window
+    // Zoom so that the selected window fills the viewport: scale = full span / window span.
+    const windowSpan = Math.max(1, cleanSeries[idxHi].at - cleanSeries[idxLo].at);
+    const factor = Math.min(MAX_ZOOM, Math.max(1, span / windowSpan));
+    // Anchor so the window's center stays centered: set pendingAnchor to window center frac.
+    const centerAt = (cleanSeries[idxLo].at + cleanSeries[idxHi].at) / 2;
+    const wrap = wrapRef.current;
+    if (wrap) {
+      const frac = x(centerAt) / Math.max(1, containerW * factor);
+      pendingAnchor.current = { frac, offset: wrap.clientWidth / 2 };
+    }
+    setZoom(() => Math.min(MAX_ZOOM, Math.max(1, factor)));
   };
 
   return (
@@ -267,14 +351,8 @@ export default function OutcomeChart({
           <span className="timeline-chart-toolbar-subcopy">Trailing median · outcome 0–1 · {evidenceCopy}</span>
         </div>
         <div className="timeline-chart-toolbar-actions" aria-label="Trend summary">
-          <div className="timeline-chart-kpi timeline-chart-kpi-latest" title={`Latest observed trailing median on ${fmtDate(latest.at)}`}>
-            <span>Latest median</span>
-            <strong>{latest.value.toFixed(2)}</strong>
-          </div>
-          <div className="timeline-chart-kpi timeline-chart-kpi-range" title={`Observed range from ${fmtDate(t0)} to ${fmtDate(t1)}`}>
-            <span>Observed range</span>
-            <strong>{minValue.toFixed(2)}–{maxValue.toFixed(2)}</strong>
-          </div>
+          {/* Observed-range chip removed: on a 0–1 bounded metric it restates the scale, not the data.
+              Latest value lives on the line's endpoint badge; the chip duplicated it. */}
           <div className="timeline-chart-controls flex items-center gap-0.5 rounded-md border border-bd bg-bg-subtle px-1 py-0.5" aria-label="Chart controls">
         <button
           type="button"
@@ -282,7 +360,7 @@ export default function OutcomeChart({
           disabled={zoom <= 1}
           title="Zoom out (or ctrl/⌘ + scroll on the chart)"
           aria-label="Zoom out"
-          className="min-h-8 min-w-8 rounded p-1 text-fg-dim outline-none hover:bg-bg-elev hover:text-fg focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:hover:bg-transparent"
+          className="min-h-8 min-w-8 rounded p-1 text-fg-muted outline-none hover:bg-bg-elev hover:text-fg focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:hover:bg-transparent"
         >
           <ZoomOut className="size-3.5" />
         </button>
@@ -293,7 +371,7 @@ export default function OutcomeChart({
           disabled={zoom >= MAX_ZOOM}
           title="Zoom in (or ctrl/⌘ + scroll on the chart) — pan with the scrollbar below"
           aria-label="Zoom in"
-          className="min-h-8 min-w-8 rounded p-1 text-fg-dim outline-none hover:bg-bg-elev hover:text-fg focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:hover:bg-transparent"
+          className="min-h-8 min-w-8 rounded p-1 text-fg-muted outline-none hover:bg-bg-elev hover:text-fg focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:hover:bg-transparent"
         >
           <ZoomIn className="size-3.5" />
         </button>
@@ -303,7 +381,7 @@ export default function OutcomeChart({
             onClick={() => zoomBy(1 / zoom)}
             title="Fit to width"
             aria-label="Fit to width"
-            className="min-h-8 min-w-8 rounded p-1 text-fg-dim outline-none hover:bg-bg-elev hover:text-fg focus-visible:ring-2 focus-visible:ring-accent"
+            className="min-h-8 min-w-8 rounded p-1 text-fg-muted outline-none hover:bg-bg-elev hover:text-fg focus-visible:ring-2 focus-visible:ring-accent"
           >
             <Shrink className="size-3.5" />
           </button>
@@ -314,7 +392,7 @@ export default function OutcomeChart({
 
       <div
         ref={wrapRef}
-        className="timeline-chart-scroll relative overflow-x-auto overscroll-x-contain pb-1"
+        className="chart-scroll-well timeline-chart-scroll relative overflow-x-auto overscroll-x-contain pb-1"
         role="region"
         tabIndex={0}
         aria-label="Outcome timeline plot. Scroll horizontally to inspect the full date range."
@@ -334,9 +412,11 @@ export default function OutcomeChart({
         tabIndex={0}
         onFocus={onPlotFocus}
         onKeyDown={onPlotKeyDown}
-        onMouseMove={onPlotMove}
+        onMouseMove={(e) => { onBrushMove(e); onPlotMove(e); }}
         onClick={onPlotClick}
-        onMouseLeave={() => { if (!pinned) { hide(); setCross(null); } }}
+        onMouseDown={onBrushDown}
+        onMouseUp={onBrushUp}
+        onMouseLeave={() => { brushRef.current = null; setBrush(null); if (!pinned) { hide(); setCross(null); } }}
       >
         <defs>
           <linearGradient id={areaGradientId} x1="0" y1="0" x2="0" y2="1">
@@ -389,20 +469,33 @@ export default function OutcomeChart({
 
         {/* detected outcome shifts — vertical flags */}
         {shownShifts.map((c) => {
+          const shiftColor = c.delta > 0 ? "var(--color-ok)" : "var(--color-err)";
           const shiftTip = (
             <div>
-              <div><span className="font-medium">Shift {fmtSigned(c.delta)}</span><span className="text-fg-muted"> (z={c.zScore.toFixed(1)})</span></div>
-              <div className="text-fg-dim mono">{fmtDate(c.at)} · {c.nearMarkers[0] ?? "unattributed"}</div>
+              <div><span className="font-medium">Shift {fmtSigned(c.delta)}</span><span className="text-fg-muted"> (z={c.zScore.toFixed(1)}, {c.strength})</span></div>
+              <div className="text-fg-dim mono">{fmtDate(c.at)} · {c.sampleBefore} obs before → {c.sampleAfter} after{c.nearMarkers[0] ? ` · near ${c.nearMarkers[0]}` : ""}</div>
             </div>
           );
+          // In-chart annotation: the headline event carries its own direction + date label.
+          // Multiple shifts get stacked pills (16px offset per index) so they never overlap.
+          const shiftISO = fmtDate(c.at);
+          const shiftMonth = monthNames[Number(shiftISO.slice(5, 7)) - 1] ?? shiftISO.slice(5, 7);
+          const shiftLabelText = `${c.delta > 0 ? "up" : "down"} ${fmtSigned(c.delta)} · ${shiftMonth} ${Number(shiftISO.slice(8, 10))}`;
+          const shiftLabelW = shiftLabelText.length * 5.4 + 12;
+          const shiftLabelY = PAD_T + 5 + shownShifts.indexOf(c) * 16;
+          const shiftLabelX = Math.min(Math.max(x(c.at) + 6, PAD_L + 2), W - PAD_R - shiftLabelW - 2);
           return (
             <g key={c.at}>
               <line
                 x1={x(c.at)} y1={PAD_T + 1} x2={x(c.at)} y2={PAD_T + PLOT_HEIGHT}
-                stroke={c.delta > 0 ? "var(--color-ok)" : "var(--color-err)"}
+                stroke={shiftColor}
                 strokeWidth={1.25} strokeDasharray="4 3" opacity={0.65}
               />
-              <circle cx={x(c.at)} cy={PAD_T + 2} r={2.75} fill={c.delta > 0 ? "var(--color-ok)" : "var(--color-err)"} opacity={0.9} />
+              <circle cx={x(c.at)} cy={PAD_T + 2} r={2.75} fill={shiftColor} opacity={0.9} />
+              <g className="timeline-chart-shift-label" pointerEvents="none">
+                <rect x={shiftLabelX} y={shiftLabelY} width={shiftLabelW} height={14} rx={7} fill={shiftColor} opacity={0.92} />
+                <text x={shiftLabelX + shiftLabelW / 2} y={shiftLabelY + 9.5} textAnchor="middle" fontSize={8.5} fontWeight={600} fill="var(--color-bg)" fontFamily="ui-monospace, monospace">{shiftLabelText}</text>
+              </g>
               <rect
                 x={x(c.at) - 6} y={PAD_T - 2} width={12} height={PLOT_HEIGHT + 4} fill="transparent"
                 className="timeline-chart-mark timeline-chart-shift-mark cursor-help"
@@ -432,19 +525,72 @@ export default function OutcomeChart({
         })}
 
         <path className="timeline-chart-area" d={area} fill={`url(#${areaGradientId})`} />
-        <path className="timeline-chart-series-glow" d={path} fill="none" stroke="var(--color-accent)" strokeWidth={5} strokeLinejoin="round" strokeLinecap="round" opacity={0.16} />
-        <path className="timeline-chart-series" d={path} fill="none" stroke="var(--color-accent-soft)" strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
+        <path className="timeline-chart-series-glow chart-draw" d={path} fill="none" stroke="var(--color-accent)" strokeWidth={5} strokeLinejoin="round" strokeLinecap="round" opacity={0.16} />
+        {/* Confidence scaling: a trailing median is only as trustworthy as its window. Segments
+            rendered from thin windows (small n) are thinner and fainter — the well-sampled
+            region reads solid, small-sample jitter visibly whispers instead of shouting. */}
+        {cleanSeries.slice(0, -1).map((p, i) => {
+          const q = cleanSeries[i + 1];
+          const nMin = Math.min(p.n, q.n);
+          const CONF_MAX_N = 12;
+          const conf = Math.min(1, nMin / CONF_MAX_N);
+          const segW = 1.5 + conf * 1.5;
+          const segO = 0.45 + conf * 0.55;
+          return (
+            <path
+              key={`seg-${p.at}`}
+              className="chart-fade-in"
+              d={`M${x(p.at).toFixed(1)},${y(p.value).toFixed(1)} L${x(q.at).toFixed(1)},${y(q.value).toFixed(1)}`}
+              fill="none"
+              stroke="var(--color-accent-soft)"
+              strokeWidth={segW}
+              strokeLinecap="round"
+              opacity={segO}
+            />
+          );
+        })}
         <circle cx={x(latest.at)} cy={y(latest.value)} r={4.25} fill="var(--color-accent-soft)" stroke="var(--color-bg)" strokeWidth={2} className="timeline-chart-latest-point" />
         <g className="timeline-chart-latest-label" pointerEvents="none">
           <rect x={Math.max(PAD_L + 4, x(latest.at) - 42)} y={Math.max(PAD_T + 5, y(latest.value) - 28)} width={36} height={17} rx={8.5} fill="var(--color-accent)" />
           <text x={Math.max(PAD_L + 22, x(latest.at) - 24)} y={Math.max(PAD_T + 16.5, y(latest.value) - 16.5)} textAnchor="middle" fontSize={9} fontWeight={600} fill="var(--color-bg)" fontFamily="ui-monospace, monospace">{latest.value.toFixed(2)}</text>
         </g>
 
+        {/* Evidence-density strip: per-point window size (n) as bars along the plot floor.
+            Grounds the confidence-scaled line — where evidence is thin, the bars are short. */}
+        <g aria-hidden="true">
+          {cleanSeries.map((p) => {
+            if (!Number.isFinite(p.n) || p.n <= 0) return null;
+            const barH = Math.max(1, (Math.min(p.n, maxN) / maxN) * 12);
+            return (
+              <rect
+                key={`dens-${p.at}`}
+                x={x(p.at) - 1.5}
+                y={PAD_T + PLOT_HEIGHT - barH}
+                width={3}
+                height={barH}
+                fill="var(--color-accent)"
+                opacity={0.18}
+              />
+            );
+          })}
+        </g>
+
+        {/* brush selection overlay */}
+        {brush && (
+          <g pointerEvents="none">
+            <rect
+              x={brush.x0} y={PAD_T} width={Math.max(1, brush.x1 - brush.x0)} height={PLOT_HEIGHT}
+              fill="var(--color-accent)" opacity={0.12}
+              stroke="var(--color-accent)" strokeWidth={1} strokeDasharray="3 3"
+            />
+          </g>
+        )}
+
         {/* crosshair — hairline + snapped point with a surface ring */}
         {cross != null && (
           <g pointerEvents="none">
-            <line x1={x(series[cross].at)} y1={PAD_T} x2={x(series[cross].at)} y2={H - PAD_B} stroke="var(--color-fg-dim)" strokeWidth={0.75} opacity={0.6} />
-            <circle cx={x(series[cross].at)} cy={y(series[cross].value)} r={3.5} fill="var(--color-accent-soft)" stroke="var(--color-bg)" strokeWidth={2} />
+            <line x1={x(cleanSeries[cross].at)} y1={PAD_T} x2={x(cleanSeries[cross].at)} y2={H - PAD_B} stroke="var(--color-fg-dim)" strokeWidth={0.75} opacity={0.6} />
+            <circle cx={x(cleanSeries[cross].at)} cy={y(cleanSeries[cross].value)} r={3.5} fill="var(--color-accent-soft)" stroke="var(--color-bg)" strokeWidth={2} />
           </g>
         )}
 
@@ -517,14 +663,14 @@ export default function OutcomeChart({
           </span>
         ))}
         {shownKinds.map((k) => (
-          <span key={k} className="absolute right-[6px] -translate-y-1/2 text-[8px] mono leading-none" style={{ top: laneY(k), color: KIND_COLOR[k] }}>
-            {k === "subagent" ? "agent" : KIND_LABEL[k]}
+          <span key={k} className="absolute right-[6px] -translate-y-1/2 text-[9px] mono leading-none" style={{ top: laneY(k), color: KIND_COLOR[k] }}>
+            {KIND_LABEL[k]}
           </span>
         ))}
       </div>
       </div>
 
-      {isOverflowing && <p id={scrollHintId} className="timeline-chart-scroll-hint">Swipe or shift-scroll to inspect the full date range.</p>}
+      {isOverflowing && <p id={scrollHintId} className="timeline-chart-scroll-hint">Drag on the plot to zoom into a range · shift-scroll to pan.</p>}
 
       <ChartTooltip tip={tip} />
 
@@ -535,7 +681,17 @@ export default function OutcomeChart({
             <span className="size-2 rounded-full" style={{ background: KIND_COLOR[k] }} /> {KIND_LABEL[k]} adopted
           </span>
         ))}
-        {shownShifts.length > 0 && <span className="timeline-chart-legend-item timeline-chart-legend-item--context" role="listitem"><span className="inline-flex items-center gap-0.5"><span className="w-2 h-0.5 rounded bg-ok" /><span className="w-2 h-0.5 rounded bg-err" /></span> global detected shift (up / down)</span>}
+        {shownKinds.length > 0 && (
+          <span className="timeline-chart-legend-item" role="listitem" title="Dot area grows with how many markers landed in the same week: 1, then ~4, then 6+ clustered">
+            <span className="inline-flex items-end gap-[3px]" aria-hidden>
+              <span className="rounded-full" style={{ width: 6, height: 6, background: "var(--color-fg-dim)" }} />
+              <span className="rounded-full" style={{ width: 9, height: 9, background: "var(--color-fg-dim)" }} />
+              <span className="rounded-full" style={{ width: 12, height: 12, background: "var(--color-fg-dim)" }} />
+            </span>
+            <span className="text-fg-dim">cluster size: 1 · few · 6+</span>
+          </span>
+        )}
+        {shownShifts.length > 0 && <span className="timeline-chart-legend-item timeline-chart-legend-item--context" role="listitem"><span className="inline-flex items-center gap-0.5"><span className="w-2 h-0.5 rounded bg-ok" /><span className="w-2 h-0.5 rounded bg-err" /></span> detected shift (up/down)</span>}
         {shownKinds.length === 0 && <span className="timeline-chart-legend-item timeline-chart-legend-note" role="listitem">No adoption markers in this range</span>}
       </div>
     </div>

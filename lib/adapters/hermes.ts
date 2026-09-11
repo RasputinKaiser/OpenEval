@@ -27,7 +27,7 @@ interface HermesMessage {
   is_error?: boolean;
 }
 
-function textOf(content: unknown): string {
+export function textOf(content: unknown): string {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
     return content
@@ -37,7 +37,7 @@ function textOf(content: unknown): string {
   return "";
 }
 
-function parseArgs(args: unknown): unknown {
+export function parseArgs(args: unknown): unknown {
   if (typeof args !== "string") return args ?? {};
   try { return JSON.parse(args); } catch { return { raw: args }; }
 }

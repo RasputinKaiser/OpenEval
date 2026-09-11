@@ -15,12 +15,20 @@ interface NavSection { label: string | null; items: NavItem[] }
 
 /**
  * Grouped by workflow: benchmarking your harnesses (Evaluate), understanding
- * your real day-to-day sessions (Observe), and plumbing (System).
+ * your real day-to-day sessions (Observe), evaluation plumbing (Evaluate), and system plumbing (System).
  */
 export const SECTIONS: NavSection[] = [
   {
     label: null,
     items: [{ href: "/", label: "Dashboard", icon: LayoutDashboard }],
+  },
+  {
+    label: "Observe",
+    items: [
+      { href: "/live", label: "Live", icon: Radio },
+      { href: "/collection", label: "Collection", icon: Boxes },
+      { href: "/collection/timeline", label: "Timeline", icon: TrendingUp },
+    ],
   },
   {
       label: "Evaluate",
@@ -32,14 +40,6 @@ export const SECTIONS: NavSection[] = [
         { href: "/runs/new", label: "New Run", icon: Plus },
         { href: "/accuracy", label: "Accuracy", icon: ShieldCheck },
       ],
-  },
-  {
-    label: "Observe",
-    items: [
-      { href: "/live", label: "Live", icon: Radio },
-      { href: "/collection", label: "Collection", icon: Boxes },
-      { href: "/collection/timeline", label: "Timeline", icon: TrendingUp },
-    ],
   },
   {
     label: "System",
@@ -95,7 +95,7 @@ export default function Sidebar() {
           {!collapsed && (
             <div className="min-w-0">
               <div className="text-sm font-semibold tracking-tight">OpenEval</div>
-              <div className="text-[10px] text-fg-dim uppercase tracking-wider">OpenEval Suite</div>
+              <div className="text-[10px] text-fg-dim uppercase tracking-[0.12em]">OpenEval Suite</div>
             </div>
           )}
         </div>

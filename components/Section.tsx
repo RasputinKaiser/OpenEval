@@ -13,14 +13,14 @@ import type { LucideIcon } from "lucide-react";
 
 export function SectionHeader({ icon: Icon, title, desc, right }: { icon: LucideIcon; title: string; desc: string; right?: ReactNode }) {
   return (
-    <div className="flex items-end justify-between gap-3 mb-2.5">
+    <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-1 mb-2.5">
       <div className="flex items-center gap-2.5 min-w-0">
         <span aria-hidden="true" className="grid place-items-center size-6 rounded-md border border-bd bg-bg-elev shrink-0">
           <Icon className="size-3.5 text-accent-soft" />
         </span>
         <div className="min-w-0">
           <h2 className="text-sm font-semibold leading-tight">{title}</h2>
-          <p className="text-[11px] text-fg-dim leading-tight truncate">{desc}</p>
+          <p className="text-[11px] text-fg-dim leading-tight line-clamp-2">{desc}</p>
         </div>
       </div>
       {right && <div className="text-[11px] text-fg-dim mono tabular-nums shrink-0 pb-0.5">{right}</div>}

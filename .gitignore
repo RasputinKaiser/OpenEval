@@ -52,3 +52,8 @@ fixtures/**/.DS_Store
 .clonk/
 .playwright-cli/
 .superpowers/
+
+# Session-scoped agent artifacts (screenshots, goal files, QA shots).
+.impeccable/
+.assessment_a_shots/
+GOAL.md

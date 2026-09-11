@@ -4,12 +4,12 @@ import { defaultLiveLimitForHarness, projectLiveAggregate, readLiveSessionDetail
 
 export const dynamic = "force-dynamic";
 
-async function getSessionTranscript(filePath: string, harness?: string): Promise<TranscriptResult> {
+async function getSessionTranscript(filePath: string, harness?: string, sessionId?: string): Promise<TranscriptResult> {
   "use server";
-  const resolved = resolveLiveSessionFile(filePath, harness);
+  const resolved = resolveLiveSessionFile(filePath, harness, sessionId);
   if (!resolved) return { turns: [], error: "Invalid session path" };
   try {
-    const parsed = parseSessionTranscript(resolved.file, resolved.source.format);
+    const parsed = parseSessionTranscript(resolved.file, resolved.source.format, sessionId);
     if (parsed.error) return { turns: [], error: parsed.error };
 
     // Keep the drawer useful for reasoning without turning its detail request
@@ -34,10 +34,10 @@ async function getSessionTranscript(filePath: string, harness?: string): Promise
   }
 }
 
-async function getSessionDetail(filePath: string, harness?: string): Promise<LiveSessionDetailResult> {
+async function getSessionDetail(filePath: string, harness?: string, sessionId?: string): Promise<LiveSessionDetailResult> {
   "use server";
   try {
-    const session = readLiveSessionDetail(filePath, harness);
+    const session = readLiveSessionDetail(filePath, harness, sessionId);
     return session ? { session } : { error: "Session detail is unavailable (the source file may have been pruned)." };
   } catch (e) {
     return { error: `Failed to parse session detail: ${e instanceof Error ? e.message : String(e)}` };
@@ -86,6 +86,7 @@ export default async function LivePage(props: { searchParams?: Promise<{ harness
       totalInputTokens: 0,
       totalOutputTokens: 0,
       totalToolCalls: 0,
+      outcomeCounts: { positive: 0, negative: 0, rephrases: 0, testsPassed: 0, errorTail: 0, noSignal: 0 },
       totalToolErrors: 0,
       sessionsWithMeasuredDuration: 0,
       sessionsWithInferredDuration: 0,

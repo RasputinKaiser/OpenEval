@@ -112,7 +112,7 @@ const TranscriptEntryRow = memo(function TranscriptEntryRow({ entry, showText }:
   return (
     <div className="border-b border-bd-subtle last:border-0">
       <div className={clsx("px-4 py-1.5 flex items-center gap-2", ROLE_TINT[entry.role] ?? "bg-bg-subtle/40")}>
-        <span className={clsx("text-[10px] uppercase tracking-wider", ROLE_LABEL[entry.role] ?? "text-fg-dim")}>{entry.role}</span>
+        <span className={clsx("text-[10px] uppercase tracking-[0.12em]", ROLE_LABEL[entry.role] ?? "text-fg-dim")}>{entry.role}</span>
         {entry.atMs !== undefined && <span className="text-[10px] text-fg-dim mono tabular-nums">@ {entry.atMs}ms</span>}
       </div>
       {blocks}

@@ -260,8 +260,11 @@ export function fmtBytes(n: number): string {
 
 export const fmtMs = fmtDuration;
 
-/** Collection transcript-viewer link for a session, when its transcript file is known. */
+/** Collection transcript-viewer link for a session, when its transcript file is known. DB-backed sessions identify the session, not just the container file. */
 export function collectionTranscriptHref(session: LiveSessionListItem): string | null {
   if (!session.path) return null;
+  if (session.path.endsWith(".db") && session.sessionId) {
+    return `/collection/session?sourceId=hermes&sessionId=${encodeURIComponent(session.sessionId)}`;
+  }
   return `/collection/session?file=${encodeURIComponent(session.path)}`;
 }

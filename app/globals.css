@@ -6,6 +6,10 @@ html { scroll-behavior: smooth; }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   .animate-pulse, .animate-spin { animation: none !important; }
+  .chart-grow-y { animation: none !important; }
+  /* Width transitions on measure bars: state must still be visible, just instant. */
+  .transition-\[width\], .transition-\[width\,background\] { transition: none !important; }
+  .transition-transform { transition: none !important; }
 }
 
 :root {
@@ -24,7 +28,7 @@ html { scroll-behavior: smooth; }
   --color-fg-rgb: 232 232 234;
   --color-fg-muted: #8b8b94;
   --color-fg-muted-rgb: 139 139 148;
-  --color-fg-dim: #74747e;
+  --color-fg-dim: #82828c;
   --color-fg-dim-rgb: 116 116 126;
   --color-accent: #7c5cff;
   --color-accent-rgb: 124 92 255;
@@ -52,10 +56,10 @@ html { scroll-behavior: smooth; }
   --color-bd-subtle-rgb: 224 224 229;
   --color-fg: #1a1a1f;
   --color-fg-rgb: 26 26 31;
-  --color-fg-muted: #6b6b75;
-  --color-fg-muted-rgb: 107 107 117;
-  --color-fg-dim: #70707a;
-  --color-fg-dim-rgb: 112 112 122;
+  --color-fg-muted: #5c5c66;
+  --color-fg-muted-rgb: 92 92 102;
+  --color-fg-dim: #63636d;
+  --color-fg-dim-rgb: 99 99 109;
   --color-accent: #7c5cff;
   --color-accent-rgb: 124 92 255;
   --color-accent-soft: #6344e6;
@@ -84,6 +88,8 @@ p { text-wrap: pretty; }
 .mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
   font-variant-numeric: tabular-nums;
+  /* Slashed zero: 0 vs O is load-bearing in dense token/model tables. */
+  font-feature-settings: "zero";
 }
 
 button {
@@ -480,10 +486,22 @@ button:active:not(:disabled) { transform: scale(0.96); }
  * scroll containers), hairline rows, hover trace, numerics right-aligned via
  * the `num` cell class.
  */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
 .data-table { @apply w-full text-sm; }
 .data-table { color: var(--color-fg); }
 .data-table thead th {
-  @apply text-left font-medium px-3 py-2 text-[10px] uppercase tracking-wider text-fg-dim border-b border-bd;
+  @apply text-left font-medium px-3 py-2 text-[10px] uppercase tracking-[0.12em] text-fg-dim border-b border-bd;
   position: sticky;
   top: 0;
   background: color-mix(in srgb, var(--color-bg-subtle) 96%, var(--color-bg));
@@ -493,7 +511,7 @@ button:active:not(:disabled) { transform: scale(0.96); }
 .data-table td { @apply px-3 py-2; }
 .data-table tbody tr { border-bottom: 1px solid color-mix(in srgb, var(--color-bd) 68%, transparent); }
 .data-table tbody tr:hover { background: color-mix(in srgb, var(--color-bg-elev) 66%, var(--color-bg-subtle)); }
-.data-table th.num, .data-table td.num { @apply text-right; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; font-variant-numeric: tabular-nums; }
+.data-table th.num, .data-table td.num { @apply text-right; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; font-variant-numeric: tabular-nums; font-feature-settings: "zero"; }
 
 @keyframes shimmer {
   0% { background-position: -200% 0; }
@@ -580,11 +598,44 @@ button:active:not(:disabled) { transform: scale(0.96); }
 .timeline-section-nav button:focus-visible {
   outline-offset: 2px;
 }
+/* Edge fade cues for the mobile section scroller — driven by data-can-scroll-left/right
+   so the affordance appears only when there is actually more to scroll toward. */
+.timeline-section-nav::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 28px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 160ms ease;
+  z-index: 1;
+}
+.timeline-section-nav::after {
+  right: 0;
+  background: linear-gradient(to right, transparent, color-mix(in srgb, var(--color-bg) 88%, transparent));
+}
+.timeline-section-nav::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 28px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 160ms ease;
+  z-index: 1;
+  background: linear-gradient(to left, transparent, color-mix(in srgb, var(--color-bg) 88%, transparent));
+}
+.timeline-section-nav[data-can-scroll-right="true"]::after { opacity: 1; }
+.timeline-section-nav[data-can-scroll-left="true"]::before { opacity: 1; }
 
 .timeline-chart { min-width: 0; color: var(--color-fg-muted); }
 .timeline-chart-toolbar {
   min-height: 44px;
   align-items: center;
+  column-gap: 16px;
 }
 .timeline-chart-toolbar-copy {
   display: grid;
@@ -676,6 +727,15 @@ button:active:not(:disabled) { transform: scale(0.96); }
 }
 .timeline-chart-scroll::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--color-accent) 56%, transparent); background-clip: padding-box; }
 .timeline-chart-svg { min-width: 100%; }
+@media (forced-colors: active) {
+  .timeline-chart-series-glow { display: none; }
+  .timeline-chart-area { display: none; }
+}
+.timeline-chart-svg:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
 .timeline-chart-plot-surface { fill: var(--color-bg); }
 .timeline-chart-context-surface { fill: color-mix(in srgb, var(--color-bg) 54%, var(--color-bg-subtle)); }
 .timeline-chart-gridline { opacity: 0.32; }
@@ -702,7 +762,7 @@ button:active:not(:disabled) { transform: scale(0.96); }
   border-right: 1px solid color-mix(in srgb, var(--color-bd) 58%, transparent);
 }
 .timeline-chart-mark {
-  transition: filter 150ms ease, stroke 150ms ease, stroke-width 150ms ease;
+  transition: filter 150ms ease, stroke 150ms ease;
 }
 .timeline-chart-mark:focus-visible {
   outline: 2px solid var(--color-accent);
@@ -1143,6 +1203,12 @@ section#shifts .data-table tbody tr:last-child {
   .sidebar-link[data-tooltip]::after {
     transition: none;
   }
+  /* Live-page interactive micro-motion (bar growth, strip color shifts):
+     height/width transitions only — opacity/color shifts are safe. */
+  .group\/tool [aria-hidden],
+  .group\/file [aria-hidden] {
+    transition-property: opacity, filter, background-color;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1211,4 +1277,168 @@ section#shifts .data-table tbody tr:last-child {
     contain-intrinsic-size: none !important;
   }
   body { background: #fff !important; color: #000 !important; }
+}
+
+/* Details accordion: fade+settle the disclosure content when opened. Opacity-only +
+   transform — no height measurement, no reflow, honors reduced-motion below. */
+@keyframes details-reveal { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+details.acc-reveal > .acc-reveal-content { animation: details-reveal 160ms cubic-bezier(0.2, 0, 0, 1); }
+@media (prefers-reduced-motion: reduce) { details.acc-reveal > .acc-reveal-content { animation: none; } }
+
+/* Fixed mobile nav overlays content at every scroll position: reserve its height in the
+   document flow for small screens (desktop nav is static, no reservation needed). */
+@media (max-width: 767px) {
+  body { padding-bottom: calc(4.5rem + env(safe-area-inset-bottom)); }
+}
+
+/* Responsive chart scroll wells: edge fades cue horizontal scrollability on small screens
+   (where min-w-[520px] forces scroll); invisible at lg+ where charts fit. */
+.chart-scroll-well {
+  --scroll-fade: 24px;
+  background:
+    linear-gradient(to right, var(--color-bg) 0, transparent var(--scroll-fade)),
+    linear-gradient(to left, var(--color-bg) 0, transparent var(--scroll-fade));
+  background-repeat: no-repeat;
+  background-size: var(--scroll-fade) 100%, var(--scroll-fade) 100%;
+  background-position: left center, right center;
+  background-attachment: local, local;
+}
+@media (min-width: 1024px) {
+  .chart-scroll-well { background: none; }
+}
+.chart-scroll-well::-webkit-scrollbar { height: 8px; }
+.chart-scroll-well::-webkit-scrollbar-thumb { background: var(--color-bd); border-radius: 4px; }
+.chart-scroll-well::-webkit-scrollbar-track { background: transparent; }
+
+/* Chart entry animation: bars grow from the axis on first paint, staggered by column index.
+   Disabled under prefers-reduced-motion (the global block kills the animation entirely). */
+@keyframes chart-grow-y {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+.chart-grow-y {
+  transform-origin: bottom;
+  animation: chart-grow-y 420ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  animation-delay: calc(var(--grow-index, 0) * 12ms);
+}
+
+/* Outcome line draw-on: the path length animates from 0 once on mount. Implemented in CSS so
+   prefers-reduced-motion (global block) disables it without JS measurement. */
+@keyframes timeline-draw {
+  from { stroke-dashoffset: var(--draw-length, 4000); }
+  to { stroke-dashoffset: 0; }
+}
+.timeline-chart-svg .chart-draw {
+  stroke-dasharray: var(--draw-length, 4000);
+  animation: timeline-draw 900ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .timeline-chart-svg .chart-draw { animation: none; stroke-dasharray: none; }
+}
+
+@keyframes chart-fade-in {
+  from { opacity: 0; }
+}
+.chart-fade-in {
+  animation: chart-fade-in 500ms ease-out 400ms backwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .chart-fade-in { animation: none; }
+}
+
+/* Goal S1a: rail segment stagger reveal (opacity+translateY, backwards fill so pre-animation
+   state matches; reduced-motion neutralized by the global block). */
+@keyframes rail-rise {
+  from { opacity: 0; transform: translateY(6px); }
+}
+.rail-stagger > * {
+  animation: rail-rise 320ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+.rail-stagger > *:nth-child(1) { animation-delay: 0ms; }
+.rail-stagger > *:nth-child(2) { animation-delay: 60ms; }
+.rail-stagger > *:nth-child(3) { animation-delay: 120ms; }
+.rail-stagger > *:nth-child(4) { animation-delay: 180ms; }
+@media (prefers-reduced-motion: reduce) {
+  .rail-stagger > * { animation: none; }
+}
+
+/* Goal S1c: cursor-paged row entrance — opacity-only fade on newly inserted table rows.
+   Safe with content-visibility virtualization (no layout properties animated); reduced-motion
+   neutralized by the global block. */
+@keyframes row-fade-in {
+  from { opacity: 0; }
+}
+tbody tr[data-new-batch] {
+  animation: row-fade-in 240ms ease-out backwards;
+}
+
+/* Goal S3b: heatmap cells are 14-18px visual dots — extend the touch surface with an
+   invisible padded hit area (visual size unchanged; neighbors overlap hit areas slightly,
+   which is standard for dense calendars). Keyboard focus remains the cell itself. */
+.heatmap-cell { position: relative; }
+.heatmap-cell::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+}
+@media (min-width: 768px) {
+  .heatmap-cell::after { inset: -3px; }
+}
+
+@keyframes spin-once { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.anim-spin-once { animation: spin-once 0.5s ease-in-out; }
+@media (prefers-reduced-motion: reduce) { .anim-spin-once { animation: none; } }
+
+/* Striped evidence segments crawl on hover — "inferred/estimated" reads as an active
+   computation rather than a static texture. Reduced-motion keeps them static. */
+@keyframes evidence-segment-stripes {
+  from { background-position: 0 0; }
+  to { background-position: 16px 0; }
+}
+[data-striped]:hover {
+  animation: evidence-segment-stripes 0.8s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-striped]:hover { animation: none; }
+}
+
+/* Evidence Room accordions: subtle height fade on expand. Progressive enhancement —
+   browsers without ::details-content support just snap open as before. */
+details.evidence-accordion::details-content {
+  block-size: 0;
+  overflow-y: clip;
+  transition: block-size 220ms ease, content-visibility 220ms allow-discrete;
+}
+details.evidence-accordion[open]::details-content {
+  block-size: auto;
+}
+@media (prefers-reduced-motion: reduce) {
+  details.evidence-accordion::details-content { transition: none; }
+}
+
+/* Dashboard sparkline draw-in: pathLength=1 makes the dash math resolution-independent. */
+@keyframes sparkline-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+.sparkline-draw {
+  stroke-dasharray: 1;
+  animation: sparkline-draw 900ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sparkline-draw { animation: none; stroke-dasharray: none; }
+}
+
+/* Overdrive: View-Transitions morph for the session drawer. Scoped so only the drawer
+   participates (the rest of the page stays put); 200ms matches the drawer's own slide. */
+::view-transition-old(drawer-panel),
+::view-transition-new(drawer-panel) {
+  animation-duration: 200ms;
+  animation-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+.drawer-view-transition {
+  view-transition-name: drawer-panel;
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(drawer-panel),
+  ::view-transition-new(drawer-panel) {
+    animation: none;
+  }
 }

@@ -75,11 +75,14 @@ test("Outcome timeline keeps the chart hierarchy and review receipt scannable", 
   const css = read("app/globals.css");
   const timeline = read("components/TimelineClient.tsx");
   assert.match(chart, /timeline-chart-toolbar-label/);
-  assert.match(chart, /timeline-chart-kpi-latest/);
+  // Range chip removed (0-1 bounded metric restates the scale); latest value lives on the
+  // line's endpoint badge. Zoom brush + confidence-scaled segments are the new contract.
+  assert.match(chart, /timeline-chart-latest-label/);
+  assert.match(chart, /confidence|brush/i);
   assert.match(chart, /aria-label="Trend summary"/);
   assert.match(chart, /timeline-chart-legend-item--context/);
   assert.match(chart, /timeline-chart-series/);
-  assert.match(css, /\.timeline-chart-kpi-range \{ min-width: 164px; \}/);
+  assert.match(css, /\.timeline-chart-toolbar \{/);
   assert.match(css, /\.timeline-chart-legend-item--context/);
   assert.match(timeline, /timeline-review-status/);
   assert.match(timeline, /aria-label="Review evidence counts"/);
@@ -92,4 +95,25 @@ test("Outcome timeline keeps the chart hierarchy and review receipt scannable", 
   assert.match(timeline, /Recovery detail:/);
   assert.match(css, /\.timeline-job-receipt__details/);
   assert.match(css, /\.timeline-job-receipt__state--warn/);
+});
+
+test("timeline formatting and chart guards survive malformed data (harden contract)", () => {
+  const chart = read("components/OutcomeChart.tsx");
+  // NaN-safe series filter must exist and every render-body use must read cleanSeries
+  assert.match(chart, /const cleanSeries = series\.filter\(\(p\) => Number\.isFinite\(p\.value\) && Number\.isFinite\(p\.at\)\)/);
+  assert.match(chart, /No readable outcome points in this snapshot/);
+  assert.doesNotMatch(chart, /cx=\{x\(series\[/); // crosshair reads the cleaned series
+  // shift + marker NaN guards
+  assert.match(chart, /Number\.isFinite\(c\.at\) && Number\.isFinite\(c\.delta\)/);
+  assert.match(chart, /Number\.isFinite\(m\.firstSeenAt\)/);
+  // brush invalidates on series change
+  assert.match(chart, /setBrush\(null\)/);
+  const format = read("lib/format.ts");
+  assert.match(format, /export function fmtInt/);
+  assert.match(format, /Number\.isFinite\(x\) \? \(x >= 0 \? "\+" : ""\) \+ x\.toFixed\(digits\) : "—"/);
+  assert.match(format, /typeof ms === "number" && Number\.isFinite\(ms\) \? new Date\(ms\)\.toISOString/);
+  const timeline = read("components/TimelineClient.tsx");
+  // popovers close on Escape (keyboard resilience)
+  assert.match(timeline, /onKeyDown=\{\(e\) => \{ if \(e\.key === "Escape"\) e\.currentTarget\.open = false; \}\}/);
+  assert.match(timeline, /fmtInt\(data\.totalSessions\)/);
 });

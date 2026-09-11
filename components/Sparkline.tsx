@@ -4,6 +4,7 @@ export function Sparkline({
   height = 16,
   color = "#7c5cff",
   responsive = false,
+  drawIn = false,
 }: {
   data: number[];
   width?: number;
@@ -11,6 +12,8 @@ export function Sparkline({
   color?: string;
   /** Stretch to the container's full width; the stroke stays crisp via non-scaling-stroke. */
   responsive?: boolean;
+  /** Subtle one-shot line draw on mount (skipped for reduced-motion via CSS). */
+  drawIn?: boolean;
 }) {
   if (!data.length) return <svg width={width} height={height} />;
   const max = Math.max(...data, 1);
@@ -31,6 +34,8 @@ export function Sparkline({
       strokeLinecap="round"
       strokeLinejoin="round"
       vectorEffect={responsive ? "non-scaling-stroke" : undefined}
+      pathLength={drawIn ? 1 : undefined}
+      className={drawIn ? "sparkline-draw" : undefined}
     />
   );
   if (responsive) {

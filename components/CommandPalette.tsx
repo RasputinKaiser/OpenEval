@@ -242,9 +242,15 @@ export default function CommandPalette({ runs, cases = [] }: { runs: PaletteRun[
           {ordered.length === 0 ? `No results for ${query}` : `${ordered.length} result${ordered.length === 1 ? "" : "s"}`}
         </div>
         <div id="palette-listbox" role="listbox" aria-label="Commands" className="max-h-[50vh] overflow-y-auto py-2">
+          {ordered.length === 0 && (
+            <div className="px-4 py-8 text-center">
+              <div className="text-sm text-fg-muted">No matches for “{query.trim()}”</div>
+              <div className="mt-1 text-xs text-fg-dim">Try a page name, a run or case ID — or pick “Search all session evidence” above to full-text search transcripts.</div>
+            </div>
+          )}
           {Object.entries(grouped).map(([group, groupItems]) => (
             <div key={group} role="group" aria-labelledby={`palette-group-${group}`}>
-              <div id={`palette-group-${group}`} role="presentation" className="px-4 py-1 text-[9px] uppercase tracking-wider text-fg-dim">{group}</div>
+              <div id={`palette-group-${group}`} role="presentation" className="px-4 py-1 text-[9px] uppercase tracking-[0.12em] text-fg-dim">{group}</div>
               {groupItems.map((item) => {
                 const idx = runningIdx++;
                 const active = idx === highlightedIdx;

@@ -110,6 +110,67 @@ test("parseSessionTranscript opens Hermes single-JSON sessions", () => {
   }
 });
 
+test("parseSessionTranscript opens one Hermes DB session out of a shared ledger", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "openeval-hermes-db-transcript-"));
+  const file = path.join(dir, "state.db");
+  const db = new Database(file);
+  db.exec(`
+    CREATE TABLE sessions (
+      id TEXT PRIMARY KEY, source TEXT NOT NULL DEFAULT 'cli', model TEXT,
+      parent_session_id TEXT, started_at REAL NOT NULL, ended_at REAL,
+      message_count INTEGER DEFAULT 0, tool_call_count INTEGER DEFAULT 0,
+      cwd TEXT, title TEXT, archived INTEGER NOT NULL DEFAULT 0,
+      hidden INTEGER NOT NULL DEFAULT 0, last_activity_at REAL, display_name TEXT
+    );
+    CREATE TABLE messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, role TEXT NOT NULL,
+      content TEXT, tool_call_id TEXT, tool_calls TEXT, tool_name TEXT,
+      timestamp REAL NOT NULL, token_count INTEGER, finish_reason TEXT
+    );
+  `);
+  const started = 1788000000;
+  db.prepare(`INSERT INTO sessions (id, source, model, started_at, ended_at, message_count, tool_call_count, cwd, title)
+              VALUES ('t1', 'tui', 'gpt-5.5', ?, ?, 4, 1, '/Users/x/T', 'DB transcript')`).run(started, started + 60);
+  // A second session in the same ledger must never leak into t1's turns.
+  db.prepare(`INSERT INTO sessions (id, source, model, started_at, ended_at, cwd)
+              VALUES ('t2', 'cli', 'other', ?, ?, '/Users/x/T')`).run(started, started + 5);
+  db.prepare(`INSERT INTO messages (session_id, role, content, tool_calls, tool_name, timestamp) VALUES
+              ('t1', 'user', 'run the check', NULL, NULL, ?),
+              ('t1', 'assistant', NULL, ?, NULL, ?),
+              ('t1', 'tool', ?, NULL, 'bash', ?),
+              ('t1', 'assistant', 'check passed', NULL, NULL, ?),
+              ('t2', 'user', 'other session content', NULL, NULL, ?)`).run(
+    started,
+    JSON.stringify([{ id: "call_9", type: "function", function: { name: "bash", arguments: '{"cmd":"npm check"}' } }]),
+    started + 10,
+    JSON.stringify({ output: "all green" }),
+    started + 20,
+    started + 30,
+    started + 1,
+  );
+  db.close();
+
+  try {
+    // Blank session id: explicit error, never another session's turns.
+    const blank = parseSessionTranscript(file, "hermes-sqlite");
+    assert.ok(blank.error);
+    const parsed = parseSessionTranscript(file, "hermes-sqlite", "t1");
+    assert.equal(parsed.error, undefined);
+    assert.deepEqual(
+      parsed.turns.filter((turn) => turn.role !== "meta").map((turn) => [turn.role, turn.label]),
+      // The compound assistant record splits: prose turns + one tool-call turn.
+      [["user", "You"], ["tool", "Tool: bash"], ["tool", "Tool result"], ["assistant", "Assistant"]],
+    );
+    assert.equal(parsed.turns.some((turn) => turn.preview?.includes("run the check")), true);
+    assert.equal(parsed.turns.some((turn) => turn.preview?.includes("other session content")), false);
+    // The .db extension alone routes to the DB branch (defensive path check).
+    const byExtension = parseSessionTranscript(file, undefined, "t1");
+    assert.equal(byExtension.error, undefined);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("parseSessionTranscript preserves new Codex thread/item prose and tool evidence", () => {
   const file = writeSession([
     { type: "thread.started", timestamp: "2026-07-01T00:00:00.000Z", thread_id: "thread-transcript", cwd: "/repo" },

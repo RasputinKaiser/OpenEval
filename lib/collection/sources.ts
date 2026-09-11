@@ -39,10 +39,10 @@ export const KNOWN_COLLECTION_SOURCES: CollectionSourceDef[] = [
   {
     id: "hermes",
     label: "Hermes Agent",
-    roots: ["~/.hermes/sessions"],
-    format: "hermes-json",
+    roots: ["~/.hermes"],
+    format: "hermes-sqlite",
     parseable: true,
-    note: "Nous Research Hermes Agent — single-JSON sessions; no token usage recorded.",
+    note: "Hermes (hermes.app / Hermes Agent) — state.db session ledger with per-model token usage; the session_*.json subset records no usage.",
   },
   {
     id: "atomic-chat",

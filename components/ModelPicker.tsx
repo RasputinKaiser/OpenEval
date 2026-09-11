@@ -152,16 +152,16 @@ export default function ModelPicker({ id, label, value, onChange, harness }: Pro
                     <div className="text-[10px] text-fg-dim mono truncate">{m.id}</div>
                   </div>
                   <span
-                    className="text-[9px] uppercase tracking-wider mono px-1.5 py-0.5 rounded shrink-0"
+                    className="text-[9px] uppercase tracking-[0.12em] mono px-1.5 py-0.5 rounded shrink-0"
                     style={{ color: FAMILY_COLORS[m.family] || "#5a5a63", backgroundColor: (FAMILY_COLORS[m.family] || "#5a5a63") + "20" }}
                   >
                     {m.family}
                   </span>
-                  <span className="text-[9px] uppercase tracking-wider mono px-1.5 py-0.5 rounded shrink-0 bg-bg-elev text-fg-dim">
+                  <span className="text-[9px] uppercase tracking-[0.12em] mono px-1.5 py-0.5 rounded shrink-0 bg-bg-elev text-fg-dim">
                     {m.capabilities.visionInput === true ? "vision" : m.capabilities.visionInput === false ? "no vision" : "vision ?"}
                   </span>
                   {m.capabilities.visualCodeOutput && (
-                    <span className="text-[9px] uppercase tracking-wider mono px-1.5 py-0.5 rounded shrink-0 bg-ok/10 text-ok">
+                    <span className="text-[9px] uppercase tracking-[0.12em] mono px-1.5 py-0.5 rounded shrink-0 bg-ok/10 text-ok">
                       visual code
                     </span>
                   )}

@@ -97,7 +97,10 @@ test("Collection and Timeline keep warnings/progress outside focused panels", ()
 
 test("Timeline decision surface keeps provenance, denominators, and non-causal semantics visible", () => {
   const timeline = read("components/TimelineClient.tsx");
-  assert.match(timeline, /How to read this page/);
+  // Guided reading moved into the Evidence Room rail (single numbering system); the page-level
+  // how-to strip was folded away. The rail's reading list is the provenance entrypoint now.
+  assert.match(timeline, /Timeline evidence navigation/);
+  assert.match(timeline, /Read the trend and its limits/);
   assert.match(timeline, /Evidence posture/);
   assert.match(timeline, /judgedSessions/);
   assert.match(timeline, /outcomeNBefore/);
@@ -115,7 +118,10 @@ test("Timeline action and loading contracts keep refresh, judge work, and fallba
   const loading = read("app/collection/timeline/loading.tsx");
   const error = read("app/collection/timeline/error.tsx");
   assert.match(timeline, /aria-label="Timeline actions"/);
-  assert.match(timeline, /<details className="relative">/);
+  // Popover hardened: closes on Escape (keyboard resilience contract).
+  // Popover hardened: Escape closes it AND pointer-down outside dismisses it (click-away).
+  assert.match(timeline, /<details ref=\{judgePopoverRef\} className="relative" onKeyDown=/);
+  assert.match(timeline, /onPointerDown[\s\S]{0,120}el\.open = false/);
   assert.match(timeline, /keeping the current report visible/);
   assert.match(timeline, /The current report stays visible/);
   assert.match(loading, /role="status"/);

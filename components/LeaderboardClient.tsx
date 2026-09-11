@@ -117,10 +117,10 @@ export default function LeaderboardClient() {
             </section>
           )}
           <section className="card overflow-hidden">
-            <div className="overflow-x-auto" tabIndex={0} aria-label="Scrollable harness leaderboard table">
+            <div className="chart-scroll-well overflow-x-auto pb-2" tabIndex={0} aria-label="Scrollable harness leaderboard table">
               <table className="w-full min-w-[980px] text-sm">
                 <caption className="sr-only">Harness leaderboard. Pass-rate denominator is total graded cases; cost is in US dollars; token columns show input and output totals.</caption>
-                <thead className="sticky top-0 z-10 text-[11px] uppercase tracking-wider text-fg-muted bg-bg-subtle border-b border-bd-subtle">
+                <thead className="sticky top-0 z-10 text-[11px] uppercase tracking-[0.12em] text-fg-muted bg-bg-subtle border-b border-bd-subtle">
                   <tr>
                     <th scope="col" className="text-center px-2 py-2 font-medium w-8">#</th>
                     <th scope="col" aria-sort={sortKey === "harness" ? (sortDir === "asc" ? "ascending" : "descending") : "none"} className={clsx("text-left px-4 py-2 font-medium", STICKY_TH)}>

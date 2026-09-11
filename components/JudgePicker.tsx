@@ -95,18 +95,18 @@ export default function JudgePicker({ value, onChange, onReadinessChange, error,
   return (
     <div className="space-y-3">
       <div className="grid gap-3 sm:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
-        <label className="block min-w-0 text-[11px] uppercase tracking-wider text-fg-muted" htmlFor={`${idPrefix}-source`}>
+        <label className="block min-w-0 text-[11px] uppercase tracking-[0.12em] text-fg-muted" htmlFor={`${idPrefix}-source`}>
           Judge source
           <select id={`${idPrefix}-source`} value={sourceValue} onChange={(event) => { const choice = choices.find((item) => item.id === event.target.value); onChange({ ...value, source: event.target.value, model: choice?.model ?? "", reasoningEffort: choice?.effort ?? null }); }} className="mt-1.5 min-h-11 min-w-0 w-full rounded-md border border-bd bg-bg px-3 text-sm outline-none focus:border-accent focus-visible:ring-2 focus-visible:ring-accent">
             {optionChoices.map((choice) => <option key={choice.id} value={choice.id}>{choice.label} · {choice.id}</option>)}
           </select>
         </label>
-        <label className="block min-w-0 text-[11px] uppercase tracking-wider text-fg-muted" htmlFor={`${idPrefix}-model`}>
+        <label className="block min-w-0 text-[11px] uppercase tracking-[0.12em] text-fg-muted" htmlFor={`${idPrefix}-model`}>
           Judge model
           <input id={`${idPrefix}-model`} value={model} onChange={(event) => onChange({ ...value, model: event.target.value })} spellCheck={false} className="mt-1.5 min-h-11 min-w-0 w-full rounded-md border border-bd bg-bg px-3 text-sm mono outline-none focus:border-accent focus-visible:ring-2 focus-visible:ring-accent" />
         </label>
       </div>
-      {sourceValue === "codex" && <label className="block w-full max-w-sm text-[11px] uppercase tracking-wider text-fg-muted" htmlFor={`${idPrefix}-effort`}>
+      {sourceValue === "codex" && <label className="block w-full max-w-sm text-[11px] uppercase tracking-[0.12em] text-fg-muted" htmlFor={`${idPrefix}-effort`}>
         Reasoning effort
         <select id={`${idPrefix}-effort`} value={value.reasoningEffort ?? selected?.effort ?? "high"} onChange={(event) => onChange({ ...value, reasoningEffort: event.target.value })} className="mt-1.5 min-h-11 w-full rounded-md border border-bd bg-bg px-3 text-sm mono outline-none focus:border-accent focus-visible:ring-2 focus-visible:ring-accent"><option value="medium">medium</option><option value="high">high</option><option value="xhigh">xhigh</option></select>
       </label>}

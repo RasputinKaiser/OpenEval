@@ -5,6 +5,8 @@ import { usePathname } from "next/navigation";
 import { AlertTriangle, RefreshCw, ClipboardCopy, Check } from "lucide-react";
 import { redactSecrets, redactSensitiveText } from "@/lib/redaction";
 
+const CHUNK_RELOAD_KEY = "openeval.chunk-reload-attempt";
+
 interface Props {
   error: Error & { digest?: string };
   reset: () => void;
@@ -39,6 +41,15 @@ export default function ErrorBoundaryClient({ error, reset, title }: Props) {
     if (retryingRef.current) return;
     retryingRef.current = true;
     setRetrying(true);
+    // Chunk-load failures (deploy swapped chunk hashes while a tab held old HTML)
+    // can never succeed via in-place reset — every retry re-requests the deleted
+    // chunk. One hard reload picks up the new HTML + hashes; the sessionStorage
+    // guard turns it into a single attempt, not a reload loop.
+    if (/chunk load failed|loading chunk/i.test(error.message) && !sessionStorage.getItem(CHUNK_RELOAD_KEY)) {
+      try { sessionStorage.setItem(CHUNK_RELOAD_KEY, "1"); } catch {}
+      window.location.reload();
+      return;
+    }
     reset();
   }
 

@@ -56,6 +56,9 @@ export interface TimelineReport {
   impacts: MarkerImpact[];
   changePoints: ChangePoint[]; // automatic shifts, marker-attributed where possible
   outcomeSeries: SeriesPoint[]; // downsampled for a sparkline
+  /** Per-session cost-vs-outcome scatter (signal sessions only; no identifiers). */
+  outcomeScatter: { c: number; o: number; p: OutcomeProvenance }[];
+  outcomeScatterEvidence: { n: number; denominator: number; coverage: number };
   /** Exact source denominator and provenance for the downsampled outcome chart. */
   outcomeSeriesEvidence?: OutcomeSeriesEvidence;
   judgeSelectionDistribution?: JudgeSelectionDistribution[];
@@ -276,6 +279,15 @@ export function buildTimeline(sessionsIn?: TimelineSession[]): TimelineReport {
     impacts,
     changePoints: detectChangePoints(points, markers),
     outcomeSeries: downsample(metricSeries(seriesPoints, (p) => p.outcome, 15), 80),
+    outcomeScatter: withSignal
+      .filter((p) => p.costAvailable !== false && Number.isFinite(p.costUsd) && p.costUsd > 0 && Number.isFinite(p.outcome))
+      .slice(0, 400)
+      .map((p) => ({ c: Math.round(p.costUsd * 1000) / 1000, o: Math.round(p.outcome * 100) / 100, p: p.outcomeProvenance })),
+    outcomeScatterEvidence: {
+      n: withSignal.filter((p) => p.costAvailable !== false && Number.isFinite(p.costUsd) && p.costUsd > 0 && Number.isFinite(p.outcome)).length,
+      denominator: points.length,
+      coverage: points.length ? withSignal.filter((p) => p.costAvailable !== false && Number.isFinite(p.costUsd) && p.costUsd > 0).length / points.length : 0,
+    },
     outcomeSeriesEvidence: {
       n: seriesPoints.length,
       denominator: points.length,

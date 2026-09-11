@@ -106,7 +106,7 @@ export default function HarnessPicker({ id, label, value, onChange, onDiscovered
             <span className="text-[10px] text-fg-dim mono px-1.5 py-0.5 rounded bg-bg-elev shrink-0">{selected.version}</span>
           )}
           {selected && STATUS_BADGE[selected.status] && (
-            <span className={clsx("text-[9px] uppercase tracking-wider mono px-1.5 py-0.5 rounded shrink-0", STATUS_BADGE[selected.status].cls)}>
+            <span className={clsx("text-[9px] uppercase tracking-[0.12em] mono px-1.5 py-0.5 rounded shrink-0", STATUS_BADGE[selected.status].cls)}>
               {STATUS_BADGE[selected.status].label}
             </span>
           )}
@@ -190,7 +190,7 @@ export default function HarnessPicker({ id, label, value, onChange, onDiscovered
                       )}
                     </div>
                     {badge && (
-                      <span className={clsx("text-[9px] uppercase tracking-wider mono px-1.5 py-0.5 rounded shrink-0", badge.cls)}>
+                      <span className={clsx("text-[9px] uppercase tracking-[0.12em] mono px-1.5 py-0.5 rounded shrink-0", badge.cls)}>
                         {badge.label}
                       </span>
                     )}
