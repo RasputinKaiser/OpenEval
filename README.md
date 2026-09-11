@@ -13,16 +13,57 @@ The project is designed for people who want to compare agent behavior on practic
 
 https://github.com/user-attachments/assets/97375fda-e019-451b-b15b-8d914792f0c7
 
-The 29.5-second v0.1.1 launch film shows the real OpenEval dashboard: live sessions, collection history, repeatable runs, comparisons, coverage, telemetry, and accuracy audits. The current application release is [v0.1.5](https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.5).
+The 29.5-second v0.1.1 launch film shows the real OpenEval dashboard: live sessions, collection history, repeatable runs, comparisons, coverage, telemetry, and accuracy audits. The current application release is [v0.1.6](https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.6).
 
-[Download the full-resolution MP4](https://github.com/RasputinKaiser/OpenEval/releases/download/v0.1.1/openeval-launch-v0.1.1.mp4) · [Open the v0.1.1 media release](https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.1) · [Latest release: v0.1.5](https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.5)
+[Download the full-resolution MP4](https://github.com/RasputinKaiser/OpenEval/releases/download/v0.1.1/openeval-launch-v0.1.1.mp4) · [Open the v0.1.1 media release](https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.1) · [Latest release: v0.1.6](https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.6)
 
 ### Build Credits
 
 - **OpenEval:** developed with Noumena Code, Claude Code (including Fable 5 and Sonnet 5), and OpenAI Codex. Fable 5 contributed substantially to the application itself.
+- **v0.1.6:** dashboard visualizations, outcome-evidence hardening, judge v3, and model taxonomy authored with GLM 5.3 Flash and Qwen 3.8 Flash (Hermes Desktop).
 - **Launch film:** GPT-5.6 Sol (High) led the edit, composition, visual QA, and final release pass; GPT-5.6 Luna (xhigh) contributed additional iteration passes.
 - **Production stack:** Codex, ImageGen, TouchDesigner, HyperFrames, GSAP, CDP Recorder, and FFmpeg.
 - **Acknowledgment:** huge thanks to [@KingBootoshi](https://x.com/KingBootoshi) from [righttointelligence.org](https://righttointelligence.org).
+
+## What's New in v0.1.6
+
+OpenEval v0.1.6 is the dashboard-visualization and outcome-evidence release: a verdict-first Dashboard, new per-session and per-token visualizations, an upgraded deterministic judge contract, and expansive model tagging across every harness.
+
+### A verdict-first Dashboard
+
+- The Dashboard opens with a composite verdict: outcome trend with baseline, health score, and the primary actions, so the first screen answers "how is my agent doing?" before any table.
+- The new Token-economy panel reports cache hit rate, fresh-token volume, API-equivalent spend efficiency per 1M tokens, and a cache/input/output composition bar — the money story under the usage numbers.
+- Sources, Tooling, and Models panels break the aggregate KPIs into per-harness bars, evidence provenance, and per-model token share, with unavailable states that read as "unread," not "empty."
+
+### Cost-versus-outcome evidence on the Timeline
+
+- A new cost-vs-outcome scatter plots every session's cost on a log scale against its deterministic outcome score, with judge-reviewed sessions highlighted over heuristic ones and honest coverage denominators.
+- Adoption impact rows now carry effect-size strength badges (standardized mean difference) and comparability tags (thin, mixed-provenance, child-only), so a delta's reliability is visible next to its size.
+- Review evidence exposes stale receipts: verdicts saved under an older prompt contract are counted, explained, and excluded from comparable scores until re-reviewed.
+
+### Deterministic judge v3
+
+- Scoring anchors are explicit: 1.0/0.5/0.0 each name their required evidence, and intermediate scores are reserved for evidence that straddles anchors.
+- The judge receives the heuristic pre-scan flags and must confirm or refute each in its reasons, grounding every verdict in checkable claims.
+- Single-turn sessions are judged on whether the final answer serves the opening request, without penalizing missing follow-up.
+- Prompt-version mixing is fenced: verdicts under an older contract never confer judged provenance, and the next pass re-judges them automatically.
+
+### Model tagging for any harness, any model
+
+- A new pure taxonomy module infers provider (15 providers plus local runtimes), family, and display label for any model id — pattern-based, no stale lookup table.
+- Family grouping collapses date-stamped, org-qualified, and quantization-tagged variants under one canonical identity.
+- Live model rows show provider chips with family tooltips.
+
+### Deeper observation and craft
+
+- Transcript mining is hardened with per-record guards in every parser and ENOENT-safe directory mining; malformed records no longer drop whole sessions.
+- A 30-day activity strip, beeswarm session-cost footprint with log-scale decade gridlines and median marker, evidence-density strips, and a diverging delta chart join the chart library.
+- Reduced-motion parity, focus contracts (drawer modal, chart SVG), hover-geometry fixes, and a View-Transitions drawer morph polish every interaction.
+- Primary routes verified at 320–1920px with zero horizontal overflow; 18/18 contrast pairs pass AA in both themes.
+
+Tests: 779/779 · TypeScript 0 errors · lint 0 warnings · detector 0 findings.
+
+[Read the complete v0.1.6 release notes](https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.6) · [Compare v0.1.5...v0.1.6](https://github.com/RasputinKaiser/OpenEval/compare/v0.1.5...v0.1.6)
 
 ## What's New in v0.1.5
 
