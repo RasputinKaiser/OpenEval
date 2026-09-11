@@ -376,6 +376,76 @@
         "build": true,
         "bench": true
       }
+    },
+    {
+      "ts": "2026-09-11T15:26:53+00:00",
+      "git": {
+        "rev": "b5ef8df",
+        "dirty": false
+      },
+      "medians": {
+        "types": 2.556,
+        "test": 13.414,
+        "lint": 3.141
+      },
+      "output_tokens": {
+        "types": 0,
+        "test": 206,
+        "lint": 67
+      },
+      "ok": {
+        "types": true,
+        "test": true,
+        "lint": true
+      }
+    },
+    {
+      "ts": "2026-09-11T15:30:18+00:00",
+      "git": {
+        "rev": "b5ef8df",
+        "dirty": true
+      },
+      "medians": {
+        "chart-render": 0.48
+      },
+      "output_tokens": {
+        "chart-render": 404
+      },
+      "ok": {
+        "chart-render": false
+      }
+    },
+    {
+      "ts": "2026-09-11T15:30:45+00:00",
+      "git": {
+        "rev": "b5ef8df",
+        "dirty": true
+      },
+      "medians": {
+        "chart-render": 0.605
+      },
+      "output_tokens": {
+        "chart-render": 36
+      },
+      "ok": {
+        "chart-render": true
+      }
+    },
+    {
+      "ts": "2026-09-11T15:29:01+00:00",
+      "git": {
+        "rev": "b5ef8df",
+        "dirty": true
+      },
+      "medians": {
+        "build": 161.407
+      },
+      "output_tokens": {
+        "build": 850
+      },
+      "ok": {
+        "build": true
+      }
     }
   ]
 }

@@ -386,3 +386,11 @@ OpenEval behavior or treating dirty-checkout timings as clean-release claims.
 - Next run: measure a warm build once more on a comparably idle machine, then
   revisit backlog #4; do not pursue token changes unless a named sink exceeds
   the 2,000-token / 10% threshold.
+
+## Run 12 — 2026-09-11 (interactive analysis baseline, b5ef8df-derived working tree)
+- Pre-edit validation through measure.py: types 2.556s; full test median 13.414s (13.109, 13.414, 15.490); lint 3.141s. All passed.
+- Build probe passed at 161.407s. New unimported chart files and CSS were being prepared during the build, so this timing is not a stable before/after optimization baseline.
+- Fixed 400-point scatter SSR probe initially failed because the standalone tsx runner used classic JSX (React is not defined). Corrected the probe's tsconfig to react-jsx without changing application code. Failed and corrected raw runs are retained under ignored .optimize/runs/.
+- Corrected chart process median: 0.605s (0.785, 0.597, 0.605). Separate detail sample: 25 warm renders, median 3.504ms, p95 5.950ms, 124,556 HTML bytes. SSR measurements do not prove browser interaction latency.
+- No optimization improvement claimed. This run is feature expansion plus correctness; compare only equivalent fixed workloads and preserve evidence of failures.
+- Next: implement bounded analytical summaries and interactions, measure the same scatter fixture after changes, and record correctness/performance separately.
