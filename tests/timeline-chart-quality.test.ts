@@ -105,6 +105,32 @@ test("timeline evidence marks an empty signal pool as unavailable", () => {
   assert.deepEqual(report.outcomeSeries, []);
 });
 
+test("timeline scatter samples chronologically with endpoints and keeps exact costs plus population evidence", () => {
+  const tinyCost = 0.000000000123;
+  const hugeCost = 123456789012345.67;
+  const sessions = Array.from({ length: 500 }, (_, index) => ({
+    ...session(index + 1, { userPositive: 1 }),
+    sessionId: "shared-session-id",
+    sourceId: index % 2 === 0 ? "source-a" : "source-b",
+    costUsd: index === 0 ? tinyCost : index === 499 ? hugeCost : index + 1,
+    metricSources: { model: "measured" as const, tokens: "measured" as const, cost: "measured" as const, duration: "measured" as const, turns: "measured" as const },
+  }));
+  const report = buildTimeline(sessions);
+  assert.equal(report.outcomeScatter.length, 400);
+  assert.deepEqual(report.outcomeScatter.slice(0, 1).map((point) => [point.sessionId, point.sourceId, point.c]), [["shared-session-id", "source-a", tinyCost]]);
+  assert.deepEqual(report.outcomeScatter.slice(-1).map((point) => [point.sessionId, point.sourceId, point.c]), [["shared-session-id", "source-b", hugeCost]]);
+  assert.equal(report.outcomeScatter[0].p, "heuristic");
+  assert.equal(report.outcomeScatter[0].costSource, "measured");
+  assert.equal(report.outcomeScatterEvidence.eligible, 500);
+  assert.equal(report.outcomeScatterEvidence.plotted, 400);
+  assert.equal(report.outcomeScatterEvidence.omittedZero, 0);
+  assert.equal(report.outcomeScatterEvidence.omittedMissing, 0);
+  assert.equal(report.outcomeScatterEvidence.cheaper?.n, 250);
+  assert.equal(report.outcomeScatterEvidence.dearer?.n, 250);
+  assert.equal(report.outcomeScatterEvidence.cheaper?.medianCostUsd, 125.5);
+  assert.equal(report.outcomeScatterEvidence.dearer?.medianCostUsd, 375.5);
+});
+
 test("chart surfaces expose evidence basis and truthful no-data states", () => {
   const outcomeChart = read("components/OutcomeChart.tsx");
   assert.match(outcomeChart, /LLM-judged sessions only/);

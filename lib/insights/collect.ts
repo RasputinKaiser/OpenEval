@@ -7,6 +7,7 @@ import {
   type Marker, type MarkerImpact, type SeriesPoint, type SessionPoint, type OutcomeProvenance, type OutcomeSeriesEvidence,
 } from "./timeline";
 import { detectChangePoints, type ChangePoint } from "./changepoints";
+import { sampleEvenly } from "../chart-analysis";
 
 export interface JudgeSelectionDistribution {
   source: string;
@@ -56,13 +57,44 @@ export interface TimelineReport {
   impacts: MarkerImpact[];
   changePoints: ChangePoint[]; // automatic shifts, marker-attributed where possible
   outcomeSeries: SeriesPoint[]; // downsampled for a sparkline
-  /** Per-session cost-vs-outcome scatter (signal sessions only; no identifiers). */
-  outcomeScatter: { c: number; o: number; p: OutcomeProvenance }[];
-  outcomeScatterEvidence: { n: number; denominator: number; coverage: number };
+  /** Per-session cost-vs-outcome scatter (signal sessions only). */
+  outcomeScatter: {
+    c: number;
+    o: number;
+    /** Outcome provenance; kept separate from costSource. */
+    p: OutcomeProvenance;
+    costSource?: string;
+    sourceId?: string;
+    sessionId?: string;
+    at?: number;
+  }[];
+  outcomeScatterEvidence: OutcomeScatterEvidence;
   /** Exact source denominator and provenance for the downsampled outcome chart. */
   outcomeSeriesEvidence?: OutcomeSeriesEvidence;
   judgeSelectionDistribution?: JudgeSelectionDistribution[];
   judgeComparability?: JudgeComparability;
+}
+
+export interface OutcomeScatterSummary {
+  n: number;
+  medianCostUsd: number | null;
+  medianOutcome: number | null;
+  provenance: OutcomeProvenance | "mixed";
+}
+
+export interface OutcomeScatterEvidence {
+  /** Legacy alias for the full eligible population. */
+  n: number;
+  denominator: number;
+  coverage: number;
+  eligible?: number;
+  plotted?: number;
+  omittedZero?: number;
+  omittedMissing?: number;
+  /** These summaries use all eligible rows before chart sampling. */
+  cheaper?: OutcomeScatterSummary;
+  dearer?: OutcomeScatterSummary;
+  summary?: { cheaper: OutcomeScatterSummary; dearer: OutcomeScatterSummary };
 }
 
 function downsample<T>(xs: T[], max: number): T[] {
@@ -73,8 +105,28 @@ function downsample<T>(xs: T[], max: number): T[] {
   return out;
 }
 
+function finiteMedian(values: number[]): number | null {
+  const finite = values.filter(Number.isFinite).sort((a, b) => a - b);
+  if (!finite.length) return null;
+  const middle = Math.floor(finite.length / 2);
+  return finite.length % 2 ? finite[middle] : (finite[middle - 1] + finite[middle]) / 2;
+}
+
+function scatterSummary(points: SessionPoint[]): OutcomeScatterSummary {
+  const medianCostUsd = finiteMedian(points.map((point) => point.costUsd));
+  const medianOutcome = finiteMedian(points.map((point) => point.outcome));
+  const judged = points.filter((point) => point.outcomeProvenance === "judged").length;
+  const heuristic = points.filter((point) => point.outcomeProvenance === "heuristic").length;
+  return {
+    n: points.length,
+    medianCostUsd,
+    medianOutcome,
+    provenance: judged === 0 && heuristic === 0 ? "unavailable" : judged > 0 && heuristic > 0 ? "mixed" : judged > 0 ? "judged" : "heuristic",
+  };
+}
+
 /** Session shape the timeline needs: a parsed session tagged with its source. */
-export type TimelineSession = LiveSession & { sourceLabel: string };
+export type TimelineSession = LiveSession & { sourceLabel: string; sourceId?: string };
 
 const isChildSession = (session: TimelineSession): boolean => Boolean(session.isSubagent || session.parentSessionId);
 
@@ -221,6 +273,18 @@ export function buildTimeline(sessionsIn?: TimelineSession[]): TimelineReport {
   const heuristicSignalSessions = withSignal.length - judgedSessions;
   const noSignalSessions = points.length - withSignal.length;
 
+  // Scatter eligibility is decided over the complete signal population before
+  // sampling. A measured $0 is explicit zero evidence; missing and inferred
+  // zero costs remain unavailable so they cannot masquerade as free sessions.
+  const scatterSignal = withSignal.filter((p) => Number.isFinite(p.outcome));
+  const omittedMissing = points.filter((p) => !p.outcomeHasSignal || !Number.isFinite(p.outcome) || p.costAvailable !== true || !Number.isFinite(p.costUsd)).length;
+  const omittedZero = points.filter((p) => p.outcomeHasSignal && Number.isFinite(p.outcome) && p.costAvailable === true && p.costUsd === 0).length;
+  const scatterEligible = scatterSignal.filter((p) => p.costAvailable === true && Number.isFinite(p.costUsd) && p.costUsd > 0);
+  const scatterPlotted = sampleEvenly(scatterEligible, 400);
+  const scatterCostMedian = finiteMedian(scatterEligible.map((p) => p.costUsd));
+  const cheaper = scatterCostMedian === null ? [] : scatterEligible.filter((p) => p.costUsd <= scatterCostMedian);
+  const dearer = scatterCostMedian === null ? [] : scatterEligible.filter((p) => p.costUsd > scatterCostMedian);
+
   // Score points deliberately use current-prompt judgments above. The receipt
   // view is broader: retain every persisted judgment that matches a current
   // top-level session, including stale/legacy prompt versions, without letting
@@ -279,14 +343,26 @@ export function buildTimeline(sessionsIn?: TimelineSession[]): TimelineReport {
     impacts,
     changePoints: detectChangePoints(points, markers),
     outcomeSeries: downsample(metricSeries(seriesPoints, (p) => p.outcome, 15), 80),
-    outcomeScatter: withSignal
-      .filter((p) => p.costAvailable !== false && Number.isFinite(p.costUsd) && p.costUsd > 0 && Number.isFinite(p.outcome))
-      .slice(0, 400)
-      .map((p) => ({ c: Math.round(p.costUsd * 1000) / 1000, o: Math.round(p.outcome * 100) / 100, p: p.outcomeProvenance })),
+    outcomeScatter: scatterPlotted.map((p) => ({
+      c: p.costUsd,
+      o: p.outcome,
+      p: p.outcomeProvenance,
+      costSource: p.costSource,
+      ...(p.sourceId === undefined ? {} : { sourceId: p.sourceId }),
+      ...(p.sessionId ? { sessionId: p.sessionId } : {}),
+      at: p.at,
+    })),
     outcomeScatterEvidence: {
-      n: withSignal.filter((p) => p.costAvailable !== false && Number.isFinite(p.costUsd) && p.costUsd > 0 && Number.isFinite(p.outcome)).length,
+      n: scatterEligible.length,
       denominator: points.length,
-      coverage: points.length ? withSignal.filter((p) => p.costAvailable !== false && Number.isFinite(p.costUsd) && p.costUsd > 0).length / points.length : 0,
+      coverage: points.length ? scatterEligible.length / points.length : 0,
+      eligible: scatterEligible.length,
+      plotted: scatterPlotted.length,
+      omittedZero,
+      omittedMissing,
+      cheaper: scatterSummary(cheaper),
+      dearer: scatterSummary(dearer),
+      summary: { cheaper: scatterSummary(cheaper), dearer: scatterSummary(dearer) },
     },
     outcomeSeriesEvidence: {
       n: seriesPoints.length,

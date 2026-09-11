@@ -394,3 +394,9 @@ OpenEval behavior or treating dirty-checkout timings as clean-release claims.
 - Corrected chart process median: 0.605s (0.785, 0.597, 0.605). Separate detail sample: 25 warm renders, median 3.504ms, p95 5.950ms, 124,556 HTML bytes. SSR measurements do not prove browser interaction latency.
 - No optimization improvement claimed. This run is feature expansion plus correctness; compare only equivalent fixed workloads and preserve evidence of failures.
 - Next: implement bounded analytical summaries and interactions, measure the same scatter fixture after changes, and record correctness/performance separately.
+
+## Interactive analysis — scatter expansion checkpoint (2026-09-11, codex/interactive-analysis, dirty)
+- Fixed 400-point, 5-warmup/25-render workload promoted to scripts/perf/chart-render.tsx and probes.sh.
+- measure.py process median: baseline 0.605s → expanded 0.812s (+0.207s); below the 2s absolute noise threshold. No speed improvement claimed; this is a feature expansion with accessible tables and overlap evidence.
+- Raw after measurement: runs/20260911-chart-expanded.json; render detail: runs/20260911-chart-render-expanded-detail.json. These are SSR timings, not browser interaction latency.
+- Next run: reuse scripts/perf/chart-tsconfig.json (jsx react-jsx); standalone tsx otherwise uses classic JSX and fails with React is not defined.

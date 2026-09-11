@@ -446,6 +446,38 @@
       "ok": {
         "build": true
       }
+    },
+    {
+      "ts": "2026-09-11T15:50:38+00:00",
+      "git": {
+        "rev": "2ec499d",
+        "dirty": true
+      },
+      "medians": {
+        "chart-render": 0.812
+      },
+      "output_tokens": {
+        "chart-render": 36
+      },
+      "ok": {
+        "chart-render": true
+      }
+    },
+    {
+      "ts": "2026-09-11T15:57:15+00:00",
+      "git": {
+        "rev": "2ec499d",
+        "dirty": true
+      },
+      "medians": {
+        "analysis-filter": 3.154
+      },
+      "output_tokens": {
+        "analysis-filter": 44
+      },
+      "ok": {
+        "analysis-filter": true
+      }
     }
   ]
 }

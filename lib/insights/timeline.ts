@@ -19,6 +19,8 @@ export type MetricEvidenceSet = Record<ImpactMetric, MetricEvidence>;
 
 export interface SessionPoint {
   sessionId: string;
+  /** Source-qualified identity is optional for legacy direct callers. */
+  sourceId?: string;
   at: number;
   source: string;
   model: string | null;
@@ -155,6 +157,7 @@ export function toPoints(
           : false;
       return {
         sessionId: s.sessionId,
+        ...(typeof (s as { sourceId?: unknown }).sourceId === "string" ? { sourceId: (s as unknown as { sourceId: string }).sourceId } : {}),
         at: s.startedAt,
         source: s.sourceLabel ?? "?",
         model: s.model,

@@ -1,6 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useChartSelection } from "@/lib/use-chart-selection";
+import { inRange } from "@/lib/chart-analysis";
+import { DateRangeControls, SelectionChips } from "./charts/SelectionControls";
+import { ChartFrame } from "./charts/ChartFrame";
+import { SelectableBars } from "./charts/SelectableBars";
 import clsx from "clsx";
 import { Activity, AlertTriangle, Archive, ChevronDown, Clock3, Cpu, FolderGit2, Gauge, Layers, Radio, RefreshCw, Scale, ShieldAlert, Timer } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -86,6 +91,18 @@ export default function LiveClient({ initialData, error: initialError, getTransc
     return src;
   }, [data]);
   const { redact, setRedact, users } = useRedactedShow(harvestFrom);
+  const { selection: chartSelection, setSelection: setChartSelection } = useChartSelection();
+  const [failureFilter, setFailureFilter] = useState<"all" | "errors" | "clear">("all");
+  useEffect(() => {
+    const read = () => { const value = new URLSearchParams(window.location.search).get("liveTools"); setFailureFilter(value === "errors" || value === "clear" ? value : "all"); };
+    read(); window.addEventListener("popstate", read);
+    return () => window.removeEventListener("popstate", read);
+  }, []);
+  const setToolFailureFilter = (value: "all" | "errors" | "clear") => {
+    const url = new URL(window.location.href);
+    if (value === "all") url.searchParams.delete("liveTools"); else url.searchParams.set("liveTools", value);
+    window.history.pushState(window.history.state, "", url); setFailureFilter(value);
+  };
   const [filter, setFilter] = useState<FilterMode>("all");
   const [sort, setSort] = useState<SortMode>("recent");
   const [search, setSearch] = useState("");
@@ -234,8 +251,8 @@ export default function LiveClient({ initialData, error: initialError, getTransc
   }, [data]);
 
   const visibleSessions = useMemo(
-    () => selectVisibleSessions(data?.sessions ?? [], { filter, sort, search: debouncedSearch }),
-    [data, filter, sort, debouncedSearch]
+    () => selectVisibleSessions((data?.sessions ?? []).filter((session) => ((chartSelection.fromMs === undefined && chartSelection.toMs === undefined) || inRange(session.startedAt, chartSelection.fromMs, chartSelection.toMs)) && (failureFilter === "all" || (failureFilter === "errors" ? session.toolErrors > 0 : session.toolErrors === 0))), { filter, sort, search: debouncedSearch }),
+    [data, filter, sort, debouncedSearch, chartSelection.fromMs, chartSelection.toMs, failureFilter]
   );
 
   // Drawer prev/next moves through the currently visible (filtered + sorted)
@@ -385,7 +402,7 @@ export default function LiveClient({ initialData, error: initialError, getTransc
         </div>
       )}
 
-      {isVisible("usage") && <div className="observe-section"><LiveUsageStrip data={data} /></div>}
+      {isVisible("usage") && <div className="observe-section"><LiveUsageStrip data={data} onExploreDay={(fromMs, toMs) => { setChartSelection({ fromMs, toMs }); selectSection("sessions"); }} /></div>}
 
       {isVisible("quality") && <section id="quality" className={clsx("scroll-mt-16 mb-6", sectionVisibilityClass(true))}>
         <SectionHeader
@@ -464,6 +481,18 @@ export default function LiveClient({ initialData, error: initialError, getTransc
       {isVisible("intelligence") && <div className="observe-section"><TraceIntelligencePanels data={data} redact={redact} users={users} /></div>}
 
       {isVisible("sessions") && <section id="sessions" className={clsx("scroll-mt-16 mb-6", sectionVisibilityClass(true))}>
+      <div className="mb-4 space-y-3">
+        <DateRangeControls selection={chartSelection} onChange={setChartSelection} />
+        <SelectionChips selection={chartSelection} onChange={setChartSelection} />
+        <p className="text-xs text-fg-muted">Date filters apply to session start times in this scanned slice. Usage totals above retain their stated scan scope.</p>
+        <ChartFrame title="Tool failure distribution" description="Sessions with reported tool failures in the selected time range. Selecting a bar reveals the evidence filter.">
+          <SelectableBars rows={[
+            {id:"errors",label:"With tool failures",value:(data.sessions ?? []).filter((s) => ((chartSelection.fromMs === undefined && chartSelection.toMs === undefined) || inRange(s.startedAt, chartSelection.fromMs, chartSelection.toMs)) && s.toolErrors > 0).length,tone:"err"},
+            {id:"clear",label:"No reported tool failures",value:(data.sessions ?? []).filter((s) => ((chartSelection.fromMs === undefined && chartSelection.toMs === undefined) || inRange(s.startedAt, chartSelection.fromMs, chartSelection.toMs)) && s.toolErrors === 0).length,tone:"accent"}
+          ]} onExplore={(id) => setToolFailureFilter(id === "errors" ? "errors" : "clear")} />
+          {failureFilter !== "all" && <button type="button" className="analysis-control mt-2" onClick={() => setToolFailureFilter("all")}>Clear {failureFilter === "errors" ? "with failures" : "no reported failures"} filter</button>}
+        </ChartFrame>
+      </div>
       <SectionHeader
         icon={FolderGit2}
         title="Sessions"
