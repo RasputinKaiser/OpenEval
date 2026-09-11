@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import clsx from "clsx";
 import { Gauge, Wrench, Search, X } from "lucide-react";
@@ -38,6 +38,8 @@ function visualKindLabel(kind: string): string {
 
 export default function CasesClient({ cases, activeCategory }: { cases: CaseDefinition[]; activeCategory?: string }) {
   const [query, setQuery] = useState("");
+  useEffect(() => { const restore = () => setQuery(new URLSearchParams(window.location.search).get("q") ?? ""); restore(); window.addEventListener("popstate", restore); return () => window.removeEventListener("popstate", restore); }, []);
+  const changeQuery = (value: string) => { setQuery(value); const url = new URL(window.location.href); if (value) url.searchParams.set("q", value); else url.searchParams.delete("q"); window.history.replaceState(window.history.state, "", url); };
   const debouncedQuery = useDebouncedValue(query, 200);
   const searchRef = useRef<HTMLInputElement>(null);
   useFocusOnSlash(searchRef);
@@ -62,19 +64,19 @@ export default function CasesClient({ cases, activeCategory }: { cases: CaseDefi
   return (
     <>
       <div className="mb-6 flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 min-w-[200px]">
+        <div className="relative flex-1 min-w-0 basis-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-fg-dim" />
           <input
             ref={searchRef}
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => changeQuery(e.target.value)}
             aria-label="Search cases"
             placeholder="Search cases by name, id, tag…"
             className="w-full pl-9 pr-9 py-2 text-sm bg-bg border border-bd rounded-md focus:outline-none focus:border-accent placeholder:text-fg-dim"
           />
           {query && (
             <button
-              onClick={() => { setQuery(""); searchRef.current?.focus(); }}
+              onClick={() => { changeQuery(""); searchRef.current?.focus(); }}
               className="absolute right-2 top-1/2 -translate-y-1/2 min-h-8 min-w-8 flex items-center justify-center rounded text-fg-dim hover:text-fg"
               aria-label="Clear search"
             >
@@ -82,7 +84,7 @@ export default function CasesClient({ cases, activeCategory }: { cases: CaseDefi
             </button>
           )}
         </div>
-        <span className="text-xs text-fg-dim mono">
+        <span className="text-xs text-fg-dim mono" role="status">
           {total} case{total !== 1 ? "s" : ""}
         </span>
       </div>
@@ -99,13 +101,13 @@ export default function CasesClient({ cases, activeCategory }: { cases: CaseDefi
                 <Link
                   key={c.id}
                   href={`/runs/new?caseIds=${encodeURIComponent(c.id)}`}
-                  className="relative overflow-hidden card p-4 pt-5 hover:bg-bg-elev active:scale-[0.96] transition-colors"
+                  className="relative min-w-0 overflow-hidden card p-4 pt-5 hover:bg-bg-elev active:scale-[0.96] transition-colors"
                 >
                   <div className={clsx("absolute left-0 right-0 top-0 h-0.5", CAT_ACCENT[c.category] ?? "bg-accent")} />
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="text-sm font-medium">{c.name}</div>
-                      <div className="text-[10px] text-fg-dim mono mt-0.5">{c.id}</div>
+                      <div className="text-sm font-medium break-words">{c.name}</div>
+                      <div className="text-[10px] text-fg-dim mono mt-0.5 break-all">{c.id}</div>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       {c.difficulty && <span className="text-[10px] text-fg-muted mono px-1.5 py-0.5 rounded bg-bg-elev flex items-center gap-1"><Gauge className="size-2.5" /> {c.difficulty}</span>}
@@ -129,7 +131,7 @@ export default function CasesClient({ cases, activeCategory }: { cases: CaseDefi
                       {c.tags.map((t) => <span key={t} className="text-[10px] text-fg-dim mono">#{t}</span>)}
                     </div>
                   )}
-                  <div className="mt-3 flex items-center gap-3 text-[10px] text-fg-dim mono">
+                  <div className="mt-3 flex flex-wrap items-center gap-3 text-[10px] text-fg-dim mono">
                     <span>turns {c.runner?.max_turns ?? 25}</span>
                     <span>timeout {c.runner?.timeout_seconds ?? 300}s</span>
                     {c.budget?.max_cost_usd != null && <span>budget ${c.budget.max_cost_usd.toFixed(2)}</span>}
@@ -142,7 +144,7 @@ export default function CasesClient({ cases, activeCategory }: { cases: CaseDefi
       </div>
 
       {total === 0 && (
-        <div className="card p-12 text-center">
+        <div className="card p-8 sm:p-12 text-center" role="status">
           <Search className="size-6 text-fg-dim mx-auto mb-2" />
           <div className="text-sm text-fg-muted">No cases match &ldquo;{query}&rdquo;.</div>
           <div className="mt-2 text-xs text-fg-dim">Check the spelling — or browse the full library on the <Link href="/cases" className="text-accent-soft hover:underline">cases page</Link>.</div>

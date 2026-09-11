@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   ArrowUpDown,
@@ -31,6 +31,8 @@ import type { EvidenceTier } from "@/lib/types";
 import PageHeader from "./PageHeader";
 import Link from "next/link";
 import EvaluateNav from "./EvaluateNav";
+import { ChartFrame } from "./charts/ChartFrame";
+import { SelectableBars } from "./charts/SelectableBars";
 
 interface Props {
   audit: AccuracyAudit;
@@ -60,6 +62,33 @@ export default function AccuracyClient({ audit, judge }: Props) {
   const [category, setCategory] = useState("all");
   const [sort, setSort] = useState<SortKey>("weaknesses");
   const [filter, setFilter] = useState<FilterKey>(null);
+  const [evidenceStatus, setEvidenceStatus] = useState<AccuracyStatus | null>(null);
+  const [chartSurface, setChartSurface] = useState<AccuracySurface>("tests");
+  useEffect(() => {
+    const restore = () => {
+      const params = new URLSearchParams(window.location.search);
+      const surface = params.get("surface"), status = params.get("evidenceStatus"), graphic = params.get("chartSurface"), order = params.get("sort");
+      setFilter(surface === "weak" || ACCURACY_SURFACES.includes(surface as AccuracySurface) ? surface as FilterKey : null);
+      setEvidenceStatus(status === "pass" || status === "fail" || status === "unknown" || status === "not_applicable" ? status : null);
+      setChartSurface(ACCURACY_SURFACES.includes(graphic as AccuracySurface) ? graphic as AccuracySurface : "tests");
+      setCategory(params.get("category") ?? "all"); setQuery(params.get("q") ?? "");
+      setSort(order === "name" || order === "category" ? order : "weaknesses");
+    };
+    restore(); window.addEventListener("popstate", restore); return () => window.removeEventListener("popstate", restore);
+  }, []);
+  const changeFilters = (patch: Record<string, string | null>, replace = false) => {
+    const url = new URL(window.location.href);
+    for (const [key,value] of Object.entries(patch)) { if (value === null) url.searchParams.delete(key); else url.searchParams.set(key,value); }
+    if (replace) window.history.replaceState(window.history.state, "", url); else window.history.pushState(window.history.state, "", url);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  };
+  const coverage = audit.surfaces[chartSurface];
+  const coverageRows = [
+    { id: "pass", label: "Passed structural checks", value: coverage.passingCases, tone: "ok" as const },
+    { id: "fail", label: "Failed structural checks", value: coverage.failingCases, tone: "err" as const },
+    { id: "unknown", label: "Unknown / proof unavailable", value: coverage.unknownCases, tone: "warn" as const },
+    { id: "not_applicable", label: "Not applicable", value: coverage.notApplicableCases, tone: "accent" as const },
+  ];
   const emptyCorpus = audit.totalCases === 0 && audit.corpus.invalidFiles === 0;
   const displayStatus: AccuracyStatus = emptyCorpus ? "unknown" : audit.status;
 
@@ -78,7 +107,8 @@ export default function AccuracyClient({ audit, judge }: Props) {
     const filtered = audit.cases.filter((row) => {
       if (category !== "all" && row.category !== category) return false;
       if (filter === "weak" && row.weaknesses.length === 0) return false;
-      if (filter && filter !== "weak" && row.evidence[filter].status === "not_applicable") return false;
+      if (filter && filter !== "weak" && row.evidence[filter].status === "not_applicable" && evidenceStatus !== "not_applicable") return false;
+      if (evidenceStatus && row.evidence[filter && filter !== "weak" ? filter : chartSurface].status !== evidenceStatus) return false;
       const searchable = [
         row.id,
         row.name,
@@ -96,7 +126,7 @@ export default function AccuracyClient({ audit, judge }: Props) {
       return b.weaknesses.length - a.weaknesses.length || b.uncertainties.length - a.uncertainties.length || a.name.localeCompare(b.name);
     });
     return filtered;
-  }, [audit.cases, category, filter, query, sort]);
+  }, [audit.cases, category, filter, query, sort, evidenceStatus, chartSurface]);
 
   const filterLabel = filter === "weak" ? "weak cases" : filter ? accuracySurfaceLabel(filter) : null;
 
@@ -194,25 +224,30 @@ export default function AccuracyClient({ audit, judge }: Props) {
               surface={surface}
               audit={audit.surfaces[surface]}
               active={filter === surface}
-              onClick={() => setFilter(filter === surface ? null : surface)}
+              onClick={() => changeFilters({ surface: filter === surface ? null : surface, evidenceStatus: null })}
             />
           ))}
         </div>
       </section>
 
+      <div className="mb-5"><ChartFrame title="Evidence coverage" description="Counts cover the complete case audit. Explore replaces the proof-matrix filters with this surface and status. Passed means structural checks passed; it does not claim runtime success." unit={`${accuracySurfaceLabel(chartSurface)} · ${audit.totalCases} case definitions`}
+        actions={<label className="text-xs text-fg-muted">Surface <select className="analysis-input" value={chartSurface} onChange={(event) => changeFilters({ chartSurface: event.target.value })}>{ACCURACY_SURFACES.map((surface) => <option key={surface} value={surface}>{accuracySurfaceLabel(surface)}</option>)}</select></label>}
+        table={{ headers: ["Evidence state", "Cases"], rows: coverageRows.map((row) => ({ id: row.id, cells: [row.label, row.value] })) }}>
+        <SelectableBars rows={coverageRows} noun="cases" onExplore={(status) => changeFilters({ surface: chartSurface, evidenceStatus: status, category: null, q: null })} />
+      </ChartFrame></div>
       <section className="card p-3 mb-5" aria-label="Case filters">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 flex-nowrap items-center gap-1.5 overflow-x-auto pb-0.5 lg:flex-wrap lg:overflow-visible" aria-label="Case categories">
             <Filter aria-hidden="true" className="mr-1 size-3.5 text-fg-dim" />
-            <FilterChip active={category === "all"} onClick={() => setCategory("all")}>
+            <FilterChip active={category === "all"} onClick={() => changeFilters({ category: null })}>
               all · {audit.totalCases}
             </FilterChip>
             {categories.map((item) => (
-              <FilterChip key={item} active={category === item} onClick={() => setCategory(item)}>
+              <FilterChip key={item} active={category === item} onClick={() => changeFilters({ category: item })}>
                 {item} · {categoryCounts.get(item) ?? 0}
               </FilterChip>
             ))}
-            <FilterChip active={filter === "weak"} onClick={() => setFilter(filter === "weak" ? null : "weak")}>
+            <FilterChip active={filter === "weak"} onClick={() => changeFilters({ surface: filter === "weak" ? null : "weak", evidenceStatus: null })}>
               weak · {audit.weakCases}
             </FilterChip>
           </div>
@@ -221,7 +256,7 @@ export default function AccuracyClient({ audit, judge }: Props) {
               <Search aria-hidden="true" className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-fg-dim" />
               <input
                 value={query}
-                onChange={(event) => setQuery(event.target.value)}
+                onChange={(event) => changeFilters({ q: event.target.value || null }, true)}
                 placeholder="Search cases…"
                 aria-label="Search accuracy cases"
                 className="min-h-10 w-full rounded-md border border-bd bg-bg py-1.5 pl-8 pr-3 text-sm focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent lg:w-56"
@@ -230,7 +265,7 @@ export default function AccuracyClient({ audit, judge }: Props) {
             <ArrowUpDown aria-hidden="true" className="size-3.5 shrink-0 text-fg-dim" />
             <select
               value={sort}
-              onChange={(event) => setSort(event.target.value as SortKey)}
+              onChange={(event) => changeFilters({ sort: event.target.value === "weaknesses" ? null : event.target.value })}
               aria-label="Sort accuracy cases"
               className="min-h-10 rounded-md border border-bd bg-bg px-2 py-1.5 text-sm mono focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             >
@@ -242,7 +277,8 @@ export default function AccuracyClient({ audit, judge }: Props) {
         </div>
         <div className="mt-2 flex min-h-5 flex-wrap items-center justify-between gap-2 text-[11px] text-fg-dim" aria-live="polite">
           <span>{rows.length} of {audit.cases.length} cases shown{filterLabel ? ` · ${filterLabel}` : ""}</span>
-          {filter && <button onClick={() => setFilter(null)} className="rounded px-1 text-accent-soft underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">Clear surface filter</button>}
+          {evidenceStatus && <button type="button" className="analysis-control" onClick={() => changeFilters({ evidenceStatus: null })}>Remove status: {accuracyStatusLabel(evidenceStatus)}</button>}
+          {filter && <button onClick={() => changeFilters({ surface: null, evidenceStatus: null })} className="rounded px-1 text-accent-soft underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">Clear surface filter</button>}
         </div>
       </section>
 
@@ -276,8 +312,8 @@ export default function AccuracyClient({ audit, judge }: Props) {
                           <Link href="/cases" className="mt-2 inline-flex text-xs text-accent-soft underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
                             Open case library →
                           </Link>
-                        ) : filter || category !== "all" || query ? (
-                          <button type="button" onClick={() => { setFilter(null); setCategory("all"); setQuery(""); }} className="mt-2 text-xs text-accent-soft underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
+                        ) : filter || evidenceStatus || category !== "all" || query ? (
+                          <button type="button" onClick={() => changeFilters({ surface: null, evidenceStatus: null, category: null, q: null })} className="mt-2 text-xs text-accent-soft underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
                             Clear filters
                           </button>
                         ) : null}

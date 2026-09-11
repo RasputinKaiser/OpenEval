@@ -335,7 +335,7 @@ export default function SettingsClient() {
   const effectiveSource = environmentOverrides.source ? "environment" : savedJudge?.judgeSource ? "saved setting" : "automatic fallback";
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-5 sm:p-6 lg:p-8">
+    <div className="mx-auto min-w-0 max-w-6xl px-4 py-5 sm:p-6 lg:p-8">
       <PageHeader
         icon={SettingsIcon}
         title="Settings"

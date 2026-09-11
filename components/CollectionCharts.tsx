@@ -4,6 +4,7 @@ import { useId, useState } from "react";
 import clsx from "clsx";
 import type { RollupReport } from "@/lib/collection/rollup";
 import type { ToolRollup } from "@/lib/collection/aggregate";
+import type { ChartSelection } from "@/lib/chart-analysis";
 import { DAYS, fmtNum, fmtNumFull, fmtUsd } from "@/lib/format";
 import { ChartTooltip, useChartTooltip } from "./ChartTooltip";
 
@@ -39,7 +40,7 @@ function fmtMetric(v: number, metric: WeeklyMetric, estimated: boolean): string 
   return metric === "cost" ? (estimated ? "~" : "") + fmtUsd(v) : fmtNum(v);
 }
 
-export function WeeklyUsageChart({ rollup }: { rollup: RollupReport }) {
+export function WeeklyUsageChart({ rollup, onExplore }: { rollup: RollupReport; onExplore?: (selection: ChartSelection) => void }) {
   const { tip, show, showAt, hide, togglePin } = useChartTooltip();
   const headingId = useId();
   const [metric, setMetric] = useState<WeeklyMetric>("cost");
@@ -69,6 +70,9 @@ export function WeeklyUsageChart({ rollup }: { rollup: RollupReport }) {
   const activeEstimated = metric === "cost" && (activeWeek?.estimatedCostSessions ?? 0) > 0;
   const windowEstimated = metric === "cost" && weekly.some((week) => (week.estimatedCostSessions ?? 0) > 0);
   const AREA = 132; // px — explicit, because %-heights die in nested flex columns
+  const activeWeekEnd = activeWeek
+    ? weekly[activeIndex + 1]?.startMs ?? (() => { const next = new Date(activeWeek.startMs); next.setDate(next.getDate() + 7); next.setHours(0, 0, 0, 0); return next.getTime(); })()
+    : undefined;
 
   const tipFor = (w: RollupReport["weekly"][number]) => (
     <div className="space-y-0.5">
@@ -188,6 +192,13 @@ export function WeeklyUsageChart({ rollup }: { rollup: RollupReport }) {
         </div>
       </div>
 
+      {activeWeek && onExplore && activeWeekEnd && (
+        <div className="mx-4 mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-bd-subtle bg-bg-subtle/40 px-3 py-2 text-[11px]">
+          <span className="text-fg-dim">Inspection is pinned to {activeWeek.label}; apply its local calendar week to the full collection.</span>
+          <button type="button" className="analysis-control" onClick={() => onExplore({ fromMs: activeWeek.startMs, toMs: activeWeekEnd })}>Explore this week</button>
+        </div>
+      )}
+
       <div
         className="chart-scroll-well scroll-contain overflow-x-auto px-4 pb-4 pt-3"
         role="group"
@@ -272,7 +283,7 @@ export function WeeklyUsageChart({ rollup }: { rollup: RollupReport }) {
 // ---- Activity heatmap ----
 
 
-export function ActivityHeatmap({ heatmap, totalSessions }: { heatmap: number[][]; totalSessions: number }) {
+export function ActivityHeatmap({ heatmap, totalSessions, onExplore }: { heatmap: number[][]; totalSessions: number; onExplore?: (selection: ChartSelection) => void }) {
   const { tip, show, showAt, hide, togglePin } = useChartTooltip();
   const headingId = useId();
   const [hovered, setHovered] = useState<{ d: number; h: number } | null>(null);
@@ -332,6 +343,13 @@ export function ActivityHeatmap({ heatmap, totalSessions }: { heatmap: number[][
           <div className="text-[10px] text-fg-dim mono">{activeShare.toFixed(activeShare < 1 ? 1 : 0)}% of starts</div>
         </div>
       </div>
+
+      {selected && onExplore && (
+        <div className="mx-4 mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-bd-subtle bg-bg-subtle/40 px-3 py-2 text-[11px]">
+          <span className="text-fg-dim">Pinned {DAYS[selected.d]} at {String(selected.h).padStart(2, "0")}:00 local time.</span>
+          <button type="button" className="analysis-control" onClick={() => onExplore({ weekday: selected.d, hour: selected.h })}>Explore this hour</button>
+        </div>
+      )}
 
       <div
         className="chart-scroll-well scroll-contain overflow-x-auto px-4 pb-4 pt-3"
@@ -407,10 +425,11 @@ export function ActivityHeatmap({ heatmap, totalSessions }: { heatmap: number[][
 
 // ---- Tool health ----
 
-export function ToolHealthList({ tools, fullWidth, hideHeading }: { tools: ToolRollup[]; fullWidth?: boolean; hideHeading?: boolean }) {
+export function ToolHealthList({ tools, fullWidth, hideHeading, onExplore }: { tools: ToolRollup[]; fullWidth?: boolean; hideHeading?: boolean; onExplore?: (selection: ChartSelection) => void }) {
   const { tip, show, showAt, hide, togglePin } = useChartTooltip();
   const headingId = useId();
   const [hovered, setHovered] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
   const maxCalls = tools[0]?.calls || 1;
 
   if (tools.length === 0) {
@@ -453,10 +472,11 @@ export function ToolHealthList({ tools, fullWidth, hideHeading }: { tools: ToolR
               key={t.name}
               type="button"
               className={clsx("-mx-1.5 block min-h-10 w-full rounded px-1.5 py-2 text-left text-[12px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent", active && "bg-bg-elev")}
+              aria-pressed={selected === t.name}
               onMouseMove={(e) => { show(e, tipFor(t)); setHovered(t.name); }}
               onFocus={(e) => { showAt(e.currentTarget, tipFor(t)); setHovered(t.name); }}
               onBlur={() => { hide(); setHovered(null); }}
-              onClick={(e) => { e.stopPropagation(); togglePin(e, tipFor(t), `tool-${t.name}`); }}
+              onClick={(e) => { e.stopPropagation(); setSelected(selected === t.name ? null : t.name); togglePin(e, tipFor(t), `tool-${t.name}`); }}
             >
               <div className="flex items-center justify-between gap-2 min-w-0">
                 <span className={clsx("truncate mono text-[11px]", active ? "text-fg" : "text-fg-muted")}>{t.name}</span>
@@ -476,6 +496,12 @@ export function ToolHealthList({ tools, fullWidth, hideHeading }: { tools: ToolR
           );
         })}
       </div>
+      {selected && onExplore && (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-bd-subtle pt-3 text-[11px]">
+          <span className="text-fg-dim">Pinned tool: <span className="mono text-fg-muted">{selected}</span></span>
+          <button type="button" className="analysis-control" onClick={() => onExplore({ tool: selected })}>Explore this tool</button>
+        </div>
+      )}
       <ChartTooltip tip={tip} />
     </section>
   );

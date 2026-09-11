@@ -19,6 +19,10 @@ import { shouldPollJudgeStatus, timelinePollError, timelineRefreshPhase } from "
 import { EvidenceComposition } from "./evidence/EvidenceComposition";
 import { EvidenceReview } from "./evidence/EvidenceReview";
 import JudgePicker from "./JudgePicker";
+import { useChartSelection } from "@/lib/use-chart-selection";
+import { selectionParams, chartSelectionHref } from "@/lib/chart-analysis";
+import { DateRangeControls, SelectionChips } from "./charts/SelectionControls";
+import { TimelineRangeComparison } from "./TimelineRangeComparison";
 import type { JudgeSelectionInput } from "@/lib/grader/selection";
 
 
@@ -79,6 +83,12 @@ type TimelinePayload = TimelineReport & {
 
 export default function TimelineClient({ data: initialData, error }: { data: TimelinePayload; error?: string }) {
   const [data, setData] = useState(initialData);
+  const { selection, setSelection, ready: selectionReady, error: selectionError } = useChartSelection();
+  const selectionKey = selectionParams(selection).toString();
+  const selectionKeyRef = useRef(selectionKey);
+  selectionKeyRef.current = selectionKey;
+  const timelineAbort = useRef<AbortController | null>(null);
+  const requestVersion = useRef(0);
   const [judging, setJudging] = useState(false);
   const [judgeMsg, setJudgeMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | undefined>();
@@ -118,8 +128,9 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
   const [markerVisibleCount, setMarkerVisibleCount] = useState(TIMELINE_MARKER_WINDOW);
 
   useEffect(() => {
-    const fromUrl = new URLSearchParams(window.location.search).get("kind");
-    if (isMarkerKind(fromUrl)) setKindFilter(fromUrl);
+    const restore = () => { const fromUrl = new URLSearchParams(window.location.search).get("kind"); setKindFilter(isMarkerKind(fromUrl) ? fromUrl : "all"); };
+    restore(); window.addEventListener("popstate", restore);
+    return () => window.removeEventListener("popstate", restore);
   }, []);
 
   const applyKindFilter = useCallback((kind: KindFilter) => {
@@ -127,7 +138,7 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
     const url = new URL(window.location.href);
     if (kind === "all") url.searchParams.delete("kind");
     else url.searchParams.set("kind", kind);
-    window.history.replaceState(null, "", url);
+    window.history.pushState(window.history.state, "", url);
   }, []);
 
   const visibleMarkers = useMemo(
@@ -182,8 +193,13 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
   const trendComparable = data.overall.comparable ?? (firstHalfN > 0 && secondHalfN > 0);
   const TrendIcon = !trendComparable ? Activity : trend >= 0 ? TrendingUp : TrendingDown;
 
-  const refreshData = useCallback(async (): Promise<boolean> => {
+  const refreshData = useCallback(async (forceRefresh = true): Promise<boolean> => {
     if (refreshInFlightRef.current) return refreshInFlightRef.current;
+    const version = ++requestVersion.current;
+    timelineAbort.current?.abort();
+    const controller = new AbortController();
+    timelineAbort.current = controller;
+    const key = selectionKeyRef.current;
 
     const request = (async (): Promise<boolean> => {
       setTimelineLoading(true);
@@ -192,9 +208,10 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
         // The route deliberately permits private browser caching for ordinary
         // navigation. An explicit refresh must bypass that cache or a stale
         // response can be replayed for 30 seconds and keep the UI amber.
-        const fresh = await fetch("/api/collection/timeline?fresh=1", { cache: "no-store" });
+        const fresh = await fetch(`/api/collection/timeline?${forceRefresh ? "fresh=1&" : ""}${key}`, { cache: "no-store", signal: controller.signal });
         if (!fresh.ok) throw new Error(`HTTP ${fresh.status}`);
         const next = (await fresh.json()) as TimelinePayload;
+        if (version !== requestVersion.current || key !== selectionKeyRef.current) return false;
         setData(next);
         setTimelineLoaded(true);
         setTimelineStale(Boolean(next.stale || next.refreshing || next.refreshError));
@@ -202,11 +219,12 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
         setTimelineUpdatedAt(next.generatedAtMs ?? Date.now());
         return true;
       } catch (e) {
+        if (controller.signal.aborted || version !== requestVersion.current) return false;
         setTimelineError(timelinePollError(e));
         setTimelineStale(true);
         return false;
       } finally {
-        setTimelineLoading(false);
+        if (version === requestVersion.current) setTimelineLoading(false);
       }
     })();
     refreshInFlightRef.current = request;
@@ -216,6 +234,14 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
       if (refreshInFlightRef.current === request) refreshInFlightRef.current = null;
     }
   }, []);
+
+  useEffect(() => {
+    if (!selectionReady || selectionError) return;
+    timelineAbort.current?.abort();
+    refreshInFlightRef.current = null;
+    void refreshData(false);
+    return () => { timelineAbort.current?.abort(); requestVersion.current += 1; };
+  }, [selectionKey, selectionReady, selectionError, refreshData]);
 
   // A stale-while-revalidate response deliberately returns the last-good
   // report before the collection refresh finishes. Follow it once the shared
@@ -384,6 +410,18 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
   return (
     <div className="min-w-0 p-4 md:p-6 max-w-6xl mx-auto">
       <Link href="/collection" className="inline-flex items-center gap-1 text-xs text-fg-muted hover:text-fg mb-2"><ArrowLeft className="size-3.5" /> Collection</Link>
+      <section className="analysis-chart mb-4" aria-label="Timeline dataset selection">
+        <p className="text-xs text-fg-muted mb-3">Dates and evidence filters apply to every Timeline panel below. Adoption comparisons are recalculated within this selection. Chart zoom is inspection; use Explore visible sessions to apply its range.</p>
+        <DateRangeControls selection={selection} onChange={setSelection} />
+        <div className="flex flex-wrap gap-3 my-3">
+          <label className="text-xs text-fg-muted">Outcome evidence <select className="analysis-input" value={selection.outcome ?? ""} onChange={(e) => setSelection({ ...selection, outcome: (e.target.value || undefined) as "judged" | "heuristic" | undefined })}><option value="">All evidence</option><option value="judged">Judged</option><option value="heuristic">Heuristic</option></select></label>
+          <label className="text-xs text-fg-muted">Cost evidence <select className="analysis-input" value={selection.costSource ?? ""} onChange={(e) => setSelection({ ...selection, costSource: (e.target.value || undefined) as "measured" | "inferred" | undefined })}><option value="">All evidence</option><option value="measured">Measured</option><option value="inferred">Inferred</option></select></label>
+          {!selection.outcome && <Link className="analysis-control" href={chartSelectionHref("/collection", selection)}>Explore matching Collection sessions</Link>}
+        </div>
+        <SelectionChips selection={selection} onChange={setSelection} />
+        {selectionError && <p role="alert" className="text-xs text-err">{selectionError} <button className="analysis-control" onClick={() => setSelection({})}>Reset invalid selection</button></p>}
+        {timelineLoading && <p role="status" className="mt-2 text-xs text-fg-muted">Updating selected dataset; the previous report remains visible until the response arrives.</p>}
+      </section>
       <PageHeader
         icon={Activity}
         title={<>Timeline &amp; comparisons</>}
@@ -558,7 +596,7 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
               It is a trailing median from {seriesBasisCopy}, using {seriesN}/{seriesDenominator} top-level sessions ({pct(seriesCoverage)}). The two halves are {trendComparable ? "comparable" : "not comparable"}. {retainedJudgeReceiptCount} judge receipts are retained separately, and missing-signal sessions are not counted as zero. {data.outcomeSeries.length} points are plotted after downsampling.
             </div>
           </details>
-          <OutcomeChart series={data.outcomeSeries} markers={visibleMarkers} changePoints={data.changePoints ?? []} evidence={seriesEvidence} />
+          <OutcomeChart onExploreRange={(fromMs, toMs) => setSelection({ ...selection, fromMs, toMs })} series={data.outcomeSeries} markers={visibleMarkers} changePoints={data.changePoints ?? []} evidence={seriesEvidence} />
         </div>
 
         {/* Metric rail: four slim segments, one strip — numbers support the chart, not compete. */}
@@ -971,9 +1009,10 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
         <SectionHeader
           icon={ScatterChart}
           title="Cost vs. outcome"
-          desc="Each dot is one session: cost on a log scale against its outcome score. Judged sessions render on top of heuristic ones."
+          desc="Marks group nearby plotted sessions: positive cost on a log scale against outcome. Open a mark to inspect every underlying session."
         />
         <div className="card p-4">
+          <TimelineRangeComparison selection={selection} dateStart={data.dateStart} dateEnd={data.dateEnd} />
           <CostVsOutcome points={data.outcomeScatter} evidence={data.outcomeScatterEvidence} />
         </div>
       </section>

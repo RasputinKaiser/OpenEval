@@ -478,6 +478,22 @@
       "ok": {
         "analysis-filter": true
       }
+    },
+    {
+      "ts": "2026-09-11T15:58:26+00:00",
+      "git": {
+        "rev": "a5706d2",
+        "dirty": true
+      },
+      "medians": {
+        "analysis-filter": 2.332
+      },
+      "output_tokens": {
+        "analysis-filter": 42
+      },
+      "ok": {
+        "analysis-filter": true
+      }
     }
   ]
 }

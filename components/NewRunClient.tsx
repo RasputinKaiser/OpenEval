@@ -366,8 +366,8 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
         </div>
       </section>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4">
-        <div className="new-run-summary-panel order-first space-y-4 lg:order-none">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-4">
+        <div className="new-run-summary-panel order-first space-y-4 lg:order-none min-w-0">
 
           <section className="card p-5" aria-labelledby="execution-settings-title">
             <div className="mb-4">

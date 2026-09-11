@@ -242,7 +242,8 @@ test("Timeline judge refresh bypasses the server-side report cache", () => {
   const client = fs.readFileSync(path.join(process.cwd(), "components/TimelineClient.tsx"), "utf8");
   assert.match(route, /searchParams\.get\("fresh"\) === "1"/);
   assert.match(route, /getTimelineSnapshot\(\{ forceRefresh \}\)/);
-  assert.match(client, /\/api\/collection\/timeline\?fresh=1/);
+  assert.match(client, /forceRefresh \? "fresh=1&"/);
+  assert.match(client, /cache: "no-store", signal: controller.signal/);
 });
 
 test("fresh Timeline API refresh awaits a fresh Collection dependency and disables HTTP caching", async () => {

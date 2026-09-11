@@ -617,29 +617,56 @@ export function listRunCases(runId: string): RunCaseRecord[] {
 }
 
 export interface RunCaseSummary {
+  case_id: string;
+  category: string | null;
+  sample: number;
+  model: string | null;
   status: string;
   runner_cost_usd: number | null;
+  runner_cost_source: "measured" | "inferred" | "unspecified" | "missing";
   runner_input_tokens: number | null;
   runner_output_tokens: number | null;
   runner_duration_ms: number | null;
+  runner_duration_source: "measured" | "inferred" | "unspecified" | "missing";
+}
+
+function finiteMetric(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+function metricSource(value: unknown): "measured" | "inferred" | "unspecified" | "missing" {
+  return value === "measured" || value === "inferred" || value === "unspecified" || value === "missing"
+    ? value
+    : "unspecified";
 }
 
 export function getRunCaseSummariesBatch(runIds: string[]): Map<string, RunCaseSummary[]> {
   if (runIds.length === 0) return new Map();
   const placeholders = runIds.map(() => "?").join(",");
   const rows = getDb().prepare(
-    `SELECT run_id, status, runner_result_json FROM run_cases WHERE run_id IN (${placeholders}) ORDER BY seq ASC`
+    `SELECT run_id, case_id, category, sample, status, runner_result_json FROM run_cases WHERE run_id IN (${placeholders}) ORDER BY seq ASC`
   ).all(...runIds) as any[];
   const result = new Map<string, RunCaseSummary[]>();
   for (const row of rows) {
     let parsed: any = null;
     try { parsed = JSON.parse(row.runner_result_json); } catch {}
+    const usage = parsed?.usage;
+    const cost = finiteMetric(usage?.costUsd);
+    const costSource = metricSource(usage?.costSource ?? (cost === null ? "missing" : "unspecified"));
+    const duration = finiteMetric(parsed?.durationMs);
+    const durationSource = metricSource(parsed?.durationSource ?? (duration === null ? "missing" : "measured"));
     const summary: RunCaseSummary = {
+      case_id: String(row.case_id ?? ""),
+      category: typeof row.category === "string" && row.category ? row.category : null,
+      sample: Number.isFinite(Number(row.sample)) ? Number(row.sample) : 0,
+      model: typeof parsed?.model === "string" && parsed.model.trim() ? parsed.model : null,
       status: row.status,
-      runner_cost_usd: parsed?.usage?.costUsd ?? null,
-      runner_input_tokens: parsed?.usage?.inputTokens ?? null,
-      runner_output_tokens: parsed?.usage?.outputTokens ?? null,
-      runner_duration_ms: parsed?.durationMs ?? null,
+      runner_cost_usd: costSource === "missing" ? null : cost,
+      runner_cost_source: costSource,
+      runner_input_tokens: finiteMetric(usage?.inputTokens),
+      runner_output_tokens: finiteMetric(usage?.outputTokens),
+      runner_duration_ms: durationSource === "missing" ? null : duration,
+      runner_duration_source: durationSource,
     };
     const list = result.get(row.run_id) ?? [];
     list.push(summary);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { fmt } from "./live-shared";
 import { buildDailyVolume, type DailyVolumeSession } from "@/lib/daily-volume";
 import { ChartFrame } from "../charts/ChartFrame";
@@ -13,6 +13,8 @@ export function DailyVolumeChart({ sessions, days = 30, onExplore, referenceTime
   const [pinnedIdx, setPinnedIdx] = useState<number | null>(null);
   const [showCache, setShowCache] = useState(false);
   const { buckets, excluded } = useMemo(() => buildDailyVolume(sessions, days, referenceTime), [sessions, days, referenceTime]);
+  const firstDay = buckets[0]?.start;
+  useEffect(() => { setPinnedIdx(null); setActiveIdx(null); }, [firstDay]);
   const totalInput = buckets.reduce((sum, b) => sum + b.input, 0);
   const totalOutput = buckets.reduce((sum, b) => sum + b.output, 0);
   const totalCache = buckets.reduce((sum, b) => sum + b.cache, 0);
@@ -20,12 +22,12 @@ export function DailyVolumeChart({ sessions, days = 30, onExplore, referenceTime
   const max = Math.max(1, ...buckets.map((b) => b.input + b.output + (includeCache ? b.cache : 0)));
   const active = buckets[pinnedIdx ?? activeIdx ?? -1];
   const date = (ms: number) => new Date(ms).toISOString().slice(0, 10);
-  const table = { headers: ["Day (UTC)", "Input", "Output", "Cache reads", "Usage sessions"], rows: buckets.map((b) => ({ id: String(b.start), cells: [date(b.start), fmt(b.input), fmt(b.output), fmt(b.cache), b.sessions] })) };
+  const table = { headers: ["Day (UTC)", "Input", "Output", "Cache reads", "Usage sessions", "Evidence"], rows: buckets.map((b) => ({ id: String(b.start), cells: [date(b.start), b.input, b.output, b.cache, b.sessions, onExplore ? <button type="button" className="analysis-control" onClick={() => onExplore(b.start, b.start + 86_400_000)}>Explore day</button> : "No session handoff"] })) };
   return <ChartFrame title={`Daily usage · ${buckets.length} days`} unit="Tokens by session start day (UTC) · scanned session slice" table={table}
     actions={<label className="analysis-control"><input type="checkbox" checked={includeCache} disabled={totalInput + totalOutput === 0} onChange={(e) => setShowCache(e.target.checked)} />Include cache reads</label>}>
     {totalInput + totalOutput + totalCache === 0 ? <p role="status" className="py-3 text-xs text-fg-muted">No usage evidence in the scanned slice for this time window.</p> : <>
       <div className="mb-3 min-h-10 text-xs text-fg-muted" aria-live="polite">{active ? `${date(active.start)} · ${fmt(active.input)} input · ${fmt(active.output)} output · ${fmt(active.cache)} cache reads · ${active.sessions} usage sessions` : `${fmt(totalInput)} input · ${fmt(totalOutput)} output · ${fmt(totalCache)} cache reads`}</div>
-      <div className="relative flex h-32 items-end gap-1 border-b border-bd-subtle" onMouseLeave={() => setActiveIdx(null)} aria-label="Daily usage values">
+      <div className="relative flex h-32 items-end gap-1 border-b border-bd-subtle" onMouseLeave={() => setActiveIdx(null)} onKeyDown={(event) => { if (event.key === "Escape") { setPinnedIdx(null); setActiveIdx(null); } }} aria-label="Daily usage values">
         {buckets.map((bucket, i) => <button key={bucket.start} type="button" className="group relative h-full min-w-0 flex-1 rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
           aria-label={`${date(bucket.start)}: ${fmt(bucket.input)} input, ${fmt(bucket.output)} output, ${fmt(bucket.cache)} cache reads`} aria-pressed={pinnedIdx === i}
           onMouseEnter={() => setActiveIdx(i)} onFocus={() => setActiveIdx(i)} onBlur={() => setActiveIdx(null)} onClick={() => setPinnedIdx(pinnedIdx === i ? null : i)}>

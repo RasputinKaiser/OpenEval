@@ -22,6 +22,7 @@ import { ActivityDayStrip } from "@/components/live/ActivityDayStrip";
 import { displayModelId } from "@/lib/pricing";
 import type { AllSourcesResult } from "@/lib/collection/aggregate";
 import type { TimelineReport } from "@/lib/insights/collect";
+import DashboardTrends from "@/components/DashboardTrends";
 
 export const dynamic = "force-dynamic";
 
@@ -270,6 +271,8 @@ export default async function Page() {
       <div className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-fg-dim">
         <Link href="/cases" className="inline-flex items-center gap-1 hover:text-fg-muted transition-colors"><FileText className="size-3" /> {cases.length} test cases across {Object.keys(byCat).length} categories</Link>
       </div>
+
+      <DashboardTrends timeline={timeline} error={timelineError} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
         <section className="card p-5 lg:col-span-2">

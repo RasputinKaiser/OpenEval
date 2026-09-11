@@ -46,3 +46,17 @@ test("log domain includes extreme and singleton costs without clamping", () => {
   assert.ok(one.min < 0 && one.max > 0);
   assert.equal(logDomain([0, -1, NaN]), null);
 });
+
+
+test("saved comparison ranges cannot escape the current parent date selection", async () => {
+  const { dateRangeWithinSelection } = await import("../lib/chart-analysis");
+  const parent = { fromMs: 100, toMs: 300 };
+  assert.equal(dateRangeWithinSelection({ fromMs: 100, toMs: 200 }, parent), true);
+  assert.equal(dateRangeWithinSelection({ fromMs: 200, toMs: 300 }, parent), true);
+  assert.equal(dateRangeWithinSelection({ fromMs: 99, toMs: 200 }, parent), false);
+  assert.equal(dateRangeWithinSelection({ fromMs: 200, toMs: 301 }, parent), false);
+  assert.equal(dateRangeWithinSelection({ toMs: 200 }, parent), false);
+  assert.equal(dateRangeWithinSelection({ fromMs: 200 }, parent), false);
+  assert.equal(dateRangeWithinSelection({ fromMs: 0, toMs: 500 }, {}), true);
+  assert.equal(dateRangeWithinSelection({ fromMs: 100 }, { fromMs: 100 }), true);
+});

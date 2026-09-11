@@ -91,7 +91,8 @@ export default function LiveClient({ initialData, error: initialError, getTransc
     return src;
   }, [data]);
   const { redact, setRedact, users } = useRedactedShow(harvestFrom);
-  const { selection: chartSelection, setSelection: setChartSelection } = useChartSelection();
+  const { selection: chartSelection, setSelection: setChartSelection, error: chartSelectionError } = useChartSelection();
+  const unsupportedChartFilters = Object.keys(chartSelection).filter((key) => key !== "fromMs" && key !== "toMs");
   const [failureFilter, setFailureFilter] = useState<"all" | "errors" | "clear">("all");
   useEffect(() => {
     const read = () => { const value = new URLSearchParams(window.location.search).get("liveTools"); setFailureFilter(value === "errors" || value === "clear" ? value : "all"); };
@@ -482,8 +483,9 @@ export default function LiveClient({ initialData, error: initialError, getTransc
 
       {isVisible("sessions") && <section id="sessions" className={clsx("scroll-mt-16 mb-6", sectionVisibilityClass(true))}>
       <div className="mb-4 space-y-3">
-        <DateRangeControls selection={chartSelection} onChange={setChartSelection} />
-        <SelectionChips selection={chartSelection} onChange={setChartSelection} />
+        {(chartSelectionError || unsupportedChartFilters.length > 0) && <p role="alert" className="text-xs text-warn">{chartSelectionError ?? "Live session charts support date filters only; the other URL filters are not applied."} <button type="button" className="analysis-control" onClick={() => setChartSelection({ fromMs: chartSelection.fromMs, toMs: chartSelection.toMs })}>Clear unsupported filters</button></p>}
+        <DateRangeControls selection={{ fromMs: chartSelection.fromMs, toMs: chartSelection.toMs }} onChange={setChartSelection} />
+        <SelectionChips selection={{ fromMs: chartSelection.fromMs, toMs: chartSelection.toMs }} onChange={setChartSelection} />
         <p className="text-xs text-fg-muted">Date filters apply to session start times in this scanned slice. Usage totals above retain their stated scan scope.</p>
         <ChartFrame title="Tool failure distribution" description="Sessions with reported tool failures in the selected time range. Selecting a bar reveals the evidence filter.">
           <SelectableBars rows={[

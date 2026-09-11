@@ -29,7 +29,7 @@ export function SelectableBars({ rows, format = String, onExplore, noun = "sessi
       })}
     </div>
     {rows.length > 12 && <button className="analysis-control mt-2" type="button" onClick={() => setAll(!all)}>{all ? "Show fewer" : `Show all ${rows.length}`}</button>}
-    {pinned && <div className="mt-3 flex flex-wrap items-center gap-3 text-xs" aria-live="polite"><span className="break-words min-w-0">{pinned.label} · {format(pinned.value)}</span>{onExplore && <button type="button" className="analysis-control" onClick={() => onExplore(pinned.id)}>Explore these {noun}</button>}<button type="button" className="analysis-control" onClick={() => { setPinnedId(null); unpin(); }}>Clear inspection</button></div>}
+    {pinned && <div className="mt-3 flex flex-wrap items-center gap-3 text-xs" aria-live="polite"><span className="break-words min-w-0">{pinned.label} · {format(pinned.value)}</span>{onExplore && <button type="button" className="analysis-control" onClick={() => onExplore(pinned.id)}>Explore {noun}</button>}<button type="button" className="analysis-control" onClick={() => { setPinnedId(null); unpin(); }}>Clear inspection</button></div>}
     {tip && <ChartTooltip tip={tip} />}
   </div>;
 }

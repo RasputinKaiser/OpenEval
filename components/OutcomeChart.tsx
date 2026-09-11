@@ -52,11 +52,13 @@ export default function OutcomeChart({
   markers,
   changePoints,
   evidence,
+  onExploreRange,
 }: {
   series: SeriesPoint[];
   markers: Marker[];
   changePoints: ChangePoint[];
   evidence?: OutcomeSeriesEvidence;
+  onExploreRange?: (fromMs: number, toMs: number) => void;
 }) {
   // Defense in depth: a NaN/Infinity value anywhere in the series would silently break the
   // SVG path ("M42,NaN"). The upstream series is NaN-safe by contract; this guard keeps a
@@ -351,6 +353,14 @@ export default function OutcomeChart({
           <span className="timeline-chart-toolbar-subcopy">Trailing median · outcome 0–1 · {evidenceCopy}</span>
         </div>
         <div className="timeline-chart-toolbar-actions" aria-label="Trend summary">
+          {onExploreRange && <button type="button" className="analysis-control" onClick={() => {
+            const wrap = wrapRef.current;
+            const left = Math.max(PAD_L, wrap?.scrollLeft ?? 0);
+            const right = Math.min(W - PAD_R, (wrap?.scrollLeft ?? 0) + (wrap?.clientWidth ?? W));
+            const from = Math.max(t0, Math.floor(t0 + (left - PAD_L) / Math.max(1, W - PAD_L - PAD_R) * span));
+            const to = Math.min(t1 + 1, Math.ceil(t0 + (right - PAD_L) / Math.max(1, W - PAD_L - PAD_R) * span) + 1);
+            if (to > from) onExploreRange(from, to);
+          }}>Explore visible sessions</button>}
           {/* Observed-range chip removed: on a 0–1 bounded metric it restates the scale, not the data.
               Latest value lives on the line's endpoint badge; the chip duplicated it. */}
           <div className="timeline-chart-controls flex items-center gap-0.5 rounded-md border border-bd bg-bg-subtle px-1 py-0.5" aria-label="Chart controls">
@@ -694,6 +704,7 @@ export default function OutcomeChart({
         {shownShifts.length > 0 && <span className="timeline-chart-legend-item timeline-chart-legend-item--context" role="listitem"><span className="inline-flex items-center gap-0.5"><span className="w-2 h-0.5 rounded bg-ok" /><span className="w-2 h-0.5 rounded bg-err" /></span> detected shift (up/down)</span>}
         {shownKinds.length === 0 && <span className="timeline-chart-legend-item timeline-chart-legend-note" role="listitem">No adoption markers in this range</span>}
       </div>
+      <details className="mt-3 text-xs text-fg-muted"><summary className="cursor-pointer py-2">Outcome data table ({cleanSeries.length} plotted observations)</summary><div className="analysis-table" role="region" tabIndex={0} aria-label="Outcome observations"><table className="w-full text-left"><thead><tr><th>UTC time</th><th>Trailing median outcome</th></tr></thead><tbody>{cleanSeries.map((point, index) => <tr key={`${point.at}:${index}`}><td>{new Date(point.at).toISOString()}</td><td>{String(point.value)}</td></tr>)}</tbody></table></div></details>
     </div>
   );
 }

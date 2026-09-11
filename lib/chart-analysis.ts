@@ -127,3 +127,9 @@ export function logDomain(values: readonly number[]): { min: number; max: number
   }
   return { min, max, ticks };
 }
+
+/** Reject an independent comparison period that would escape an active date filter. */
+export function dateRangeWithinSelection(range: ChartSelection, selection: ChartSelection): boolean {
+  return (selection.fromMs === undefined || (range.fromMs !== undefined && range.fromMs >= selection.fromMs))
+    && (selection.toMs === undefined || (range.toMs !== undefined && range.toMs <= selection.toMs));
+}

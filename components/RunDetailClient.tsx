@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import TelemetryStrip from "./TelemetryStrip";
 import RunTimeline from "./RunTimeline";
+import { RunStatusChart } from "./run-detail/RunStatusChart";
 import RunWatch from "./RunWatch";
 import { CircleDot } from "lucide-react";
 import type { RunCaseRecord } from "@/lib/types";
@@ -22,6 +23,17 @@ interface Props { runId: string; runName?: string; initialCases: RunCaseRecord[]
 export default function RunDetailClient({ runId, runName, initialCases, running, createdAt, endedAt, model, harness, judge, harnessInfo }: Props) {
   const [cases, setCases] = useState<RunCaseRecord[]>(initialCases);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(initialCases.length ? 0 : null);
+  const selectCase = (index: number) => {
+    setSelectedIdx(index);
+    const item = cases[index]; if (!item) return;
+    const url = new URL(window.location.href); url.searchParams.set("selectedCase", item.id);
+    window.history.pushState(window.history.state, "", url);
+    if (window.matchMedia("(max-width: 1023px)").matches) requestAnimationFrame(() => document.getElementById("run-case-evidence")?.scrollIntoView({ block: "start" }));
+  };
+  useEffect(() => {
+    const restore = () => { const id = new URLSearchParams(window.location.search).get("selectedCase"); if (id) { const index = cases.findIndex((item) => item.id === id); setSelectedIdx(index >= 0 ? index : null); } else setSelectedIdx(cases.length ? 0 : null); };
+    restore(); window.addEventListener("popstate", restore); return () => window.removeEventListener("popstate", restore);
+  }, [cases]);
   const [live, setLive] = useState(running);
   const [cancelPhase, setCancelPhase] = useState<CancelPhase>("idle");
   const { collapsed, toggle } = useCollapsedSections(runId);
@@ -150,15 +162,16 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
         streamStatus={runEvents.status}
         events={runEvents.events}
         selectedIdx={selectedIdx}
-        onSelect={setSelectedIdx}
+        onSelect={selectCase}
       />
 
+      <RunStatusChart cases={cases} onSelect={selectCase} />
       <TelemetryStrip runId={runId} />
       {cases.length > 0 && (
         <RunTimeline
           cases={cases}
           selectedIndex={selectedIdx}
-          onSelect={setSelectedIdx}
+          onSelect={selectCase}
           live={live}
         />
       )}
@@ -171,11 +184,11 @@ export default function RunDetailClient({ runId, runName, initialCases, running,
           passRatio={passRatio}
           live={live}
           selectedIdx={selectedIdx}
-          onSelect={setSelectedIdx}
+          onSelect={selectCase}
           model={model}
         />
 
-        <section>
+        <section id="run-case-evidence" className="min-w-0 scroll-mt-16">
           {selectedIdx === null || !activeCase ? (
             <div className="card p-12 text-center border-dashed">
               <CircleDot className="size-10 text-fg-dim mx-auto mb-3 opacity-50" />

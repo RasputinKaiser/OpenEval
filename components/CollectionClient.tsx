@@ -5,7 +5,7 @@ import Link from "next/link";
 import clsx from "clsx";
 import {
   Boxes, RefreshCw, HelpCircle, AlertTriangle, Activity, Search, DatabaseZap,
-  Layers, Coins, Hammer, TrendingUp, CalendarClock, Cpu, Wrench, HardDrive, History,
+  Layers, Coins, Hammer, TrendingUp, CalendarClock, Cpu, Wrench, HardDrive, History, BarChart3,
   ShieldCheck,
   ArrowDownWideNarrow, Filter, ChevronDown,
   type LucideIcon,
@@ -20,7 +20,10 @@ import { DAYS, fmtNum, fmtNumFull, fmtUsd, fmtUsdFull, fmtRel, fmtDuration } fro
 import type { AllSourcesResult } from "@/lib/collection/aggregate";
 import type { RollupReport } from "@/lib/collection/rollup";
 import type { FtsHit } from "@/lib/live-cache";
+import type { ChartSelection } from "@/lib/chart-analysis";
+import { useChartSelection } from "@/lib/use-chart-selection";
 import { WeeklyUsageChart, ActivityHeatmap, ToolHealthList } from "./CollectionCharts";
+import CollectionAnalysis from "./CollectionAnalysis";
 import { EvidenceComposition, EvidenceCoverageRow } from "./evidence/EvidenceComposition";
 import { EvidenceReview } from "./evidence/EvidenceReview";
 
@@ -499,6 +502,7 @@ function EvidenceRail({
 }
 
 export default function CollectionClient({ initialData, error, initialQuery, rollup }: { initialData: AllSourcesResult; error?: string; initialQuery?: string; rollup?: RollupReport }) {
+  const { setSelection: setChartSelection } = useChartSelection();
   const [data, setData] = useState(initialData);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -778,6 +782,7 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
   const sections = useMemo(() => [
     { id: "overview", label: "Start here", description: "Corpus size, estimated API cost, work volume, and transcript search." },
     { id: "fidelity", label: "Evidence quality", description: "Check coverage, storage limits, and how totals were built." },
+    { id: "analysis", label: "Explore evidence", description: "Filter the full population and inspect matching sessions." },
     ...(hasWeekly ? [{ id: "usage", label: "Spend & usage", description: "Track sessions, tokens, and estimated API cost over time." }] : []),
     ...(hasHeatmap ? [{ id: "rhythm", label: "When you work", description: "See when sessions start across the week and day." }] : []),
     ...(hasModels ? [{ id: "models", label: "Model mix", description: "Compare model use, tokens, estimated cost, and errors." }] : []),
@@ -786,6 +791,10 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
     { id: "sessions", label: "Find a session", description: "Search and open retained transcript summaries." },
   ], [hasWeekly, hasHeatmap, hasModels, hasTools]);
   const { activeSection, selectSection, isVisible } = useProgressiveSection(sections, "all");
+  const exploreAnalysis = (selection: ChartSelection) => {
+    setChartSelection(selection);
+    selectSection("analysis");
+  };
 
   // A search handoff is a direct request to find evidence. Move the user to
   // the session catalog once results arrive instead of leaving them at the
@@ -1126,6 +1135,18 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
         </div>
       </section>}
 
+      {isVisible("analysis") && (
+        <section id="analysis" className={clsx("scroll-mt-16 mb-6", sectionVisibilityClass(true))}>
+          <SectionHeader
+            icon={BarChart3}
+            title="Explore evidence"
+            desc="Filter every matching parsed session, then hand off a bounded view to Timeline"
+            right="full population"
+          />
+          <CollectionAnalysis />
+        </section>
+      )}
+
       {hasWeekly && rollup && isVisible("usage") && (
         <section id="usage" className={clsx("scroll-mt-16 mb-6", sectionVisibilityClass(true))}>
           <SectionHeader
@@ -1135,7 +1156,7 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
             right={`${rollup.weekly.length}w window`}
           />
           <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-3">
-            <WeeklyUsageChart rollup={rollup} />
+            <WeeklyUsageChart rollup={rollup} onExplore={exploreAnalysis} />
             <ProjectRanking
               projects={rollup.byProject}
               generatedAtMs={data.generatedAtMs}
@@ -1154,7 +1175,7 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
             right={`${fmtNum(rollup.heatmapSessions ?? 0)} sessions`}
           />
           <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-3">
-            <ActivityHeatmap heatmap={hm} totalSessions={rollup.heatmapSessions ?? 0} />
+            <ActivityHeatmap heatmap={hm} totalSessions={rollup.heatmapSessions ?? 0} onExplore={exploreAnalysis} />
             <RhythmPanel heatmap={hm} />
           </div>
         </section>
@@ -1220,7 +1241,7 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
               <span className="ml-auto text-[10px] text-fg-dim mono tabular-nums" aria-live="polite">{fmtNum(visibleModels.length)} of {fmtNum(models.length)} models</span>
             </div>
             <div className="chart-scroll-well overflow-x-auto pb-2">
-              <table className="data-table min-w-[760px]" aria-label="Model usage and pricing evidence">
+              <table className="data-table min-w-[840px]" aria-label="Model usage and pricing evidence">
                 <thead>
                   <tr>
                     <th scope="col" className={STICKY_TH}>Model</th>
@@ -1231,12 +1252,13 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
                     <th scope="col" className="num">Tool error rate</th>
                     <th scope="col" className="num">API equiv.</th>
                     <th scope="col" className="num">Share</th>
+                    <th scope="col">Explore</th>
                   </tr>
                 </thead>
                 <tbody>
                   {visibleModels.length === 0 && (
                     <tr>
-                      <td colSpan={8} className="px-4 py-8 text-center text-sm text-fg-dim">
+                      <td colSpan={9} className="px-4 py-8 text-center text-sm text-fg-dim">
                         No models match “{modelQuery}”.{" "}
                         <button type="button" onClick={() => setModelQuery("")} className="text-accent-soft underline underline-offset-2 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-sm">
                           Clear search
@@ -1270,6 +1292,9 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
                           <span className="sr-only">{fmtUsdFull(m.costUsd)} API-equivalent estimate, not actual spend</span>
                         </td>
                         <td className="num"><ShareBar frac={share} /></td>
+                        <td>
+                          <button type="button" className="analysis-control min-h-8 px-2 py-1 text-[10px]" onClick={() => exploreAnalysis({ model: m.model })}>Explore</button>
+                        </td>
                       </tr>
                     );
                   })}
@@ -1303,7 +1328,7 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
             desc="Most-called tools across every harness, with failure rates"
             right={`${fmtNum(data.totalToolCalls)} calls`}
           />
-          <ToolHealthList tools={tools} fullWidth hideHeading />
+          <ToolHealthList tools={tools} fullWidth hideHeading onExplore={exploreAnalysis} />
         </section>
       )}
 

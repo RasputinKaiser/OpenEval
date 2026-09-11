@@ -37,6 +37,22 @@ export function CostVsOutcome({ points, evidence }: { points: ScatterPoint[]; ev
   const [provenance, setProvenance] = useState("all");
   const [costSource, setCostSource] = useState("all");
   const [inspectLimit, setInspectLimit] = useState(12);
+  useEffect(() => {
+    const restore = () => {
+      const params = new URLSearchParams(window.location.search);
+      const outcome = params.get("scatterOutcome"), cost = params.get("scatterCost");
+      setProvenance(outcome === "judged" || outcome === "heuristic" ? outcome : "all");
+      setCostSource(cost === "measured" || cost === "inferred" ? cost : "all");
+    };
+    restore(); window.addEventListener("popstate", restore);
+    return () => window.removeEventListener("popstate", restore);
+  }, []);
+  const inspectFilter = (key: "scatterOutcome" | "scatterCost", value: string) => {
+    const url = new URL(window.location.href);
+    if (value === "all") url.searchParams.delete(key); else url.searchParams.set(key, value);
+    window.history.pushState(window.history.state, "", url);
+    if (key === "scatterOutcome") setProvenance(value); else setCostSource(value);
+  };
   const height = compact ? 240 : 280;
   const pad = { left: 36, right: 18, top: 18, bottom: 36 };
   const plotWidth = Math.max(1, width - pad.left - pad.right);
@@ -69,7 +85,7 @@ export function CostVsOutcome({ points, evidence }: { points: ScatterPoint[]; ev
   const context = `${filtered.length} visible of ${readable.length} plotted; ${evidence.n} eligible / ${evidence.denominator} top-level sessions (${Math.round(evidence.coverage * 100)}% coverage).`;
   return <ChartFrame title="Cost vs. outcome" description="Inspect the relationship between session cost and outcome. This is descriptive evidence, not a causal effect." unit="Horizontal: positive cost, USD (log scale). Vertical: outcome score, 0–1."
     table={{ headers: ["Cost (USD)", "Outcome", "Outcome evidence", "Cost evidence", "Session"], rows: tableRows }}
-    actions={<><label className="text-xs text-fg-muted">Outcome<select aria-label="Scatter outcome evidence" className="analysis-input ml-2" value={provenance} onChange={(e) => setProvenance(e.target.value)}><option value="all">All plotted</option><option value="judged">Judged</option><option value="heuristic">Heuristic</option></select></label><label className="text-xs text-fg-muted">Cost<select aria-label="Scatter cost evidence" className="analysis-input ml-2" value={costSource} onChange={(e) => setCostSource(e.target.value)}><option value="all">All plotted</option><option value="measured">Measured</option><option value="inferred">Inferred</option></select></label></>}>
+    actions={<><label className="text-xs text-fg-muted">Outcome<select aria-label="Scatter outcome evidence" className="analysis-input ml-2" value={provenance} onChange={(e) => inspectFilter("scatterOutcome", e.target.value)}><option value="all">All plotted</option><option value="judged">Judged</option><option value="heuristic">Heuristic</option></select></label><label className="text-xs text-fg-muted">Cost<select aria-label="Scatter cost evidence" className="analysis-input ml-2" value={costSource} onChange={(e) => inspectFilter("scatterCost", e.target.value)}><option value="all">All plotted</option><option value="measured">Measured</option><option value="inferred">Inferred</option></select></label></>}>
     <p className="text-xs text-fg-muted mb-3">{context} {evidence.n > readable.length ? "Points sample the entire selected period; they are not the full population." : ""} Filters here inspect the plotted sample.</p>
     <div ref={ref} className="relative min-w-0">
       {!domain || !groups.length ? <p role="status" className="py-6 text-sm text-fg-muted">{readable.length ? "No plotted sessions match these evidence filters." : "No positive costs with usable outcome evidence to plot."}</p> : <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="max-w-full rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent" role="group" tabIndex={0}

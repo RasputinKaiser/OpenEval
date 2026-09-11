@@ -400,3 +400,10 @@ OpenEval behavior or treating dirty-checkout timings as clean-release claims.
 - measure.py process median: baseline 0.605s → expanded 0.812s (+0.207s); below the 2s absolute noise threshold. No speed improvement claimed; this is a feature expansion with accessible tables and overlap evidence.
 - Raw after measurement: runs/20260911-chart-expanded.json; render detail: runs/20260911-chart-render-expanded-detail.json. These are SSR timings, not browser interaction latency.
 - Next run: reuse scripts/perf/chart-tsconfig.json (jsx react-jsx); standalone tsx otherwise uses classic JSX and fails with React is not defined.
+
+## Analysis aggregation optimization attempt (2026-09-11, a5706d2, dirty UI tree)
+- Fixed fixture: 12,000 sessions over 300 days, alternating all/model selections, 3 warmups and 30 reports per process.
+- Hypothesis: replace 90 scans with bucket assignment and map only paged evidence rows. Exact report parity passed for 0, 1, 80, 191, and 12,000 sessions.
+- measure.py: 3.154s → 2.332s (-26.1%, -0.822s). Does not clear the required max(5%, 2s) threshold; optimization discarded by restoring the exact baseline file. The separate integer bucket-bound correctness fix remains committed. No performance win claimed.
+- Raw runs: runs/20260911-analysis-before.json and runs/20260911-analysis-after.json. Temporary parity harness removed after comparison.
+- Next run: retain the reproducible analysis-filter probe; pursue caching/incremental aggregation only if a realistic repeated-request workload justifies it.

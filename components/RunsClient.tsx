@@ -6,13 +6,16 @@ import clsx from "clsx";
 import StatusBadge from "./StatusBadge";
 import HarnessBadge from "./HarnessBadge";
 import { ChevronDown, Search, X } from "lucide-react";
+import { ChartFrame } from "./charts/ChartFrame";
+import { SelectableBars } from "./charts/SelectableBars";
+import { statusCounts } from "@/lib/run-chart-analysis";
 import type { RunRecord } from "@/lib/types";
 import { fmtDateTime, fmtStableDateTime } from "@/lib/format";
 import { useFocusOnSlash } from "@/lib/use-focus-slash";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 
 type SortKey = "newest" | "oldest" | "pass-desc" | "pass-asc";
-type StatusFilter = "all" | "running" | "completed" | "failed" | "passed";
+type StatusFilter = "all" | "running" | "completed" | "failed" | "passed" | "aborted";
 
 const SORTS: { key: SortKey; label: string }[] = [
   { key: "newest", label: "Newest" },
@@ -27,6 +30,7 @@ const STATUSES: { key: StatusFilter; label: string }[] = [
   { key: "completed", label: "Completed" },
   { key: "passed", label: "Has passes" },
   { key: "failed", label: "Failed" },
+  { key: "aborted", label: "Aborted" },
 ];
 
 export default function RunsClient({ runs, referenceTimeMs }: { runs: RunRecord[]; referenceTimeMs?: number }) {
@@ -45,26 +49,23 @@ export default function RunsClient({ runs, referenceTimeMs }: { runs: RunRecord[
   }, []);
 
   useEffect(() => {
-    try {
+    const restore = () => {
       const params = new URLSearchParams(window.location.search);
-      if (params.get("status")) setStatusFilter(params.get("status") as StatusFilter);
-      if (params.get("sort")) setSort(params.get("sort") as SortKey);
-      if (params.get("q")) setSearch(params.get("q") ?? "");
-      if (params.get("limit")) setPageSize(Number(params.get("limit")) || 50);
-    } catch {}
+      const status = params.get("status"), order = params.get("sort"), limit = Number(params.get("limit"));
+      setStatusFilter(STATUSES.some((item) => item.key === status) ? status as StatusFilter : "all");
+      setSort(SORTS.some((item) => item.key === order) ? order as SortKey : "newest");
+      setSearch(params.get("q") ?? "");
+      setPageSize([25,50,100,200].includes(limit) ? limit : 50);
+    };
+    restore(); window.addEventListener("popstate", restore); return () => window.removeEventListener("popstate", restore);
   }, []);
-
-  useEffect(() => {
-    try {
-      const params = new URLSearchParams();
-      if (statusFilter !== "all") params.set("status", statusFilter);
-      if (sort !== "newest") params.set("sort", sort);
-      if (search) params.set("q", search);
-      if (pageSize !== 50) params.set("limit", String(pageSize));
-      const qs = params.toString();
-      window.history.replaceState(null, "", qs ? `?${qs}` : window.location.pathname);
-    } catch {}
-  }, [statusFilter, sort, search, pageSize]);
+  const changeFilter = (patch: Record<string, string | null>, replace = false) => {
+    const url = new URL(window.location.href);
+    for (const [key,value] of Object.entries(patch)) { if (value === null) url.searchParams.delete(key); else url.searchParams.set(key,value); }
+    if (replace) window.history.replaceState(window.history.state, "", url); else window.history.pushState(window.history.state, "", url);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  };
+  const distribution = statusCounts(runs);
 
   const visible = useMemo(() => {
     let filtered = runs;
@@ -129,13 +130,18 @@ export default function RunsClient({ runs, referenceTimeMs }: { runs: RunRecord[
 
   return (
     <div>
+      <div className="mb-4"><ChartFrame title="Recent run status" description={`Counts describe the ${runs.length} runs loaded on this page (at most the latest 50), before search and status filtering.`} unit="Run status is separate from case pass rate."
+        table={{ headers: ["Run status", "Count"], rows: distribution.map((item) => ({ id: item.status, cells: [item.status, item.count] })) }}>
+        <SelectableBars rows={distribution.map((item) => ({ id: item.status, label: item.status, value: item.count, tone: item.status === "failed" ? "err" : item.status === "completed" ? "ok" : "accent" }))} noun="runs" onExplore={(status) => changeFilter({ status })} selectedId={statusFilter} />
+      </ChartFrame></div>
+      {statusFilter !== "all" && <div className="flex gap-2 items-center text-xs mb-3"><span>Run status: {statusFilter}</span><button type="button" className="analysis-control" onClick={() => changeFilter({ status: null })}>Remove status filter</button></div>}
       {runs.length > 3 && (
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <div className="flex flex-wrap gap-1">
             {STATUSES.map((s) => (
               <button
                 key={s.key}
-                onClick={() => setStatusFilter(s.key)}
+                onClick={() => changeFilter({ status: s.key === "all" ? null : s.key })}
                 aria-pressed={statusFilter === s.key}
                 className={clsx(
                   "text-[11px] px-2.5 py-1.5 rounded-md border transition-colors",
@@ -169,7 +175,7 @@ export default function RunsClient({ runs, referenceTimeMs }: { runs: RunRecord[
                   {SORTS.map((s) => (
                     <button
                       key={s.key}
-                      onClick={() => { setSort(s.key); setOpen(false); }}
+                      onClick={() => { changeFilter({ sort: s.key === "newest" ? null : s.key }); setOpen(false); }}
                       aria-pressed={sort === s.key}
                       className={clsx(
                         "w-full text-left px-3 py-1.5 text-xs hover:bg-bg-elev",
@@ -188,13 +194,13 @@ export default function RunsClient({ runs, referenceTimeMs }: { runs: RunRecord[
             <input
               ref={searchRef}
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => changeFilter({ q: e.target.value || null }, true)}
               aria-label="Search runs"
               placeholder="Search runs…"
               className="w-32 lg:w-44 pl-8 pr-2 py-1.5 text-[11px] bg-bg border border-bd rounded-md focus:outline-none focus:border-accent focus:w-40 lg:focus:w-52 transition-[width,border-color] placeholder:text-fg-dim"
             />
             {search && (
-              <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-fg-dim hover:text-fg" aria-label="Clear search">
+              <button onClick={() => changeFilter({ q: null })} className="absolute right-2 top-1/2 -translate-y-1/2 text-fg-dim hover:text-fg" aria-label="Clear search">
                 <X className="size-3" />
               </button>
             )}
@@ -202,7 +208,7 @@ export default function RunsClient({ runs, referenceTimeMs }: { runs: RunRecord[
           <span className="ml-auto flex items-center gap-2 text-xs text-fg-dim mono">
             <select
               value={pageSize}
-              onChange={(e) => setPageSize(Number(e.target.value))}
+              onChange={(e) => changeFilter({ limit: e.target.value === "50" ? null : e.target.value })}
               aria-label="Runs per page"
               className="text-[11px] bg-bg border border-bd rounded-md px-1.5 py-1 focus:outline-none focus:border-accent"
             >
@@ -218,7 +224,7 @@ export default function RunsClient({ runs, referenceTimeMs }: { runs: RunRecord[
 
       {visible.length === 0 ? (
         <div className="card p-8 text-center text-sm text-fg-muted">
-          No runs match. <Link href="/runs/new" className="text-accent-soft hover:underline">Start one</Link>.
+          No runs match. <button type="button" className="analysis-control mr-2" onClick={() => changeFilter({ status: null, q: null })}>Clear filters</button><Link href="/runs/new" className="text-accent-soft hover:underline">Start one</Link>.
         </div>
       ) : (
         <div className="space-y-3">

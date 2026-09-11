@@ -146,12 +146,17 @@ export default function HarnessesClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    const restore = () => { const requested = readHarnessParam(); setSelected(payload.harnesses.some((item) => item.id === requested) ? requested : payload.harnesses.find((item) => item.status === "available")?.id ?? payload.harnesses[0]?.id ?? null); };
+    window.addEventListener("popstate", restore); return () => window.removeEventListener("popstate", restore);
+  }, [payload.harnesses]);
+
   function choose(id: string) {
     setSelected(id);
     try {
       const url = new URL(window.location.href);
       url.searchParams.set("harness", id);
-      window.history.replaceState(window.history.state, "", url);
+      window.history.pushState(window.history.state, "", url);
     } catch {}
   }
 
@@ -300,7 +305,7 @@ export default function HarnessesClient() {
   const activeConnection = active as ConnectionHarness | undefined;
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-5 sm:p-6 lg:p-8">
+    <div className="mx-auto min-w-0 max-w-7xl px-4 py-5 sm:p-6 lg:p-8">
       <PageHeader
         icon={Plug}
         title="Harnesses"
