@@ -3,7 +3,7 @@ import fs from "node:fs";
 import { collectSourceSessions, scanSourceSessions, type CollectedSourceFiles, type LiveAggregate, type LiveSession } from "../live";
 import { allCollectionSources, defToSpec, type CollectionSourceDef } from "./sources";
 import { discoverKnownSources, discoverUnknownCandidates, type DiscoveredSource, type UnknownCandidate } from "./discover";
-import { displayModelId, PRICING_LIST_DATE, PRICING_SOURCE } from "../pricing";
+import { displayModelId, pricingProvenanceDate, PRICING_SOURCE } from "../pricing";
 import {
   emptyParseWarningCounts,
   mergeParseWarningCounts,
@@ -524,7 +524,7 @@ function computeAllSources(
       totalListedRateSessions: summaries.reduce((a, s) => a + s.listedRateSessions, 0),
       totalFamilyRateSessions: summaries.reduce((a, s) => a + s.familyRateSessions, 0),
       totalFallbackRateSessions: summaries.reduce((a, s) => a + s.fallbackRateSessions, 0),
-      pricingListDate: PRICING_LIST_DATE,
+      pricingListDate: pricingProvenanceDate(),
       pricingSource: PRICING_SOURCE,
       byModel: mergeModelRollups(modelLists),
       byTool: mergeToolRollups(toolLists),

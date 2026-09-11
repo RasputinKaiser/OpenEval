@@ -25,7 +25,7 @@ export function EvidenceGroupSummary({ results, expectedArtifacts }: { results: 
       {expectedArtifacts.length > 0 ? (
         <div className="rounded border border-bd-subtle bg-bg/50 p-2">
           <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-fg-muted">
+            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.12em] text-fg-muted">
               <Eye className="size-3" /> Artifact contract
             </div>
             <span className="mono text-xs text-fg-muted">{expectedArtifacts.length} expected</span>
@@ -38,7 +38,7 @@ export function EvidenceGroupSummary({ results, expectedArtifacts }: { results: 
         return (
           <div key={card.tier} className="rounded border border-bd-subtle bg-bg/50 p-2">
             <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-fg-muted">
+              <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.12em] text-fg-muted">
                 <Icon className="size-3" /> {card.label}
               </div>
               <span className={clsx("mono text-xs", passed ? "text-ok" : "text-warn")}>{card.passed}/{card.total}</span>
@@ -98,7 +98,7 @@ export const GraderRow = memo(function GraderRow({ g, showText = (value) => Stri
         {g.judgeReceipt && (
           <div className={clsx("rounded border p-2.5", blocked ? "border-warn/30 bg-warn/5" : "border-accent/20 bg-accent/5")} aria-label="Judge receipt">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="text-[10px] uppercase tracking-wider text-fg-muted">Judge receipt</div>
+              <div className="text-[10px] uppercase tracking-[0.12em] text-fg-muted">Judge receipt</div>
               <span className={clsx("mono text-[10px]", blocked ? "text-warn" : g.judgeReceipt.status === "passed" ? "text-ok" : "text-err")}>{g.judgeReceipt.status}</span>
             </div>
             <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] sm:grid-cols-4">

@@ -265,10 +265,10 @@ export default function BenchClient({ runId, runName, model, status, createdAt }
               </div>
               <span className="inline-flex items-center gap-1 text-[11px] text-fg-dim"><Info className="size-3.5" /> Units are shown in each heading</span>
             </div>
-            <div className="overflow-x-auto">
+            <div className="chart-scroll-well overflow-x-auto pb-2">
               <table className="w-full min-w-[1050px] text-sm">
                 <caption className="sr-only">Per-case benchmark performance and measurement provenance</caption>
-                <thead className="sticky top-0 z-10 text-[11px] uppercase tracking-wider text-fg-muted bg-bg-subtle border-b border-bd-subtle">
+                <thead className="sticky top-0 z-10 text-[11px] uppercase tracking-[0.12em] text-fg-muted bg-bg-subtle border-b border-bd-subtle">
                   <tr>
                     <th scope="col" aria-sort={sortAria(sortKey, "caseName", sortDir)} className="text-left px-4 py-2 font-medium"><SortBtn label="Case" k="caseName" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="left" /></th>
                     <th scope="col" aria-sort={sortAria(sortKey, "tokPerSec", sortDir)} className="text-right px-4 py-2 font-medium"><SortBtn label="Output tok/s" k="tokPerSec" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} /></th>
@@ -334,7 +334,7 @@ function BenchMeta({ label, value, mono, tone }: { label: string; value: string;
   const toneClass = tone === "ok" ? "text-ok" : tone === "err" ? "text-err" : tone === "warn" ? "text-warn" : "text-fg";
   return (
     <div className="min-w-0">
-      <div className="text-[10px] uppercase tracking-wider text-fg-dim">{label}</div>
+      <div className="text-[10px] uppercase tracking-[0.12em] text-fg-dim">{label}</div>
       <div className={clsx("mt-0.5 truncate text-xs", mono && "mono", toneClass)}>{value}</div>
     </div>
   );
@@ -372,7 +372,7 @@ function VisualLaneSection({ runId, cases }: { runId: string; cases: PerCase[] }
           <Link key={c.caseId} href={`/runs/${runId}/case/${c.caseId}`} className="group rounded-lg border border-bd-subtle bg-bg/35 p-3 transition-colors hover:border-accent/50 hover:bg-bg-elev">
             <div className="flex items-start justify-between gap-2">
               <span className="line-clamp-2 text-sm text-fg group-hover:text-accent-soft">{c.caseName}</span>
-              <span className="shrink-0 rounded border border-accent/30 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-accent-soft">{visualKindLabel(c.visualKind)}</span>
+              <span className="shrink-0 rounded border border-accent/30 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.12em] text-accent-soft">{visualKindLabel(c.visualKind)}</span>
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-fg-muted">
               <span>{c.visualArtifacts.length} expected artifact{c.visualArtifacts.length === 1 ? "" : "s"}</span>
@@ -408,7 +408,7 @@ function statusLabel(status: string): string {
 function IntegrityStat({ label, value, detail, ok }: { label: string; value: string; detail: string; ok: boolean }) {
   return (
     <div className="rounded border border-bd-subtle bg-bg/50 p-3">
-      <div className="text-[10px] uppercase tracking-wider text-fg-muted">{label}</div>
+      <div className="text-[10px] uppercase tracking-[0.12em] text-fg-muted">{label}</div>
       <div className={clsx("mt-1 mono text-base font-semibold", ok ? "text-ok" : "text-warn")}>{value}</div>
       <div className="mt-0.5 text-[10px] text-fg-dim">{detail}</div>
     </div>
@@ -437,7 +437,7 @@ function fmtMs(ms: number): string {
 function MetricGroup({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="rounded-lg border border-bd-subtle bg-bg-subtle/30 p-3 space-y-2">
-      <div className="text-[10px] uppercase tracking-wider text-fg-dim">{label}</div>
+      <div className="text-[10px] uppercase tracking-[0.12em] text-fg-dim">{label}</div>
       {children}
     </div>
   );
@@ -447,7 +447,7 @@ function Stat({ label, value, icon: Icon, tone }: { label: string; value: string
   const c = tone === "ok" ? "text-ok" : tone === "err" ? "text-err" : tone === "warn" ? "text-warn" : tone === "accent" ? "text-accent-soft" : "text-fg";
   return (
     <div className="flex items-baseline justify-between gap-2">
-      <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-fg-muted">
+      <div className="flex items-center gap-1 text-[10px] uppercase tracking-[0.12em] text-fg-muted">
         <Icon className="size-3" /> {label}
       </div>
       <div className={`text-base font-semibold mono tabular-nums ${c}`}>{value}</div>
@@ -537,7 +537,7 @@ function ScatterSection({ cases, maxTokens, maxCost }: { cases: PerCase[]; maxTo
         })}
       </svg>
       <div className="mt-3 grid gap-2 rounded-lg border border-bd-subtle bg-bg/35 p-3 text-xs sm:grid-cols-4">
-        <div className="sm:col-span-2"><div className="text-[10px] uppercase tracking-wider text-fg-dim">Selected case</div><div className="mt-1 truncate text-fg">{selected?.caseName ?? "No cases"}</div></div>
+        <div className="sm:col-span-2"><div className="text-[10px] uppercase tracking-[0.12em] text-fg-dim">Selected case</div><div className="mt-1 truncate text-fg">{selected?.caseName ?? "No cases"}</div></div>
         <Datum label="Total tokens (in + out)" value={selected ? formatTokenTick(selected.tokensPerCase) : "—"} />
         <Datum label="Estimated cost" value={selected ? formatCost(selected) : "—"} />
       </div>
@@ -576,7 +576,7 @@ function TokPerSecSection({ cases, maxTokPerSec }: { cases: PerCase[]; maxTokPer
         <span className="text-[11px] text-fg-dim">{ranked.length} case{ranked.length === 1 ? "" : "s"}</span>
       </div>
       <div data-testid="benchmark-throughput-chart" className="mt-4 rounded-lg border border-bd-subtle bg-bg/25 p-3" role="img" aria-label="Ranked output throughput per case in tokens per second">
-        <div className="grid grid-cols-[minmax(7rem,9rem)_minmax(0,1fr)_4.5rem] items-end gap-2 text-[10px] uppercase tracking-wider text-fg-dim sm:grid-cols-[minmax(10rem,13rem)_minmax(0,1fr)_5rem]">
+        <div className="grid grid-cols-[minmax(7rem,9rem)_minmax(0,1fr)_4.5rem] items-end gap-2 text-[10px] uppercase tracking-[0.12em] text-fg-dim sm:grid-cols-[minmax(10rem,13rem)_minmax(0,1fr)_5rem]">
           <span>Case (ranked)</span>
           <div className="relative h-5 border-b border-bd-subtle">
             {ticks.map((tick) => <span key={tick} className="absolute bottom-1 -translate-x-1/2 mono normal-case tracking-normal" style={{ left: `${(tick / maxScale) * 100}%` }}>{formatNumberTick(tick)}</span>)}
@@ -619,7 +619,7 @@ function ChartLegend() {
 }
 
 function Datum({ label, value }: { label: string; value: string }) {
-  return <div><div className="text-[10px] uppercase tracking-wider text-fg-dim">{label}</div><div className="mt-1 mono text-fg">{value}</div></div>;
+  return <div><div className="text-[10px] uppercase tracking-[0.12em] text-fg-dim">{label}</div><div className="mt-1 mono text-fg">{value}</div></div>;
 }
 
 function niceTicks(max: number, count: number): number[] {

@@ -118,7 +118,12 @@ export async function GET(request: Request) {
   }
 
   try {
-    const window = readTranscriptWindow(resolved.file, resolved.spec.format, cursor ? { byteOffset: cursor.byteOffset, state: cursor.state } : undefined);
+    const window = readTranscriptWindow(resolved.file, resolved.spec.format, {
+      // Cursor continuations resume an earlier bounded window; DB-backed
+      // formats always need the session id that scopes the expansion.
+      ...(cursor ? { byteOffset: cursor.byteOffset, state: cursor.state } : {}),
+      ...(resolved.spec.format === "hermes-sqlite" ? { sessionId: resolved.sessionId } : {}),
+    });
     if (cursor && (window.revision.fingerprint !== cursor.revision.fingerprint || window.revision.size !== cursor.revision.size || window.revision.mtimeMs !== cursor.revision.mtimeMs)) return stale("The transcript changed; refresh before loading another window.");
     return responseForWindow(resolved, window, cursor);
   } catch (error) {

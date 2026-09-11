@@ -293,6 +293,204 @@ test("mergeToolRollups sums tools across sources, sorts by calls, and caps the l
   assert.equal(mergeToolRollups([many], 12).length, 12);
 });
 
+// ---- Hermes state.db ledger ----
+
+test("hermes-sqlite expands state.db into sessions with per-model usage", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "openeval-hermes-db-"));
+  const db = new Database(path.join(dir, "state.db"));
+  db.exec(`
+    CREATE TABLE sessions (
+      id TEXT PRIMARY KEY, source TEXT NOT NULL DEFAULT 'cli', user_id TEXT, model TEXT,
+      model_config TEXT, system_prompt TEXT, parent_session_id TEXT,
+      started_at REAL NOT NULL, ended_at REAL, end_reason TEXT,
+      message_count INTEGER DEFAULT 0, tool_call_count INTEGER DEFAULT 0,
+      input_tokens INTEGER DEFAULT 0, output_tokens INTEGER DEFAULT 0,
+      cache_read_tokens INTEGER DEFAULT 0, cache_write_tokens INTEGER DEFAULT 0,
+      reasoning_tokens INTEGER DEFAULT 0, billing_provider TEXT, billing_base_url TEXT,
+      billing_mode TEXT, estimated_cost_usd REAL, actual_cost_usd REAL, cost_status TEXT,
+      cost_source TEXT, pricing_version TEXT, title TEXT, api_call_count INTEGER DEFAULT 0,
+      archived INTEGER NOT NULL DEFAULT 0, hidden INTEGER NOT NULL DEFAULT 0, cwd TEXT,
+      last_activity_at REAL, display_name TEXT
+    );
+    CREATE TABLE session_model_usage (
+      session_id TEXT NOT NULL, model TEXT NOT NULL, billing_provider TEXT NOT NULL DEFAULT '',
+      billing_base_url TEXT NOT NULL DEFAULT '', billing_mode TEXT NOT NULL DEFAULT '',
+      task TEXT NOT NULL DEFAULT '', api_call_count INTEGER NOT NULL DEFAULT 0,
+      input_tokens INTEGER NOT NULL DEFAULT 0, output_tokens INTEGER NOT NULL DEFAULT 0,
+      cache_read_tokens INTEGER NOT NULL DEFAULT 0, cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+      reasoning_tokens INTEGER NOT NULL DEFAULT 0, estimated_cost_usd REAL NOT NULL DEFAULT 0,
+      actual_cost_usd REAL NOT NULL DEFAULT 0, cost_status TEXT, cost_source TEXT, first_seen REAL
+    );
+    CREATE TABLE messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, role TEXT NOT NULL,
+      content TEXT, tool_call_id TEXT, tool_calls TEXT, tool_name TEXT,
+      timestamp REAL NOT NULL, token_count INTEGER, finish_reason TEXT
+    );
+  `);
+  const started = 1787345789;
+  db.prepare(`INSERT INTO sessions (id, model, started_at, ended_at, message_count, tool_call_count, cwd, title)
+              VALUES (?, ?, ?, ?, 3, 2, '/Users/x/Proj', 'My title')`).run("s1", "gpt-5.5", started, started + 60);
+  db.prepare(`INSERT INTO session_model_usage (session_id, model, input_tokens, output_tokens)
+              VALUES ('s1', 'gpt-5.5', 1000, 200), ('s1', 'kimi-k2.6', 500, 50)`).run();
+  db.prepare(`INSERT INTO messages (session_id, role, content, timestamp) VALUES
+              ('s1', 'user', 'fix the bug', ?),
+              ('s1', 'assistant', 'done', ?),
+              ('s1', 'user', 'thanks', ?)`).run(started, started + 30, started + 60);
+  // A hidden session must not be counted.
+  db.prepare(`INSERT INTO sessions (id, model, started_at, hidden) VALUES ('s2', 'gpt-5.5', ?, 1)`).run(started);
+  db.close();
+
+  const agg = scanSourceSessions({ id: "hermes", label: "Hermes", roots: [dir], format: "hermes-sqlite" }, 50);
+  assert.equal(agg.totalSessions, 1);
+  const s = agg.sessions[0];
+  assert.equal(s.sessionId, "s1");
+  assert.equal(s.model, "gpt-5.5"); // dominant by token volume
+  assert.equal(s.inputTokens, 1500);
+  assert.equal(s.outputTokens, 250);
+  assert.equal(s.metricSources.tokens, "measured");
+  assert.equal(s.numTurns, 2);
+  assert.equal(s.toolCalls, 2);
+  assert.equal(s.durationMs, 60000);
+  assert.equal(s.project, "Proj");
+  assert.equal(s.displayTitle, "My title");
+  assert.match(s.lastPromptPreview ?? "", /fix the bug/);
+  const models = (s.modelUsage ?? []).map((u) => u.model).sort();
+  assert.deepEqual(models, ["gpt-5.5", "kimi-k2.6"]);
+});
+
+test("hermes-sqlite merges profile DBs and dedupes session ids across ledgers", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "openeval-hermes-profiles-"));
+  const makeLedger = (dir: string) => {
+    fs.mkdirSync(dir, { recursive: true });
+    const db = new Database(path.join(dir, "state.db"));
+    db.exec(`
+      CREATE TABLE sessions (
+        id TEXT PRIMARY KEY, source TEXT NOT NULL DEFAULT 'cli', model TEXT,
+        parent_session_id TEXT, started_at REAL NOT NULL, ended_at REAL,
+        message_count INTEGER DEFAULT 0, tool_call_count INTEGER DEFAULT 0,
+        cwd TEXT, title TEXT, archived INTEGER NOT NULL DEFAULT 0,
+        hidden INTEGER NOT NULL DEFAULT 0, last_activity_at REAL, display_name TEXT
+      );
+      CREATE TABLE session_model_usage (
+        session_id TEXT NOT NULL, model TEXT NOT NULL, input_tokens INTEGER NOT NULL DEFAULT 0,
+        output_tokens INTEGER NOT NULL DEFAULT 0, cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_write_tokens INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE TABLE messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, role TEXT NOT NULL,
+        content TEXT, tool_call_id TEXT, tool_calls TEXT, tool_name TEXT,
+        timestamp REAL NOT NULL, token_count INTEGER, finish_reason TEXT
+      );
+    `);
+    return db;
+  };
+  // Default ledger: one root session plus one subagent child.
+  const main = makeLedger(path.join(root, "state.db"));
+  main.prepare(`INSERT INTO sessions (id, parent_session_id, source, model, started_at, ended_at, message_count, tool_call_count, cwd, title)
+                VALUES ('root1', NULL, 'tui', 'gpt-5.5', 1788000000, 1788000060, 3, 2, '/Users/x/Main', 'Main session')`).run();
+  main.prepare(`INSERT INTO sessions (id, parent_session_id, source, model, started_at, ended_at, message_count, tool_call_count, cwd)
+                VALUES ('child1', 'root1', 'subagent', 'gpt-5.5', 1788000010, 1788000050, 4, 3, '/Users/x/Main')`).run();
+  main.prepare(`INSERT INTO session_model_usage (session_id, model, input_tokens, output_tokens) VALUES ('root1', 'gpt-5.5', 100, 20)`).run();
+  main.close();
+  // Profile ledger: its own session plus a DUPLICATE of root1 with newer data.
+  const profile = makeLedger(path.join(root, "profiles", "lmstudio"));
+  profile.prepare(`INSERT INTO sessions (id, source, model, started_at, ended_at, message_count, tool_call_count, cwd, title)
+                   VALUES ('p1', 'cli', 'llama-4', 1788000100, 1788000160, 2, 0, '/Users/x/Profile', 'Profile session')`).run();
+  profile.prepare(`INSERT INTO sessions (id, parent_session_id, source, model, started_at, ended_at, message_count, tool_call_count, cwd)
+                   VALUES ('root1', NULL, 'tui', 'gpt-5.5', 1788000000, 1788000070, 5, 4, '/Users/x/Main')`).run();
+  profile.prepare(`INSERT INTO session_model_usage (session_id, model, input_tokens, output_tokens) VALUES ('p1', 'llama-4', 50, 10)`).run();
+  profile.close();
+
+  const agg = scanSourceSessions({ id: "hermes", label: "Hermes", roots: [root], format: "hermes-sqlite" }, 50);
+  // 3 unique sessions: root1 (deduped), child1, p1 — not 4 rows.
+  assert.equal(agg.totalSessions, 3);
+  const ids = agg.sessions.map((s) => s.sessionId).sort();
+  assert.deepEqual(ids, ["child1", "p1", "root1"]);
+  const root1 = agg.sessions.find((s) => s.sessionId === "root1")!;
+  // Newest copy wins: ended_at 1788000070 → 70s duration.
+  assert.equal(root1.durationMs, 70000);
+  const child1 = agg.sessions.find((s) => s.sessionId === "child1")!;
+  assert.equal(child1.isSubagent, true);
+  assert.equal(child1.parentSessionId, "root1");
+});
+
+test("hermes-sqlite detail rebuilds tool evidence from message rows without losing ledger usage", async () => {
+  const { readLiveSessionDetail } = await import("../lib/live/scan");
+  const { HARNESS_DESC_DIR } = await import("../lib/config");
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "openeval-hermes-detail-"));
+  const dir = path.join(root, "ledger");
+  fs.mkdirSync(dir, { recursive: true });
+  // The built-in hermes descriptor points at the operator's real ~/.hermes;
+  // register an isolated source so the scan only sees this fixture.
+  const sourceId = `tmp-hermes-detail-${Date.now()}`;
+  const descPath = path.join(HARNESS_DESC_DIR, `${sourceId}.harness.json`);
+  fs.mkdirSync(HARNESS_DESC_DIR, { recursive: true });
+  fs.writeFileSync(descPath, JSON.stringify({
+    id: sourceId,
+    label: "Temporary Hermes Detail Source",
+    binNames: [sourceId],
+    output: "text",
+    argTemplate: ["chat"],
+    liveTrace: { format: "hermes-sqlite", roots: [root], maxDepth: 3 },
+  }), "utf8");
+  const db = new Database(path.join(dir, "state.db"));
+  db.exec(`
+    CREATE TABLE sessions (
+      id TEXT PRIMARY KEY, source TEXT NOT NULL DEFAULT 'cli', model TEXT,
+      parent_session_id TEXT, started_at REAL NOT NULL, ended_at REAL,
+      message_count INTEGER DEFAULT 0, tool_call_count INTEGER DEFAULT 0,
+      cwd TEXT, title TEXT, archived INTEGER NOT NULL DEFAULT 0,
+      hidden INTEGER NOT NULL DEFAULT 0, last_activity_at REAL, display_name TEXT
+    );
+    CREATE TABLE session_model_usage (
+      session_id TEXT NOT NULL, model TEXT NOT NULL, input_tokens INTEGER NOT NULL DEFAULT 0,
+      output_tokens INTEGER NOT NULL DEFAULT 0, cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+      cache_write_tokens INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, role TEXT NOT NULL,
+      content TEXT, tool_call_id TEXT, tool_calls TEXT, tool_name TEXT,
+      timestamp REAL NOT NULL, token_count INTEGER, finish_reason TEXT
+    );
+  `);
+  const started = 1788000000;
+  db.prepare(`INSERT INTO sessions (id, source, model, started_at, ended_at, message_count, tool_call_count, cwd, title)
+              VALUES ('d1', 'tui', 'gpt-5.5', ?, ?, 4, 2, '/Users/x/Detail', 'Detail session')`).run(started, started + 120);
+  db.prepare(`INSERT INTO session_model_usage (session_id, model, input_tokens, output_tokens) VALUES ('d1', 'gpt-5.5', 4000, 800)`).run();
+  db.prepare(`INSERT INTO messages (session_id, role, content, tool_calls, tool_name, timestamp) VALUES
+              ('d1', 'user', 'please inspect the file', NULL, NULL, ?),
+              ('d1', 'assistant', NULL, ?, NULL, ?),
+              ('d1', 'tool', ?, NULL, 'terminal', ?),
+              ('d1', 'assistant', 'the file looks fine', NULL, NULL, ?)`).run(
+    started,
+    JSON.stringify([{ id: "call_1", type: "function", function: { name: "terminal", arguments: '{"command":"ls"}' } }]),
+    started + 10,
+    JSON.stringify({ output: "file.txt" }),
+    started + 20,
+    started + 30,
+  );
+  db.close();
+
+  const dbPath = path.join(dir, "state.db");
+  // Without a session id a DB file cannot identify a session.
+  assert.equal(readLiveSessionDetail(dbPath, sourceId), null);
+  // Unknown session ids are rejected rather than silently matching later.
+  assert.equal(readLiveSessionDetail(dbPath, sourceId, "not-a-session"), null);
+  const detail = readLiveSessionDetail(dbPath, sourceId, "d1");
+  assert.ok(detail);
+  // Ledger-exact usage survives the message-row parse.
+  assert.equal(detail.inputTokens, 4000);
+  assert.equal(detail.outputTokens, 800);
+  assert.equal(detail.model, "gpt-5.5");
+  assert.equal(detail.displayTitle, "Detail session");
+  // Message-row evidence now fills in (only the final assistant message has text).
+  assert.ok(detail.toolSummaries.some((t) => t.name === "terminal"));
+  assert.equal(detail.textBlocks, 1);
+  assert.equal(detail.userType, "tui");
+  fs.rmSync(descPath, { force: true });
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
 // ---- Hermes single-JSON sessions ----
 
 test("hermes-json sessions parse into model, tools, and duration", () => {
@@ -344,6 +542,21 @@ test("collection model rollups sanitize local model paths and expose pricing evi
   assert.equal((agg.byModel[0] as any).familyRateSessions, 1);
   assert.equal((agg.byModel[0] as any).listedRateSessions, 0);
   assert.equal((agg.usageSummary as any).sessionsWithPricedUsage, 1);
+});
+
+test("displayModelId drops username-bearing home paths from local model ids", async () => {
+  const { displayModelId } = await import("../lib/pricing");
+  // Home-path model stores keep the store + leaf identity, drop the username.
+  assert.equal(displayModelId("/Users/testuser/ornith-mlx/ornith-9b-mlx-4bit"), "ornith-mlx/ornith-9b-mlx-4bit");
+  assert.equal(displayModelId("/home/deployer/models/qwen-3-32b"), "models/qwen-3-32b");
+  // Existing behavior is unchanged for other id shapes.
+  assert.equal(displayModelId("/data/models/hf/zai-org__GLM-5.2-FP8"), "hf:zai-org/glm-5.2-fp8");
+  assert.equal(displayModelId("AlexAtomic/ornith-9b-Q5_K_M"), "AlexAtomic/ornith-9b-Q5_K_M");
+  assert.equal(displayModelId("glm-5.3-flash"), "glm-5.3-flash");
+  // A bare /Users/<name> with no model leaf is not treated as a model path.
+  assert.equal(displayModelId("/Users/testuser"), "/Users/testuser");
+  // The aggregate's byModel key path uses the same sanitizer.
+  assert.equal(displayModelId("/Users/someone/maple-mlx/maple-2bit-mlx"), "maple-mlx/maple-2bit-mlx");
 });
 
 // ---- corpus-fingerprint memo (scanAllSources / collectAllSessions) ----

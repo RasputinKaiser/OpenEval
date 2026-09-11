@@ -32,8 +32,8 @@ test("Hermes descriptor matches its query, image, and non-structured output CLI"
   assert.equal(descriptor?.capabilities.reportsTokens, false);
   assert.equal(descriptor?.capabilities.reportsTurns, false);
   assert.equal(descriptor?.imageFlag, "--image");
-  assert.equal(descriptor?.liveTrace?.format, "hermes-json");
-  assert.deepEqual(descriptor?.liveTrace?.roots, ["~/.hermes/sessions"]);
+  assert.equal(descriptor?.liveTrace?.format, "hermes-sqlite");
+  assert.deepEqual(descriptor?.liveTrace?.roots, ["~/.hermes"]);
 });
 
 test("an omitted vision declaration stays unknown instead of becoming a false claim", () => {

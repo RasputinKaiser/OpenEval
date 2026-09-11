@@ -36,12 +36,12 @@ export const SessionRow = React.memo(function SessionRow({ session, stale, redac
   return (
     <div
       className={clsx(
-        "cv-auto relative grid w-full gap-3 pl-4 pr-4 py-3 text-left transition-colors hover:bg-bg-elev focus-within:bg-bg-elev/60 md:items-center",
+        "group cv-auto relative grid w-full gap-3 pl-4 pr-4 py-3 text-left transition-colors hover:bg-bg-elev focus-within:bg-bg-elev/60 md:items-center",
         ROW_GRID,
         attention && "bg-warn/5"
       )}
     >
-      <div className={clsx("absolute left-0 top-2 bottom-2 w-0.5 rounded-full", edgeColor)} />
+      <div className={clsx("absolute left-0 top-2 bottom-2 w-0.5 rounded-full transition-all duration-150 group-hover:top-1 group-hover:bottom-1", edgeColor)} />
       <button
         type="button"
         onClick={() => onSelect(session)}
@@ -171,7 +171,7 @@ export function SessionTable({
         {controls}
       </div>
 
-      <div className={clsx("hidden gap-3 border-b border-bd-subtle bg-bg-subtle px-4 py-2 text-[10px] uppercase tracking-wider text-fg-muted md:grid", ROW_GRID)}>
+      <div className={clsx("hidden gap-3 border-b border-bd-subtle bg-bg-subtle px-4 py-2 text-[10px] uppercase tracking-[0.12em] text-fg-muted md:grid", ROW_GRID)}>
         <div>Session / project</div>
         <div>Freshness</div>
         <div>Quality</div>

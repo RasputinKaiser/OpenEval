@@ -47,6 +47,8 @@ export function parseLiveSession(file: string, lines: Iterable<string>, bytes: n
   let pathBytes = 0;
   let lineCount = 0;
   let malformedLineCount = 0;
+  let realRecordCount = 0;
+  let nonRecordCount = 0;
   let thinkingBlocks = 0;
   let textBlocks = 0;
   let attachmentCount = 0;
@@ -98,6 +100,14 @@ export function parseLiveSession(file: string, lines: Iterable<string>, bytes: n
         malformedLineCount++;
         continue;
       }
+      // "null"/"[1,2]"/"42" are valid JSON but not transcript records; without this
+      // guard a bare scalar throws at property access and the outer caller drops the
+      // entire session as a null tombstone.
+      if (!obj || typeof obj !== "object" || Array.isArray(obj)) {
+        nonRecordCount++;
+        continue;
+      }
+      realRecordCount++;
 
       const at = parseTimestamp(obj.timestamp) ?? parseTimestamp(obj.created_at) ?? null;
       if (at) {
@@ -455,7 +465,13 @@ export function parseLiveSession(file: string, lines: Iterable<string>, bytes: n
   }));
   const toolDurations = summarizeToolDurations(toolDurationMs, toolErrorsByName);
 
-  return {
+    // A file whose every line is valid-JSON but none is a record (e.g. the whole
+  // file is "null") has no transcript at all — content-deterministically
+  // unparseable → null tombstone. Files with UNPARSEABLE bytes keep the session
+  // object so the damage report (malformedLineCount, parseWarnings) survives.
+  if (realRecordCount === 0 && nonRecordCount > 0 && malformedLineCount === 0) return null;
+
+return {
     sessionId: subagentId
       ? `${sessionId ?? path.basename(file, ".jsonl")}/agent-${subagentId}`
       : sessionId ?? path.basename(file, ".jsonl"),

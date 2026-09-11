@@ -44,7 +44,7 @@ const SOURCE_BORDER: Record<MetricSource, string> = {
 function MetricCard({ label, value, source }: { label: string; value: string; source?: MetricSource }) {
   return (
     <div className={clsx("rounded-lg border border-bd bg-bg/45 p-3", source && SOURCE_BORDER[source])}>
-      <div className="mb-1 flex items-center justify-between gap-2 text-[10px] uppercase tracking-wider text-fg-muted">
+      <div className="mb-1 flex items-center justify-between gap-2 text-[10px] uppercase tracking-[0.12em] text-fg-muted">
         <span>{label}</span>
         {source && <SourceChip label={source} source={source} />}
       </div>
@@ -56,7 +56,7 @@ function MetricCard({ label, value, source }: { label: string; value: string; so
 function SourceCell({ label, source }: { label: string; source: MetricSource }) {
   return (
     <div className={clsx("rounded border px-2 py-1.5", SOURCE_BORDER[source])}>
-      <div className="text-[9px] uppercase tracking-wider text-fg-dim">{label}</div>
+      <div className="text-[9px] uppercase tracking-[0.12em] text-fg-dim">{label}</div>
       <SourceChip label={source} source={source} />
     </div>
   );
@@ -65,7 +65,7 @@ function SourceCell({ label, source }: { label: string; source: MetricSource }) 
 function MiniStat({ label, value, icon: Icon, tone }: { label: string; value: string; icon: any; tone?: "err" | "warn" }) {
   return (
     <div className="flex items-center justify-between gap-2">
-      <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-fg-muted">
+      <div className="flex items-center gap-1 text-[10px] uppercase tracking-[0.12em] text-fg-muted">
         <Icon className="size-3" /> {label}
       </div>
       <div className={clsx("mono text-sm font-semibold tabular-nums", tone === "err" && "text-err", tone === "warn" && "text-warn")}>{value}</div>
@@ -94,7 +94,7 @@ const TurnRow = React.memo(function TurnRow({ turn, redact, users, mounted, mode
       ) : (
         <>
           <div className="mb-1 flex flex-wrap items-center gap-2">
-            <span className="text-[10px] uppercase tracking-wider text-fg-muted">{turn.label}</span>
+            <span className="text-[10px] uppercase tracking-[0.12em] text-fg-muted">{turn.label}</span>
             <span className="rounded bg-bg-elev px-1.5 py-0.5 text-[10px] text-fg-dim">{turn.type}</span>
             {turn.at ? <Timestamp ms={turn.at} mounted={mounted} className="mono text-[10px] text-fg-dim" /> : null}
           </div>
@@ -217,8 +217,8 @@ export function SessionDrawer({
   onNavigate?: (delta: 1 | -1) => void;
   hasPrev?: boolean;
   hasNext?: boolean;
-  getTranscript?: (filePath: string, harness?: string) => Promise<TranscriptResult>;
-  getSessionDetail?: (filePath: string, harness?: string) => Promise<LiveSessionDetailResult>;
+  getTranscript?: (filePath: string, harness?: string, sessionId?: string) => Promise<TranscriptResult>;
+  getSessionDetail?: (filePath: string, harness?: string, sessionId?: string) => Promise<LiveSessionDetailResult>;
   harness: string;
 }) {
   const [turns, setTurns] = useState<LiveTranscriptTurn[] | null>(null);
@@ -232,7 +232,7 @@ export function SessionDrawer({
   const dialogRef = useRef<HTMLDivElement>(null);
   const detailRequestRef = useRef(0);
   useFocusTrap(dialogRef, true);
-  const detailsReady = detailSession?.path === listSession.path;
+  const detailsReady = detailSession?.path === listSession.path && detailSession?.sessionId === listSession.sessionId;
   const detailRefreshing = detailsReady && detailStatus === "loading";
   const detailRefreshFailed = detailsReady && (detailStatus === "error" || detailStatus === "unavailable");
   // A live row changes when an append changes its byte/line or summary metrics.
@@ -241,6 +241,8 @@ export function SessionDrawer({
   // skeleton or a misleading empty placeholder.
   const detailRefreshKey = [
     listSession.path ?? "",
+    // DB-backed rows share one path; the session id is the real identity.
+    listSession.sessionId,
     listSession.lastEventAt,
     listSession.pathBytes,
     listSession.lineCount,
@@ -274,7 +276,7 @@ export function SessionDrawer({
     }
     setDetailStatus("loading");
     try {
-      const result = await getSessionDetail(requestedPath, harness);
+      const result = await getSessionDetail(requestedPath, harness, listSession.sessionId);
       if (requestId !== detailRequestRef.current || requestedRefreshKey !== detailRefreshKeyRef.current) return;
       if (result.session) {
         setDetailSession(result.session);
@@ -288,7 +290,7 @@ export function SessionDrawer({
       setDetailStatus("error");
       setDetailError(e instanceof Error ? e.message : String(e));
     }
-  }, [detailRefreshKey, getSessionDetail, harness, listSession.path]);
+  }, [detailRefreshKey, getSessionDetail, harness, listSession.path, listSession.sessionId]);
 
   useEffect(() => {
     void loadDetail();
@@ -305,6 +307,23 @@ export function SessionDrawer({
     return () => cancelAnimationFrame(id);
   }, []);
 
+  // Modal focus contract: on open, move focus into the dialog; on close, restore it to
+  // the element that opened the drawer; while open, keep Tab cycling inside the dialog.
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    previouslyFocusedRef.current = document.activeElement as HTMLElement | null;
+    const raf = requestAnimationFrame(() => {
+      const first = dialogRef.current?.querySelector<HTMLElement>(
+        "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])",
+      );
+      first?.focus();
+    });
+    return () => {
+      cancelAnimationFrame(raf);
+      previouslyFocusedRef.current?.focus?.();
+    };
+  }, []);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (isEditableTarget(e.target)) return;
@@ -315,6 +334,23 @@ export function SessionDrawer({
         return;
       }
       if (closing) return;
+      if (e.key === "Tab" && dialogRef.current) {
+        // Focus trap: cycle Tab within the dialog surface.
+        const focusables = dialogRef.current.querySelectorAll<HTMLElement>(
+          "button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])",
+        );
+        if (focusables.length === 0) return;
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+        return;
+      }
       if (e.key === "ArrowDown" || e.key === "ArrowRight") {
         e.preventDefault();
         onNavigateRef.current?.(1);
@@ -340,20 +376,23 @@ export function SessionDrawer({
 
   useEffect(() => {
     let cancelled = false;
+    // DB-backed rows (hermes-sqlite) share one file path across the whole
+    // ledger; the session id is what distinguishes rows, so the load keys and
+    // requests carry it alongside the path.
+    const loadKey = `${listSession.path ?? ""}\u0000${listSession.sessionId}`;
     if (!getTranscript || !listSession.path) {
-      loadedPathRef.current = listSession.path ?? null;
+      loadedPathRef.current = loadKey;
       if (!cancelled) setTurns([]);
       if (!cancelled) setTranscriptTruncated(false);
       return;
     }
-    if (loadedPathRef.current !== listSession.path) setTurns(null);
+    if (loadedPathRef.current !== loadKey) setTurns(null);
     setTranscriptTruncated(false);
     setTranscriptError(null);
-    const requestedPath = listSession.path;
-    getTranscript(listSession.path, harness)
+    getTranscript(listSession.path, harness, listSession.sessionId)
       .then((res) => {
         if (cancelled) return;
-        loadedPathRef.current = requestedPath;
+        loadedPathRef.current = loadKey;
         if (res.error) {
           setTranscriptError(`Failed to parse session transcript: ${res.error}`);
           setTurns([]);
@@ -364,14 +403,14 @@ export function SessionDrawer({
       })
       .catch((e) => {
         if (!cancelled) {
-          loadedPathRef.current = requestedPath;
+          loadedPathRef.current = loadKey;
           setTranscriptError(`Failed to parse session transcript: ${e instanceof Error ? e.message : String(e)}`);
           setTurns([]);
           setTranscriptTruncated(false);
         }
       });
     return () => { cancelled = true; };
-  }, [listSession.path, getTranscript, harness]);
+  }, [listSession.path, listSession.sessionId, getTranscript, harness]);
 
   const visible = mounted && !closing;
   const durationByName = new Map(session.toolDurations.map((d) => [d.name, d] as const));
@@ -389,7 +428,7 @@ export function SessionDrawer({
         role="dialog"
         aria-modal="true"
         aria-labelledby="session-drawer-title"
-        className="relative flex h-full w-full flex-col overflow-hidden border-l border-bd bg-bg-subtle shadow-2xl md:max-w-2xl"
+        className="relative flex h-full w-full flex-col overflow-hidden border-l border-bd bg-bg-subtle shadow-2xl md:max-w-2xl drawer-view-transition"
         style={{
           transform: visible ? "translateX(0)" : "translateX(16px)",
           opacity: visible ? 1 : 0,
@@ -584,7 +623,7 @@ export function SessionDrawer({
               <div className="text-sm text-fg-muted">No tool calls found.</div>
             ) : (
               <>
-                <div className="mb-3 grid grid-cols-[minmax(0,1fr)_36px_36px_36px_36px_24px] gap-1 text-[8px] uppercase tracking-wider text-fg-dim sm:grid-cols-[minmax(0,1fr)_56px_56px_56px_56px_28px] sm:gap-2 sm:text-[9px]">
+                <div className="mb-3 grid grid-cols-[minmax(0,1fr)_36px_36px_36px_36px_24px] gap-1 text-[8px] uppercase tracking-[0.12em] text-fg-dim sm:grid-cols-[minmax(0,1fr)_56px_56px_56px_56px_28px] sm:gap-2 sm:text-[9px]">
                   <span>Tool</span>
                   <span className="text-right">calls</span>
                   <span className="text-right">p50</span>

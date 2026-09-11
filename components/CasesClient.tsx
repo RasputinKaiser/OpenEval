@@ -74,7 +74,7 @@ export default function CasesClient({ cases, activeCategory }: { cases: CaseDefi
           />
           {query && (
             <button
-              onClick={() => setQuery("")}
+              onClick={() => { setQuery(""); searchRef.current?.focus(); }}
               className="absolute right-2 top-1/2 -translate-y-1/2 min-h-8 min-w-8 flex items-center justify-center rounded text-fg-dim hover:text-fg"
               aria-label="Clear search"
             >
@@ -91,7 +91,7 @@ export default function CasesClient({ cases, activeCategory }: { cases: CaseDefi
         {Object.entries(grouped).map(([cat, list]) => (
           <section key={cat}>
             <div className="flex items-baseline gap-2 mb-3">
-              <h2 className="text-sm font-medium uppercase tracking-wider text-fg-muted">{CATEGORY_LABELS[cat] ?? cat}</h2>
+              <h2 className="text-sm font-medium uppercase tracking-[0.12em] text-fg-muted">{CATEGORY_LABELS[cat] ?? cat}</h2>
               <span className="text-[11px] text-fg-dim mono">{list.length}</span>
             </div>
             <div className="stagger-grid grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -145,6 +145,14 @@ export default function CasesClient({ cases, activeCategory }: { cases: CaseDefi
         <div className="card p-12 text-center">
           <Search className="size-6 text-fg-dim mx-auto mb-2" />
           <div className="text-sm text-fg-muted">No cases match &ldquo;{query}&rdquo;.</div>
+          <div className="mt-2 text-xs text-fg-dim">Check the spelling — or browse the full library on the <Link href="/cases" className="text-accent-soft hover:underline">cases page</Link>.</div>
+          <button
+            type="button"
+            onClick={() => setQuery("")}
+            className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-bd px-3 py-1.5 text-xs text-fg-muted hover:bg-bg-elev hover:text-fg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            <X className="size-3" /> Clear search
+          </button>
         </div>
       )}
     </>

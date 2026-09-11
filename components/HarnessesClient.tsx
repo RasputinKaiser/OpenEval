@@ -465,11 +465,11 @@ export default function HarnessesClient() {
                         <span className="mt-1 block truncate pl-4 text-[10px] text-fg-dim mono">{h.version ?? h.id}</span>
                       </span>
                       {h.id === payload.defaultHarness && (
-                        <span className="shrink-0 rounded bg-accent/10 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-accent-soft">default</span>
+                        <span className="shrink-0 rounded bg-accent/10 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.12em] text-accent-soft">default</span>
                       )}
                     </span>
                     <span className="mt-2 flex items-center justify-between pl-4">
-                      <span className={clsx("rounded border px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider", meta.cls)}>{meta.label}</span>
+                      <span className={clsx("rounded border px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.12em]", meta.cls)}>{meta.label}</span>
                       <span className="mono text-[9px] text-fg-dim">{h.integration.parser}</span>
                     </span>
                   </button>
@@ -533,8 +533,8 @@ function HarnessDetail({
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-xl font-semibold tracking-tight">{harness.label}</h2>
-              <span className={clsx("rounded-lg border px-2 py-1 text-[10px] font-medium uppercase tracking-wider", meta.cls)}>{meta.label}</span>
-              {isDefault && <span className="rounded-lg border border-accent/25 bg-accent/10 px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-accent-soft">Default adapter</span>}
+              <span className={clsx("rounded-lg border px-2 py-1 text-[10px] font-medium uppercase tracking-[0.12em]", meta.cls)}>{meta.label}</span>
+              {isDefault && <span className="rounded-lg border border-accent/25 bg-accent/10 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.12em] text-accent-soft">Default adapter</span>}
             </div>
             <p className="mt-1 mono text-xs text-fg-dim">{harness.id}</p>
             <p className="mt-2 max-w-2xl text-sm text-fg-muted">
@@ -808,8 +808,8 @@ function ReadinessCard({ layer, probing, onProbe }: { layer: ReadinessLayer; pro
   return (
     <div className={clsx("min-w-0 rounded-xl border p-3", meta.border, meta.bg)}>
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-fg-dim">{layer.label}</span>
-        <span className={clsx("inline-flex items-center gap-1 rounded border px-1.5 py-1 text-[9px] font-medium uppercase tracking-wider", meta.badge)}><span className={clsx("size-1.5 rounded-full", meta.dot)} />{layer.state}</span>
+        <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-fg-dim">{layer.label}</span>
+        <span className={clsx("inline-flex items-center gap-1 rounded border px-1.5 py-1 text-[9px] font-medium uppercase tracking-[0.12em]", meta.badge)}><span className={clsx("size-1.5 rounded-full", meta.dot)} />{layer.state}</span>
       </div>
       <p className="mt-2 text-xs font-medium leading-4">{layer.summary}</p>
       <p className="mt-1 text-[10px] leading-4 text-fg-muted">{layer.diagnostic}</p>
@@ -834,7 +834,7 @@ function registrationLabel(provenance?: "user-managed" | "user-override" | "bund
 function SummaryMetric({ icon: Icon, label, value, detail, tone }: { icon: typeof Gauge; label: string; value: string; detail: string; tone?: "ok" | "warn" }) {
   return (
     <div className="min-w-0 border-b border-r border-bd-subtle p-3.5 last:border-r-0 lg:border-b-0">
-      <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-fg-dim">
+      <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.12em] text-fg-dim">
         <Icon aria-hidden="true" className={clsx("size-3.5", tone === "ok" ? "text-ok" : tone === "warn" ? "text-warn" : "text-accent-soft")} />
         {label}
       </div>
@@ -847,7 +847,7 @@ function SummaryMetric({ icon: Icon, label, value, detail, tone }: { icon: typeo
 function Fact({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0 border-b border-r border-bd-subtle p-4 last:border-r-0 xl:border-b-0">
-      <dt className="text-[10px] font-medium uppercase tracking-wider text-fg-dim">{label}</dt>
+      <dt className="text-[10px] font-medium uppercase tracking-[0.12em] text-fg-dim">{label}</dt>
       <dd className="mt-1 truncate text-xs mono" title={value}>{value}</dd>
     </div>
   );
@@ -908,7 +908,7 @@ function ProbeCheckCard({ label, check, show }: { label: string; check?: { ok: b
           </span>
           <span className="mt-1 block mono text-[10px] text-fg-dim">{check.args.join(" ") || "(no arguments)"}</span>
         </span>
-        <span className={clsx("rounded border px-2 py-1 text-[9px] font-medium uppercase tracking-wider", check.ok ? "border-ok/25 bg-ok/10 text-ok" : "border-err/25 bg-err/10 text-err")}>{check.ok ? "Passed" : "Failed"}</span>
+        <span className={clsx("rounded border px-2 py-1 text-[9px] font-medium uppercase tracking-[0.12em]", check.ok ? "border-ok/25 bg-ok/10 text-ok" : "border-err/25 bg-err/10 text-err")}>{check.ok ? "Passed" : "Failed"}</span>
       </summary>
       <pre className="mt-3 max-h-44 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-bd-subtle bg-bg p-3 text-[10px] leading-4 text-fg-muted scroll-contain"><code>{show(evidence)}</code></pre>
     </details>

@@ -217,7 +217,7 @@ export function ProgressiveSectionNav({
         ))}
       </div>
       <div className="timeline-section-nav__context hidden w-full min-w-0 items-center gap-2 px-1 md:flex">
-        <span className="shrink-0 text-[9px] font-medium uppercase tracking-[0.14em] text-accent-soft">
+        <span className="shrink-0 text-[9px] font-medium uppercase tracking-[0.12em] text-accent-soft">
           {selectedIndex === null ? "Full report" : `${String(selectedIndex + 1).padStart(2, "0")} / ${String(sections.length).padStart(2, "0")}`}
         </span>
         <span className="min-w-0 truncate text-[11px] text-fg-muted">{context}</span>

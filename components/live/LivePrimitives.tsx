@@ -20,7 +20,7 @@ export function TinyMetric({ label, value }: { label: string; value: string }) {
 export function MetricGroup({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="rounded-lg border border-bd-subtle bg-bg-subtle/30 p-3 space-y-2">
-      <div className="text-[10px] uppercase tracking-wider text-fg-dim">{label}</div>
+      <div className="text-[10px] uppercase tracking-[0.12em] text-fg-dim">{label}</div>
       {children}
     </div>
   );
@@ -29,7 +29,7 @@ export function MetricGroup({ label, children }: { label: string; children: Reac
 export function Stat({ label, value, icon: Icon, tone }: { label: string; value: string; icon: any; tone?: "err" | "warn" | "ok" }) {
   return (
     <div className="flex items-center justify-between gap-2">
-      <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-fg-muted">
+      <div className="flex items-center gap-1 text-[10px] uppercase tracking-[0.12em] text-fg-muted">
         <Icon aria-hidden="true" className="size-3" /> {label}
       </div>
       <div className={clsx("mono text-base font-semibold tabular-nums", tone === "err" && "text-err", tone === "warn" && "text-warn", tone === "ok" && "text-ok")}>{value}</div>
@@ -66,12 +66,22 @@ export function SourceChip({ label, source }: { label: string; source: MetricSou
 }
 
 export function QualityBadge({ value }: { value: number }) {
+  const clamped = Math.max(0, Math.min(100, value));
   return (
-    <span className={clsx(
-      "inline-flex w-fit items-center gap-1 rounded border px-2 py-1 text-[11px] mono",
-      value >= 80 ? "border-ok/20 bg-ok/10 text-ok" : value >= 55 ? "border-warn/20 bg-warn/10 text-warn" : "border-err/20 bg-err/10 text-err"
-    )}>
-      <Gauge className="size-3" /> {Math.round(value)}%
+    <span
+      className={clsx(
+        "inline-flex w-fit flex-col gap-1 rounded border px-2 py-1 text-[11px] mono",
+        clamped >= 80 ? "border-ok/20 bg-ok/10 text-ok" : clamped >= 55 ? "border-warn/20 bg-warn/10 text-warn" : "border-err/20 bg-err/10 text-err"
+      )}
+      title="Average data quality: measured token and cost coverage across the model's sessions"
+    >
+      <span className="inline-flex items-center gap-1"><Gauge className="size-3" /> {Math.round(clamped)}%</span>
+      <span className="block h-[3px] w-full overflow-hidden rounded-full bg-bg-elev/80" aria-hidden>
+        <span
+          className={clsx("block h-full rounded-full", clamped >= 80 ? "bg-ok" : clamped >= 55 ? "bg-warn" : "bg-err")}
+          style={{ width: `${Math.max(4, clamped)}%` }}
+        />
+      </span>
     </span>
   );
 }

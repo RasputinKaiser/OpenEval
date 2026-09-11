@@ -274,6 +274,15 @@ export interface LiveAggregate {
   archivedSessions: number;
   sessionsWithMalformedLines: number;
   staleSessions: number;
+  /** Transcript-derived outcome-signal session counts, aggregated scan-side. */
+  outcomeCounts: {
+    positive: number;
+    negative: number;
+    rephrases: number;
+    testsPassed: number;
+    errorTail: number;
+    noSignal: number;
+  };
   avgDataQuality: number;
   scanCoverage: LiveScanCoverage;
   scanWarnings: string[];
@@ -374,7 +383,7 @@ export interface LiveSessionDetailResult {
   error?: string;
 }
 
-export type LiveTraceFormat = "claude-projects" | "codex-sessions" | "jsonl-dir" | "hermes-json";
+export type LiveTraceFormat = "claude-projects" | "codex-sessions" | "jsonl-dir" | "hermes-json" | "hermes-sqlite";
 
 export interface LiveTraceSource {
   id: string;

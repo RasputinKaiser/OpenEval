@@ -4,11 +4,14 @@
  * provider spend. They answer the narrower question: what would the recorded
  * token classes cost at the referenced public list rate?
  *
- * Rates are USD per MILLION tokens and were checked against OpenRouter's
- * `/api/v1/models` response on PRICING_LIST_DATE. Exact model ids are resolved
- * before aliases/family mappings; unknown named models keep a visibly flagged
- * fallback estimate instead of becoming a misleading $0.
+ * Resolution order: (1) OpenRouter's live catalog snapshot (real per-token
+ * list rates, refreshed from /api/v1/models — $0 free tiers are real list
+ * prices), (2) the compiled-in list, (3) family mappings, (4) the conservative
+ * DEFAULT_RATE fallback. Unknown named models keep a visibly flagged fallback
+ * estimate instead of becoming a misleading $0.
  */
+import { lookupOpenRouterPricing, openRouterCatalogIds, openRouterSnapshotFetchedAt } from "./pricing-catalog";
+
 export interface TokenRate {
   input: number;
   output: number;
@@ -19,6 +22,21 @@ export interface TokenRate {
 export type RateConfidence = "listed" | "family" | "fallback";
 
 export const PRICING_LIST_DATE = "2026-07-30";
+
+/**
+ * Freshness the UI should display: the live catalog snapshot's fetch date when
+ * one is loaded (Tier A answers lookups), otherwise the compiled list date.
+ * Keeps "rates checked {date}" honest once the snapshot refreshes.
+ */
+export function pricingProvenanceDate(): string {
+  const fetched = openRouterSnapshotFetchedAt();
+  if (fetched) {
+    const date = fetched.slice(0, 10);
+    // Prefer the newer of snapshot vs compiled list date.
+    return date > PRICING_LIST_DATE ? date : PRICING_LIST_DATE;
+  }
+  return PRICING_LIST_DATE;
+}
 export const PRICING_SOURCE = "OpenRouter /api/v1/models";
 
 /** Conservative open-model fallback for any named-but-unlisted model. */
@@ -56,6 +74,8 @@ const LISTED_RATES: ListedRate[] = [
   { sourceModel: "openai/gpt-5", aliases: ["gpt-5", "openai/gpt-5"], rate: { input: 1.25, output: 10, cacheRead: 0.125, cacheWrite: 1.25 } },
   { sourceModel: "openai/o4-mini", aliases: ["o4-mini", "openai/o4-mini"], rate: { input: 1.1, output: 4.4, cacheRead: 0.275, cacheWrite: 1.1 } },
 
+  { sourceModel: "stealth/ox-alpha", aliases: ["ox-alpha", "stealth/ox-alpha"], rate: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } },
+
   { sourceModel: "z-ai/glm-5.2", aliases: ["z-ai/glm-5.2"], rate: { input: 0.952, output: 2.992, cacheRead: 0.1768, cacheWrite: 0.952 } },
   { sourceModel: "deepseek/deepseek-v4-pro", aliases: ["deepseek/deepseek-v4-pro"], rate: { input: 0.435, output: 0.87, cacheRead: 0.003625, cacheWrite: 0.435 } },
   { sourceModel: "deepseek/deepseek-v4-flash", aliases: ["deepseek/deepseek-v4-flash"], rate: { input: 0.098, output: 0.196, cacheRead: 0.02, cacheWrite: 0.098 } },
@@ -65,6 +85,63 @@ const LISTED_RATES: ListedRate[] = [
 const LISTED_BY_ALIAS = new Map<string, ListedRate>();
 for (const entry of LISTED_RATES) {
   for (const alias of entry.aliases) LISTED_BY_ALIAS.set(alias, entry);
+}
+
+/**
+ * Tier-A rates: OpenRouter's live catalog (see ./pricing-catalog). An exact
+ * catalog id — or a resolvable alias of one, e.g. `glm-5.3-flash` →
+ * `z-ai/glm-5.3-flash`, `stepfun/step-3.7-flash:free` → `stepfun/step-3.7-flash`
+ * — is a LISTED rate even when the list price is $0 (free tiers are real
+ * prices). Alias resolution order: exact id, hf: prefix strip, :free suffix
+ * strip/add, bare-leaf → vendor/<leaf> match preferring :free when the
+ * display id said free.
+ */
+function catalogRate(id: string): ModelRate | null {
+  let entry = lookupOpenRouterPricing(id);
+  if (!entry) {
+    let lower = id.toLowerCase();
+    if (lower.startsWith("hf:")) {
+      lower = lower.slice(3);
+      entry = lookupOpenRouterPricing(lower);
+    }
+    if (!entry) {
+      const candidates: string[] = [];
+      if (lower.endsWith(":free")) {
+        const base = lower.slice(0, -5);
+        candidates.push(base);
+      } else {
+        candidates.push(`${lower}:free`);
+      }
+      const leaf = lower.split("/").pop()!.split(":")[0];
+      for (const key of openRouterCatalogIds()) {
+        const keyLeaf = key.split("/").pop()!.split(":")[0];
+        if (keyLeaf === leaf) {
+          if (lower.endsWith(":free") && key.endsWith(":free")) candidates.unshift(key);
+          else if (!lower.endsWith(":free") && !key.endsWith(":free")) candidates.push(key);
+        }
+      }
+      for (const candidate of candidates) {
+        const hit = lookupOpenRouterPricing(candidate);
+        if (hit) { entry = hit; break; }
+      }
+    }
+  }
+  if (!entry) return null;
+  const p = entry.pricing;
+  // Defense in depth: seed/manual entry paths bypass parseEntry, so the rate
+  // consumer re-checks for the -1 dynamic-pricing sentinel.
+  if (p.prompt < 0 || p.completion < 0) return null;
+  return {
+    rate: {
+      input: p.prompt * 1_000_000,
+      output: p.completion * 1_000_000,
+      cacheRead: (p.input_cache_read ?? p.prompt * 0.1) * 1_000_000,
+      cacheWrite: (p.input_cache_write ?? p.prompt) * 1_000_000,
+    },
+    exact: true,
+    confidence: "listed",
+    sourceModel: entry.id,
+  };
 }
 
 /** Public list-rate ids used by the reproducible catalog drift check. */
@@ -82,6 +159,12 @@ export function displayModelId(model: string | null | undefined): string | null 
     const stored = id.slice(markerAt + marker.length).replace(/__/g, "/");
     return `hf:${stored.toLowerCase()}`;
   }
+  // Local model-store paths (/Users/<name>/..., /home/<name>/...) name the
+  // operator's account on every row they appear in. Keep the model identity
+  // (the leaf segment) and the store, drop the username-bearing prefix — the
+  // same policy displayModelId already applies to the HF cache marker.
+  const homeMatch = id.match(/^\/(?:Users|home)\/[^/]+\/(.+)$/);
+  if (homeMatch) return id.slice(id.length - homeMatch[1].length).toLowerCase();
   return id;
 }
 
@@ -121,6 +204,9 @@ function resolveRateForModelInfo(model: string): ModelRate | null {
   const display = displayModelId(model);
   if (!display) return null;
   const id = display.toLowerCase();
+  // Tier A: live OpenRouter catalog rates (includes $0 free tiers).
+  const catalog = catalogRate(id);
+  if (catalog) return catalog;
   const listed = LISTED_BY_ALIAS.get(id);
   if (listed) return { rate: listed.rate, exact: true, confidence: "listed", sourceModel: listed.sourceModel };
   const family = familyRate(id);
@@ -146,6 +232,15 @@ export function rateForModelInfo(model: string | null | undefined): ModelRate | 
   if (rateMemo.size >= RATE_MEMO_MAX) rateMemo.clear();
   rateMemo.set(model, resolved);
   return resolved;
+}
+
+/**
+ * The memo assumes the catalog is stable within a process; the live catalog
+ * layer invalidates it whenever its in-memory map is reseeded (network
+ * refresh, test seed), so rates follow the catalog, not first-call timing.
+ */
+export function clearRateMemoForTests(): void {
+  rateMemo.clear();
 }
 
 export function rateForModel(model: string | null | undefined): TokenRate | null {

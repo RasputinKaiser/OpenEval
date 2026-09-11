@@ -46,6 +46,8 @@ const EMPTY_TIMELINE = {
   impacts: [],
   changePoints: [],
   outcomeSeries: [],
+      outcomeScatter: [],
+      outcomeScatterEvidence: { n: 0, denominator: 0, coverage: 0 },
 } satisfies TimelineReport;
 
 test("dashboard observation keeps a collection failure distinct from an empty collection", () => {

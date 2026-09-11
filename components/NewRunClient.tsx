@@ -376,7 +376,7 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <label htmlFor="run-name" className="text-[11px] uppercase tracking-wider text-fg-muted">Run name (optional)</label>
+                <label htmlFor="run-name" className="text-[11px] uppercase tracking-[0.12em] text-fg-muted">Run name (optional)</label>
                 <input
                   id="run-name"
                   value={name}
@@ -386,7 +386,7 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
                 />
               </div>
               <div>
-                <label htmlFor="parallel-workers" className="text-[11px] uppercase tracking-wider text-fg-muted">Parallel workers</label>
+                <label htmlFor="parallel-workers" className="text-[11px] uppercase tracking-[0.12em] text-fg-muted">Parallel workers</label>
                 <input
                   id="parallel-workers"
                   type="number" inputMode="numeric" min={1} max={8} value={parallelRaw}
@@ -403,7 +403,7 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
                 )}
               </div>
               <div>
-                <label htmlFor="run-samples" className="text-[11px] uppercase tracking-wider text-fg-muted">Samples (pass@k)</label>
+                <label htmlFor="run-samples" className="text-[11px] uppercase tracking-[0.12em] text-fg-muted">Samples (pass@k)</label>
                 <input
                   id="run-samples"
                   type="number" inputMode="numeric" min={1} max={8} value={samplesRaw}
@@ -422,10 +422,10 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
             </div>
 
             <div className="mt-5 border-t border-bd-subtle pt-4">
-              <h3 className="text-xs font-medium uppercase tracking-wider text-fg-muted">Agent setup</h3>
+              <h3 className="text-xs font-medium uppercase tracking-[0.12em] text-fg-muted">Agent setup</h3>
             </div>
             <div className="mt-3">
-              <label className="text-[11px] uppercase tracking-wider text-fg-muted">Runner</label>
+              <label className="text-[11px] uppercase tracking-[0.12em] text-fg-muted">Runner</label>
               <div className="mt-1.5 grid grid-cols-2 gap-2">
                 {(["headless", "tmux"] as const).map((r) => (
                   <button
@@ -447,7 +447,7 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
             </div>
 
             <div className="mt-4">
-              <label htmlFor="run-harness" className="text-[11px] uppercase tracking-wider text-fg-muted">Harness</label>
+              <label htmlFor="run-harness" className="text-[11px] uppercase tracking-[0.12em] text-fg-muted">Harness</label>
               <div className="mt-1.5">
                 <HarnessPicker
                   id="run-harness"
@@ -468,13 +468,13 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
             </div>
 
             <div className="mt-5 border-t border-bd-subtle pt-4" aria-labelledby="judge-settings-title">
-              <h3 id="judge-settings-title" className="text-xs font-medium uppercase tracking-wider text-fg-muted">Judge setup</h3>
+              <h3 id="judge-settings-title" className="text-xs font-medium uppercase tracking-[0.12em] text-fg-muted">Judge setup</h3>
               <p className="mt-1 text-xs leading-5 text-fg-muted">This is the independent judge for rubric evidence, not the agent harness above. The exact source, model, and effort are frozen into this run before launch.</p>
               <div className="mt-3"><JudgePicker value={judge} onChange={(next) => { setJudge(next); setJudgeReadiness({ readiness: "unknown", detail: "Checking judge readiness…" }); }} onReadinessChange={handleJudgeReadiness} error={fieldErrors.judgeSource ?? fieldErrors.judgeModel ?? fieldErrors.judgeReasoningEffort} idPrefix="run-judge" /></div>
             </div>
 
             <div className="mt-4">
-              <label htmlFor="run-model" className="text-[11px] uppercase tracking-wider text-fg-muted">Model</label>
+              <label htmlFor="run-model" className="text-[11px] uppercase tracking-[0.12em] text-fg-muted">Model</label>
               <div className="mt-1.5">
                 <ModelPicker id="run-model" label="Model" value={model} onChange={(m) => { setModel(m); setFieldErrors((prev) => ({ ...prev, model: undefined })); }} harness={effectiveHarness} />
               </div>
@@ -506,7 +506,7 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
 
             <div className="space-y-3 border-b border-bd-subtle px-4 py-3">
               <fieldset>
-                <legend className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-fg-dim">Category</legend>
+                <legend className="mb-1.5 text-[10px] font-medium uppercase tracking-[0.12em] text-fg-dim">Category</legend>
                 <div className="flex flex-wrap gap-2">
                   {CATEGORIES.map((c) => (
                     <button
@@ -525,7 +525,7 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
                 </div>
               </fieldset>
               <fieldset>
-                <legend className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-fg-dim">Difficulty</legend>
+                <legend className="mb-1.5 text-[10px] font-medium uppercase tracking-[0.12em] text-fg-dim">Difficulty</legend>
                 <div className="flex flex-wrap gap-2">
                   {["easy", "medium", "hard", "untiered"].map((d) => (
                     <button
@@ -543,7 +543,7 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
                   ))}
                 </div>
               </fieldset>
-              {allTags.length > 0 && <fieldset><legend className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-fg-dim">Tags</legend><div className="flex flex-wrap gap-2">
+              {allTags.length > 0 && <fieldset><legend className="mb-1.5 text-[10px] font-medium uppercase tracking-[0.12em] text-fg-dim">Tags</legend><div className="flex flex-wrap gap-2">
                 {allTags.map((t) => (
                   <button key={t} type="button" onClick={() => toggleTag(t)} aria-pressed={filterTags.has(t)} className={clsx("min-h-10 rounded-md border px-2.5 py-1.5 text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent", filterTags.has(t) ? "border-accent bg-accent/10 text-accent-soft" : "border-bd text-fg-muted hover:bg-bg-elev")}>#{t}</button>
                 ))}

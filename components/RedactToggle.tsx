@@ -17,12 +17,12 @@ export function RedactToggle({ redact, onToggle, compact }: { redact: boolean; o
       title="Hide local usernames in paths, titles, and content (one preference, app-wide)"
       className={clsx(
         "flex items-center gap-1.5 rounded-md border transition-colors",
-        compact ? "px-2 py-1 text-[11px]" : "px-2.5 py-1.5 text-sm",
+        compact ? "min-h-10 px-2.5 text-[11px]" : "px-2.5 py-1.5 text-sm",
         redact ? "border-ok/30 bg-ok/10 text-ok" : "border-warn/30 bg-warn/10 text-warn",
       )}
     >
       {redact ? <Lock className={compact ? "size-3" : "size-3.5"} /> : <Eye className={compact ? "size-3" : "size-3.5"} />}
-      Redact {redact ? "on" : "off"}
+      Redaction: {redact ? "on" : "off"}
     </button>
   );
 }

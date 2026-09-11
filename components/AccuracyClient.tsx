@@ -255,10 +255,10 @@ export default function AccuracyClient({ audit, judge }: Props) {
             </div>
             <span className="shrink-0 text-[11px] text-fg-dim mono">{rows.length} / {audit.cases.length}</span>
           </div>
-          <div className="overflow-x-auto">
+          <div className="chart-scroll-well overflow-x-auto pb-2">
             <table className="w-full min-w-[980px] text-sm">
               <caption className="sr-only">Per-case accuracy evidence status and actionable weaknesses</caption>
-              <thead className="sticky top-0 z-10 border-b border-bd-subtle bg-bg-subtle text-[10px] uppercase tracking-wider text-fg-muted">
+              <thead className="sticky top-0 z-10 border-b border-bd-subtle bg-bg-subtle text-[10px] uppercase tracking-[0.12em] text-fg-muted">
                 <tr>
                   <th scope="col" className="sticky left-0 z-20 border-r border-bd-subtle bg-bg-subtle px-4 py-2 text-left font-medium">Case</th>
                   {ACCURACY_SURFACES.map((surface) => <th key={surface} className="px-2 py-2 text-left font-medium">{shortSurfaceLabel(surface)}</th>)}
@@ -461,7 +461,7 @@ function Stat({ label, value, sub, tone }: { label: string; value: string; sub: 
   return (
     <div className="card min-w-0 p-3.5">
       <div className="flex items-center justify-between gap-1">
-        <div className="truncate text-[10px] uppercase tracking-wider text-fg-muted">{label}</div>
+        <div className="truncate text-[10px] uppercase tracking-[0.12em] text-fg-muted">{label}</div>
         {tone && <div aria-hidden="true" className={clsx("size-1.5 shrink-0 rounded-full", tone === "ok" ? "bg-ok" : "bg-warn")} />}
       </div>
       <div className={clsx("mt-1 text-lg font-semibold mono tabular-nums", color)}>{value}</div>
@@ -473,7 +473,7 @@ function Stat({ label, value, sub, tone }: { label: string; value: string; sub: 
 function Mini({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-md border border-bd-subtle p-2">
-      <div className="text-[10px] uppercase tracking-wider text-fg-muted">{label}</div>
+      <div className="text-[10px] uppercase tracking-[0.12em] text-fg-muted">{label}</div>
       <div className="mt-0.5 text-sm mono">{value}</div>
     </div>
   );

@@ -225,7 +225,7 @@ export default function RunsClient({ runs, referenceTimeMs }: { runs: RunRecord[
           {groups.map((group) => (
             <div key={group.label}>
               {dateSorted && group.label && (
-                <div className="px-1 pb-1.5 pt-2 text-[10px] uppercase tracking-wider text-fg-dim">{group.label}</div>
+                <div className="px-1 pb-1.5 pt-2 text-[10px] uppercase tracking-[0.12em] text-fg-dim">{group.label}</div>
               )}
               <div className="card overflow-hidden">
                 {group.items.map((r) => (

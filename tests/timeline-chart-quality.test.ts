@@ -108,7 +108,7 @@ test("timeline evidence marks an empty signal pool as unavailable", () => {
 test("chart surfaces expose evidence basis and truthful no-data states", () => {
   const outcomeChart = read("components/OutcomeChart.tsx");
   assert.match(outcomeChart, /LLM-judged sessions only/);
-  assert.match(outcomeChart, /source n=\$\{evidence\.n\}\/\$\{evidence\.denominator\} top-level/);
+  assert.match(outcomeChart, /source n=\$\{fmtInt\(evidence\.n\)\}\/\$\{fmtInt\(evidence\.denominator\)\} top-level/);
   assert.match(outcomeChart, /source denominator unavailable in this snapshot/);
 
   const timeline = read("components/TimelineClient.tsx");

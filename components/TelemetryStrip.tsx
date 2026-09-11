@@ -27,7 +27,7 @@ export default function TelemetryStrip({ runId }: { runId: string }) {
     <div className="card p-3 mb-4">
       <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[11px] uppercase tracking-wider text-fg-muted flex items-center gap-1.5">
+          <span className="text-[11px] uppercase tracking-[0.12em] text-fg-muted flex items-center gap-1.5">
             <Gauge className="size-3" /> Live telemetry
           </span>
           <span className={clsx(
@@ -101,7 +101,7 @@ function QualityCell({ label, value, detail, ok }: { label: string; value: strin
   return (
     <div className={clsx("rounded px-2 py-1.5 border", ok ? "border-ok/15 bg-ok/5" : "border-warn/15 bg-warn/5")}>
       <div className="flex items-center justify-between gap-2">
-        <span className="flex items-center gap-1.5 text-[9px] uppercase tracking-wider text-fg-muted">
+        <span className="flex items-center gap-1.5 text-[9px] uppercase tracking-[0.12em] text-fg-muted">
           <span className={clsx("size-1.5 rounded-full", ok ? "bg-ok" : "bg-warn")} />{label}
         </span>
         <span className={clsx("mono text-xs tabular-nums", ok ? "text-ok" : "text-warn")}>{value}</span>
@@ -114,7 +114,7 @@ function QualityCell({ label, value, detail, ok }: { label: string; value: strin
 function MetricGroup({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <div className="text-[10px] uppercase tracking-wider text-fg-dim px-1">{label}</div>
+      <div className="text-[10px] uppercase tracking-[0.12em] text-fg-dim px-1">{label}</div>
       <div className="space-y-1.5">{children}</div>
     </div>
   );

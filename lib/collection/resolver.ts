@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { collectSourceFiles, collectSourceSessions, type CollectionSourceSpec, type LiveSession } from "../live";
+import { collectSourceFiles, collectSourceSessions, parseHermesDbSessions, type CollectionSourceSpec, type LiveSession } from "../live";
 import { summarizeCodexSessionFile, summarizeHermesSessionFile, summarizeLiveSessionFile } from "../live/summarize";
 import { allCollectionSources, defToSpec, type CollectionSourceDef } from "./sources";
 
@@ -113,7 +113,7 @@ export function resolveCollectionSession(reference: CollectionSessionReference):
         revision: revisionFor(stat),
       };
     }
-    const session = parseCandidate(entry.file, entry.project, entry.mtime, stat, spec);
+    const session = parseCandidate(entry.file, entry.project, entry.mtime, stat, spec, reference.sessionId);
     if (session?.sessionId !== reference.sessionId) continue;
     return {
       sourceId: source.id,
@@ -148,19 +148,27 @@ function parseCandidate(
   mtime: number,
   stat: { size: number; mtimeMs: number },
   spec: CollectionSourceSpec,
+  sessionId?: string,
 ): LiveSession | null {
   const sourceFormat = spec.format;
   return sourceFormat === "codex-sessions"
     ? summarizeCodexSessionFile(file, project, mtime, stat)
     : sourceFormat === "hermes-json"
       ? summarizeHermesSessionFile(file, project, mtime, stat)
-      : summarizeLiveSessionFile(file, project, mtime, {
-          fields: spec.fields,
-          inferredModel: spec.inferredModel,
-          decodeProject: sourceFormat !== "jsonl-dir",
-          sourceFormat,
-          stat,
-        });
+      : sourceFormat === "hermes-sqlite"
+        // A DB candidate expands to many sessions; the expansion is memoized
+        // per (file, stat) in parse-hermes-db, so scanning candidates for one
+        // session id re-parses nothing.
+        ? sessionId
+          ? parseHermesDbSessions(file, mtime, stat).find((session) => session.sessionId === sessionId) ?? null
+          : null
+        : summarizeLiveSessionFile(file, project, mtime, {
+            fields: spec.fields,
+            inferredModel: spec.inferredModel,
+            decodeProject: sourceFormat !== "jsonl-dir",
+            sourceFormat,
+            stat,
+          });
 }
 
 /** Resolve a legacy absolute-file link only after current inventory equality. */
@@ -180,7 +188,7 @@ function resolveCollectionSessionByPath(source: CollectionSourceDef, requested: 
   const entry = collected.files.find((candidate) => path.resolve(candidate.file) === requested);
   if (!entry || !isInsideRealRoot(entry.file, expandedRoots(source))) return null;
   const stat = { size: entry.size, mtimeMs: entry.mtime };
-  const session = parseCandidate(entry.file, entry.project, entry.mtime, stat, spec);
+  const session = parseCandidate(entry.file, entry.project, entry.mtime, stat, spec, path.basename(requested, path.extname(requested)));
   return {
     sourceId: source.id,
     source,

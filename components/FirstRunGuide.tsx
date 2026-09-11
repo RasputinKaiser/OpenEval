@@ -19,6 +19,17 @@ import {
  * dashboard only when there are no runs and no collected sessions.
  */
 export default function FirstRunGuide() {
+  // Session-scoped dismissal: hiding the guide survives client navigation but comes
+  // back next session — it only ever renders on a truly empty install, so a fresh
+  // day is a reasonable time to show it again.
+  const [hidden, setHidden] = useState(false);
+  useEffect(() => {
+    try { setHidden(sessionStorage.getItem("openeval-first-run-hidden") === "1"); } catch {}
+  }, []);
+  const dismiss = () => {
+    setHidden(true);
+    try { sessionStorage.setItem("openeval-first-run-hidden", "1"); } catch {}
+  };
   const [harness, setHarness] = useState<Probe<HarnessProbe>>({ phase: "checking" });
   const [sessions, setSessions] = useState<Probe<SessionProbe>>({ phase: "checking" });
   const [runs, setRuns] = useState<Probe<RunProbe>>({ phase: "checking" });
@@ -84,6 +95,7 @@ export default function FirstRunGuide() {
   const steps = buildGuideSteps(harness, sessions, runs);
   const doneCount = steps.filter((s) => s.status === "done").length;
 
+  if (hidden) return null;
   return (
     <section className="card p-5 md:p-6 mb-4" aria-label="Getting started">
       <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
@@ -97,6 +109,13 @@ export default function FirstRunGuide() {
         </div>
         <div className="flex items-center gap-3 shrink-0">
           <span className="text-[11px] text-fg-dim mono tabular-nums">{doneCount}/3 done</span>
+          <button
+            onClick={dismiss}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-transparent text-xs text-fg-dim hover:text-fg hover:border-bd transition-colors"
+            aria-label="Hide the getting-started guide"
+          >
+            Hide
+          </button>
           <button
             onClick={() => detect(true)}
             disabled={checking}
@@ -165,8 +184,8 @@ function StepBadge({ status, index }: { status: GuideStepStatus; index: number }
 }
 
 function StatusLabel({ status }: { status: GuideStepStatus }) {
-  if (status === "done") return <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider text-ok"><Check className="size-3" /> ready</span>;
-  if (status === "checking") return <span className="text-[10px] uppercase tracking-wider text-fg-dim">checking…</span>;
-  if (status === "unavailable") return <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider text-warn"><CloudOff className="size-3" /> status unavailable</span>;
-  return <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider text-fg-dim"><CircleDashed className="size-3" /> waiting</span>;
+  if (status === "done") return <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.12em] text-ok"><Check className="size-3" /> ready</span>;
+  if (status === "checking") return <span className="text-[10px] uppercase tracking-[0.12em] text-fg-dim">checking…</span>;
+  if (status === "unavailable") return <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.12em] text-warn"><CloudOff className="size-3" /> status unavailable</span>;
+  return <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.12em] text-fg-dim"><CircleDashed className="size-3" /> waiting</span>;
 }

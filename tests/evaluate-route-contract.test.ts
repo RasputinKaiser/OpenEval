@@ -24,7 +24,7 @@ test("Evaluate workflow exposes the complete route inventory in stable order", (
   const navInventory = evaluateNav.slice(navStart, navEnd);
 
   const sidebarStart = sidebar.indexOf('label: "Evaluate"');
-  const sidebarEnd = sidebar.indexOf('label: "Observe"', sidebarStart);
+  const sidebarEnd = sidebar.indexOf('label: "System"', sidebarStart);
   assert.ok(sidebarStart >= 0 && sidebarEnd > sidebarStart, "Sidebar must retain a bounded Evaluate section");
   const sidebarEvaluate = sidebar.slice(sidebarStart, sidebarEnd);
 

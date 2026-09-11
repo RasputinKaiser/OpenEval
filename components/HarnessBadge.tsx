@@ -18,7 +18,7 @@ export default function HarnessBadge({ harness, bin, version }: { harness?: stri
   const color = harnessColor(harness);
   return (
     <span
-      className="inline-flex items-center gap-1 text-[9px] uppercase tracking-wider mono px-1.5 py-0.5 rounded shrink-0"
+      className="inline-flex items-center gap-1 text-[9px] uppercase tracking-[0.12em] mono px-1.5 py-0.5 rounded shrink-0"
       style={{ color, backgroundColor: color + "20" }}
       title={bin ? `${bin}${version ? ` · ${version}` : ""}` : harness}
     >

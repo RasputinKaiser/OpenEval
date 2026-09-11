@@ -21,7 +21,7 @@ export const KIND_LABEL: Record<MarkerKind, string> = {
 };
 
 export const KIND_COLOR: Record<MarkerKind, string> = {
-  skill: "var(--color-accent-soft)",
+  skill: "color-mix(in srgb, var(--color-accent-soft) 62%, var(--color-err) 38%)",
   mcp: "var(--color-ok)",
   subagent: "var(--color-warn)",
   model: "var(--color-fg-dim)",

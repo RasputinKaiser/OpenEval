@@ -224,10 +224,10 @@ export default function CompareClient({ runs, initialA, initialB }: Props) {
             </div>
           </div>
           <section className="card overflow-hidden">
-            <div className="overflow-x-auto">
+            <div className="chart-scroll-well overflow-x-auto pb-2">
               <table className="w-full text-sm">
                 <caption className="sr-only">Per-case comparison. Delta is comparison B minus baseline A; an em dash means the metric is missing on one or both sides.</caption>
-                <thead className="sticky top-0 z-10 text-[11px] uppercase tracking-wider text-fg-muted bg-bg-subtle border-b border-bd-subtle">
+                <thead className="sticky top-0 z-10 text-[11px] uppercase tracking-[0.12em] text-fg-muted bg-bg-subtle border-b border-bd-subtle">
                   <tr>
                     <th className={clsx("text-left px-4 py-2 font-medium", STICKY_TH)}>Case</th>
                     <th className="text-left px-4 py-2 font-medium">A</th>
@@ -276,7 +276,7 @@ function RunSelect({ label, value, onChange, runs }: { label: string; value: str
   const id = label === "Baseline A" ? "compare-baseline-a" : "compare-comparison-b";
   return (
     <div>
-      <label htmlFor={id} className="text-[11px] uppercase tracking-wider text-fg-muted">{label}</label>
+      <label htmlFor={id} className="text-[11px] uppercase tracking-[0.12em] text-fg-muted">{label}</label>
       <select id={id} value={value} onChange={(e) => onChange(e.target.value)} className="mt-1.5 min-h-11 w-full px-3 py-2 text-sm bg-bg border border-bd rounded-md mono outline-none focus:border-accent focus-visible:ring-2 focus-visible:ring-accent">
         <option value="">Select run…</option>
         {runs.map((r) => <option key={r.id} value={r.id}>{r.name} ({r.id}){r.model ? ` · ${r.model}` : ""}{r.passRate != null ? ` · ${(r.passRate * 100).toFixed(0)}%` : ""}</option>)}
@@ -358,7 +358,7 @@ function Delta({ label, a, b, aVal, bVal, higherIsBetter, lowerIsBetter, compara
   }
   return (
     <div className={clsx("card p-3", bgTone)}>
-      <div className="text-[10px] uppercase tracking-wider text-fg-muted mb-1">{label}</div>
+      <div className="text-[10px] uppercase tracking-[0.12em] text-fg-muted mb-1">{label}</div>
       <div className="flex items-baseline gap-2">
         <span className="text-sm mono text-fg-muted tabular-nums">{a}</span>
         <span className="text-fg-dim">→</span>

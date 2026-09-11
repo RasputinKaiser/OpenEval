@@ -53,13 +53,13 @@ export function EvidenceReview({
   const TranscriptIcon = transcript.status === "search" ? Search : FileText;
 
   return (
-    <details className={clsx("group min-w-0", className)}>
+    <details className={clsx("group acc-reveal min-w-0", className)}>
       <summary className="inline-flex min-h-7 max-w-full cursor-pointer list-none items-center gap-1 rounded border border-bd-subtle px-1.5 py-1 text-[10px] text-fg-muted transition-colors hover:bg-bg-elev hover:text-fg [&::-webkit-details-marker]:hidden">
         <ShieldCheck className="size-3 text-accent-soft" aria-hidden />
         <span>Evidence details</span>
         <ChevronDown className="size-3 transition-transform group-open:rotate-180" aria-hidden />
       </summary>
-      <div className="mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-lg border border-bd bg-bg-subtle p-2.5 text-[10px] shadow-lg">
+      <div className="acc-reveal-content mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-lg border border-bd bg-bg-subtle p-2.5 text-[10px] shadow-lg">
         <dl className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5">
           <dt className="text-fg-dim">Record</dt>
           <dd className="min-w-0 break-words font-medium text-fg">{identity}</dd>

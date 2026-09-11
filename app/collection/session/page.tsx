@@ -1,12 +1,13 @@
 import path from "node:path";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ArrowLeft, FileText, AlertTriangle, Archive, MessageSquare, Wrench } from "lucide-react";
+import { ArrowLeft, Database, AlertTriangle, Archive, MessageSquare, Wrench } from "lucide-react";
 import { readTranscriptWindow } from "@/lib/live";
 import { resolveCollectionSession, resolveLegacyCollectionFile } from "@/lib/collection/resolver";
 import { encodeTranscriptCursor, transcriptDescriptorHash } from "@/lib/collection/transcript-cursor";
 import { PARSER_VERSION } from "@/lib/live-cache";
-import { fmtNum, fmtRel } from "@/lib/format";
+import { fmtBytes, fmtNum, fmtRel } from "@/lib/format";
+import clsx from "clsx";
 import PageHeader from "@/components/PageHeader";
 import TranscriptClient from "@/components/TranscriptClient";
 
@@ -58,7 +59,7 @@ export default async function SessionViewerPage({ searchParams }: { searchParams
     );
   }
 
-  const window = readTranscriptWindow(resolved.file, resolved.spec.format);
+  const window = readTranscriptWindow(resolved.file, resolved.spec.format, resolved.spec.format === "hermes-sqlite" ? { sessionId: resolved.sessionId } : {});
   const shown = window.turns.slice(0, RENDER_CAP);
   const totalCounts = {
     all: shown.length,
@@ -86,9 +87,9 @@ export default async function SessionViewerPage({ searchParams }: { searchParams
     <div className="p-4 md:p-6 max-w-5xl mx-auto">
       {back}
       <PageHeader
-        icon={FileText}
+        icon={Database}
         title={path.basename(resolved.file)}
-        subtitle={<span className="mono text-[12px]">{resolved.source.label} · {resolved.sessionId} · {fmtNum(resolved.size)}B on disk · modified {fmtRel(resolved.mtimeMs)}{errorCount > 0 && <span className="text-err"> · {errorCount} errors</span>}{warnCount > 0 && <span className="text-warn"> · {warnCount} warnings</span>}</span>}
+        subtitle={<span className="mono text-[12px]">source {resolved.source.label} · session <span title={resolved.sessionId}>{resolved.sessionId}</span> · {fmtBytes(resolved.size)} on disk · modified {fmtRel(resolved.mtimeMs)}{errorCount > 0 && <span className="text-err"> · {errorCount} errors</span>}{warnCount > 0 && <span className="text-warn"> · {warnCount} warnings</span>}</span>}
       />
 
       <TranscriptReadingGuide counts={totalCounts} totalTurns={shown.length} />
@@ -113,14 +114,14 @@ function TranscriptReadingGuide({ counts, totalTurns }: { counts: { all: number;
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 id="transcript-reading-title" className="text-sm font-semibold">Read the conversation first</h2>
-          <p className="mt-1 max-w-3xl text-[11px] leading-5 text-fg-muted">OpenEval starts with user and assistant messages so the task and result are easy to follow. Agent reasoning is labeled separately and stays collapsed until requested; tool calls, protocol events, and errors remain available in the filters below without changing the raw transcript.</p>
+          <p className="mt-1 max-w-3xl text-[11px] leading-5 text-fg-muted">OpenEval starts with user and assistant messages so the task and result are easy to follow. Agent reasoning is labeled separately and stays collapsed until requested; tool events and errors remain available in the filters below without changing the raw transcript.</p>
         </div>
         <span className="shrink-0 rounded-full border border-accent/25 bg-bg px-2 py-1 text-[10px] text-accent-soft mono">{fmtNum(totalTurns)} normalized turns loaded</span>
       </div>
-      <dl className="mt-3 grid grid-cols-3 gap-2 sm:max-w-xl">
+      <dl className="mt-3 grid grid-cols-3 gap-2">
         <div className="rounded-md border border-bd-subtle bg-bg/70 px-2.5 py-2"><dt className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-fg-dim"><MessageSquare className="size-3" /> Conversation</dt><dd className="mt-1 text-sm font-semibold tabular-nums">{fmtNum(counts.chat)}</dd></div>
         <div className="rounded-md border border-bd-subtle bg-bg/70 px-2.5 py-2"><dt className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-fg-dim"><Wrench className="size-3" /> Tool events</dt><dd className="mt-1 text-sm font-semibold tabular-nums">{fmtNum(counts.tools)}</dd></div>
-        <div className="rounded-md border border-bd-subtle bg-bg/70 px-2.5 py-2"><dt className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-fg-dim"><AlertTriangle className="size-3" /> Error signals</dt><dd className={counts.errors > 0 ? "mt-1 text-sm font-semibold tabular-nums text-err" : "mt-1 text-sm font-semibold tabular-nums"}>{fmtNum(counts.errors)}</dd></div>
+        <div className="rounded-md border border-bd-subtle bg-bg/70 px-2.5 py-2"><dt className={clsx("flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-fg-dim", counts.errors === 0 && "opacity-60")}><AlertTriangle className="size-3" /> Error signals</dt><dd className={counts.errors > 0 ? "mt-1 text-sm font-semibold tabular-nums text-err" : "mt-1 text-sm font-semibold tabular-nums"}>{fmtNum(counts.errors)}</dd></div>
       </dl>
     </section>
   );

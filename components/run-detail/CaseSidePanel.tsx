@@ -236,7 +236,7 @@ function CaseTrustPanel({ trust, rc }: { trust: CaseTrustSummary; rc: RunCaseRec
       </div>
       {trust.weaknesses.length ? (
         <div className="border-t border-bd-subtle px-4 py-3">
-          <div className="mb-2 flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-warn">
+          <div className="mb-2 flex items-center gap-1.5 text-[10px] uppercase tracking-[0.12em] text-warn">
             <ShieldAlert className="size-3" /> Weaknesses
           </div>
           <div className="flex flex-wrap gap-1.5">
@@ -265,7 +265,7 @@ function TrustChip({ ok, label }: { ok: boolean; label: string }) {
 function MiniProof({ label, value, icon: Icon, ok }: { label: string; value: string; icon: LucideIcon; ok?: boolean }) {
   return (
     <div className={clsx("rounded border p-2", ok ? "border-ok/15 bg-ok/5" : "border-bd-subtle bg-bg/50")}>
-      <div className="flex items-center justify-between gap-1 text-[10px] uppercase tracking-wider text-fg-muted">
+      <div className="flex items-center justify-between gap-1 text-[10px] uppercase tracking-[0.12em] text-fg-muted">
         <div className="flex items-center gap-1">
           <Icon className="size-3" /> {label}
         </div>
@@ -279,7 +279,7 @@ function MiniProof({ label, value, icon: Icon, ok }: { label: string; value: str
 function Mini({ label, value, icon: Icon }: { label: string; value: string; icon: LucideIcon }) {
   return (
     <div className="card p-3">
-      <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-fg-muted mb-1">
+      <div className="flex items-center gap-1 text-[10px] uppercase tracking-[0.12em] text-fg-muted mb-1">
         <Icon className="size-3" /> {label}
       </div>
       <div className="text-sm font-medium mono tabular-nums">{value}</div>

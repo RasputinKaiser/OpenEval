@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { hermesJsonToRecords } from "../adapters/hermes";
+import { hermesDbMessagesToRecords } from "./parse-hermes-db";
 import type { LiveTraceFormat, LiveTranscriptTurn, TranscriptCursorState, TranscriptNormalization, TranscriptResult } from "./types";
 import {
   isTruncatedJsonlRecord,
@@ -127,6 +128,8 @@ function restoreCursorState(state: TranscriptCursorState | undefined): Transcrip
 export interface TranscriptWindowOptions {
   byteOffset?: number;
   state?: TranscriptCursorState;
+  /** Session id within a multi-session container (hermes-sqlite DBs). */
+  sessionId?: string;
 }
 
 export interface TranscriptWindowResult extends TranscriptResult {
@@ -167,8 +170,26 @@ export function readTranscriptWindow(filePath: string, format: LiveTraceFormat |
   const cursor = options.state;
   const startRecordIndex = cursor?.recordIndex ?? 0;
   const revision = { size: stat.size, mtimeMs: stat.mtimeMs, fingerprint: boundedFileFingerprint(filePath, stat) };
-  const isHermes = format === "hermes-json" || path.extname(filePath).toLowerCase() === ".json";
-  if (isHermes) {
+  const isHermesJson = format === "hermes-json" || path.extname(filePath).toLowerCase() === ".json";
+  if (format === "hermes-sqlite" || (!isHermesJson && path.extname(filePath).toLowerCase() === ".db")) {
+    // One DB file expands to many sessions; `options.sessionId` selects one.
+    // The whole message projection is bounded, so a "window" is simply the
+    // next slice of the parsed turn list — same shape as the hermes-json path.
+    const parsed = parseHermesDbSessionTranscript(filePath, options.sessionId ?? "");
+    const offset = cursor?.semanticTurns ?? 0;
+    const turns = parsed.turns.slice(offset, offset + TRANSCRIPT_WINDOW_CAP);
+    const done = Boolean(parsed.error) || offset + turns.length >= parsed.turns.length;
+    return {
+      ...parsed,
+      turns,
+      offset,
+      done,
+      nextByteOffset: stat.size,
+      ...(!done ? { nextState: { calls: [], recordIndex: parsed.normalization?.rawRecords ?? 0, semanticTurns: offset + turns.length } } : {}),
+      revision,
+    };
+  }
+  if (isHermesJson) {
     const parsed = parseSessionTranscript(filePath, format);
     const offset = cursor?.semanticTurns ?? 0;
     const turns = parsed.turns.slice(offset, offset + TRANSCRIPT_WINDOW_CAP);
@@ -209,8 +230,29 @@ export function readTranscriptWindow(filePath: string, format: LiveTraceFormat |
   };
 }
 
-export function parseSessionTranscript(filePath: string, format?: LiveTraceFormat): TranscriptResult {
+/**
+ * Transcript projection for one session inside a hermes-sqlite ledger. The
+ * DB-backed message rows are projected to Claude-style records and run through
+ * the shared semantic-turn pipeline, so drawer rendering, reasoning cards, and
+ * tool pairing behave exactly like every other format. An absent/blank
+ * sessionId yields an explicit error, never another session's turns.
+ */
+export function parseHermesDbSessionTranscript(filePath: string, sessionId: string): TranscriptResult {
+  if (!sessionId) return { turns: [], error: "A session id is required to open a Hermes database transcript." };
   try {
+    const records = hermesDbMessagesToRecords(filePath, sessionId);
+    if (records.length === 0) return { turns: [], error: "No conversation messages were found for this session in the Hermes ledger." };
+    return parseTranscriptRecords(records);
+  } catch (e) {
+    return { turns: [], error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+export function parseSessionTranscript(filePath: string, format?: LiveTraceFormat, sessionId?: string): TranscriptResult {
+  try {
+    if (format === "hermes-sqlite" || path.extname(filePath).toLowerCase() === ".db") {
+      return parseHermesDbSessionTranscript(filePath, sessionId ?? "");
+    }
     const isHermes = format === "hermes-json" || path.extname(filePath).toLowerCase() === ".json";
     if (isHermes) {
       const stat = fs.statSync(filePath);
@@ -235,8 +277,8 @@ function isErroringTurn(turn: LiveTranscriptTurn): boolean {
   return turn.severity === "error" || turn.severity === "warning";
 }
 
-export function getErroringTurns(filePath: string, format?: LiveTraceFormat): TranscriptResult {
-  const parsed = parseSessionTranscript(filePath, format);
+export function getErroringTurns(filePath: string, format?: LiveTraceFormat, sessionId?: string): TranscriptResult {
+  const parsed = parseSessionTranscript(filePath, format, sessionId);
   if (parsed.error) return { turns: [], error: parsed.error };
   const keep = new Set<number>();
   parsed.turns.forEach((turn, index) => {

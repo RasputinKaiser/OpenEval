@@ -72,7 +72,15 @@ function messagesFromRecord(obj: Record<string, unknown>): ConversationRecordMes
 }
 
 function hermesRecords(file: string): string[] {
-  const stat = fs.statSync(file);
+  // The file was discovered earlier in the scan; it can vanish or shrink
+  // before this read. A vanished transcript means "no evidence here", not
+  // "abort mining the whole directory".
+  let stat: fs.Stats;
+  try {
+    stat = fs.statSync(file);
+  } catch {
+    return [];
+  }
   if (stat.size > HERMES_MAX_BYTES) return [];
   let raw = "";
   for (const line of readFileLines(file)) raw += line + "\n";
@@ -90,6 +98,8 @@ export function* readConversationMessages(file: string): Generator<ConversationM
     if (!line.trim()) continue;
     let obj: Record<string, unknown>;
     try { obj = JSON.parse(line); } catch { continue; }
+    // "null" is valid JSON — a bare scalar must skip, not throw on property access.
+    if (!obj || typeof obj !== "object" || Array.isArray(obj)) continue;
     for (const message of messagesFromRecord(obj)) {
       // New Codex rollouts echo a turn as an adjacent event_msg/response_item
       // pair. Source-aware suppression keeps that protocol duplicate out while

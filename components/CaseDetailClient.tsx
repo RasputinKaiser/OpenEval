@@ -232,7 +232,7 @@ function RunSummary({ runner }: { runner: RunnerResult }) {
 function Stat({ label, value, icon: Icon }: { label: string; value: string; icon: any }) {
   return (
     <div className="card p-3">
-      <div className="flex items-center gap-1 text-[10px] text-fg-muted uppercase tracking-wider"><Icon className="size-3" /> {label}</div>
+      <div className="flex items-center gap-1 text-[10px] text-fg-muted uppercase tracking-[0.12em]"><Icon className="size-3" /> {label}</div>
       <div className="text-sm font-medium mono mt-1">{value}</div>
     </div>
   );
@@ -301,7 +301,7 @@ function Transcript({ runner, showText }: { runner: RunnerResult; showText: (val
         <div key={i} className="border-b border-bd-subtle last:border-0">
           <div className={clsx("px-4 py-1.5 flex items-center gap-2", m.role === "assistant" ? "bg-accent/5" : m.role === "system" ? "bg-warn/5" : "bg-bg-subtle/40")}>
             {m.role === "assistant" ? <User className="size-3 text-accent-soft" /> : <CornerDownRight className="size-3 text-fg-dim" />}
-            <span className={clsx("text-[10px] uppercase tracking-wider", m.role === "assistant" ? "text-accent-soft" : "text-fg-dim")}>{m.role}</span>
+            <span className={clsx("text-[10px] uppercase tracking-[0.12em]", m.role === "assistant" ? "text-accent-soft" : "text-fg-dim")}>{m.role}</span>
           </div>
           {m.content.map((b, j) => {
             if (b.type === "text") {

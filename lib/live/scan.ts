@@ -5,6 +5,7 @@ import { estimateCostUsd } from "../pricing";
 import type { CollectedSourceFiles, CollectionSourceSpec, LiveAggregate, LiveAggregateList, LiveScanCoverage, LiveSession, LiveSessionListItem, LiveTraceSource } from "./types";
 import { resolveLiveSource, specToSource } from "./sources";
 import { summarizeCodexSessionFile, summarizeHermesSessionFile, summarizeLiveSessionFile } from "./summarize";
+import { parseHermesDbSource, resolveHermesDbSessionDetail } from "./parse-hermes-db";
 import { aggregate } from "./aggregate";
 import { attributedModelUsage, estimateModelUsageCost } from "./util";
 
@@ -148,27 +149,42 @@ export interface ResolvedLiveSessionFile {
  * filesystem operation receives the path and stat produced by the trusted
  * descriptor-root walk. This also rejects symlinks because the collector
  * admits regular directory entries only.
+ *
+ * DB-backed formats (hermes-sqlite) expand one file to many sessions, so the
+ * drawer passes `sessionId` to select within the expanded set; the file path
+ * alone cannot identify a session there.
  */
-export function resolveLiveSessionFile(filePath: string, harness?: string): ResolvedLiveSessionFile | null {
+export function resolveLiveSessionFile(filePath: string, harness?: string, sessionId?: string): ResolvedLiveSessionFile | null {
   // Server actions are callable from an untrusted browser. Reject malformed or
   // absurdly long path values before path.resolve and the source walk.
   if (typeof filePath !== "string" || filePath.length === 0 || filePath.length > 4096) return null;
   const source = resolveLiveSource(harness);
   if (source.status !== "available") return null;
   const requested = path.resolve(filePath);
-  const expectedExtension = source.format === "hermes-json" ? ".json" : ".jsonl";
+  const expectedExtension = source.format === "hermes-json" ? ".json" : source.format === "hermes-sqlite" ? ".db" : ".jsonl";
   if (!requested.endsWith(expectedExtension)) return null;
   const match = collectLiveTraceFiles(source, []).find((candidate) => path.resolve(candidate.file) === requested);
-  return match ? { ...match, source } : null;
+  if (!match) return null;
+  // A sessionId-scoped request must be truthful: the named session must exist
+  // in this DB's current expansion, otherwise the request is rejected rather
+  // than resolving to "the DB happens to contain it later".
+  if (sessionId != null) {
+    if (source.format !== "hermes-sqlite") return null;
+    if (typeof sessionId !== "string" || !sessionId || sessionId.length > 512) return null;
+    const expanded = parseHermesDbSource([match]);
+    if (!expanded.some((session) => session.sessionId === sessionId)) return null;
+  }
+  return { ...match, source };
 }
 
 /**
  * Parse one complete session on demand for the drawer. The source/path check is
  * deliberately repeated against the current server-side inventory rather than
- * trusting the client-returned absolute path.
+ * trusting the client-returned absolute path. DB-backed sessions additionally
+ * require the sessionId that scopes one session out of the DB expansion.
  */
-export function readLiveSessionDetail(filePath: string, harness?: string): LiveSession | null {
-  const resolved = resolveLiveSessionFile(filePath, harness);
+export function readLiveSessionDetail(filePath: string, harness?: string, sessionId?: string): LiveSession | null {
+  const resolved = resolveLiveSessionFile(filePath, harness, sessionId);
   if (!resolved) return null;
   const { file, mtime, size, source } = resolved;
   const projectDir = projectDirForDetail(source, file);
@@ -177,7 +193,9 @@ export function readLiveSessionDetail(filePath: string, harness?: string): LiveS
     ? summarizeCodexSessionFile(file, projectDir, mtime, stat)
     : source.format === "hermes-json"
       ? summarizeHermesSessionFile(file, projectDir, mtime, stat)
-      : summarizeLiveSessionFile(file, projectDir, mtime, {
+      : source.format === "hermes-sqlite"
+        ? resolveHermesDbSessionDetail(file, sessionId ?? "", projectDir)
+        : summarizeLiveSessionFile(file, projectDir, mtime, {
           fields: source.fields,
           inferredModel: source.inferredModel,
           decodeProject: source.format !== "jsonl-dir",
@@ -210,6 +228,26 @@ function parseSourceSessionList(
         truncated: false,
         partial: true,
       },
+    };
+  }
+  // Hermes' SQLite ledger expands to the FULL session list — one file cannot
+  // flow through the one-file-one-session loop below. Profiles keep separate
+  // ledgers (~/.hermes/profiles/<name>/state.db), so every discovered DB is
+  // parsed and the id-deduped merge wins.
+  if (source.format === "hermes-sqlite") {
+    const files = preCollected ? [...preCollected.files] : collectLiveTraceFiles(source, scanWarnings);
+    files.sort((a, b) => b.mtime - a.mtime || a.file.localeCompare(b.file));
+    if (files.length === 0) {
+      return {
+        sessions,
+        coverage: { requestedLimit: limit, discoveredFiles: 0, scannedFiles: 0, parsedFiles: 0, droppedFiles: 0, unscannedFiles: 0, archivedSessionsAdded: 0, truncated: false, partial: false },
+      };
+    }
+    const all = parseHermesDbSource(files);
+    sessions.push(...all.slice(0, limit).map(refreshInferredSessionCost));
+    return {
+      sessions,
+      coverage: { requestedLimit: limit, discoveredFiles: files.length, scannedFiles: files.length, parsedFiles: files.length, droppedFiles: 0, unscannedFiles: 0, archivedSessionsAdded: 0, truncated: all.length > limit, partial: false },
     };
   }
   let files: SourceFile[];
@@ -436,6 +474,12 @@ function collectLiveTraceFiles(source: LiveTraceSource, scanWarnings: string[]):
     } else if (source.format === "hermes-json") {
       // Hermes sessions are single-JSON files; skip its request_dump_* payload logs.
       collectJsonlRecursive(root, source.maxDepth, files, root, (name) => name.startsWith("session_") && name.endsWith(".json"), visited, scanWarnings, depthProbeBudget);
+    } else if (source.format === "hermes-sqlite") {
+      // The session ledger DBs: the default ~/.hermes/state.db plus one
+      // ~/.hermes/profiles/<name>/state.db per named profile. Depth 3 covers
+      // root → profiles → <name> → state.db without walking unrelated trees
+      // (sandboxes, chrome-debug, browser-profile …) that cannot match.
+      collectJsonlRecursive(root, 3, files, root, (name) => name === "state.db", visited, scanWarnings, depthProbeBudget);
     } else {
       collectJsonlRecursive(root, source.maxDepth, files, root, undefined, visited, scanWarnings, depthProbeBudget);
     }

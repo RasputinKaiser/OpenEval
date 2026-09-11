@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import { Loader2, MessageSquare, Wrench, AlertTriangle, ListFilter, Search, X, ScanLine, ImageIcon, FileIcon, ChevronUp, ChevronDown } from "lucide-react";
 import type { LiveTranscriptTurn, TranscriptNormalization } from "@/lib/live";
@@ -193,6 +193,9 @@ export default function TranscriptClient({
     { key: "errors", label: "Errors", icon: AlertTriangle, n: counts.errors },
   ];
 
+  const loadMoreRef = useRef(loadMore);
+  loadMoreRef.current = loadMore;
+  const loadMoreStable = useCallback(() => loadMoreRef.current(), []);
   async function loadMore() {
     const currentTurns = loadedTurnsRef.current;
     if (requestInFlight.current || !hasMore) return;
@@ -257,6 +260,25 @@ export default function TranscriptClient({
       }
     }
   }
+
+  // Invisible-speed: prefetch the next window when the reader approaches the end of
+  // the loaded transcript. The manual Load-next button remains for explicit control;
+  // the sentinel just removes the wait. Guarded so only one fetch is ever in flight.
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !hasMore || loadingMore) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting) && !requestInFlight.current) {
+          void loadMoreStable();
+        }
+      },
+      { rootMargin: "600px 0px" },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMore, loadingMore, loadMoreStable]);
 
   return (
     <div>
@@ -430,10 +452,14 @@ export default function TranscriptClient({
                   {preview && (meta ? (
                     <div className="text-[11px] mono text-fg-dim truncate">{preview}</div>
                   ) : (
-                    <pre className={clsx(
-                      "mt-1 text-[12px] whitespace-pre-wrap break-words max-h-48 overflow-y-auto",
-                      t.role === "user" || t.role === "assistant" ? "font-sans text-fg/90 leading-relaxed" : "mono text-fg-muted",
-                    )}>{preview}</pre>
+                    <pre
+                      tabIndex={0}
+                      aria-label="Turn content, scrollable"
+                      className={clsx(
+                        "mt-1 text-[12px] whitespace-pre-wrap break-words max-h-48 overflow-y-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent rounded",
+                        t.role === "user" || t.role === "assistant" ? "font-sans text-fg/90 leading-relaxed" : "mono text-fg-muted",
+                      )}
+                    >{preview}</pre>
                   ))}
                 </>
               )}
@@ -441,6 +467,7 @@ export default function TranscriptClient({
           );
         })}
       </div>
+      <div ref={sentinelRef} aria-hidden="true" className="h-px" />
       {hasMore && (
         <div className="mt-4 flex flex-col items-center gap-2">
           <button
@@ -455,7 +482,23 @@ export default function TranscriptClient({
                   : `Load next ${fmtNum(PAGE_SIZE)} turns${dq ? " to continue search" : ""}`}
           </button>
           <p className="text-[10px] text-fg-dim mono tabular-nums">Showing {fmtNum(loadedTurns.length)} parsed turns{hasMore ? " · more available" : ""}</p>
-          {loadError && <p className="text-[11px] text-err" role="alert">{show(loadError)}</p>}
+          {loadError && (
+            <p className="text-[11px] text-err" role="alert">
+              {show(loadError)}
+              {/reload/i.test(loadError) && (
+                <>
+                  {" "}
+                  <button
+                    type="button"
+                    onClick={() => window.location.reload()}
+                    className="underline hover:text-fg"
+                  >
+                    Reload transcript
+                  </button>
+                </>
+              )}
+            </p>
+          )}
         </div>
       )}
       {sourceNotice && <p className="mt-3 text-center text-[11px] text-fg-dim" role="status">{show(sourceNotice)}</p>}
