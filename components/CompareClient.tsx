@@ -282,7 +282,7 @@ export default function CompareClient({ runs, initialA, initialB }: Props) {
                             <div className={clsx("absolute left-0 top-0 bottom-0 w-0.5", regressed ? "bg-err" : "bg-ok")} />
                           )}
                           <Link
-                            href={`/runs/${r.bCaseRef ? b : a}/case/${r.bCaseRef ?? r.aCaseRef ?? r.caseId}`}
+                            href={`/runs/${encodeURIComponent(r.bCaseRef ? b : a)}/case/${encodeURIComponent(r.bCaseRef ?? r.aCaseRef ?? r.caseId)}`}
                             aria-label={`Open ${r.caseName} sample ${r.sample} evidence`}
                             className="hover:text-accent-soft block truncate"
                           >{r.caseName}</Link>
