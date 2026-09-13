@@ -1,0 +1,10 @@
+# Acceptance for the six approved improvements
+
+1. Session brief: bounded deterministic summary from actual evidence records. Intent, attempts, deliverable and observed checks remain distinguished; each concrete statement has evidence IDs that open excerpts. Unsupported/missing sections state unknown, not success. No generative provider required.
+2. Actionable unknowns: structured cause and action; never promise recovery from an unavailable source. Truncation and unsupported records are separated. Existing continuation may open source transcript, not silently broaden the model packet.
+3. Navigation: source-qualified IDs, paginated/searchable choice, URL restoration after reload/Back; citations reveal actual referenced records or explain missing historical reference. No filesystem paths in URLs.
+4. Calibration: user-authored references versioned and preserved; no sample pre-labeled human-reviewed. Imported or existing reviewer results matched by source/session/digest and rubric version. Agreement, false success, abstention, citation validity, repeatability, cost/time distinguish unavailable from zero. No provider execution necessary for local proof.
+5. Experiments: save hypothesis, configuration references, selected baseline/candidate runs, exact case/sample cohort and grade methods. Reuse existing run/compare/handoff; results remain linked evidence. Describe differences and missing data; no causal claim from unmatched historical runs. No new run automatically starts.
+6. Performance: repeatable bounded workloads with sizes and build/runtime metadata. Report samples, median/p95, payload bytes and relevant continuation behavior. Browser metrics only if actually measured. Repeated benchmark reads must not change real corpus or caches unexpectedly; fixture benchmarks explicitly synthetic. No unmeasured improvement claim.
+
+Full completion: focused tests per slice; final full tests/type/lint/build/selftest/strict accuracy/doctor; UI exercised via ComputerUse/Chrome with reduced motion, keyboard and mobile checks where changed. Review issues resolved; state and docs updated. No external publication or real judge invocation.

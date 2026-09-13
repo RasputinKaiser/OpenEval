@@ -253,7 +253,7 @@ test("executeCase: pass threshold cannot absorb an infra-failed grader", async (
     ],
   });
   const rec = await executeCase("run-exec", def, "headless", 32, undefined, 0, undefined);
-  assert.equal(rec.evaluation?.passed, true);
+  assert.equal(rec.evaluation?.passed, false);
   assert.equal(rec.status, "error");
 });
 
@@ -305,4 +305,17 @@ test("evaluate: a failed forbidden grader vetoes a pass even when the threshold 
   const evaluation = evaluate([passOk, forbiddenFail], 0.5);
   assert.ok(evaluation.passRatio >= 0.5);
   assert.equal(evaluation.passed, false);
+});
+
+test("executeCase honors a weighted threshold with an ordinary failed grader", async () => {
+ const { executeCase } = await import("../lib/executor");
+ await ensureRun("run-exec");
+ const def = caseDef({ id: "exec-weighted-threshold", prompt: "MODE=ok TURNS=1", pass_threshold: 0.8, graders: [
+ { type: "regex_match", pattern: "hello", source: "final_text", weight: 9 },
+ { type: "regex_match", pattern: "definitely absent", source: "final_text", weight: 1 },
+ ] });
+ const rec = await executeCase("run-exec", def, "headless", 33, undefined, 0, undefined);
+ assert.equal(rec.evaluation?.passRatio, 0.9);
+ assert.equal(rec.evaluation?.passed, true);
+ assert.equal(rec.status, "passed");
 });

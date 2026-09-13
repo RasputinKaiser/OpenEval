@@ -124,8 +124,8 @@ export function buildGuideSteps(
     },
     {
       key: "run",
-      title: "Launch your first eval run",
-      description: "Run graded cases against a detected harness and watch pass rates, tokens, and cost stream in.",
+      title: "Optional: launch your first eval run",
+      description: "When you want a benchmark, run graded cases against an authenticated harness. This can use paid inference; browsing existing transcripts does not.",
       href: "/runs/new",
       linkLabel: "Start a run",
       status: probeStatus(runsDone, runs.phase),

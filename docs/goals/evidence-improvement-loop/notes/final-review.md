@@ -1,0 +1,13 @@
+# Final review checklist
+
+Judge must distinguish source/tests/browser/runtime/provider proof. No provider execution or public release is claimed. Validate each of six workflows rather than counting files/tests.
+
+- Brief and unknowns: genuine citations and no finality inferred from fallback assistant output; no placeholder counted as observed check; source formats versus unsupported records; bounded-read counts versus full source totals; stale fetches cleared.
+- Navigation: source/session identity across duplicate IDs; metadata search versus fulltext label; paginated deterministic ordering and generation errors; reload/Back restore context; citations open actual retained records or explain missing historical citations; no filesystem paths.
+- Calibration: reference versions immutable, explicit provenance, no synthetic records in human denominator; imports atomic/idempotent; strict rubric/evidence/method matching; null timing/cost/coverage; denominators and contradictory results visible.
+- Experiments: server derived frozen cohort/config/result snapshots; invalid/unfinished/same/missing run IDs rejected; load beyond recent run list; historical results and unavailable data preserved; no new execution or causal claim.
+- Benchmarks: isolated synthetic workload, fixed metadata/sample sizes, p95/median valid, reports produced; claimed metrics actually measured; browser metrics marked unavailable if unmeasured; real corpus untouched.
+- Integration: all surfaces discoverable; empty/error/loading states; keyboard/mobile; no claim final build/prod until fresh build and browser proof; document stale roadmap repaired.
+
+PM calibration follow-up after T005: implementation excludes synthetic observations from human rates, but focused regression only covers synthetic reference. Integration add explicit synthetic-observation/human-reference case, identity/digest/rubric mismatch and empty denominator/null checks. Version creation currently MAX+1 then insert; use a transaction for concurrent process robustness if adjusting. Browser read-only empty state confirmed near Accuracy top; isolated form/import persistence checks pending.
+T006 PM integration follow-up: app/runs/compare/page.tsx still lists50, so native run select lacks options for direct IDs outside50 despite client fetching them; add requested IDs and experiment-bound original IDs server-side. ExperimentPanel loadToken guards only success; stale catch/finally can overwrite new state, unmount should invalidate; BackwithoutID mustclear loading. visibleCohortKey joins withpipe+split, useJSON serialization to avoid IDs containingpipe. Confirm saved origin displayed/linked and frozen methodreceipts inspectable. Browserverificationpending.

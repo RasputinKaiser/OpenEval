@@ -22,7 +22,7 @@ export default function PageHeader({
   return (
     <header className="page-header mb-6">
       <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <h1 className="page-header-title flex min-w-0 items-center gap-3 text-xl font-semibold tracking-tight text-balance">
+        <h1 className="page-header-title flex min-w-0 items-center gap-3 text-2xl font-semibold tracking-tight text-balance">
           <span aria-hidden="true" className="page-header-icon grid size-8 shrink-0 place-items-center rounded-lg">
             <Icon className="size-4 text-accent-soft" />
           </span>
@@ -30,7 +30,7 @@ export default function PageHeader({
         </h1>
         {actions && <div className="page-header-actions flex min-w-0 flex-wrap items-center gap-2 sm:justify-end">{actions}</div>}
       </div>
-      {subtitle && <p className="page-header-subtitle mt-2 max-w-[76ch] text-sm leading-5 text-fg-muted">{subtitle}</p>}
+      {subtitle && <p className="page-header-subtitle mt-2 max-w-[72ch] text-base leading-6 text-fg-muted">{subtitle}</p>}
       {children}
     </header>
   );

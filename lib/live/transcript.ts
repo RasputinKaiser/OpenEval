@@ -1,3 +1,5 @@
+import { normalizeNativeEvent, grokMarkdownRecords } from "./native-events";
+import { agentDbRecords } from "./parse-agent-db";
 import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
@@ -9,12 +11,16 @@ import {
   MAX_JSONL_RECORD_BYTES,
   NON_WS_RE,
   codexToolOutputError,
-  jsonPreview,
+  jsonPreview as compactPreview,
   parseTimestamp,
   readFileLineRecords,
   readFileLines,
   TRUNCATED_JSONL_RECORD_PREFIX,
 } from "./util";
+
+// Transcript content is evidence, not a dashboard teaser. The raw-record reader
+// already caps each record at 4 MiB; keep text up to that boundary.
+const jsonPreview = (value: unknown, max = MAX_JSONL_RECORD_BYTES) => compactPreview(value, max);
 
 const TRANSCRIPT_TURN_CAP = 20_000;
 /** Error context is useful only as a bounded drawer timeline, not a transcript dump. */
@@ -38,11 +44,14 @@ interface ParseRecordsOptions {
   state?: TranscriptParseState;
   startRecordIndex?: number;
   maxTurns?: number;
+  skipCandidates?: number;
+  format?: LiveTraceFormat;
 }
 
 interface ParseRecordsResult extends TranscriptResult {
   state: TranscriptParseState;
   recordIndex: number;
+  pendingCandidates?: number;
 }
 
 function parseTranscriptRecords(records: Iterable<string>, options: ParseRecordsOptions = {}): ParseRecordsResult {
@@ -54,6 +63,8 @@ function parseTranscriptRecords(records: Iterable<string>, options: ParseRecords
     compoundRecords: 0,
   };
   let index = options.startRecordIndex ?? 0;
+  let pendingCandidates: number | undefined;
+  let windowBytes = 0;
   for (const line of records) {
     if (!NON_WS_RE.test(line)) continue;
     index++;
@@ -67,18 +78,23 @@ function parseTranscriptRecords(records: Iterable<string>, options: ParseRecords
       });
     } else {
       try {
-        const obj = JSON.parse(line);
+        const obj = normalizeNativeEvent(JSON.parse(line), options.format);
         const expanded = expandCompoundTranscriptRecord(obj, state);
         const candidates = expanded ?? [toTranscriptTurn(obj, index, state)];
         if (expanded && expanded.length > 1) normalization.compoundRecords++;
-        for (const turn of candidates) {
-          if (options.maxTurns != null && turns.length >= options.maxTurns) break;
+        for (let ci = 0; ci < candidates.length; ci++) {
+          if (index === (options.startRecordIndex ?? 0) + 1 && ci < (options.skipCandidates ?? 0)) continue;
+          if (options.maxTurns != null && turns.length >= options.maxTurns) { pendingCandidates = ci; break; }
+          const turn = candidates[ci];
+          const turnBytes = Buffer.byteLength(JSON.stringify(turn));
+          if (options.maxTurns != null && turns.length > 0 && windowBytes + turnBytes > 8 * 1024 * 1024) { pendingCandidates = ci; break; }
+          windowBytes += turnBytes;
           if (suppressCodexMirror(obj, turn, index, state)) {
             normalization.suppressedMirrors++;
             continue;
           }
           turns.push(turn);
-          if (turns.length >= (options.maxTurns ?? TRANSCRIPT_TURN_CAP)) break;
+          if (turns.length >= (options.maxTurns ?? TRANSCRIPT_TURN_CAP)) { if (ci + 1 < candidates.length) pendingCandidates = ci + 1; break; }
         }
       } catch {
         turns.push({
@@ -89,6 +105,7 @@ function parseTranscriptRecords(records: Iterable<string>, options: ParseRecords
         });
       }
     }
+    if (pendingCandidates !== undefined && options.maxTurns != null) break;
     if (turns.length >= (options.maxTurns ?? TRANSCRIPT_TURN_CAP)) {
       if (options.maxTurns != null) break;
       turns.push({
@@ -106,6 +123,7 @@ function parseTranscriptRecords(records: Iterable<string>, options: ParseRecords
     normalization,
     state,
     recordIndex: index,
+    pendingCandidates,
   };
 }
 
@@ -155,6 +173,10 @@ function boundedFileFingerprint(filePath: string, stat: fs.Stats): string {
   } finally {
     fs.closeSync(fd);
   }
+  if (fs.existsSync(`${filePath}-wal`)) {
+    const wal = fs.statSync(`${filePath}-wal`);
+    hash.update(`${wal.size}:${wal.mtimeMs}:${boundedFileFingerprint(`${filePath}-wal`, wal)}`);
+  }
   return hash.digest("hex");
 }
 
@@ -171,6 +193,14 @@ export function readTranscriptWindow(filePath: string, format: LiveTraceFormat |
   const startRecordIndex = cursor?.recordIndex ?? 0;
   const revision = { size: stat.size, mtimeMs: stat.mtimeMs, fingerprint: boundedFileFingerprint(filePath, stat) };
   const isHermesJson = format === "hermes-json" || path.extname(filePath).toLowerCase() === ".json";
+  if (format === "agent-sqlite" || format === "grok-markdown") {
+    const parsed = parseTranscriptRecords(format === "agent-sqlite" ? agentDbRecords(filePath, options.sessionId ?? "") : grokMarkdownRecords(filePath));
+    const offset = cursor?.semanticTurns ?? 0;
+    const turns = parsed.turns.slice(offset, offset + TRANSCRIPT_WINDOW_CAP);
+    const done = offset + turns.length >= parsed.turns.length;
+    return { turns, truncated: parsed.truncated, normalization: parsed.normalization, offset, done, nextByteOffset: stat.size, revision,
+      ...(!done ? { nextState: { calls: [], recordIndex: parsed.recordIndex, semanticTurns: offset + turns.length } } : {}) };
+  }
   if (format === "hermes-sqlite" || (!isHermesJson && path.extname(filePath).toLowerCase() === ".db")) {
     // One DB file expands to many sessions; `options.sessionId` selects one.
     // The whole message projection is bounded, so a "window" is simply the
@@ -205,18 +235,26 @@ export function readTranscriptWindow(filePath: string, format: LiveTraceFormat |
     };
   }
   let nextByteOffset = byteOffset;
+  let lastRecordOffset = byteOffset;
+  let lastState = restoreCursorState(cursor);
+  const parseState = restoreCursorState(cursor);
   const records = (function* () {
     for (const record of readFileLinesWithOffsets(filePath, byteOffset)) {
+      lastRecordOffset = nextByteOffset;
+      lastState = { calls: new Map(parseState.calls), ...(parseState.lastCodexMessage ? { lastCodexMessage: { ...parseState.lastCodexMessage } } : {}) };
       nextByteOffset = record.nextOffset;
       yield record.line;
     }
   })();
   const parsed = parseTranscriptRecords(records, {
-    state: restoreCursorState(cursor),
+    state: parseState,
     startRecordIndex,
+    skipCandidates: cursor?.skipCandidates,
+    format,
     maxTurns: TRANSCRIPT_WINDOW_CAP,
   });
-  const done = nextByteOffset >= stat.size;
+  if (parsed.pendingCandidates !== undefined) nextByteOffset = lastRecordOffset;
+  const done = parsed.pendingCandidates === undefined && nextByteOffset >= stat.size;
   const semanticTurns = (cursor?.semanticTurns ?? 0) + parsed.turns.length;
   return {
     turns: parsed.turns,
@@ -225,7 +263,8 @@ export function readTranscriptWindow(filePath: string, format: LiveTraceFormat |
     offset: cursor?.semanticTurns ?? 0,
     nextByteOffset,
     done,
-    ...(done ? {} : { nextState: { ...serializeCursorState(parsed), semanticTurns } }),
+    ...(done ? {} : { nextState: { ...serializeCursorState(parsed), semanticTurns,
+      ...(parsed.pendingCandidates !== undefined ? { calls: [...lastState.calls.entries()].slice(-512), lastCodexMessage: lastState.lastCodexMessage, recordIndex: parsed.recordIndex - 1, skipCandidates: parsed.pendingCandidates } : {}) } }),
     revision,
   };
 }
@@ -250,6 +289,8 @@ export function parseHermesDbSessionTranscript(filePath: string, sessionId: stri
 
 export function parseSessionTranscript(filePath: string, format?: LiveTraceFormat, sessionId?: string): TranscriptResult {
   try {
+    if (format === "agent-sqlite") return parseTranscriptRecords(agentDbRecords(filePath, sessionId ?? ""));
+    if (format === "grok-markdown") return parseTranscriptRecords(grokMarkdownRecords(filePath));
     if (format === "hermes-sqlite" || path.extname(filePath).toLowerCase() === ".db") {
       return parseHermesDbSessionTranscript(filePath, sessionId ?? "");
     }
@@ -267,7 +308,7 @@ export function parseSessionTranscript(filePath: string, format?: LiveTraceForma
     }
     // Stream (don't readFileSync a giant string) and cap turns so a multi-hundred-MB
     // JSONL session can be opened without exhausting memory.
-    return parseTranscriptRecords(readFileLines(filePath));
+    return parseTranscriptRecords(readFileLines(filePath), { format });
   } catch (e) {
     return { turns: [], error: e instanceof Error ? e.message : String(e) };
   }
@@ -302,7 +343,7 @@ export function getErroringTurns(filePath: string, format?: LiveTraceFormat, ses
  * amount of untrusted reasoning text retained by a single semantic turn.
  */
 function contentText(content: unknown, depth = 0): string {
-  if (typeof content === "string") return content.slice(0, 32_000);
+  if (typeof content === "string") return content.slice(0, MAX_JSONL_RECORD_BYTES);
   if (!content || depth > 3) return "";
   if (Array.isArray(content)) {
     let out = "";
@@ -310,13 +351,13 @@ function contentText(content: unknown, depth = 0): string {
       const text = contentText(block, depth + 1);
       if (!text) continue;
       out += out ? `\n${text}` : text;
-      if (out.length >= 32_000) break;
+      if (out.length >= MAX_JSONL_RECORD_BYTES) break;
     }
-    return out.slice(0, 32_000);
+    return out.slice(0, MAX_JSONL_RECORD_BYTES);
   }
   if (typeof content !== "object") return "";
   const block = content as Record<string, unknown>;
-  if (typeof block.text === "string") return block.text.slice(0, 32_000);
+  if (typeof block.text === "string") return block.text.slice(0, MAX_JSONL_RECORD_BYTES);
   for (const key of ["content", "summary", "thinking", "reasoning", "text"]) {
     const text = contentText(block[key], depth + 1);
     if (text) return text;
@@ -764,6 +805,9 @@ function toTranscriptTurn(obj: any, index: number, state: TranscriptParseState):
     return { type, subtype: payload.type, severity: "info", at, role: "meta", label: `Response: ${payload.type ?? "item"}`, preview: jsonPreview(payload) };
   }
 
+  if (type === "system" && (obj.source_event !== undefined || obj.text !== undefined)) {
+    return { type, subtype, severity: "info", at, role: "meta", label: subtype ?? "Source metadata", preview: jsonPreview(obj.source_event ?? obj.text) };
+  }
   if (type === "system") {
     const warnings = Number(obj.hookErrors ?? 0) || 0;
     return {

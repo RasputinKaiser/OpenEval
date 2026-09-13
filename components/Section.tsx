@@ -19,11 +19,11 @@ export function SectionHeader({ icon: Icon, title, desc, right }: { icon: Lucide
           <Icon className="size-3.5 text-accent-soft" />
         </span>
         <div className="min-w-0">
-          <h2 className="text-sm font-semibold leading-tight">{title}</h2>
-          <p className="text-[11px] text-fg-dim leading-tight line-clamp-2">{desc}</p>
+          <h2 className="text-base font-semibold leading-snug">{title}</h2>
+          <p className="mt-0.5 max-w-[72ch] text-sm text-fg-muted leading-5">{desc}</p>
         </div>
       </div>
-      {right && <div className="text-[11px] text-fg-dim mono tabular-nums shrink-0 pb-0.5">{right}</div>}
+      {right && <div className="text-xs text-fg-muted mono tabular-nums min-w-0 break-words pb-0.5">{right}</div>}
     </div>
   );
 }

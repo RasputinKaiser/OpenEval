@@ -1,6 +1,13 @@
 import { performance } from "node:perf_hooks";
 import type { CollectedSession } from "../../lib/collection/aggregate";
 import { buildAnalysisReport, filterAnalysisSessions } from "../../lib/collection/analysis";
+
+const POPULATION_SIZE = 12_000;
+const DEFAULT_WARMUPS = 3;
+const DEFAULT_SAMPLES = 30;
+const MAX_WARMUPS = 100;
+const MAX_SAMPLES = 100;
+
 function session(overrides: Partial<CollectedSession> = {}): CollectedSession {
   const base: CollectedSession = {
     sessionId: "same-session",
@@ -58,14 +65,62 @@ function session(overrides: Partial<CollectedSession> = {}): CollectedSession {
   return { ...base, ...overrides, metricSources: { ...base.metricSources, ...(overrides.metricSources ?? {}) } };
 }
 
-const population = Array.from({ length: 12000 }, (_, i) => session({ sessionId: String(i), startedAt: Date.UTC(2025, 0, 1) + i * 2160000, model: i % 2 ? "model-a" : "model-b" }));
-const samples: number[] = []; let payloadBytes = 0;
-for (let i = 0; i < 33; i++) {
-  const start = performance.now();
-  const selected = filterAnalysisSessions(population, i % 2 ? { model: "model-a" } : {});
-  const report = buildAnalysisReport(population, selected, {}, { generatedAtMs: 1 }, { limit: 80 });
-  if (i >= 3) samples.push(performance.now() - start);
-  payloadBytes = Buffer.byteLength(JSON.stringify(report));
+const population = Array.from({ length: POPULATION_SIZE }, (_, i) => session({
+  sessionId: String(i),
+  startedAt: Date.UTC(2025, 0, 1) + i * 2_160_000,
+  model: i % 2 ? "model-a" : "model-b",
+}));
+
+export interface AnalysisBenchmarkOptions {
+  warmups?: number;
+  samples?: number;
 }
-samples.sort((a,b) => a-b);
-console.log(JSON.stringify({ workload: "12000 sessions across 300 days; alternate all/model filter; 3 warmups, 30 requests", medianMs: samples[15], p95Ms: samples[28], responseBytes: payloadBytes }));
+
+export interface AnalysisBenchmarkResult {
+  workload: {
+    id: "synthetic-collection-analysis-v1";
+    populationSessions: number;
+    selectionPattern: "alternate-all-and-model-a";
+  };
+  warmups: number;
+  samples: number;
+  durationsMs: number[];
+  responseBytes: number;
+}
+
+function boundedCount(value: number | undefined, fallback: number, label: string, max: number, minimum: number): number {
+  const count = value ?? fallback;
+  if (!Number.isInteger(count) || count < minimum || count > max) {
+    throw new Error(`${label} must be an integer between ${minimum} and ${max}`);
+  }
+  return count;
+}
+
+export function runAnalysisBenchmark(options: AnalysisBenchmarkOptions = {}): AnalysisBenchmarkResult {
+  const warmups = boundedCount(options.warmups, DEFAULT_WARMUPS, "warmups", MAX_WARMUPS, 0);
+  const samples = boundedCount(options.samples, DEFAULT_SAMPLES, "samples", MAX_SAMPLES, 1);
+  const durationsMs: number[] = [];
+  let responseBytes = 0;
+  const measure = (iteration: number): number => {
+    const start = performance.now();
+    const selected = filterAnalysisSessions(population, iteration % 2 ? { model: "model-a" } : {});
+    const report = buildAnalysisReport(population, selected, {}, { generatedAtMs: 1 }, { limit: 80 });
+    const duration = performance.now() - start;
+    if (!Number.isFinite(duration) || duration < 0) throw new Error("analysis benchmark produced an invalid duration");
+    responseBytes = Buffer.byteLength(JSON.stringify(report));
+    return duration;
+  };
+  for (let i = 0; i < warmups; i++) measure(i);
+  for (let i = 0; i < samples; i++) durationsMs.push(measure(i));
+  return {
+    workload: { id: "synthetic-collection-analysis-v1", populationSessions: POPULATION_SIZE, selectionPattern: "alternate-all-and-model-a" },
+    warmups,
+    samples,
+    durationsMs,
+    responseBytes,
+  };
+}
+
+if (process.argv[1]?.replaceAll("\\", "/").endsWith("/scripts/perf/analysis.ts")) {
+  console.log(JSON.stringify(runAnalysisBenchmark()));
+}

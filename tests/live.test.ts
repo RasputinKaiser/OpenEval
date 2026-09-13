@@ -59,7 +59,7 @@ test("Codex thread/item rollouts preserve lineage, prose, measured usage, tools,
   ]);
   const session = summarizeCodexSessionFile(file, "2026/07/01", Date.parse("2026-07-01T00:00:00.000Z"));
   assert.ok(session);
-  assert.equal(PARSER_VERSION, 24);
+  assert.equal(PARSER_VERSION, 25);
   assert.equal(session.sessionId, "thread-new");
   assert.equal(session.isSubagent, true);
   assert.equal(session.parentSessionId, "parent");
@@ -932,7 +932,7 @@ test("measured zero cost remains cost evidence rather than missing coverage", ()
     const data = aggregate([session!]);
     assert.equal(data.usageSummary.sessionsWithMeasuredCost, 1);
     assert.equal(data.usageSummary.sessionsWithCostEvidence, 1);
-    assert.equal(data.usageSummary.sessionsWithPricedUsage, 0);
+    assert.equal(data.usageSummary.sessionsWithPricedUsage, 1, "a provider-reported zero is priced evidence");
     assert.equal(data.usageSummary.costCoverage, 1);
     assert.equal(data.byModel[0].measuredCostSessions, 1);
   } finally {

@@ -65,7 +65,7 @@ test("User-flow-200 high-value first-run and launch contracts are explicit", () 
   assert.match(onboarding, /focusable/);
   assert.match(onboarding, /data-onboarding-close/);
   assert.match(harnessPicker, /invalidateCache\(url\)/);
-  assert.match(casesPage, /Start with Core suite/);
+  assert.match(casesPage, /Set up Core suite/);
   assert.match(casesPage, /href="\/runs\/new"/);
   assert.match(newRun, /data-testid="hidden-selected-cases"/);
   assert.match(newRun, /Clear all/);

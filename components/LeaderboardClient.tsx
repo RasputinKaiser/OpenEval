@@ -300,7 +300,7 @@ export default function LeaderboardClient() {
   }));
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto">
+    <div className="p-4 md:p-8 w-full">
       <PageHeader
         icon={Trophy}
         title="Harness Leaderboard"
@@ -429,7 +429,7 @@ export default function LeaderboardClient() {
                 <tbody className="divide-y divide-bd-subtle">
                   {sortedRows.map((r, idx) => (
                     <tr key={`${r.harness}::${r.model ?? ""}`} className={clsx("hover:bg-bg-elev", idx === 0 && sortKey === "passRate" && sortDir === "desc" && "bg-ok/5")}>
-                      <td className="px-2 py-2.5 text-center"><span className={clsx("inline-flex items-center justify-center size-5 rounded-full text-[10px] mono font-semibold tabular-nums", idx === 0 ? "bg-yellow-500/15 text-yellow-400" : idx === 1 ? "bg-gray-400/15 text-gray-300" : idx === 2 ? "bg-amber-700/15 text-amber-600" : "text-fg-dim")}>{idx + 1}</span></td>
+                      <td className="px-2 py-2.5 text-center"><span className="leaderboard-rank inline-flex size-7 items-center justify-center rounded-md text-xs mono font-semibold tabular-nums">{idx + 1}</span></td>
                       <td className={clsx("px-4 py-2.5", STICKY_TD)}><HarnessBadge harness={r.harness} /></td>
                       <td className="px-4 py-2.5 text-right mono">{r.runCount}</td>
                       <td className="px-4 py-2.5 text-right mono">{r.totalCases}</td>
@@ -460,7 +460,7 @@ export default function LeaderboardClient() {
 
 function SortBtn({ label, k, sortKey, sortDir, onClick, align = "right" }: { label: string; k: keyof HarnessAggregate; sortKey: keyof HarnessAggregate; sortDir: "asc" | "desc"; onClick: (k: keyof HarnessAggregate) => void; align?: "left" | "right" }) {
   const active = sortKey === k;
-  return <button type="button" onClick={() => onClick(k)} aria-label={`${label}${active ? `, sorted ${sortDir === "asc" ? "ascending" : "descending"}` : ", not sorted"}`} className={clsx("inline-flex items-center gap-1 hover:text-fg transition-colors", active && "text-accent-soft")}>
+  return <button type="button" onClick={() => onClick(k)} aria-label={`${label}${active ? `, sorted ${sortDir === "asc" ? "ascending" : "descending"}` : ", not sorted"}`} className={clsx("inline-flex min-h-11 min-w-11 items-center gap-1 rounded px-1 hover:text-fg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent", active && "text-accent-soft")}>
     {align === "left" ? label : null}{active && (sortDir === "asc" ? <ArrowUp className="size-2.5" /> : <ArrowDown className="size-2.5" />)}{align === "right" ? label : null}
   </button>;
 }

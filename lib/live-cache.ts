@@ -17,7 +17,7 @@ import type { JudgeSelection } from "./grader/selection";
  * Bump PARSER_VERSION whenever parseLiveSession's output changes shape or
  * semantics; stale-version rows are ignored and overwritten.
  */
-export const PARSER_VERSION = 24; // v24: tolerant flat/wrapped/redacted reasoning normalization; v23: Codex custom/tool-search call coverage
+export const PARSER_VERSION = 25; // v25: lossless compound windows, full transcript text, native agent source projections
 
 /** Bump whenever transcript-to-search text extraction semantics change. */
 export const FTS_INDEX_VERSION = 6; // v6: bounded reasoning/thinking evidence plus source-aware pending invalidation

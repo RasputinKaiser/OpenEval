@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { SessionEvidenceLink } from "./SessionEvidenceLink";
 import { AlertTriangle, ChevronRight, Loader2, RefreshCw } from "lucide-react";
 import { SavedAnalysisViews } from "./charts/SavedAnalysisViews";
+import { TimeSeriesChart } from "./charts/TimeSeriesChart";
 import { ChartFrame } from "./charts/ChartFrame";
 import { SelectableBars, type AnalysisBar } from "./charts/SelectableBars";
 import { DateRangeControls, SelectionChips } from "./charts/SelectionControls";
@@ -86,26 +88,10 @@ function groupRows(groups: AnalysisGroup[], selection: ChartSelection, key: "sou
 
 function timeBucketsView(buckets: AnalysisTimeBucket[], selection: ChartSelection, onSelect: (next: ChartSelection) => void) {
   if (!buckets.length) return <p className="py-4 text-sm text-fg-muted">No dated sessions match this selection.</p>;
-  const rows: AnalysisBar[] = buckets.map((bucket) => ({
-    id: `${bucket.startMs}:${bucket.endMs}`,
-    label: bucket.label,
-    value: bucket.sessions,
-    detail: bucket.costUsd === null ? "cost unavailable" : `${fmtUsd(bucket.costUsd)} API eq.`,
-  }));
-  return (
-    <SelectableBars
-      rows={rows}
-      format={fmtNum}
-      selectedId={selection.fromMs === undefined || selection.toMs === undefined ? undefined : `${selection.fromMs}:${selection.toMs}`}
-      noun="sessions in this period"
-      onExplore={(id) => {
-        const bucket = buckets.find((candidate) => `${candidate.startMs}:${candidate.endMs}` === id);
-        if (!bucket) return;
-        const selected = selection.fromMs === bucket.startMs && selection.toMs === bucket.endMs;
-        onSelect(selected ? { ...selection, fromMs: undefined, toMs: undefined } : { ...selection, fromMs: bucket.startMs, toMs: bucket.endMs });
-      }}
-    />
-  );
+  return <TimeSeriesChart points={buckets.map(bucket => ({ id: `${bucket.startMs}:${bucket.endMs}`, at: bucket.startMs, label: bucket.label, values: [bucket.sessions], detail: `${new Date(bucket.startMs).toISOString()} – ${new Date(bucket.endMs).toISOString()} (exclusive)` }))} series={[{ label: "Sessions", color: "var(--color-accent)" }]} format={fmtNum} onExplore={id => {
+    const bucket = buckets.find(b => `${b.startMs}:${b.endMs}` === id);
+    if (bucket) onSelect({ ...selection, fromMs: Math.max(selection.fromMs ?? bucket.startMs, bucket.startMs), toMs: Math.min(selection.toMs ?? bucket.endMs, bucket.endMs) });
+  }} />;
 }
 
 function Histogram({ report, metric, selection, onSelect }: { report: AnalysisReport; metric: DistributionMetric; selection: ChartSelection; onSelect: (next: ChartSelection) => void }) {
@@ -162,9 +148,12 @@ function SessionTable({ sessions, totalMatched, nextOffset, loading, onLoadMore 
             {sessions.map((session) => (
               <tr key={`${session.sourceId}:${session.sessionId}`}>
                 <th scope="row" className="sticky left-0 z-[1] border-r border-bd-subtle bg-bg-subtle text-left font-normal">
-                  <Link className="inline-flex max-w-[15rem] items-center gap-1 text-accent-soft hover:underline" href={`/collection/session?sourceId=${encodeURIComponent(session.sourceId)}&sessionId=${encodeURIComponent(session.sessionId)}`} title={`${session.sourceId} · ${session.sessionId}`}>
-                    <span className="truncate">{session.sessionId}</span><ChevronRight className="size-3 shrink-0" aria-hidden="true" />
-                  </Link>
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <SessionEvidenceLink className="inline-flex max-w-[15rem] items-center gap-1 text-accent-soft hover:underline" href={`/collection/session?sourceId=${encodeURIComponent(session.sourceId)}&sessionId=${encodeURIComponent(session.sessionId)}`} title={`${session.sourceId} · ${session.sessionId}`}>
+                      <span className="truncate">{session.sessionId}</span><ChevronRight className="size-3 shrink-0" aria-hidden="true" />
+                    </SessionEvidenceLink>
+                    <SessionEvidenceLink className="text-[10px] text-accent-soft hover:underline" href={`/collection/session?sourceId=${encodeURIComponent(session.sourceId)}&sessionId=${encodeURIComponent(session.sessionId)}`}>Inspect evidence</SessionEvidenceLink>
+                  </div>
                   <span className="mt-1 block truncate text-[10px] text-fg-dim">{session.sourceId}{session.archived ? " · archived" : ""}{session.isSubagent ? " · child trace" : ""}</span>
                 </th>
                 <td className="mono text-fg-muted">{session.model}</td>
@@ -351,8 +340,8 @@ export default function CollectionAnalysis() {
           <ChartFrame title="By source" description="Inspect a source, then explicitly explore its matching sessions." evidence={evidence} table={groupTable(report.sourceGroups)}>
             {groupRows(report.sourceGroups, selection, "source", "matching sessions", select)}
           </ChartFrame>
-          <ChartFrame title="By model" description="Canonical model labels keep grouped evidence redaction-safe." evidence={evidence} table={groupTable(report.modelGroups)}>
-            {groupRows(report.modelGroups, selection, "model", "matching sessions", select)}
+          <ChartFrame title="By primary model" description="Whole sessions grouped by their primary model. Model filters include secondary models too; usage here is not apportioned per model. Explore includes secondary appearances." evidence={evidence} table={groupTable(report.modelGroups)}>
+            {groupRows(report.modelGroups, selection, "model", "all sessions containing this model", select)}
           </ChartFrame>
           <ChartFrame title="By tool" description="Counts represent tool calls; a session can contribute to several tools." evidence={evidence} table={groupTable(report.toolGroups)}>
             {groupRows(report.toolGroups, selection, "tool", "tool calls", select)}

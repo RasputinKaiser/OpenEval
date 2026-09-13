@@ -17,14 +17,14 @@ export function ChartFrame({ title, description, unit, evidence, actions, childr
   return <section aria-labelledby={`${id}-title`} className={`analysis-chart ${className}`}>
     <div className="analysis-chart__header">
       <div className="min-w-0">
-        <h2 id={`${id}-title`} className="text-sm font-medium">{title}</h2>
-        {description && <p className="mt-1 text-xs text-fg-muted max-w-prose">{description}</p>}
+        <h2 id={`${id}-title`} className="text-base font-semibold">{title}</h2>
+        {description && <p className="mt-1 text-sm leading-5 text-fg-muted max-w-prose">{description}</p>}
         {unit && <p className="mt-1 text-xs text-fg-dim">{unit}</p>}
       </div>
       <div className="flex flex-wrap items-center gap-2">
         {actions}
         {table && <button type="button" className="analysis-control" aria-expanded={showTable} aria-controls={`${id}-table`} onClick={() => setShowTable(!showTable)}><Table2 size={14} aria-hidden />{showTable ? "Chart" : "Data table"}</button>}
-        {details && <button type="button" className="analysis-control" aria-expanded={expanded} aria-controls={`${id}-details`} onClick={() => setExpanded(!expanded)}>Explore <ChevronDown size={14} className={expanded ? "rotate-180" : ""} aria-hidden /></button>}
+        {details && <button type="button" className="analysis-control" aria-expanded={expanded} aria-controls={`${id}-details`} onClick={() => setExpanded(!expanded)}>Methodology <ChevronDown size={14} className={expanded ? "rotate-180" : ""} aria-hidden /></button>}
       </div>
     </div>
     {evidence && <div className="analysis-chart__evidence">

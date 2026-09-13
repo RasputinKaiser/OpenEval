@@ -1,3 +1,4 @@
+import { attributedModelUsage, availableSessionCost } from "../live/util";
 import { displayModelId } from "../pricing";
 import { histogram, inRange, type ChartEvidence, type ChartSelection, type HistogramBin } from "../chart-analysis";
 import type { MetricSource } from "../live";
@@ -69,6 +70,8 @@ export interface AnalysisTimeBucket {
   tokens: number | null;
   durationMs: number | null;
   costUsd: number | null;
+  measuredCostUsd?: number | null;
+  inferredCostUsd?: number | null;
   toolCalls: number | null;
   toolErrors: number | null;
 }
@@ -146,12 +149,7 @@ function metricValue(session: CollectedSession, metric: "tokens" | "duration"): 
 }
 
 function costValue(session: CollectedSession): number | null {
-  const source = session.metricSources.cost;
-  if (source === "missing" || source === "malformed") return null;
-  const value = finiteNonNegative(session.costUsd);
-  // An inferred zero is the parser's unavailable placeholder. A measured zero
-  // is exact evidence and must remain a real zero.
-  return source === "inferred" ? (value !== null && value > 0 ? value : null) : value;
+  return availableSessionCost(session);
 }
 
 function scalarValue(value: unknown): number | null {
@@ -181,7 +179,7 @@ export function filterAnalysisSessions(
 ): CollectedSession[] {
   return sessions.filter((session) => {
     if (selection.source !== undefined && session.sourceId !== selection.source) return false;
-    if (selection.model !== undefined && canonicalModel(session.model) !== selection.model) return false;
+    if (selection.model !== undefined && !attributedModelUsage(session).some(usage => canonicalModel(usage.model) === selection.model)) return false;
     if (selection.fromMs !== undefined && session.startedAt < selection.fromMs) return false;
     if (selection.toMs !== undefined && session.startedAt >= selection.toMs) return false;
     if (selection.weekday !== undefined || selection.hour !== undefined) {
@@ -210,8 +208,9 @@ function buildOptions(sessions: readonly CollectedSession[]): AnalysisReport["op
     const source = sources.get(sourceKey);
     if (source) source.count++;
     else sources.set(sourceKey, { label: session.sourceLabel || sourceKey, count: 1 });
-    const modelKey = canonicalModel(session.model);
-    models.set(modelKey, (models.get(modelKey) ?? 0) + 1);
+    for (const modelKey of new Set(attributedModelUsage(session).map(row => canonicalModel(row.model)))) {
+      models.set(modelKey, (models.get(modelKey) ?? 0) + 1);
+    }
     for (const tool of new Set(session.toolSummaries.map((item) => item.name).filter(Boolean))) {
       tools.set(tool, (tools.get(tool) ?? 0) + 1);
     }
@@ -350,34 +349,37 @@ function bucketMetrics(sessions: readonly CollectedSession[], startMs: number, e
     tokens: sumNullable(sessions.map((s) => metricValue(s, "tokens"))),
     durationMs: sumNullable(sessions.map((s) => metricValue(s, "duration"))),
     costUsd: sumNullable(sessions.map(costValue)),
+    measuredCostUsd: sumNullable(sessions.filter(s => s.metricSources.cost === "measured").map(costValue)),
+    inferredCostUsd: sumNullable(sessions.filter(s => s.metricSources.cost === "inferred").map(costValue)),
     toolCalls: sumNullable(sessions.map((s) => scalarValue(s.toolCalls))),
     toolErrors: sumNullable(sessions.map((s) => scalarValue(s.toolErrors))),
   };
 }
 
-function localDayStart(ms: number): number {
+function utcDayStart(ms: number): number {
   const date = new Date(ms);
-  date.setHours(0, 0, 0, 0);
+  date.setUTCHours(0, 0, 0, 0);
   return date.getTime();
 }
 
-function nextLocalDay(ms: number): number {
+function nextUtcDay(ms: number): number {
   const date = new Date(ms);
-  date.setDate(date.getDate() + 1);
-  date.setHours(0, 0, 0, 0);
+  date.setUTCDate(date.getUTCDate() + 1);
+  date.setUTCHours(0, 0, 0, 0);
   return date.getTime();
 }
 
 function buildTimeBuckets(sessions: readonly CollectedSession[]): AnalysisTimeBucket[] {
   const valid = sessions.filter((s) => Number.isFinite(s.startedAt) && s.startedAt > 0);
   if (!valid.length) return [];
-  const days = [...new Set(valid.map((s) => localDayStart(s.startedAt)))].sort((a, b) => a - b);
-  if (days.length <= 90) {
-    return days.map((start) => bucketMetrics(
-      valid.filter((session) => localDayStart(session.startedAt) === start),
+  const days = [...new Set(valid.map((s) => utcDayStart(s.startedAt)))].sort((a, b) => a - b);
+  const daySpan = Math.round((days[days.length - 1] - days[0]) / 86_400_000) + 1;
+  if (daySpan <= 90) {
+    return Array.from({ length: daySpan }, (_, i) => days[0] + i * 86_400_000).map((start) => bucketMetrics(
+      valid.filter((session) => utcDayStart(session.startedAt) === start),
       start,
-      nextLocalDay(start),
-      new Date(start).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+      nextUtcDay(start),
+      new Date(start).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" }),
     ));
   }
   const min = Math.min(...valid.map((s) => s.startedAt));
@@ -390,9 +392,9 @@ function buildTimeBuckets(sessions: readonly CollectedSession[]): AnalysisTimeBu
       valid.filter((session) => session.startedAt >= start && session.startedAt < end),
       start,
       end,
-      `${new Date(start).toLocaleDateString(undefined, { month: "short", day: "numeric" })}–${new Date(Math.max(start, end - 1)).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`,
+      `${new Date(start).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" })}–${new Date(Math.max(start, end - 1)).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" })}`,
     );
-  }).filter((bucket) => bucket.sessions > 0);
+  });
 }
 
 function toEvidenceRow(session: CollectedSession): AnalysisSessionEvidence {

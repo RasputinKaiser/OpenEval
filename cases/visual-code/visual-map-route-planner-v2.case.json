@@ -1,0 +1,65 @@
+{
+  "id": "visual-map-route-planner-v2",
+  "name": "Build Interactive Field Route",
+  "category": "visual-code",
+  "difficulty": "medium",
+  "description": "Interactive v2 of an existing visual benchmark; deterministic behavior checks and explicit evidence semantics. Original case remains available for historical comparisons.",
+  "tags": [
+    "visual-code",
+    "interactive",
+    "v2",
+    "map"
+  ],
+  "prompt": "Create a polished responsive self-contained map-route-planner-v2.html with inline HTML/CSS/JavaScript only. No network, dependencies or other files. Use accessible keyboard/touch controls, 44px targets and reduced-motion-friendly transitions. Five stops in order: Start, Signal bridge, Memory grove, Watchtower, Finish. Clicking a numbered stop updates current position and next action; Next clamps at Finish, Reset returns to Start. Add a user-started watch tour, a spatial route that actually connects the stops, progress and non-color cues. Expose window.evaluationDemo.select(index), next(), reset(), getState() returning {index,label,next,complete}; next is null at Finish. Reject invalid indices. Source and state checks do not certify rendered quality.",
+  "benchmark": {
+    "intent": "Evaluate meaningful interaction and information accuracy, beyond static text matching.",
+    "deliverable": "map-route-planner-v2.html",
+    "evidence": [
+      "deterministic",
+      "artifact"
+    ],
+    "usage": "medium"
+  },
+  "setup": {
+    "type": "none"
+  },
+  "budget": {
+    "max_turns": 18,
+    "max_cost_usd": 0.8
+  },
+  "visual": {
+    "kind": "web_ui",
+    "expected_artifacts": [
+      "map-route-planner-v2.html"
+    ]
+  },
+  "graders": [
+    {
+      "type": "file_exists",
+      "path": "map-route-planner-v2.html",
+      "weight": 1
+    },
+    {
+      "type": "exit_code",
+      "command": "node -e 'const fs=require('\"'\"'fs'\"'\"'),vm=require('\"'\"'vm'\"'\"'),assert=require('\"'\"'assert'\"'\"');const html=fs.readFileSync('\"'\"'map-route-planner-v2.html'\"'\"','\"'\"'utf8'\"'\"');const script=[...html.matchAll(/<script[^>]*>([\\s\\S]*?)<\\/script>/gi)].map(m=>m[1]).join('\"'\"'\\n'\"'\"');const nodes=new Map();const get=k=>{if(!nodes.has(k))nodes.set(k,{style:{},setAttribute(){},addEventListener(){}});return nodes.get(k)};const box={window:{},document:{querySelector:get,getElementById:get,querySelectorAll:()=>[],addEventListener(){}},setInterval:()=>1,clearInterval(){},assert,console};vm.createContext(box);vm.runInContext(script,box,{timeout:1000});vm.runInContext(\"const api=window.evaluationDemo;api.reset();assert.equal(api.getState().index,0);assert.equal(api.next().index,1);assert.equal(api.select(3).next,'\"'\"'Finish'\"'\"');assert.equal(api.next().complete,true);assert.equal(api.next().index,4);assert.throws(()=>api.select(-1));api.reset();assert.equal(api.getState().complete,false);\",box,{timeout:1000});'",
+      "weight": 8
+    },
+    {
+      "type": "file_contains",
+      "path": "map-route-planner-v2.html",
+      "pattern": "https?://|<script[^>]+src=|<iframe|fetch\\s*\\(",
+      "negate": true,
+      "forbidden": true,
+      "weight": 1
+    }
+  ],
+  "pass_threshold": 1,
+  "oracle": {
+    "solve": "oracle/visual-map-route-planner-v2.sh",
+    "known_bad": [
+      "oracle/visual-map-route-planner-v2-bad.sh",
+      "oracle/visual-map-route-planner-v2-behavior-bad.sh"
+    ],
+    "noop_max_score": 0.2
+  }
+}

@@ -37,6 +37,8 @@ type BenchmarkPreset = {
 
 const PRESETS: BenchmarkPreset[] = [
   { id: "core", label: "Core suite", description: "SWE, tools, and reasoning", categories: ["agentic-swe", "single-tool", "reasoning"] },
+  { id: "playground", label: "Watchable playground", description: "Marbles, fireflies and a rhythm game · 3 interactive HTML challenges", categories: ["visual-code"], caseIds: ["visual-kinetic-marble-lab", "visual-firefly-garden", "visual-pocket-rhythm"] },
+  { id: "interactive-utility", label: "Interactive tools", description: "Route planning and honest data storytelling · v2 behavior checks", categories: ["visual-code"], caseIds: ["visual-map-route-planner-v2", "visual-data-story-card-v2"] },
   { id: "visual-sampler", label: "Creative sampler", description: "4 low-usage cases across scene, data, route, and runbook", categories: ["visual-code"], caseIds: ["visual-isometric-voxel-world", "visual-data-story-card", "visual-map-route-planner", "visual-markdown-runbook"] },
   { id: "visual", label: "Creative lab", description: "CSS scenes, dashboards, diagrams, data, and SVG", categories: ["visual-code"] },
   { id: "reasoning", label: "Reasoning", description: "Problems that reward careful thinking", categories: ["reasoning"] },
@@ -316,7 +318,7 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
             className="inline-flex items-center gap-2 px-3 py-2 rounded-md border border-bd text-sm hover:bg-bg-elev disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {prefilling ? <Loader2 className="size-3.5 animate-spin" /> : <History className="size-3.5" />}
-            Repeat last run
+            Reuse last run settings
           </button>
           {lastRun === null && <div className="text-[10px] text-fg-dim mt-1">No previous runs yet.</div>}
           {lastRun && <div className="text-[10px] text-fg-dim mt-1 max-w-[200px] truncate">Last: {lastRun.name}</div>}
@@ -333,12 +335,12 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
       <section className="card mb-4 p-4 sm:p-5" aria-labelledby="recipe-title">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 id="recipe-title" className="text-sm font-medium">Build a benchmark recipe</h2>
-            <p className="mt-1 max-w-2xl text-xs leading-5 text-fg-muted">Start with a focused lane, then tune the execution. Presets keep the first run useful and affordable; every case remains selectable below.</p>
+            <h2 id="recipe-title" className="text-sm font-medium">Choose a starting suite</h2>
+            <p className="mt-1 max-w-2xl text-xs leading-5 text-fg-muted">Choose a preset to fill the case selection, then adjust cases and settings below. Selecting a preset does not start a run.</p>
           </div>
           <div className="text-right text-[11px] text-fg-dim">
             <div><span className="font-medium text-fg">{plannedCaseCount}</span> planned case{plannedCaseCount === 1 ? "" : "s"}</div>
-            <div><span className="font-medium text-fg">{selectedVisualCount}</span> visual lane{selectedVisualCount === 1 ? "" : "s"}</div>
+            <div><span className="font-medium text-fg">{selectedVisualCount}</span> visual case{selectedVisualCount === 1 ? "" : "s"}</div>
           </div>
         </div>
         <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
@@ -362,9 +364,9 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
           })}
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-bd-subtle pt-3 text-[11px] text-fg-dim">
-          <span>Planned executions: <strong className="text-fg">{plannedExecutions ?? "—"}</strong></span>
-          <span>Case budget ceiling: <strong className="text-fg">{budgetLabel}</strong></span>
-          <span>Ceiling is per-case configuration, not provider billing.</span>
+          <span>Planned case attempts: <strong className="text-fg">{plannedExecutions ?? "—"}</strong></span>
+          <span>Configured case budgets: <strong className="text-fg">{budgetLabel}</strong></span>
+          <span>Configured limits are not a spend estimate. Cases without a declared budget are excluded.</span>
         </div>
       </section>
 
@@ -374,7 +376,7 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
           <section className="card p-5" aria-labelledby="execution-settings-title">
             <div className="mb-4">
               <h2 id="execution-settings-title" className="text-sm font-medium">Execution settings</h2>
-              <p className="mt-1 text-xs leading-5 text-fg-muted">Name the run, set a bounded sample plan, then choose the agent setup.</p>
+              <p className="mt-1 text-xs leading-5 text-fg-muted">Name the run, choose how many times to attempt each case, and select the agent setup.</p>
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
@@ -393,32 +395,34 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
                   id="parallel-workers"
                   type="number" inputMode="numeric" min={1} max={8} value={parallelRaw}
                   aria-invalid={!!(parallelParsed.error || fieldErrors.parallel)}
+                  aria-describedby={(parallelParsed.error || fieldErrors.parallel) ? "parallel-workers-help parallel-workers-error" : "parallel-workers-help"}
                   onChange={(e) => { setParallelRaw(e.target.value); setFieldErrors((prev) => ({ ...prev, parallel: undefined })); }}
                   className={clsx(
                     "mt-1.5 min-h-11 w-full rounded-md border bg-bg px-3 text-sm mono outline-none focus-visible:ring-2 focus-visible:ring-accent",
                     parallelParsed.error || fieldErrors.parallel ? "border-err focus:border-err" : "border-bd focus:border-accent"
                   )}
                 />
-                <div className="text-[10px] text-fg-dim mt-1">1–8 concurrent case workers</div>
+                <div id="parallel-workers-help" className="text-xs text-fg-dim mt-1">1–8 concurrent case workers</div>
                 {(parallelParsed.error || fieldErrors.parallel) && (
-                  <div role="alert" className="text-[11px] text-err mt-1">{fieldErrors.parallel || parallelParsed.error}</div>
+                  <div id="parallel-workers-error" role="alert" className="text-xs text-err mt-1">{fieldErrors.parallel || parallelParsed.error}</div>
                 )}
               </div>
               <div>
-                <label htmlFor="run-samples" className="text-[11px] uppercase tracking-[0.12em] text-fg-muted">Samples (pass@k)</label>
+                <label htmlFor="run-samples" className="text-[11px] uppercase tracking-[0.12em] text-fg-muted">Attempts per case (samples)</label>
                 <input
                   id="run-samples"
                   type="number" inputMode="numeric" min={1} max={8} value={samplesRaw}
                   aria-invalid={!!(samplesParsed.error || fieldErrors.samples)}
+                  aria-describedby={(samplesParsed.error || fieldErrors.samples) ? "run-samples-help run-samples-error" : "run-samples-help"}
                   onChange={(e) => { setSamplesRaw(e.target.value); setFieldErrors((prev) => ({ ...prev, samples: undefined })); }}
                   className={clsx(
                     "mt-1.5 min-h-11 w-full rounded-md border bg-bg px-3 text-sm mono outline-none focus-visible:ring-2 focus-visible:ring-accent",
                     samplesParsed.error || fieldErrors.samples ? "border-err focus:border-err" : "border-bd focus:border-accent"
                   )}
                 />
-                <div className="text-[10px] text-fg-dim mt-1">Run each case k times (1–8) · report pass@1, pass@k, pass^k</div>
+                <div id="run-samples-help" className="text-xs text-fg-dim mt-1">Choose 1–8 attempts per case. More attempts increase the total work. Results report single-attempt success (pass@1), at least one success (pass@k), and all attempts succeeding (pass^k).</div>
                 {(samplesParsed.error || fieldErrors.samples) && (
-                  <div role="alert" className="text-[11px] text-err mt-1">{fieldErrors.samples || samplesParsed.error}</div>
+                  <div id="run-samples-error" role="alert" className="text-xs text-err mt-1">{fieldErrors.samples || samplesParsed.error}</div>
                 )}
               </div>
             </div>
@@ -495,8 +499,8 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
                 </div>
               </div>
               <div className="flex flex-wrap items-center justify-end gap-2">
-                {selectedCount > 0 && <button type="button" onClick={clearAllSelected} className="min-h-10 rounded-md px-2 text-[11px] text-fg-muted hover:text-fg hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">Clear all</button>}
-                <button type="button" onClick={toggleAll} className="min-h-10 rounded-md px-2 text-[11px] text-accent-soft hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">{allSelected ? "Clear visible" : "Select all visible"}</button>
+                {selectedCount > 0 && <button type="button" onClick={clearAllSelected} className="min-h-11 rounded-md px-2 text-[11px] text-fg-muted hover:text-fg hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">Clear all</button>}
+                <button type="button" onClick={toggleAll} className="min-h-11 rounded-md px-2 text-[11px] text-accent-soft hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">{allSelected ? "Clear visible" : "Select all visible"}</button>
               </div>
             </div>
             {(fieldErrors.caseIds || plannedCaseCount === 0) && (
@@ -517,7 +521,7 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
                       onClick={() => toggleCat(c)}
                       aria-pressed={filterCats.has(c)}
                       className={clsx(
-                        "min-h-10 rounded-md border px-2.5 py-1.5 text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
+                        "min-h-11 rounded-md border px-2.5 py-1.5 text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
                         filterCats.has(c) ? "border-accent bg-accent/10 text-accent-soft" : "border-bd text-fg-muted hover:bg-bg-elev"
                       )}
                     >
@@ -536,7 +540,7 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
                       onClick={() => toggleDiff(d)}
                       aria-pressed={filterDiff.has(d)}
                       className={clsx(
-                        "min-h-10 rounded-md border px-2.5 py-1.5 text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
+                        "min-h-11 rounded-md border px-2.5 py-1.5 text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
                         filterDiff.has(d) ? "border-accent bg-accent/10 text-accent-soft" : "border-bd text-fg-muted hover:bg-bg-elev"
                       )}
                     >
@@ -547,7 +551,7 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
               </fieldset>
               {allTags.length > 0 && <fieldset><legend className="mb-1.5 text-[10px] font-medium uppercase tracking-[0.12em] text-fg-dim">Tags</legend><div className="flex flex-wrap gap-2">
                 {allTags.map((t) => (
-                  <button key={t} type="button" onClick={() => toggleTag(t)} aria-pressed={filterTags.has(t)} className={clsx("min-h-10 rounded-md border px-2.5 py-1.5 text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent", filterTags.has(t) ? "border-accent bg-accent/10 text-accent-soft" : "border-bd text-fg-muted hover:bg-bg-elev")}>#{t}</button>
+                  <button key={t} type="button" onClick={() => toggleTag(t)} aria-pressed={filterTags.has(t)} className={clsx("min-h-11 rounded-md border px-2.5 py-1.5 text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent", filterTags.has(t) ? "border-accent bg-accent/10 text-accent-soft" : "border-bd text-fg-muted hover:bg-bg-elev")}>#{t}</button>
                 ))}
               </div></fieldset>}
             </div>
@@ -561,7 +565,7 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search cases…"
                   aria-label="Search cases"
-                  className="min-h-10 w-full rounded-md border border-bd bg-bg py-1.5 pl-8 pr-2 text-xs outline-none placeholder:text-fg-dim focus:border-accent focus-visible:ring-2 focus-visible:ring-accent"
+                  className="min-h-11 w-full rounded-md border border-bd bg-bg py-1.5 pl-8 pr-2 text-xs outline-none placeholder:text-fg-dim focus:border-accent focus-visible:ring-2 focus-visible:ring-accent"
                 />
               </div>
             </div>
@@ -572,7 +576,7 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
                   <div className="font-medium text-accent-soft">{selectedHidden.length} selected case{selectedHidden.length === 1 ? "" : "s"} hidden by the current filters</div>
                   <div className="mt-0.5 truncate text-fg-muted">{selectedHidden.slice(0, 3).map((c) => c.name).join(" · ")}{selectedHidden.length > 3 ? " · +" + (selectedHidden.length - 3) + " more" : ""}</div>
                 </div>
-                <button type="button" onClick={showSelectedCases} className="min-h-10 shrink-0 rounded-md border border-accent/50 px-2.5 py-1.5 text-[11px] text-accent-soft hover:bg-accent/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">Show selected</button>
+                <button type="button" onClick={showSelectedCases} className="min-h-11 shrink-0 rounded-md border border-accent/50 px-2.5 py-1.5 text-[11px] text-accent-soft hover:bg-accent/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">Show selected</button>
               </div>
             )}
 
@@ -605,7 +609,7 @@ export default function NewRunClient({ cases, initialCaseIds = [] }: Props) {
                   </button>
                 );
               })}
-              {visible.length === 0 && <div className="px-4 py-8 text-center text-sm text-fg-muted">No cases match the filter.</div>}
+              {visible.length === 0 && <div className="px-4 py-8 text-center text-sm text-fg-muted">No cases match these filters. Change the search, category, difficulty, or tags above.</div>}
             </div>
           </section>
         </div>

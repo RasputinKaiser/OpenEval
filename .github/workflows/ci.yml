@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .nvmrc
           cache: npm
       # Always install from the lockfile. Reusing a compiled node_modules tree
       # can hide ABI and dependency drift, especially for better-sqlite3.

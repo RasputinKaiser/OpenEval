@@ -10,3 +10,5 @@ build | 1 | npm run build --silent
 bench | 3 | npm run bench:live --silent
 chart-render | 3 | TSX_TSCONFIG_PATH=scripts/perf/chart-tsconfig.json node --import tsx scripts/perf/chart-render.tsx
 analysis-filter | 3 | node --import tsx scripts/perf/analysis.ts
+
+analysis-repeat | 3 | node --import tsx scripts/perf/repeated-analysis.ts

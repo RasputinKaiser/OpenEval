@@ -19,9 +19,6 @@ const TARGET_BYTES = 32 * 1024 * 1024;
 const FIXTURES = path.join(process.cwd(), "tests", "fixtures");
 const BENCH_DIR = path.join(process.cwd(), process.env.OPENEVAL_DATA_ROOT ?? ".test-data", "bench");
 
-const conn = new Database(":memory:");
-_setCacheDbForTest(conn);
-
 function buildCorpus(fixture: string, out: string): void {
   const lines = fs.readFileSync(path.join(FIXTURES, fixture), "utf8").split("\n").filter(Boolean);
   const block = lines.join("\n") + "\n";
@@ -71,9 +68,15 @@ function bench(name: string, fixture: string, summarize: (file: string, projectD
 }
 
 function main(): void {
-  bench("claude-projects", "claude-interactive.jsonl", summarizeLiveSessionFile);
-  bench("codex-sessions", "codex-rollout-new.jsonl", summarizeCodexSessionFile);
-  _setCacheDbForTest(null);
-  conn.close();
+  const conn = new Database(":memory:");
+  _setCacheDbForTest(conn);
+  try {
+    bench("claude-projects", "claude-interactive.jsonl", summarizeLiveSessionFile);
+    bench("codex-sessions", "codex-rollout-new.jsonl", summarizeCodexSessionFile);
+  } finally {
+    _setCacheDbForTest(null);
+    conn.close();
+  }
 }
-main();
+
+if (process.argv[1]?.replaceAll("\\", "/").endsWith("/scripts/bench-live.ts")) main();

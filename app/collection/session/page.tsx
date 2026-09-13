@@ -1,3 +1,6 @@
+import { SourceCapabilities } from "@/components/SourceCapabilities";
+import { GET as transcriptWindow } from "@/app/api/collection/transcript/route";
+import { parseChartSelection, chartSelectionHref } from "@/lib/chart-analysis";
 import path from "node:path";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -10,12 +13,13 @@ import { fmtBytes, fmtNum, fmtRel } from "@/lib/format";
 import clsx from "clsx";
 import PageHeader from "@/components/PageHeader";
 import TranscriptClient from "@/components/TranscriptClient";
+import { SessionBrief } from "@/components/SessionBrief";
 
 export const dynamic = "force-dynamic";
 
 const RENDER_CAP = 240;
 
-export default async function SessionViewerPage({ searchParams }: { searchParams?: Promise<{ sourceId?: string; sessionId?: string; pathHint?: string; file?: string }> }) {
+export default async function SessionViewerPage({ searchParams }: { searchParams?: Promise<{ sourceId?: string; sessionId?: string; pathHint?: string; file?: string; window?: string; turn?: string; returnTo?: string } & Record<string, string | undefined>> }) {
   const params = await searchParams;
   const legacyFile = params?.file ?? params?.pathHint;
   if ((!params?.sourceId || !params?.sessionId) && legacyFile) {
@@ -25,9 +29,11 @@ export default async function SessionViewerPage({ searchParams }: { searchParams
     }
   }
 
+  const allowedReturn = params?.returnTo && ["/", "/collection", "/collection/timeline", "/live", "/runs", "/runs/compare", "/accuracy"].includes(params.returnTo) ? params.returnTo : "/collection";
+  const selection = parseChartSelection(new URLSearchParams(Object.entries(params ?? {}).filter((entry): entry is [string, string] => typeof entry[1] === "string"))).selection;
   const back = (
-    <Link href="/collection" className="inline-flex items-center gap-1 text-xs text-fg-muted hover:text-fg mb-2">
-      <ArrowLeft className="size-3.5" /> Collection
+    <Link href={chartSelectionHref(allowedReturn, selection)} className="inline-flex items-center gap-1 text-xs text-fg-muted hover:text-fg mb-2">
+      <ArrowLeft className="size-3.5" /> Back to analysis
     </Link>
   );
   const sourceId = params?.sourceId ?? "";
@@ -59,8 +65,18 @@ export default async function SessionViewerPage({ searchParams }: { searchParams
     );
   }
 
-  const window = readTranscriptWindow(resolved.file, resolved.spec.format, resolved.spec.format === "hermes-sqlite" ? { sessionId: resolved.sessionId } : {});
-  const shown = window.turns.slice(0, RENDER_CAP);
+  const window = readTranscriptWindow(resolved.file, resolved.spec.format, (resolved.spec.format === "hermes-sqlite" || resolved.spec.format === "agent-sqlite") ? { sessionId: resolved.sessionId } : {});
+  let shown = window.turns.slice(0, RENDER_CAP);
+  let offset = 0;
+  let locatedCursor: string | null | undefined;
+  let locationError: string | undefined;
+  if (params?.window) {
+    const query = new URLSearchParams({ sourceId, sessionId, cursor: params.window });
+    const response = await transcriptWindow(new Request(`http://localhost/api/collection/transcript?${query}`));
+    const located = await response.json();
+    if (response.ok) { shown = located.turns; offset = located.offset; locatedCursor = located.nextCursor; }
+    else locationError = located.error ?? "This message location is stale; search the current transcript again.";
+  }
   const totalCounts = {
     all: shown.length,
     chat: shown.filter((turn) => turn.role === "user" || turn.role === "assistant").length,
@@ -83,22 +99,31 @@ export default async function SessionViewerPage({ searchParams }: { searchParams
     state: window.nextState,
   });
 
+  const startCursor = params?.window && !locationError ? params.window : encodeTranscriptCursor({ v: 1, sourceId, sessionId, file: resolved.file, project: resolved.project, format: resolved.spec.format, parserVersion: PARSER_VERSION, descriptorHash: transcriptDescriptorHash(sourceId, resolved.spec), revision: window.revision, byteOffset: 0, state: { calls: [], recordIndex: 0, semanticTurns: 0 } });
+
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto">
       {back}
       <PageHeader
         icon={Database}
-        title={path.basename(resolved.file)}
+        title={resolved.session?.displayTitle || path.basename(resolved.file)}
         subtitle={<span className="mono text-[12px]">source {resolved.source.label} · session <span title={resolved.sessionId}>{resolved.sessionId}</span> · {fmtBytes(resolved.size)} on disk · modified {fmtRel(resolved.mtimeMs)}{errorCount > 0 && <span className="text-err"> · {errorCount} errors</span>}{warnCount > 0 && <span className="text-warn"> · {warnCount} warnings</span>}</span>}
       />
 
+      <SourceCapabilities format={resolved.spec.format} />
+      {!!resolved.session?.observedProviders?.length && <p className="mb-3 text-xs text-fg-muted">Recorded provider: {resolved.session.observedProviders.join(", ")} · recorded model: {resolved.session.model ?? "Unavailable"} · host: {resolved.source.label}</p>}
       <TranscriptReadingGuide counts={totalCounts} totalTurns={shown.length} />
+      <details className="mb-4"><summary className="analysis-control cursor-pointer">Session brief and evidence limitations</summary><SessionBrief sourceId={resolved.sourceId} sessionId={resolved.sessionId} /></details>
+      {locationError && <p role="alert" className="mb-3 text-sm text-warn">{locationError}</p>}
       <TranscriptClient
         turns={shown}
         sourceId={resolved.sourceId}
         sessionId={resolved.sessionId}
-        initialCursor={initialCursor}
-        hasMore={initialCursor != null}
+        initialOffset={offset}
+        initialTargetIndex={params?.turn !== undefined && Number.isInteger(Number(params.turn)) && Number(params.turn) >= offset && Number(params.turn) < offset + shown.length ? Number(params.turn) : undefined}
+        initialWindowCursor={startCursor}
+        initialCursor={locatedCursor === undefined ? initialCursor : locatedCursor}
+        hasMore={(locatedCursor === undefined ? initialCursor : locatedCursor) != null}
         totalTurns={shown.length}
         totalCounts={totalCounts}
         normalization={window.normalization}

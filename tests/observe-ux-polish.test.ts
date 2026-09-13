@@ -25,7 +25,7 @@ test("Collection opens in the full report and keeps a desktop return path", () =
   const nav = read("components/mobile/ProgressiveSectionNav.tsx");
 
   assert.match(collection, /useProgressiveSection\(sections, "all"\)/);
-  assert.match(collection, /id: "all", label: "Full report", detail: "show every section"/);
+  assert.match(collection, /id: "all", label: "All sections", detail: "View the full collection"/);
   assert.match(nav, /initialSection: ProgressiveSectionId =/);
 });
 
@@ -74,7 +74,7 @@ test("coverage caveats are grouped and review-method copy names the denominator"
   const collection = read("components/CollectionClient.tsx");
   const live = read("components/LiveClient.tsx");
   const timeline = read("components/TimelineClient.tsx");
-  assert.match(collection, /Collection coverage has caveats/);
+  assert.match(collection, /Some collection evidence is unavailable/);
   assert.match(collection, /data\.partial \|\| data\.inventoryPartial \|\| data\.coveragePartial/);
   assert.match(live, /Live scan notes/);
   assert.match(live, /Totals below describe only the parsed evidence in this slice/);

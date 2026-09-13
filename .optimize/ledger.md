@@ -408,6 +408,13 @@ OpenEval behavior or treating dirty-checkout timings as clean-release claims.
 - Raw runs: runs/20260911-analysis-before.json and runs/20260911-analysis-after.json. Temporary parity harness removed after comparison.
 - Next run: retain the reproducible analysis-filter probe; pursue caching/incremental aggregation only if a realistic repeated-request workload justifies it.
 
+## Setup and repeated-analysis optimization — 2026-09-12 (fae9070, dirty)
+- Added bounded memoization for analysis API pages from an immutable collection snapshot. Cache invalidates on array identity or generation and includes selection, paging, freshness and error metadata. Eight entries maximum, each at most 1 MiB serialized; pages over 200 rows bypass it.
+- Same fixed synthetic workload: 12,000 sessions, two alternating filters, 3 warmups and 60 requests. measure.py process median across three runs: 10.540s before (10.17, 10.54, 11.55) -> 1.022s after (1.022, 1.184, 0.632), -90.3%. This measures repeated same-snapshot reports, not cold scanning or browser latency.
+- Raw receipts: ignored runs/20260912-setup-before.json and runs/20260912-setup-after.json. Dedicated parity/invalidation tests exercise population replacement, changed generation, metadata, filters, pagination and eviction.
+- Work remains local and uncommitted to preserve the existing mixed worktree. The existing probes/ledger are reused; no new agent-workflow harness was added.
+- Next run: use analysis-repeat for repeated requests and analysis-filter for uncached aggregation. Cold scans and build latency remain separate unoptimized workloads.
+
 ## Build-loop optimization trial — 2026-09-13 (fae9070, dirty primary checkout)
 - Baseline measure.py suite passed: build 130.286s, tests median 14.184s, lint 2.526s, types 3.508s; live bench 2.714s, chart SSR 0.798s, cold analysis 2.767s, repeated analysis 0.407s.
 - Rejected webpackBuildWorker trial: build 138.518s (+6.3%); tests 14.400s, lint 2.559s, types 2.365s all passed. Removed only the trial setting, preserving existing distDir and all other WIP.

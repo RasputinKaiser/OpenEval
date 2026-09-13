@@ -10,6 +10,7 @@ import { fmtNum, fmtNumFull, fmtPct as fmtPctStrict } from "@/lib/format";
 import EvaluateNav from "./EvaluateNav";
 import EvaluationProfile from "./EvaluationProfile";
 import VisualComparisonStage from "./VisualComparisonStage";
+import ExperimentPanel from "./ExperimentPanel";
 import { CompareCharts } from "./CompareCharts";
 import { comparisonKey, transitionKey } from "@/lib/comparison-analysis";
 
@@ -147,10 +148,11 @@ export default function CompareClient({ runs, initialA, initialB }: Props) {
   const filteredRows = (viewMode === "regressions" ? regressions : viewMode === "improvements" ? improvements : rows).filter((row) => (!transitionFilter || transitionKey(row) === transitionFilter) && (!caseFilter || comparisonKey(row) === caseFilter));
   const runA = runs.find((run) => run.id === a);
   const runB = runs.find((run) => run.id === b);
+  const sharedCohort = filteredRows.filter((row) => row.aCaseRef !== null && row.bCaseRef !== null).map((row) => ({ caseId: row.caseId, sample: row.sample, caseName: row.caseName, aStatus: row.aStatus, bStatus: row.bStatus }));
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto">
-      <PageHeader icon={GitCompareArrows} title="Evaluation lab" subtitle="Compare outcomes, inspect evidence posture, and watch visual outputs side by side." />
+    <div className="p-4 md:p-8 w-full">
+      <PageHeader icon={GitCompareArrows} title="Evaluation lab" subtitle="Compare run results, check their supporting evidence, and view outputs side by side." />
       <EvaluateNav />
 
       {runs.length >= 2 && (
@@ -162,6 +164,8 @@ export default function CompareClient({ runs, initialA, initialB }: Props) {
           </div>
         </div>
       )}
+
+
 
       {loadError && (
         <div className="mb-4 rounded-lg border border-err/40 bg-err/10 p-3 flex items-start gap-2.5" role="alert">
@@ -298,6 +302,9 @@ export default function CompareClient({ runs, initialA, initialB }: Props) {
           </section>
         </>
       )}
+      <details className="mt-6"><summary className="analysis-control cursor-pointer">Save or review an experiment</summary>
+      <ExperimentPanel baselineRunId={a} candidateRunId={b} baselineName={runA?.name ?? a} candidateName={runB?.name ?? b} sharedCohort={sharedCohort} />
+      </details>
     </div>
   );
 }

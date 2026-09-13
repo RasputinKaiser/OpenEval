@@ -145,3 +145,93 @@ test("time buckets spanning more than 90 days use integer bounds that conserve e
     assert.equal(filterAnalysisSessions(population, { fromMs: bucket.startMs, toMs: bucket.endMs }).length, bucket.sessions);
   }
 });
+
+
+test("daily usage buckets share UTC filter boundaries and retain zero-activity gaps", () => {
+  const population = [session({ startedAt: Date.parse("2026-09-06T00:15:00Z") }), session({ sessionId: "later", startedAt: Date.parse("2026-09-08T23:15:00Z") })];
+  const report = buildAnalysisReport(population, population, {}, { generatedAtMs: 1 }, { limit: 1 });
+  assert.deepEqual(report.timeBuckets.map(bucket => bucket.sessions), [1, 0, 1]);
+  assert.equal(new Date(report.timeBuckets[0].startMs).toISOString(), "2026-09-06T00:00:00.000Z");
+  assert.equal(report.timeBuckets[1].tokens, null);
+  assert.equal(report.timeBuckets[1].costUsd, null);
+  for (const bucket of report.timeBuckets) assert.equal(filterAnalysisSessions(population, { fromMs: bucket.startMs, toMs: bucket.endMs }).length, bucket.sessions);
+});
+
+
+test("model selection includes attributed secondary models and counts priced coverage once", async () => {
+  const mixed = session({ modelUsage: [
+    { model: "gpt-5.6-luna", inputTokens: 70, outputTokens: 30, cacheReadTokens: 0, cacheCreateTokens: 0, toolCalls: 3, toolErrors: 1 },
+    { model: "gpt-5.5", inputTokens: 30, outputTokens: 20, cacheReadTokens: 0, cacheCreateTokens: 0, toolCalls: 1, toolErrors: 0 },
+  ] });
+  assert.equal(filterAnalysisSessions([mixed], { model: "gpt-5.5" }).length, 1);
+  assert.equal(filterAnalysisSessions([mixed], { model: "missing-model" }).length, 0);
+  const { aggregate } = await import("../lib/live/aggregate");
+  const rows = aggregate([mixed]).byModel;
+  for (const row of rows) { assert.equal(row.sessions, 1); assert.equal(row.pricedSessions, 1); }
+});
+
+
+test("recorded zero cost is covered while missing zero cost is unavailable", async () => {
+  const { aggregate } = await import("../lib/live/aggregate");
+  const measured = session({ costUsd: 0 });
+  assert.equal(aggregate([measured]).byModel[0].pricedSessions, 1);
+  const missing = session({ costUsd: 0, metricSources: { ...measured.metricSources, cost: "missing" } });
+  assert.equal(aggregate([missing]).byModel[0].pricedSessions, 0);
+});
+
+
+test("analysis cache retains exact report semantics and invalidates on snapshot, selection, page and metadata", async () => {
+  const { createAnalysisReader } = await import("../lib/collection/analysis-cache");
+  const read = createAnalysisReader();
+  const rows = [session(), session({ sessionId: "second", model: "model-b" })];
+  const meta = { generatedAtMs: 10 };
+  const page = { offset: 0, limit: 1 };
+  const initial = read(rows, {}, meta, page);
+  assert.deepEqual(initial, buildAnalysisReport(rows, rows, {}, meta, page));
+  assert.equal(read(rows, {}, meta, page), initial);
+  for (const [selection, metadata, paging] of [
+    [{ model: "model-b" }, meta, page], [{}, meta, { offset: 1, limit: 1 }],
+    [{}, { ...meta, stale: true, refreshing: false, refreshError: "scan failed" }, page],
+  ] as const) {
+    assert.deepEqual(read(rows, selection, metadata, paging), buildAnalysisReport(rows, filterAnalysisSessions(rows, selection), selection, metadata, paging));
+  }
+  assert.notEqual(read([...rows], {}, meta, page), initial, "new population with same timestamp invalidates");
+  const next = read(rows, {}, { generatedAtMs: 11 }, page);
+  assert.equal(next.generation, 11);
+  assert.notEqual(next, initial);
+  for (let i = 1; i <= 9; i++) read(rows, {}, { generatedAtMs: 11 }, { offset: i, limit: 1 });
+  assert.notEqual(read(rows, {}, { generatedAtMs: 11 }, page), next, "oldest page is evicted");
+  assert.notEqual(read(rows, {}, meta, { offset: 0, limit: 201 }), read(rows, {}, meta, { offset: 0, limit: 201 }), "unbounded pages bypass cache");
+});
+
+test('model options count each attributed identity once while primary groups conserve whole sessions', () => {
+  const mixed = session({ model: 'primary', modelUsage: [
+    { model: 'primary', inputTokens: 60, outputTokens: 30, cacheReadTokens: 0, cacheCreateTokens: 0, toolCalls: 2, toolErrors: 0 },
+    { model: 'secondary', inputTokens: 40, outputTokens: 20, cacheReadTokens: 0, cacheCreateTokens: 0, toolCalls: 2, toolErrors: 1 },
+  ] });
+  const rows = [mixed, session({ sessionId: 'second', model: 'secondary' })];
+  const report = buildAnalysisReport(rows, rows, {}, { generatedAtMs: 1 });
+  for (const option of report.options.models) assert.equal(option.count, filterAnalysisSessions(rows, { model: option.value }).length);
+  assert.equal(report.options.models.find(o => o.value === 'secondary')?.count, 2);
+  assert.equal(report.modelGroups.reduce((n, group) => n + group.sessions, 0), 2);
+});
+
+test('known free cost, measured zero, placeholder zero and malformed cost remain distinct across analysis and aggregation', async () => {
+  const { setOpenRouterCatalogForTests, clearOpenRouterCatalogForTests } = await import('../lib/pricing-catalog');
+  const { aggregate } = await import('../lib/live/aggregate');
+  setOpenRouterCatalogForTests([{ id: 'fixture/free', pricing: { prompt: 0, completion: 0, input_cache_read: 0, input_cache_write: 0 } }]);
+  try {
+    const rows = [
+      session({ sessionId: 'free', model: 'fixture/free', costUsd: 0, metricSources: { ...session().metricSources, cost: 'inferred' } }),
+      session({ sessionId: 'measured', costUsd: 0 }),
+      session({ sessionId: 'placeholder', costUsd: 0, metricSources: { ...session().metricSources, cost: 'inferred' } }),
+      session({ sessionId: 'malformed', costUsd: 0, metricSources: { ...session().metricSources, cost: 'malformed' } }),
+    ];
+    const report = buildAnalysisReport(rows, rows, {}, { generatedAtMs: 1 });
+    assert.equal(report.usageTotals.measuredCostSessions, 1); assert.equal(report.usageTotals.inferredCostSessions, 1);
+    for (const row of report.sessions) assert.equal(row.costUsd, ['free', 'measured'].includes(row.sessionId) ? 0 : null);
+    const agg = aggregate(rows);
+    assert.equal(agg.usageSummary.sessionsWithPricedUsage, 2);
+    assert.equal(agg.byModel.find(m => m.model === 'fixture/free')?.pricedSessions, 1);
+  } finally { clearOpenRouterCatalogForTests(); }
+});

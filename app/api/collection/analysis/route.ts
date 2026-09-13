@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
 import { parseChartSelection } from "@/lib/chart-analysis";
 import {
-  buildAnalysisReport,
-  filterAnalysisSessions,
   isUnsupportedCollectionSelection,
 } from "@/lib/collection/analysis";
 import { getCollectionSnapshot } from "@/lib/collection/snapshot-service";
+import { readAnalysisReport } from "@/lib/collection/analysis-cache";
 import { apiError } from "@/lib/api-http";
 
 export const dynamic = "force-dynamic";
@@ -53,8 +52,7 @@ export async function GET(request: Request) {
       );
     }
     const population = snapshot.value.sessions;
-    const matched = filterAnalysisSessions(population, parsed.selection);
-    const report = buildAnalysisReport(population, matched, parsed.selection, {
+    const report = readAnalysisReport(population, parsed.selection, {
       generatedAtMs: snapshot.generatedAtMs,
       stale: snapshot.stale,
       refreshing: snapshot.refreshing,

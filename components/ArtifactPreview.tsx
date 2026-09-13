@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { previewDocument } from "@/lib/preview-document";
 import { Loader2 } from "lucide-react";
 
 export type ArtifactKind = "svg" | "html" | "text";
@@ -24,15 +25,18 @@ interface Props {
 
 /**
  * Artifact content is produced by the harness under test — untrusted by
- * definition. Always render through a fully sandboxed iframe (sandbox="",
- * no scripts, no same-origin), never into the app DOM.
+ * definition. Static by default. Active playback grants scripts only inside
+ * an opaque-origin sandbox; it never grants same-origin, popups or parent access.
  */
 export default function ArtifactPreview({ path, content, kind, className }: Props) {
   const resolved = kind ?? artifactKind(path, content);
-  const [loaded, setLoaded] = useState(false);
-
-  // New document content = new load cycle; show the affordance again.
-  useEffect(() => { setLoaded(false); }, [path, content]);
+  const [active, setActive] = useState(false);
+  const [replay, setReplay] = useState(0);
+  const [tall, setTall] = useState(false);
+  useEffect(() => { setActive(false); }, [path]);
+  const [loadedDocument, setLoadedDocument] = useState<{ path: string; content: string; active: boolean; replay: number } | null>(null);
+  const loaded = loadedDocument?.path === path && loadedDocument.content === content && loadedDocument.active === active && loadedDocument.replay === replay;
+  const markLoaded = () => setLoadedDocument({ path, content, active, replay });
 
   if (resolved === "text") {
     return (
@@ -41,14 +45,19 @@ export default function ArtifactPreview({ path, content, kind, className }: Prop
   }
   return (
     <div className="relative">
-      <iframe
-        sandbox=""
-        loading="lazy"
-        srcDoc={resolved === "svg" ? svgDocument(content) : content}
-        title={`Preview of ${path}`}
-        onLoad={() => setLoaded(true)}
-        className={className ?? "h-[420px] w-full rounded-md bg-white ring-1 ring-white/10"}
-      />
+      <div className="flex flex-wrap items-center gap-2 mb-2 text-xs text-fg-muted">
+        <button type="button" className="analysis-control" aria-pressed={active} onClick={() => setActive(!active)}>{active ? "Stop preview" : "Play preview"}</button>
+        <button type="button" className="analysis-control" disabled={!active} onClick={() => setReplay(replay + 1)}>Replay</button>
+        <button type="button" className="analysis-control" aria-pressed={tall} onClick={() => setTall(!tall)}>{tall ? "Compact view" : "Tall view"}</button>
+        <span role="status">{active ? "Interactive playback · isolated frame" : "Still preview · Play enables interaction"}</span>
+      </div>
+      <div className="relative">
+      {active ? <iframe key={`active-${replay}`} sandbox="allow-scripts" referrerPolicy="no-referrer"
+        srcDoc={previewDocument(resolved === "svg" ? svgDocument(content) : content, true)} title={`Preview of ${path}`}
+        onLoad={markLoaded} className={className ?? "h-[420px] w-full rounded-md bg-white ring-1 ring-white/10"} style={tall ? { height: "75vh", minHeight: 420 } : undefined} /> :
+      <iframe key={`still-${replay}`} sandbox="" referrerPolicy="no-referrer" loading="lazy"
+        srcDoc={previewDocument(resolved === "svg" ? svgDocument(content) : content, false)} title={`Preview of ${path}`}
+        onLoad={markLoaded} className={className ?? "h-[420px] w-full rounded-md bg-white ring-1 ring-white/10"} style={tall ? { height: "75vh", minHeight: 420 } : undefined} />}
       {!loaded && (
         <div
           aria-hidden
@@ -58,6 +67,8 @@ export default function ArtifactPreview({ path, content, kind, className }: Prop
           Loading preview
         </div>
       )}
+      </div>
+      <p className="text-xs text-fg-muted mt-2">Stop and Replay reset the document. Playback shows artifact behavior; it does not establish a passing evaluation.</p>
     </div>
   );
 }

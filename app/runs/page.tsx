@@ -13,7 +13,7 @@ export default async function Page() {
   const runs = listRuns(50);
   const cases = await loadCases();
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto">
+    <div className="p-4 sm:p-6 lg:p-8 w-full">
       <PageHeader
         icon={Activity}
         title="Runs"

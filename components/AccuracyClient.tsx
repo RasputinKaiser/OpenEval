@@ -33,6 +33,7 @@ import Link from "next/link";
 import EvaluateNav from "./EvaluateNav";
 import { ChartFrame } from "./charts/ChartFrame";
 import { SelectableBars } from "./charts/SelectableBars";
+import CalibrationWorkbench from "./CalibrationWorkbench";
 
 interface Props {
   audit: AccuracyAudit;
@@ -131,11 +132,11 @@ export default function AccuracyClient({ audit, judge }: Props) {
   const filterLabel = filter === "weak" ? "weak cases" : filter ? accuracySurfaceLabel(filter) : null;
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
+    <div className="p-4 sm:p-6 lg:p-8 w-full">
       <PageHeader
         icon={ShieldCheck}
         title="Accuracy audit"
-        subtitle="The evidence gate for Evaluate. It separates verified case contracts from runtime, visual, and human proof that is not attached yet."
+        subtitle="See which evaluation checks are verified and which still need runtime, visual, or human evidence."
       />
       <EvaluateNav />
 
@@ -165,6 +166,8 @@ export default function AccuracyClient({ audit, judge }: Props) {
         <span className="text-sm text-fg-muted">{audit.corpus.summary}</span>
         <span className="text-[11px] text-fg-dim mono">{audit.failedCases} failing · {audit.unknownCases} unknown case surfaces · structural checks only</span>
       </section>
+
+
 
       {audit.status === "fail" && (
         <section
@@ -370,6 +373,7 @@ export default function AccuracyClient({ audit, judge }: Props) {
           </section>
         </aside>
       </section>
+      <details className="mt-6"><summary className="analysis-control cursor-pointer">Calibration workbench · references and observations</summary><CalibrationWorkbench /></details>
     </div>
   );
 }

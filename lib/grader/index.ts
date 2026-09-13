@@ -530,12 +530,14 @@ export async function runGrader(
 }
 
 export function evaluate(results: GraderResult[], passThreshold = 1): CaseEvaluation {
-  const weights = results.map((r) => (r.spec as any).weight ?? 1);
+  if (!Number.isFinite(passThreshold) || passThreshold < 0 || passThreshold > 1) throw new RangeError("Pass threshold must be between 0 and 1.");
+  const weights = results.map((r) => r.spec.weight ?? 1);
+  if (weights.some(weight => !Number.isFinite(weight) || weight < 0)) throw new RangeError("Grader weights must be finite and nonnegative.");
   const totalWeight = weights.reduce((a, b) => a + b, 0) || 1;
   const passedWeight = results.reduce((sum, r, i) => (r.passed ? sum + weights[i] : sum), 0);
   const passRatio = passedWeight / totalWeight;
   const forbiddenViolations = results.filter((r) => (r.spec as any).forbidden && !r.passed);
-  const passed = forbiddenViolations.length === 0 && passRatio >= passThreshold;
+  const passed = results.length > 0 && weights.some(weight => weight > 0) && !results.some(result => result.infraError) && forbiddenViolations.length === 0 && passRatio >= passThreshold;
   return {
     passed,
     passRatio,

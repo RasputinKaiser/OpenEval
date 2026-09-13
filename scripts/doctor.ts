@@ -73,12 +73,15 @@ export function checkNodeVersion(
   }
 
   let enginesMin: number | null = null;
+  let enginesMax: number | null = null;
   try {
     const pkg = JSON.parse(
       fs.readFileSync(path.join(repoRoot, "package.json"), "utf8")
     ) as { engines?: { node?: string } };
     const m = /(\d+)/.exec(pkg.engines?.node ?? "");
     if (m) enginesMin = Number.parseInt(m[1], 10);
+    const upper = /<\s*(\d+)/.exec(pkg.engines?.node ?? "");
+    if (upper) enginesMax = Number.parseInt(upper[1], 10);
   } catch {
     // No readable package.json — engines floor unknown, fall through to .nvmrc.
   }
@@ -89,6 +92,10 @@ export function checkNodeVersion(
       detail: `Node ${currentVersion} is below the required engines floor (>=${enginesMin}).`,
       hint: `Switch to Node ${enginesMin}+ (e.g. \`nvm use\`), then \`npm rebuild better-sqlite3\`.`,
     };
+  }
+
+  if (enginesMax !== null && currentMajor >= enginesMax) {
+    return { id, label, status: "fail", detail: `Node ${currentVersion} exceeds the supported range (<${enginesMax}).`, hint: "Run nvm use, then npm ci to rebuild native dependencies for the supported runtime." };
   }
 
   let nvmrc: string | null = null;
@@ -136,7 +143,7 @@ export function checkNpmVersion(
     return {
       id, label, status: "warn",
       detail: `npm ${currentVersion} is outside the release-tested toolchain (${range}).`,
-      hint: "Use npm 10 with Node 20, then rerun `npm ci` so the lockfile install is authoritative.",
+      hint: "Use npm 10 with Node 22, then rerun `npm ci` so the lockfile install is authoritative.",
     };
   }
   return { id, label, status: "ok", detail: `npm ${currentVersion} matches the release-tested npm 10 major.` };

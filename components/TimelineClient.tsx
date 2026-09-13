@@ -24,6 +24,7 @@ import { EvidenceReview } from "./evidence/EvidenceReview";
 import JudgePicker from "./JudgePicker";
 import { useChartSelection } from "@/lib/use-chart-selection";
 import { selectionParams, chartSelectionHref } from "@/lib/chart-analysis";
+import { parseEvidenceNavigation } from "@/lib/collection/evidence-navigation";
 import { DateRangeControls, SelectionChips } from "./charts/SelectionControls";
 import { TimelineRangeComparison } from "./TimelineRangeComparison";
 import type { JudgeSelectionInput } from "@/lib/grader/selection";
@@ -190,6 +191,11 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
     { id: "adoptions", label: "Adoption history", description: "See when skills, plugins, models, and subagents first appeared." },
   ], [data.changePoints]);
   const { activeSection, selectSection, isVisible } = useProgressiveSection(sections, "all");
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const navigation = parseEvidenceNavigation(url.searchParams);
+    if (navigation.sourceId && navigation.sessionId && !url.searchParams.get("section") && !url.hash) selectSection("evidence");
+  }, [selectSection]);
 
   const trend = data.overall.trend;
   const firstHalfN = data.overall.firstHalfN ?? Math.floor(data.signalSessions / 2);
@@ -399,7 +405,7 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
     : "Saved review records share one source, model, and prompt version. Receipt count and comparable score count are intentionally different.";
 
   return (
-    <div className="min-w-0 p-4 md:p-6 max-w-6xl mx-auto">
+    <div className="min-w-0 p-4 md:p-6 w-full">
       <Link href="/collection" className="inline-flex items-center gap-1 text-xs text-fg-muted hover:text-fg mb-2"><ArrowLeft className="size-3.5" /> Collection</Link>
       <section className="analysis-chart mb-4" aria-label="Timeline dataset selection">
         <p className="text-xs text-fg-muted mb-3">Dates and evidence filters apply to every Timeline panel below. Adoption comparisons are recalculated within this selection. Chart zoom is inspection; use Explore visible sessions to apply its range.</p>
@@ -416,7 +422,7 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
       <PageHeader
         icon={Activity}
         title={<>Timeline &amp; comparisons</>}
-        subtitle="See what changed around adoption. These are descriptive windows, not causal proof."
+        subtitle="Compare session outcomes before and after adoption. Changes describe the observed sessions; they do not establish cause."
         actions={
           <div className="flex flex-wrap items-center gap-2" aria-label="Timeline actions">
             <button

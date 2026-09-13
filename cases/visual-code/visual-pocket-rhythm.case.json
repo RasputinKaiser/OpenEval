@@ -1,0 +1,66 @@
+{
+  "id": "visual-pocket-rhythm",
+  "category": "visual-code",
+  "difficulty": "medium",
+  "name": "Build Pocket Rhythm",
+  "description": "A watchable, interactive rhythm benchmark. Deterministic state checks cover motion, interaction and reset; visual quality requires separate inspection.",
+  "tags": [
+    "visual-code",
+    "playground",
+    "interactive",
+    "game"
+  ],
+  "split": "public",
+  "prompt": "Build one self-contained pocket-rhythm.html titled Pocket Rhythm. Create a polished responsive canvas experience with 16 notes in four lanes, hit with A/S/D/F or touch; lane 0 initially has a hittable note. Include Pause/Resume, Reset, tempo control, visible elapsed time and score. Use inline HTML/CSS/JavaScript only: no network, dependencies, assets, audio autoplay or other files. Respect reduced motion by starting paused. Expose window.playground with reset(), step(dtSeconds), interact(lane=0), getState(). State includes time, score, particles (objects with finite x/y). Reset sets time and score to zero; stepping advances time and moves particles; interact(0) after reset increments score and visibly changes the scene. Keep simulations bounded and reproducible. Make controls keyboard/touch accessible. State checks do not certify rendered quality.",
+  "setup": {
+    "type": "none"
+  },
+  "budget": {
+    "max_turns": 18,
+    "max_cost_usd": 0.8
+  },
+  "visual": {
+    "kind": "canvas",
+    "requires_vision_input": false,
+    "expected_artifacts": [
+      "pocket-rhythm.html"
+    ]
+  },
+  "benchmark": {
+    "intent": "Observe interactive behavior and visual craft without confusing source checks with rendered proof.",
+    "deliverable": "pocket-rhythm.html",
+    "evidence": [
+      "deterministic",
+      "artifact"
+    ],
+    "usage": "medium"
+  },
+  "graders": [
+    {
+      "type": "file_exists",
+      "path": "pocket-rhythm.html",
+      "weight": 1
+    },
+    {
+      "type": "exit_code",
+      "command": "node -e 'const fs=require('\"'\"'fs'\"'\"'),vm=require('\"'\"'vm'\"'\"'),assert=require('\"'\"'assert'\"'\"');const html=fs.readFileSync('\"'\"'pocket-rhythm.html'\"'\"','\"'\"'utf8'\"'\"');const script=[...html.matchAll(/<script[^>]*>([\\s\\S]*?)<\\/script>/gi)].map(m=>m[1]).join('\"'\"'\\n'\"'\"');const noop=()=>{};const element={getContext:()=>new Proxy({}, {get:()=>noop,set:()=>true}),addEventListener:noop,getBoundingClientRect:()=>({left:0,width:640})};const box={window:{},document:{querySelector:()=>element,getElementById:()=>element,addEventListener:noop,hidden:false},requestAnimationFrame:noop,matchMedia:()=>({matches:false}),console,Math};vm.createContext(box);vm.runInContext(script,box,{timeout:1000});vm.runInContext(\"const api=window.playground;api.reset();const before=api.getState();if(before.time!==0||before.score!==0||before.particles.length!==16)throw Error('\"'\"'reset state'\"'\"');for(let i=0;i<20;i++)api.step(.02);const after=api.getState();if(!(after.time>0)||JSON.stringify(before.particles)===JSON.stringify(after.particles))throw Error('\"'\"'no motion'\"'\"');api.reset();api.interact(0);if(!(api.getState().score>0))throw Error('\"'\"'no response'\"'\"');api.reset();if(api.getState().time!==0||api.getState().score!==0)throw Error('\"'\"'reset failed'\"'\"');\",box,{timeout:1000});'",
+      "weight": 8
+    },
+    {
+      "type": "file_contains",
+      "path": "pocket-rhythm.html",
+      "pattern": "https?://|<script[^>]+src=|<iframe|fetch\\s*\\(",
+      "negate": true,
+      "forbidden": true,
+      "weight": 1
+    }
+  ],
+  "pass_threshold": 1,
+  "oracle": {
+    "solve": "oracle/visual-pocket-rhythm.sh",
+    "known_bad": [
+      "oracle/visual-pocket-rhythm-bad.sh"
+    ],
+    "noop_max_score": 0.2
+  }
+}

@@ -651,7 +651,7 @@ function HarnessDetail({
                 <div key={root} className="flex min-w-0 items-center gap-2 rounded-lg border border-bd-subtle bg-bg px-3 py-2.5">
                   <Terminal aria-hidden="true" className="size-3.5 shrink-0 text-fg-dim" />
                   <code className="min-w-0 flex-1 truncate text-xs">{show(root)}</code>
-                  <CopyButton text={root} label={`Copy trace root ${root}`} className="min-h-9 min-w-9" />
+                  <CopyButton text={root} label={`Copy trace root ${root}`} className="min-h-10 min-w-10" />
                 </div>
               ))}
             </div>

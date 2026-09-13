@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
+import { recentDateRange } from "@/lib/chart-date-range";
 import type { ChartSelection } from "@/lib/chart-analysis";
 
 const dateValue = (ms?: number) => ms === undefined ? "" : new Date(ms).toISOString().slice(0, 10);
@@ -12,13 +13,19 @@ export function DateRangeControls({ selection, onChange }: { selection: ChartSel
   useEffect(() => { setFrom(dateValue(selection.fromMs)); setTo(dateValue(selection.toMs === undefined ? undefined : selection.toMs - 1)); setError(""); }, [selection.fromMs, selection.toMs]);
   return <form className="flex flex-wrap items-end gap-2" aria-label="Chart date range, UTC" onSubmit={(e) => {
     e.preventDefault();
-    const fromMs = from ? Date.parse(`${from}T00:00:00Z`) : undefined;
-    const toMs = to ? Date.parse(`${to}T00:00:00Z`) + 86_400_000 : undefined;
+    const fields = new FormData(e.currentTarget);
+    const submittedFrom = String(fields.get("fromDate") ?? from);
+    const submittedTo = String(fields.get("throughDate") ?? to);
+    const fromMs = submittedFrom ? Date.parse(`${submittedFrom}T00:00:00Z`) : undefined;
+    const toMs = submittedTo ? Date.parse(`${submittedTo}T00:00:00Z`) + 86_400_000 : undefined;
     if ((fromMs !== undefined && !Number.isFinite(fromMs)) || (toMs !== undefined && !Number.isFinite(toMs)) || (fromMs !== undefined && toMs !== undefined && fromMs >= toMs)) { setError("Choose an end date on or after the start date."); return; }
     setError(""); onChange({ ...selection, fromMs, toMs });
   }}>
-    <label className="text-xs text-fg-muted">From (UTC)<input className="analysis-input block mt-1" type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
-    <label className="text-xs text-fg-muted">Through (UTC)<input className="analysis-input block mt-1" type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label>
+    <div className="flex gap-1 self-end" role="group" aria-label="Recent date presets">
+      {([7, 30] as const).map(days => <button key={days} type="button" className="analysis-control" aria-pressed={selection.fromMs === recentDateRange(days).fromMs && selection.toMs === recentDateRange(days).toMs} onClick={() => onChange({ ...selection, ...recentDateRange(days) })}>{days}d</button>)}
+    </div>
+    <label className="text-xs text-fg-muted">From (UTC)<input className="analysis-input block mt-1" type="date" name="fromDate" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
+    <label className="text-xs text-fg-muted">Through (UTC)<input className="analysis-input block mt-1" type="date" name="throughDate" value={to} onChange={(e) => setTo(e.target.value)} /></label>
     <button type="submit" className="analysis-control">Apply dates</button>
     {(selection.fromMs !== undefined || selection.toMs !== undefined) && <button type="button" className="analysis-control" onClick={() => onChange({ ...selection, fromMs: undefined, toMs: undefined })}>All dates</button>}
     {error && <p role="alert" className="basis-full text-xs text-err">{error}</p>}

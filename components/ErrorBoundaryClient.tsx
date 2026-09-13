@@ -45,8 +45,10 @@ export default function ErrorBoundaryClient({ error, reset, title }: Props) {
     // can never succeed via in-place reset — every retry re-requests the deleted
     // chunk. One hard reload picks up the new HTML + hashes; the sessionStorage
     // guard turns it into a single attempt, not a reload loop.
-    if (/chunk load failed|loading chunk/i.test(error.message) && !sessionStorage.getItem(CHUNK_RELOAD_KEY)) {
-      try { sessionStorage.setItem(CHUNK_RELOAD_KEY, "1"); } catch {}
+    let attemptedReload = true;
+    try { attemptedReload = Boolean(sessionStorage.getItem(CHUNK_RELOAD_KEY)); } catch { /* Storage denied: keep the in-place retry available. */ }
+    if (/chunk load failed|loading chunk/i.test(error.message) && !attemptedReload) {
+      try { sessionStorage.setItem(CHUNK_RELOAD_KEY, "1"); } catch { reset(); return; }
       window.location.reload();
       return;
     }

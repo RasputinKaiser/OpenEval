@@ -28,6 +28,8 @@ run-6 inspection. Closed not-worth-it: test-child tsx overhead (run-3); proposed
 full-history pass fusion (run-6, 65.43ms → 69.64ms, reverted). Superseded:
 load-guard → in-process A/B method notes.
 
+2026-09-12: same-snapshot repeated report caching implemented and measured in analysis-repeat (-90.3% process median). Cold scan/build items remain. Setup now uses production launch after one build, so ordinary users do not pay development compilation on each route.
+
 ## 2026-09-13 measured update
 1. Devloop: profile initial server file tracing against a controlled runtime-data snapshot; baseline 99.89s of 130.286s build. First define packaging semantics; outputFileTracingExcludes does not bypass the installed plugin's initial traversal.
 2. Runtime: retain cold analysis-filter (2.767s) and warm analysis-repeat (0.407s) as distinct workloads; no new runtime optimization demonstrated.

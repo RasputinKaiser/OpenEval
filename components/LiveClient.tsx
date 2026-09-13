@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { SessionEvidenceLink } from "./SessionEvidenceLink";
 import { useChartSelection } from "@/lib/use-chart-selection";
 import { inRange } from "@/lib/chart-analysis";
 import { DateRangeControls, SelectionChips } from "./charts/SelectionControls";
@@ -297,7 +298,7 @@ export default function LiveClient({ initialData, error: initialError, getTransc
   const hasLiveCoverageNotes = data.sourceStatus !== "available" || data.scanWarnings.length > 0 || scanCoverage.truncated || scanCoverage.partial;
 
   return (
-    <div className="mx-auto max-w-7xl p-4 md:p-6">
+    <div className="w-full p-4 md:p-6">
       <PageHeader
         icon={Radio}
         title="Live sessions"
@@ -530,18 +531,23 @@ export default function LiveClient({ initialData, error: initialError, getTransc
       </section>}
 
       {selected && (
-        <SessionDrawer
-          session={selected}
-          redact={redact}
-          users={users}
-          onClose={() => setSelected(null)}
-          onNavigate={navigateDrawer}
-          hasPrev={selectedIndex > 0}
-          hasNext={selectedIndex !== -1 && selectedIndex < visibleSessions.length - 1}
-          getTranscript={getTranscript}
-          getSessionDetail={getSessionDetail}
-          harness={data.sourceHarness}
-        />
+        <>
+          <div className="fixed bottom-4 right-4 z-[60] rounded-lg border border-bd bg-bg p-2 shadow-lg">
+            <SessionEvidenceLink className="text-xs text-accent-soft hover:underline" href={`/collection/session?sourceId=${encodeURIComponent(data.sourceHarness)}&sessionId=${encodeURIComponent(selected.sessionId)}`}>Inspect evidence</SessionEvidenceLink>
+          </div>
+          <SessionDrawer
+            session={selected}
+            redact={redact}
+            users={users}
+            onClose={() => setSelected(null)}
+            onNavigate={navigateDrawer}
+            hasPrev={selectedIndex > 0}
+            hasNext={selectedIndex !== -1 && selectedIndex < visibleSessions.length - 1}
+            getTranscript={getTranscript}
+            getSessionDetail={getSessionDetail}
+            harness={data.sourceHarness}
+          />
+        </>
       )}
     </div>
   );

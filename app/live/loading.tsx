@@ -4,7 +4,7 @@ function Bar({ className }: { className: string }) {
 
 export default function Loading() {
   return (
-    <div role="status" aria-live="polite" className="mx-auto max-w-7xl p-4 md:p-6" aria-busy="true" aria-label="Loading live sessions">
+    <div role="status" aria-live="polite" className="w-full p-4 md:p-6" aria-busy="true" aria-label="Loading live sessions">
       <span className="sr-only">Loading live sessions…</span>
       <header className="mb-6">
         <Bar className="mb-2 h-8 w-64" />

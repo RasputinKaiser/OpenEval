@@ -26,6 +26,7 @@ import PageHeader from "./PageHeader";
 import HarnessPicker from "./HarnessPicker";
 import ModelPicker from "./ModelPicker";
 import SystemNav from "./SystemNav";
+import UpdatePanel from "./UpdatePanel";
 import { useRedaction } from "@/lib/use-redaction";
 import {
   boundedRunInt,
@@ -346,6 +347,7 @@ export default function SettingsClient() {
         }
       />
       <SystemNav />
+      <UpdatePanel />
 
       <div aria-live="polite" className="sr-only">{savedNotice || maintenanceNotice}</div>
       {error && (

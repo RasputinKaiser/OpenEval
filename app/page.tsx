@@ -91,7 +91,7 @@ export default async function Page() {
   });
 
   return (
-    <div className="p-6 md:p-8 max-w-7xl mx-auto">
+    <div className="p-6 md:p-8 w-full">
       <header className="mb-6 -mx-6 md:-mx-8 -mt-6 md:-mt-8 px-6 md:px-8 py-6 border-b border-bd-subtle bg-gradient-to-b from-bg-subtle/50 to-transparent">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div className="flex min-w-0 items-start gap-3">

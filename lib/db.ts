@@ -178,6 +178,78 @@ const MIGRATIONS: Array<{ version: number; apply: (conn: Database.Database) => v
     },
   },
   { version: 2, apply: () => {} },
+  {
+    version: 3,
+    apply: (conn) => {
+      conn.exec(`
+        CREATE TABLE IF NOT EXISTS calibration_references (
+          reference_id TEXT NOT NULL,
+          version INTEGER NOT NULL,
+          label TEXT NOT NULL,
+          author_label TEXT NOT NULL,
+          provenance TEXT NOT NULL,
+          source_id TEXT NOT NULL,
+          session_id TEXT NOT NULL,
+          evidence_digest TEXT NOT NULL,
+          evidence_version TEXT NOT NULL,
+          rubric TEXT NOT NULL,
+          outcome TEXT NOT NULL,
+          rationale TEXT NOT NULL,
+          cited_ids_json TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          payload_json TEXT NOT NULL,
+          PRIMARY KEY (reference_id, version)
+        );
+        CREATE INDEX IF NOT EXISTS idx_calibration_references_created ON calibration_references(created_at DESC);
+        CREATE TABLE IF NOT EXISTS calibration_observations (
+          record_id TEXT PRIMARY KEY,
+          reference_id TEXT NOT NULL,
+          reference_version INTEGER NOT NULL,
+          provenance TEXT NOT NULL,
+          source_id TEXT NOT NULL,
+          session_id TEXT NOT NULL,
+          evidence_digest TEXT NOT NULL,
+          evidence_version TEXT NOT NULL,
+          rubric TEXT NOT NULL,
+          outcome TEXT NOT NULL,
+          cited_ids_json TEXT NOT NULL,
+          inventory_ids_json TEXT,
+          backend TEXT NOT NULL,
+          model TEXT NOT NULL,
+          reasoning_effort TEXT NOT NULL,
+          prompt_version INTEGER NOT NULL,
+          cost_usd REAL,
+          elapsed_ms REAL,
+          created_at INTEGER NOT NULL,
+          payload_json TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_calibration_observations_method ON calibration_observations(backend, model, reasoning_effort, prompt_version);
+        CREATE INDEX IF NOT EXISTS idx_calibration_observations_reference ON calibration_observations(reference_id, reference_version);
+      `);
+    },
+  },
+  {
+    version: 4,
+    apply: (conn) => {
+      conn.exec(`
+        CREATE TABLE IF NOT EXISTS experiments (
+          experiment_id TEXT PRIMARY KEY,
+          hypothesis TEXT NOT NULL,
+          baseline_run_id TEXT NOT NULL,
+          candidate_run_id TEXT NOT NULL,
+          cohort_json TEXT NOT NULL,
+          cohort_count INTEGER NOT NULL,
+          cohort_digest TEXT NOT NULL,
+          origin_source_id TEXT,
+          origin_session_id TEXT,
+          created_at INTEGER NOT NULL,
+          baseline_snapshot_json TEXT NOT NULL,
+          candidate_snapshot_json TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_experiments_created ON experiments(created_at DESC);
+      `);
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.reduce((max, m) => Math.max(max, m.version), 0);
@@ -597,8 +669,8 @@ export function countRuns(): number {
   return Number(getDb().prepare(`SELECT COUNT(*) FROM runs`).pluck().get() ?? 0);
 }
 
-export function getRun(id: string): RunRecord | null {
-  const r = getDb().prepare(`SELECT * FROM runs WHERE id = ?`).get(id) as any;
+export function getRun(id: string, conn?: Database.Database): RunRecord | null {
+  const r = (conn ?? getDb()).prepare(`SELECT * FROM runs WHERE id = ?`).get(id) as any;
   return r ? rowToRun(r) : null;
 }
 
@@ -611,8 +683,8 @@ export function listRunsByStatus(status: RunRecord["status"]): RunRecord[] {
   return rows.map(rowToRun);
 }
 
-export function listRunCases(runId: string): RunCaseRecord[] {
-  const rows = getDb().prepare(`SELECT * FROM run_cases WHERE run_id = ? ORDER BY seq ASC`).all(runId) as any[];
+export function listRunCases(runId: string, conn?: Database.Database): RunCaseRecord[] {
+  const rows = (conn ?? getDb()).prepare(`SELECT * FROM run_cases WHERE run_id = ? ORDER BY seq ASC`).all(runId) as any[];
   return rows.map(rowToRunCase);
 }
 

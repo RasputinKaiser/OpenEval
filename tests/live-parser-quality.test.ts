@@ -57,7 +57,7 @@ test("tolerates object-wrapped text and preserves a bounded unavailable marker",
     const parsed = parseSessionTranscript(file, "jsonl-dir");
     assert.equal(parsed.turns.length, 2);
     assert.equal(parsed.turns[0].reasoning?.kind, "summary");
-    assert.ok(parsed.turns[0].preview.length <= 423);
+    assert.equal(parsed.turns[0].preview, long, "The reader must preserve recorded reasoning within the raw-record byte limit.");
     assert.equal(parsed.turns[1].reasoning?.kind, "encrypted");
     assert.equal(parsed.turns[1].preview, "(encrypted reasoning)");
   } finally {

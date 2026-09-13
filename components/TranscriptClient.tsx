@@ -7,6 +7,8 @@ import type { LiveTranscriptTurn, TranscriptNormalization } from "@/lib/live";
 import { fmtDateTime, fmtNum, fmtStableDateTime, fmtTime } from "@/lib/format";
 import { useRedactedShow } from "@/lib/use-redaction";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { TranscriptContent } from "./TranscriptContent";
+import { TranscriptSearch } from "./TranscriptSearch";
 import ErrorHopper from "./ErrorHopper";
 import { RedactToggle } from "./RedactToggle";
 import { AgentReasoningBlock, isAgentReasoningTurn } from "./live/AgentReasoningBlock";
@@ -64,6 +66,7 @@ function initialCounts(turns: LiveTranscriptTurn[], total: number, supplied?: Pa
 
 type TranscriptPage = {
   turns?: LiveTranscriptTurn[];
+  windowCursor?: string;
   error?: string;
   offset?: number;
   total?: number;
@@ -76,6 +79,9 @@ type TranscriptPage = {
 
 export default function TranscriptClient({
   turns,
+  initialOffset = 0,
+  initialTargetIndex,
+  initialWindowCursor,
   sourceId,
   sessionId,
   initialCursor,
@@ -85,6 +91,9 @@ export default function TranscriptClient({
   normalization,
 }: {
   turns: LiveTranscriptTurn[];
+  initialOffset?: number;
+  initialTargetIndex?: number;
+  initialWindowCursor?: string;
   sourceId: string;
   sessionId: string;
   initialCursor?: string | null;
@@ -94,6 +103,7 @@ export default function TranscriptClient({
   normalization?: TranscriptNormalization;
 }) {
   const [loadedTurns, setLoadedTurns] = useState(turns);
+  const [checkpoints, setCheckpoints] = useState([{ offset: initialOffset, cursor: initialWindowCursor }]);
   const [knownTotal, setKnownTotal] = useState(() => Math.max(totalTurns, turns.length));
   const [nextCursor, setNextCursor] = useState<string | null>(initialCursor ?? null);
   const [hasMore, setHasMore] = useState(initialHasMore);
@@ -114,6 +124,7 @@ export default function TranscriptClient({
 
   useEffect(() => {
     setMounted(true);
+    if (window.location.hash.startsWith("#turn-")) setFilter("all");
   }, []);
 
   useEffect(() => {
@@ -122,22 +133,43 @@ export default function TranscriptClient({
     loadedTurnsRef.current = turns;
     knownTotalRef.current = Math.max(totalTurns, turns.length);
     setLoadedTurns(turns);
+    setCheckpoints([{ offset: initialOffset, cursor: initialWindowCursor }]);
     setKnownTotal(Math.max(totalTurns, turns.length));
     setKnownCounts(initialCounts(turns, totalTurns, totalCounts));
-    setFilter(defaultFilter);
+    setFilter(window.location.hash.startsWith("#turn-") ? "all" : defaultFilter);
     setQ("");
     setLoadError(null);
     setSourceNotice(null);
     setKnownNormalization(normalization);
     setNextCursor(initialCursor ?? null);
     setHasMore(initialHasMore);
-  }, [defaultFilter, sourceId, sessionId, turns, totalTurns, totalCounts, normalization, initialCursor, initialHasMore]);
+  }, [defaultFilter, sourceId, sessionId, turns, totalTurns, totalCounts, normalization, initialCursor, initialHasMore, initialOffset, initialWindowCursor]);
 
   // Harvest from the file path and the transcript itself so bare mentions in
   // prompts/output get scrubbed; secrets on — session logs are exactly where
   // pasted keys and tokens end up.
   const harvestFrom = useMemo(() => [sourceId, sessionId, ...loadedTurns.flatMap((t) => [t.preview, t.label])], [loadedTurns, sourceId, sessionId]);
   const { redact, setRedact, show } = useRedactedShow(harvestFrom, { secrets: true });
+
+  useEffect(() => {
+    let first = 0, second = 0;
+    const locate = () => {
+      cancelAnimationFrame(first); cancelAnimationFrame(second);
+      first = requestAnimationFrame(() => { second = requestAnimationFrame(() => {
+        const id = window.location.hash.slice(1);
+        if (!/^turn-\d+$/.test(id)) return;
+        const element = document.getElementById(id);
+        if (!element) return;
+        document.querySelectorAll("[data-transcript-inspected]").forEach(node => node.removeAttribute("data-transcript-inspected"));
+        element.setAttribute("data-transcript-inspected", "true");
+        element.tabIndex = -1;
+        element.scrollIntoView({ block: "center", behavior: "auto" });
+        element.focus({ preventScroll: true });
+      }); });
+    };
+    locate(); window.addEventListener("hashchange", locate);
+    return () => { cancelAnimationFrame(first); cancelAnimationFrame(second); window.removeEventListener("hashchange", locate); };
+  }, [turns, initialOffset, initialWindowCursor]);
 
   const counts = knownCounts;
 
@@ -156,8 +188,8 @@ export default function TranscriptClient({
       || t.label.toLowerCase().includes(dq)
       || t.tool?.name.toLowerCase().includes(dq)
       || t.tool?.callId?.toLowerCase().includes(dq);
-    return loadedTurns.map((t, i) => ({ t, i })).filter(({ t }) => pass(t) && matches(t));
-  }, [loadedTurns, filter, dq]);
+    return loadedTurns.map((t, i) => ({ t, i: i + initialOffset })).filter(({ t }) => pass(t) && matches(t));
+  }, [loadedTurns, filter, dq, initialOffset]);
 
   const visibleErrorIdx = useMemo(
     () => visible.filter(({ t }) => t.severity === "error").map(({ i }) => i),
@@ -176,7 +208,7 @@ export default function TranscriptClient({
       ? direction === 1 ? 0 : matchIndexes.length - 1
       : Math.min(Math.max(matchPos + direction, 0), matchIndexes.length - 1);
     setMatchPos(next);
-    document.getElementById(`turn-${matchIndexes[next]}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    document.getElementById(`turn-${matchIndexes[next]}`)?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });
   }
 
   // Redacted text per visible turn, cached — the scrub stack is regex-heavy
@@ -202,7 +234,7 @@ export default function TranscriptClient({
     requestInFlight.current = true;
     const generation = requestGeneration.current + 1;
     requestGeneration.current = generation;
-    const offset = currentTurns.length;
+    const offset = currentTurns.length + initialOffset;
     setLoadingMore(true);
     setLoadError(null);
     try {
@@ -217,7 +249,7 @@ export default function TranscriptClient({
       if (generation !== requestGeneration.current) return;
       if (!response.ok) throw new Error(result.error ?? "Transcript window could not be loaded.");
       const nextTurns = result.turns ?? [];
-      if (result.offset !== undefined && result.offset !== offset && !nextCursor) {
+      if (result.offset !== undefined && result.offset !== offset) {
         throw new Error("Transcript window offset changed; reload the transcript.");
       }
       const previousTotal = knownTotalRef.current;
@@ -228,7 +260,7 @@ export default function TranscriptClient({
         throw new Error("Transcript window made no progress; reload the transcript.");
       }
       const current = loadedTurnsRef.current;
-      if (current.length !== offset) {
+      if (current.length + initialOffset !== offset) {
         throw new Error("Transcript window changed while loading; reload the transcript.");
       }
       const next = [...current, ...nextTurns];
@@ -236,6 +268,7 @@ export default function TranscriptClient({
       loadedTurnsRef.current = next;
       knownTotalRef.current = nextTotal;
       setLoadedTurns(next);
+      setCheckpoints(previous => [...previous, { offset, cursor: result.windowCursor }]);
       setKnownTotal(nextTotal);
       setNextCursor(result.nextCursor ?? null);
       setHasMore(result.hasMore === true && result.nextCursor != null);
@@ -248,7 +281,7 @@ export default function TranscriptClient({
       });
       if (result.normalization) setKnownNormalization(result.normalization);
       if (result.total !== undefined && result.total > previousTotal) {
-        setSourceNotice("Transcript grew while open; counts updated from the current file.");
+        setSourceNotice("Reached the end of this revision; total turn count is now confirmed.");
       }
     } catch (error) {
       if (generation !== requestGeneration.current) return;
@@ -267,7 +300,7 @@ export default function TranscriptClient({
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const el = sentinelRef.current;
-    if (!el || !hasMore || loadingMore) return;
+    if (!el || !hasMore || loadingMore || initialTargetIndex !== undefined) return;
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries.some((e) => e.isIntersecting) && !requestInFlight.current) {
@@ -278,10 +311,12 @@ export default function TranscriptClient({
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [hasMore, loadingMore, loadMoreStable]);
+  }, [hasMore, loadingMore, loadMoreStable, initialTargetIndex]);
 
   return (
     <div>
+      <TranscriptSearch sourceId={sourceId} sessionId={sessionId} />
+      {initialOffset > 0 && <p className="text-xs text-fg-muted mb-3">Context window starting at message {initialOffset + 1}. <a className="underline" href={`?sourceId=${encodeURIComponent(sourceId)}&sessionId=${encodeURIComponent(sessionId)}`}>Read from the beginning</a></p>}
       <div
         className="sticky top-2 z-20 -mx-2 mb-3 space-y-2 rounded-lg border border-bd bg-bg/95 p-2 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-bg/80"
       >
@@ -318,9 +353,9 @@ export default function TranscriptClient({
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Find in transcript…"
+            placeholder="Filter loaded messages…"
             className="w-36 sm:w-44 pl-7 pr-6 py-1 text-[11px] bg-bg border border-bd rounded-full focus:outline-none focus:border-accent placeholder:text-fg-dim transition-[border-color]"
-            aria-label="Search transcript text"
+            aria-label="Filter loaded transcript messages"
           />
           {q && (
             <button onClick={() => setQ("")} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-fg-dim hover:text-fg" aria-label="Clear search">
@@ -391,7 +426,7 @@ export default function TranscriptClient({
           const meta = t.role === "meta" && t.severity === "info";
           const agentReasoning = isAgentReasoningTurn(t);
           return (
-            <div key={i} id={`turn-${i}`} className={clsx(meta ? "cv-auto" : "cv-auto-lg", "card border rounded-md", SEVERITY_TONE[t.severity], roleTone(t), agentReasoning ? "border-accent/30 bg-accent/[0.02] p-0" : meta ? "px-3 py-1" : "px-3 py-2")}>
+            <div key={i} id={`turn-${i}`} className={clsx((initialTargetIndex === undefined || i >= initialOffset + turns.length) && (meta ? "cv-auto" : "cv-auto-lg"), "card border rounded-md transcript-message", SEVERITY_TONE[t.severity], roleTone(t), agentReasoning ? "border-accent/30 bg-accent/[0.02] p-0" : meta ? "px-3 py-1" : "px-3 py-2")}>
               {agentReasoning ? (
                 <AgentReasoningBlock preview={preview} at={t.at} mounted={mounted} />
               ) : (
@@ -410,7 +445,9 @@ export default function TranscriptClient({
                     >
                       {label}
                     </span>
+                    <a className="text-[10px] text-fg-muted underline" href={(() => { const params = new URLSearchParams(typeof window === "undefined" ? { sourceId, sessionId } : window.location.search); const checkpoint = [...checkpoints].reverse().find(c => c.offset <= i); if (checkpoint?.cursor) params.set("window", checkpoint.cursor); params.set("turn", String(i)); return `?${params}#turn-${i}`; })()} onClick={() => setFilter("all")}>#{i + 1}</a>
                     <span className="flex items-center gap-1.5 shrink-0">
+                      {t.tool?.callId && <a className="text-[10px] text-accent-soft underline" href={(() => { const params = new URLSearchParams(typeof window === "undefined" ? "" : window.location.search); params.set("sourceId", sourceId); params.set("sessionId", sessionId); params.set("search", t.tool!.callId!); params.delete("window"); params.delete("turn"); return `?${params}`; })()}>Find paired call / result</a>}
                       {t.tool?.status && (
                         <span className="rounded border border-bd px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-fg-dim">
                           {show(t.tool.status)}
@@ -452,14 +489,7 @@ export default function TranscriptClient({
                   {preview && (meta ? (
                     <div className="text-[11px] mono text-fg-dim truncate">{preview}</div>
                   ) : (
-                    <pre
-                      tabIndex={0}
-                      aria-label="Turn content, scrollable"
-                      className={clsx(
-                        "mt-1 text-[12px] whitespace-pre-wrap break-words max-h-48 overflow-y-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent rounded",
-                        t.role === "user" || t.role === "assistant" ? "font-sans text-fg/90 leading-relaxed" : "mono text-fg-muted",
-                      )}
-                    >{preview}</pre>
+                    <TranscriptContent text={preview} query={dq} tool={t.role === "tool"} />
                   ))}
                 </>
               )}

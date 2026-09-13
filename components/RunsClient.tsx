@@ -143,7 +143,7 @@ export default function RunsClient({ runs, referenceTimeMs }: { runs: RunRecord[
                 onClick={() => changeFilter({ status: s.key === "all" ? null : s.key })}
                 aria-pressed={statusFilter === s.key}
                 className={clsx(
-                  "min-h-11 sm:min-h-8 text-xs px-2.5 py-1.5 rounded-md border transition-colors",
+                  "min-h-11 text-xs px-2.5 py-1.5 rounded-md border transition-colors",
                   statusFilter === s.key
                     ? "border-accent bg-accent/10 text-accent-soft"
                     : "border-bd text-fg-muted hover:bg-bg-elev"
@@ -159,7 +159,7 @@ export default function RunsClient({ runs, referenceTimeMs }: { runs: RunRecord[
               onClick={() => setOpen(!open)}
               aria-expanded={open}
               aria-haspopup="menu"
-              className="inline-flex min-h-11 sm:min-h-8 items-center gap-1 text-xs px-2.5 py-1.5 rounded-md border border-bd text-fg-muted hover:bg-bg-elev"
+              className="inline-flex min-h-11 items-center gap-1 text-xs px-2.5 py-1.5 rounded-md border border-bd text-fg-muted hover:bg-bg-elev"
             >
               {SORTS.find((s) => s.key === sort)?.label}
               <ChevronDown className={clsx("size-3 transition-transform", open && "rotate-180")} />
@@ -177,7 +177,7 @@ export default function RunsClient({ runs, referenceTimeMs }: { runs: RunRecord[
                       onClick={() => { changeFilter({ sort: s.key === "newest" ? null : s.key }); setOpen(false); }}
                       aria-pressed={sort === s.key}
                       className={clsx(
-                        "w-full min-h-11 sm:min-h-8 text-left px-3 py-1.5 text-xs hover:bg-bg-elev",
+                        "w-full min-h-11 text-left px-3 py-1.5 text-xs hover:bg-bg-elev",
                         sort === s.key && "text-accent-soft"
                       )}
                     >
@@ -196,10 +196,10 @@ export default function RunsClient({ runs, referenceTimeMs }: { runs: RunRecord[
               onChange={(e) => changeFilter({ q: e.target.value || null }, true)}
               aria-label="Search runs"
               placeholder="Search runs…"
-              className="w-32 lg:w-44 min-h-11 sm:min-h-8 pl-8 pr-2 py-1.5 text-xs bg-bg border border-bd rounded-md focus:outline-none focus:border-accent transition-colors placeholder:text-fg-dim"
+              className="w-44 lg:w-52 min-h-11 pl-8 pr-12 py-1.5 text-xs bg-bg border border-bd rounded-md focus:outline-none focus:border-accent transition-colors placeholder:text-fg-dim"
             />
             {search && (
-              <button onClick={() => changeFilter({ q: null })} className="absolute right-2 top-1/2 -translate-y-1/2 text-fg-dim hover:text-fg" aria-label="Clear search">
+              <button onClick={() => changeFilter({ q: null })} className="absolute right-0 top-1/2 flex min-h-11 min-w-11 -translate-y-1/2 items-center justify-center rounded text-fg-dim hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent" aria-label="Clear search">
                 <X className="size-3" />
               </button>
             )}
@@ -209,7 +209,7 @@ export default function RunsClient({ runs, referenceTimeMs }: { runs: RunRecord[
               value={pageSize}
               onChange={(e) => changeFilter({ limit: e.target.value === "50" ? null : e.target.value })}
               aria-label="Runs per page"
-              className="min-h-11 sm:min-h-8 text-xs bg-bg border border-bd rounded-md px-1.5 py-1 focus:outline-none focus:border-accent"
+              className="min-h-11 text-xs bg-bg border border-bd rounded-md px-1.5 py-1 focus:outline-none focus:border-accent"
             >
               <option value={25}>25</option>
               <option value={50}>50</option>

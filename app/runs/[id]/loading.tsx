@@ -6,7 +6,7 @@ function Bar({ className }: { className: string }) {
  * cases-list / case-detail two-column grid. */
 export default function Loading() {
   return (
-    <main role="status" aria-live="polite" className="p-4 max-w-7xl mx-auto" aria-busy="true" aria-label="Loading run detail">
+    <main role="status" aria-live="polite" className="p-4 w-full" aria-busy="true" aria-label="Loading run detail">
       <span className="sr-only">Loading run detail…</span>
       <section className="mb-4 overflow-hidden rounded-lg border border-bd">
         <div className="grid gap-4 p-4 xl:grid-cols-[1fr_360px] xl:items-end">

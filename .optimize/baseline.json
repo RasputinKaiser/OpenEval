@@ -494,6 +494,116 @@
       "ok": {
         "analysis-filter": true
       }
+    },
+    {
+      "ts": "2026-09-12T23:13:48+00:00",
+      "git": {
+        "rev": "fae9070",
+        "dirty": true
+      },
+      "medians": {
+        "analysis-repeat": 10.54
+      },
+      "output_tokens": {
+        "analysis-repeat": 316
+      },
+      "ok": {
+        "analysis-repeat": true
+      }
+    },
+    {
+      "ts": "2026-09-12T23:15:45+00:00",
+      "git": {
+        "rev": "fae9070",
+        "dirty": true
+      },
+      "medians": {
+        "analysis-repeat": 1.022
+      },
+      "output_tokens": {
+        "analysis-repeat": 371
+      },
+      "ok": {
+        "analysis-repeat": true
+      }
+    },
+    {
+      "ts": "2026-09-13T01:31:49+00:00",
+      "git": {
+        "rev": "fae9070",
+        "dirty": true
+      },
+      "medians": {
+        "types": 3.508,
+        "test": 14.184,
+        "lint": 2.526,
+        "build": 130.286,
+        "bench": 2.714,
+        "chart-render": 0.798,
+        "analysis-filter": 2.767,
+        "analysis-repeat": 0.407
+      },
+      "output_tokens": {
+        "types": 0,
+        "test": 237,
+        "lint": 67,
+        "build": 949,
+        "bench": 28,
+        "chart-render": 37,
+        "analysis-filter": 182,
+        "analysis-repeat": 374
+      },
+      "ok": {
+        "types": true,
+        "test": true,
+        "lint": true,
+        "build": true,
+        "bench": true,
+        "chart-render": true,
+        "analysis-filter": true,
+        "analysis-repeat": true
+      }
+    },
+    {
+      "ts": "2026-09-13T01:37:10+00:00",
+      "git": {
+        "rev": "519d3a5",
+        "dirty": true
+      },
+      "medians": {
+        "types": 2.365,
+        "test": 14.4,
+        "lint": 2.559,
+        "build": 138.518
+      },
+      "output_tokens": {
+        "types": 0,
+        "test": 237,
+        "lint": 67,
+        "build": 965
+      },
+      "ok": {
+        "types": true,
+        "test": true,
+        "lint": true,
+        "build": true
+      }
+    },
+    {
+      "ts": "2026-09-13T01:40:50+00:00",
+      "git": {
+        "rev": "519d3a5",
+        "dirty": true
+      },
+      "medians": {
+        "build": 275.466
+      },
+      "output_tokens": {
+        "build": 949
+      },
+      "ok": {
+        "build": true
+      }
     }
   ]
 }
