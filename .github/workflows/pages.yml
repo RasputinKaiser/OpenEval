@@ -2,9 +2,9 @@ name: GitHub Pages
 on:
   push:
     branches: [main]
-    paths: ['site/**', 'scripts/build-pages.mjs', 'scripts/check-pages.mjs', 'package.json', 'cases/**', 'public/icon.svg', '.github/workflows/pages.yml']
+    paths: ['media/screenshots/**', 'site/**', 'scripts/build-pages.mjs', 'scripts/check-pages.mjs', 'package.json', 'cases/**', 'public/icon.svg', '.github/workflows/pages.yml']
   pull_request:
-    paths: ['site/**', 'scripts/build-pages.mjs', 'scripts/check-pages.mjs', 'package.json', 'cases/**', 'public/icon.svg', '.github/workflows/pages.yml']
+    paths: ['media/screenshots/**', 'site/**', 'scripts/build-pages.mjs', 'scripts/check-pages.mjs', 'package.json', 'cases/**', 'public/icon.svg', '.github/workflows/pages.yml']
   workflow_dispatch:
 permissions:
   contents: read

@@ -37,3 +37,8 @@ for (const name of ['index.html', '404.html']) {
   const html = fs.readFileSync(page, 'utf8').replace(/(href="(?:\/OpenEval\/)?styles\.css)"/g, `$1?v=${assetRevision}"`).replace('src="site.js"', `src="site.js?v=${assetRevision}"`);
   fs.writeFileSync(page, html);
 }
+
+fs.mkdirSync(path.join(out, 'screenshots'), { recursive: true });
+for (const name of ['collection-overview.png', 'model-analytics.png']) {
+  fs.copyFileSync(path.join(root, 'media/screenshots', name), path.join(out, 'screenshots', name));
+}

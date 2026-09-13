@@ -16,3 +16,6 @@
 body:has(#evidence-dialog[open]){overflow:hidden}.evidence-header{position:sticky;top:0;z-index:3;background:var(--surface)}
 @media(max-width:360px){.attempt-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
 .preview summary,.message summary{min-height:44px;padding-block:10px}.header nav a{min-height:44px;display:inline-flex;align-items:center}
+
+/* Real captures stay legible, retain their full pixels, and load on demand. */
+.capture-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin:28px 0}.capture-grid figure{margin:0;min-width:0}.capture-grid a{display:block;border:1px solid var(--line);border-radius:16px;overflow:hidden;background:#0a0a0b;transition:transform 180ms ease}.capture-grid a:hover{transform:translateY(-3px)}.capture-grid img{display:block;width:100%;height:auto;aspect-ratio:16/10;object-fit:contain}.capture-grid a span{display:block;padding:16px;color:#c9baff}.capture-grid figcaption{padding:16px 2px;line-height:1.6}.capture-grid figcaption strong{display:block}@media(max-width:760px){.capture-grid{grid-template-columns:1fr}}@media(prefers-reduced-motion:reduce){.capture-grid a{transition:none}.capture-grid a:hover{transform:none}}

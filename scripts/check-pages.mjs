@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const out = path.join(root, '.pages-dist');
-const allowed = ['demos','.nojekyll','404.html','icon.svg','index.html','robots.txt','site.js','sitemap.xml','social.svg','social.png','styles.css'];
+const allowed = ['screenshots','demos','.nojekyll','404.html','icon.svg','index.html','robots.txt','site.js','sitemap.xml','social.svg','social.png','styles.css'];
 assert.deepEqual(fs.readdirSync(out).sort(), allowed.sort(), 'Only public website assets may be deployed');
 const html = fs.readFileSync(path.join(out,'index.html'),'utf8');
 const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]);
@@ -34,3 +34,22 @@ for (const name of fs.readdirSync(path.join(out,'demos'))) {
   assert.ok(demo.includes("connect-src 'none'"), 'Demo network requests must be blocked');
 }
 console.log('Reference demo allowlist and network policies passed.');
+
+assert.deepEqual(fs.readdirSync(path.join(out, 'screenshots')).sort(), ['collection-overview.png', 'model-analytics.png']);
+for (const name of fs.readdirSync(path.join(out, 'screenshots'))) {
+  assert.deepEqual(fs.readFileSync(path.join(out, 'screenshots', name)), fs.readFileSync(path.join(root, 'media/screenshots', name)), 'Published screenshot must match reviewed original');
+}
+console.log('Reviewed screenshot allowlist and original-byte parity passed.');
+
+for (const name of fs.readdirSync(path.join(out, 'screenshots'))) {
+  const png = fs.readFileSync(path.join(out, 'screenshots', name));
+  assert.equal(png.subarray(1, 4).toString(), 'PNG');
+  for (let offset = 8; offset < png.length;) {
+    const length = png.readUInt32BE(offset);
+    const type = png.subarray(offset + 4, offset + 8).toString();
+    assert.ok(!['tEXt', 'zTXt', 'iTXt', 'eXIf'].includes(type), 'Screenshot must not publish text or EXIF metadata');
+    offset += length + 12;
+    assert.ok(offset <= png.length, 'PNG chunks must be intact');
+  }
+}
+console.log('Screenshot metadata privacy checks passed.');

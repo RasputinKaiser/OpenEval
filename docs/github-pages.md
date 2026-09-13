@@ -60,3 +60,7 @@ Tool revision and filtering failures shows exactly six attempts, matching 34/40
 passes in the chart. Attempt 40 opens its matching transcript and expandable failed
 checks. Escape closes the native modal. The route reference advances from Start to
 Signal bridge by keyboard; the marble reference pauses and Stop removes its frame.
+
+## Real application captures
+
+The website and repository README share two reviewed screenshots from `media/screenshots/`. The build copies only the named images, and the check verifies exact output bytes and rejects embedded text/EXIF metadata. Capture provenance and privacy review are documented alongside the source images. Gallery images load lazily and link directly to the full-resolution file without requiring JavaScript. Their values are explicitly labelled as capture-time personal installation data, separate from illustrative tour data.
