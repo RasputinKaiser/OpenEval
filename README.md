@@ -10,6 +10,16 @@ Inspect local agent conversations, follow analytics into transcript evidence, an
 
 **[Explore the website](https://rasputinkaiser.github.io/OpenEval/)** · [Try the interactive demos](https://rasputinkaiser.github.io/OpenEval/#playground) · [Install](#install-and-start) · [Documentation](#documentation) · [Latest release](https://github.com/RasputinKaiser/OpenEval/releases/latest)
 
+## Product Preview
+
+[![Watch the new OpenEval product preview — Follow the evidence](docs/media/openeval-preview-2026-09.jpg)](docs/media/openeval-preview-2026-09.mp4)
+
+**Follow the evidence.** A new 29.5-second film with current OpenEval footage: model activity, evidence coverage, the evaluation catalog, run setup, interactive references, and the accuracy audit. The custom edit pairs kinetic typography, focused interface crops, sequential evidence reveals, and a full-screen playable scene. It remains understandable without sound.
+
+[Watch or download the full-resolution MP4](docs/media/openeval-preview-2026-09.mp4) · [Explore the releases](https://github.com/RasputinKaiser/OpenEval/releases) · [Original v0.1.1 launch film](https://github.com/RasputinKaiser/OpenEval/releases/download/v0.1.1/openeval-launch-v0.1.1.mp4)
+
+The playground footage shows a reference solution, not an agent result. Usage estimates and unknown evidence remain labeled in the film.
+
 ## Inside OpenEval
 
 Real screenshots from a local installation, reviewed for visible sensitive information. These are capture-time snapshots, not benchmark claims or live totals. **API-equivalent cost is an estimate, not an invoice or subscription usage.**
