@@ -58,3 +58,6 @@ fixtures/**/.DS_Store
 .impeccable/
 .assessment_a_shots/
 GOAL.md
+
+# Generated GitHub Pages output.
+.pages-dist/

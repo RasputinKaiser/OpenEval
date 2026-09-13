@@ -1,0 +1,40 @@
+name: GitHub Pages
+on:
+  push:
+    branches: [main]
+    paths: ['site/**', 'scripts/build-pages.mjs', 'scripts/check-pages.mjs', 'package.json', 'cases/**', 'public/icon.svg', '.github/workflows/pages.yml']
+  pull_request:
+    paths: ['site/**', 'scripts/build-pages.mjs', 'scripts/check-pages.mjs', 'package.json', 'cases/**', 'public/icon.svg', '.github/workflows/pages.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: node scripts/build-pages.mjs
+      - run: node scripts/check-pages.mjs
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .pages-dist
+  deploy:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v5
+      - id: deployment
+        uses: actions/deploy-pages@v4

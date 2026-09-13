@@ -9,6 +9,8 @@ OpenEval is a local-first, harness-agnostic evaluation dashboard for agent CLIs.
 
 The project is designed for people who want to compare agent behavior on practical software tasks, inspect the exact traces behind a score, and keep their private run history on their own machine.
 
+**[Visit the OpenEval website](https://rasputinkaiser.github.io/OpenEval/)** · [Installation](https://rasputinkaiser.github.io/OpenEval/#install) · [Documentation](https://rasputinkaiser.github.io/OpenEval/#resources)
+
 ## Install and start
 
 Install **Node 22 with npm 10**, then run:
