@@ -48,7 +48,7 @@ export default function UpdatePanel() {
       <div className="space-y-3 text-muted"><p>Stop OpenEval and any running evaluations first. Save local code changes before switching versions. In your OpenEval folder, fetch releases and check your checkout:</p>
         <pre className="overflow-x-auto rounded-lg border border-bd p-3 text-xs text-fg"><code>{"git status --short\ngit fetch origin --tags"}</code></pre>
         <p>With a clean checkout, switch to the release tag shown above, then rebuild and restart:</p>
-        <pre className="overflow-x-auto rounded-lg border border-bd p-3 text-xs text-fg"><code>{`git switch --detach ${release?.latest ?? "<release-tag>"}\nnpm run setup\nnpm run open`}</code></pre>
+        <pre className="overflow-x-auto rounded-lg border border-bd p-3 text-xs text-fg"><code>{`git switch --detach ${release?.available ? release.latest : `v${version}`}\nnpm run setup\nnpm run open`}</code></pre>
         <p>Keep your existing data folder and environment settings. This panel checks releases; installation runs in your terminal so rebuilding cannot interrupt the server serving this page.</p>
       </div>
     </details>
