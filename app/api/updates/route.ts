@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
-import { version } from "@/package.json";
+import packageInfo from "@/package.json";
 import { readRelease } from "@/lib/releases";
+
+const { version } = packageInfo;
 
 export const dynamic = "force-dynamic";
 

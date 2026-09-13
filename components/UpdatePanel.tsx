@@ -2,8 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Download, ExternalLink, RefreshCw } from "lucide-react";
-import { version } from "@/package.json";
+import packageInfo from "@/package.json";
 import { RELEASES_URL } from "@/lib/releases";
+
+const { version } = packageInfo;
 
 type Release = { installed: string; latest: string; available: boolean; url: string };
 
