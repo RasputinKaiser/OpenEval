@@ -19,3 +19,13 @@ fs.writeFileSync(path.join(out, '.nojekyll'), '');
 fs.writeFileSync(path.join(out, 'robots.txt'), 'User-agent: *\nAllow: /\nSitemap: https://rasputinkaiser.github.io/OpenEval/sitemap.xml\n');
 fs.writeFileSync(path.join(out, 'sitemap.xml'), '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://rasputinkaiser.github.io/OpenEval/</loc></url></urlset>\n');
 console.log(`Built OpenEval ${version} project site (${countCases(path.join(root, 'cases'))} cases).`);
+
+const demos = ['map-route-planner-v2.html', 'kinetic-marble-lab.html', 'firefly-garden.html'];
+fs.mkdirSync(path.join(out, 'demos'), { recursive: true });
+for (const name of demos) {
+  const original = fs.readFileSync(path.join(root, 'cases/visual-code/reference', name), 'utf8');
+  const policy = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">`;
+  const protectedDocument = original.replace(/(<html[^>]*>)/i, '$1' + policy);
+  if (protectedDocument === original) throw new Error(`Missing HTML root in demo ${name}`);
+  fs.writeFileSync(path.join(out, 'demos', name), protectedDocument);
+}

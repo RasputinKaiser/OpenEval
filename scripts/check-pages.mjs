@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const out = path.join(root, '.pages-dist');
-const allowed = ['.nojekyll','404.html','icon.svg','index.html','robots.txt','site.js','sitemap.xml','social.svg','social.png','styles.css'];
+const allowed = ['demos','.nojekyll','404.html','icon.svg','index.html','robots.txt','site.js','sitemap.xml','social.svg','social.png','styles.css'];
 assert.deepEqual(fs.readdirSync(out).sort(), allowed.sort(), 'Only public website assets may be deployed');
 const html = fs.readFileSync(path.join(out,'index.html'),'utf8');
 const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]);
@@ -25,4 +25,12 @@ for (const [,target] of html.matchAll(/(?:href|src)="([^"]+)"/g)) {
 assert.ok(!html.includes('{{'), 'No unresolved placeholders');
 assert.ok(html.includes('EXAMPLE DATA') && html.includes('not a benchmark result'), 'Illustration provenance must be explicit');
 assert.ok(html.includes('id="install-command"'), 'Install commands must be available without JavaScript');
-console.log(`Pages checks passed: ${allowed.length} allowlisted files, links, anchors, release substitutions, example provenance.`);
+console.log(`Pages checks passed: ${allowed.length} allowlisted entries, links, anchors, release substitutions, example provenance.`);
+
+assert.deepEqual(fs.readdirSync(path.join(out, 'demos')).sort(), ['firefly-garden.html', 'kinetic-marble-lab.html', 'map-route-planner-v2.html']);
+for (const name of fs.readdirSync(path.join(out,'demos'))) {
+  const demo = fs.readFileSync(path.join(out,'demos',name),'utf8');
+  assert.ok(demo.includes('Content-Security-Policy'), 'Reference demos require a network-restricting policy');
+  assert.ok(demo.includes("connect-src 'none'"), 'Demo network requests must be blocked');
+}
+console.log('Reference demo allowlist and network policies passed.');
