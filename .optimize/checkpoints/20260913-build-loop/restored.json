@@ -1,0 +1,24 @@
+{
+  "ts": "2026-09-13T01:40:50+00:00",
+  "cwd": "<project-root>",
+  "git": {
+    "rev": "519d3a5",
+    "dirty": true
+  },
+  "output_estimator": "heuristic-chars/4",
+  "probes": {
+    "build": {
+      "cmd": "npm run build --silent",
+      "runs": 1,
+      "samples_s": [
+        275.466
+      ],
+      "median_s": 275.466,
+      "exit": 0,
+      "ok": true,
+      "output_bytes": 3950,
+      "output_tokens": 949,
+      "output_tail": null
+    }
+  }
+}

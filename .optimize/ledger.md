@@ -407,3 +407,12 @@ OpenEval behavior or treating dirty-checkout timings as clean-release claims.
 - measure.py: 3.154s → 2.332s (-26.1%, -0.822s). Does not clear the required max(5%, 2s) threshold; optimization discarded by restoring the exact baseline file. The separate integer bucket-bound correctness fix remains committed. No performance win claimed.
 - Raw runs: runs/20260911-analysis-before.json and runs/20260911-analysis-after.json. Temporary parity harness removed after comparison.
 - Next run: retain the reproducible analysis-filter probe; pursue caching/incremental aggregation only if a realistic repeated-request workload justifies it.
+
+## Build-loop optimization trial — 2026-09-13 (fae9070, dirty primary checkout)
+- Baseline measure.py suite passed: build 130.286s, tests median 14.184s, lint 2.526s, types 3.508s; live bench 2.714s, chart SSR 0.798s, cold analysis 2.767s, repeated analysis 0.407s.
+- Rejected webpackBuildWorker trial: build 138.518s (+6.3%); tests 14.400s, lint 2.559s, types 2.365s all passed. Removed only the trial setting, preserving existing distDir and all other WIP.
+- Restored-config build passed at 275.466s. Large variation invalidates a causal worker-regression claim; no reliable speedup established. Build settings change cache inputs, and mutable data/host load are not controlled here.
+- Trace points to node-file-trace-plugin: 99.89s baseline, 101.37s trial. Manifests repeat mutable data files across routes. Installed Next applies route exclusions after the initial trace; do not assume packaging exclusions solve this phase.
+- Frozen single-session token scan: heuristic chars/4, 62 estimated identical-refetch waste tokens; no token win above threshold. Convention: 10k wasted tokens =60s. No information removed.
+- Durable receipts and exact probe snapshot: .optimize/checkpoints/20260913-build-loop/. Original raw reports remain ignored under runs/. Checkpoint cwd normalized only. Baseline checkpoint commit 519d3a5 excluded all pre-existing WIP.
+- Next run: controlled fixed runtime-data snapshot, then profile file tracing and explicitly define runtime-versus-bundled content. Do not retry worker flag blind. No accepted source optimization this run.
