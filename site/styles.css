@@ -15,3 +15,4 @@
 @media(prefers-reduced-motion:reduce){#evidence-dialog[open],.route-line{animation:none}.journey>a,.journey>button,.attempt-grid button{transition:none}}
 body:has(#evidence-dialog[open]){overflow:hidden}.evidence-header{position:sticky;top:0;z-index:3;background:var(--surface)}
 @media(max-width:360px){.attempt-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.preview summary,.message summary{min-height:44px;padding-block:10px}.header nav a{min-height:44px;display:inline-flex;align-items:center}
