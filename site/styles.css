@@ -14,3 +14,4 @@
 @media(max-width:430px){.attempt-grid{grid-template-columns:repeat(5,1fr)}.evidence-toolbar label{width:100%}.demo-tabs button{font-size:11px;padding-inline:8px}.evidence-header{gap:10px}.evidence-header h2{font-size:20px}.demo-controls .button{flex:1}.watch{padding:18px}}
 @media(prefers-reduced-motion:reduce){#evidence-dialog[open],.route-line{animation:none}.journey>a,.journey>button,.attempt-grid button{transition:none}}
 body:has(#evidence-dialog[open]){overflow:hidden}.evidence-header{position:sticky;top:0;z-index:3;background:var(--surface)}
+@media(max-width:360px){.attempt-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}

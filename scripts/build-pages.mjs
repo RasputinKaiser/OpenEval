@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -28,4 +29,11 @@ for (const name of demos) {
   const protectedDocument = original.replace(/(<html[^>]*>)/i, '$1' + policy);
   if (protectedDocument === original) throw new Error(`Missing HTML root in demo ${name}`);
   fs.writeFileSync(path.join(out, 'demos', name), protectedDocument);
+}
+
+const assetRevision = createHash('sha256').update(fs.readFileSync(path.join(out, 'styles.css'))).update(fs.readFileSync(path.join(out, 'site.js'))).digest('hex').slice(0, 12);
+for (const name of ['index.html', '404.html']) {
+  const page = path.join(out, name);
+  const html = fs.readFileSync(page, 'utf8').replace(/(href="(?:\/OpenEval\/)?styles\.css)"/g, `$1?v=${assetRevision}"`).replace('src="site.js"', `src="site.js?v=${assetRevision}"`);
+  fs.writeFileSync(page, html);
 }

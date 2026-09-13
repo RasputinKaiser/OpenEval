@@ -20,7 +20,7 @@ for (const [,target] of html.matchAll(/(?:href|src)="([^"]+)"/g)) {
     }
     continue;
   }
-  assert.ok(fs.existsSync(path.join(out,target)), `Missing local asset ${target}`);
+  assert.ok(fs.existsSync(path.join(out,target.split('?')[0])), `Missing local asset ${target}`);
 }
 assert.ok(!html.includes('{{'), 'No unresolved placeholders');
 assert.ok(html.includes('EXAMPLE DATA') && html.includes('not a benchmark result'), 'Illustration provenance must be explicit');
