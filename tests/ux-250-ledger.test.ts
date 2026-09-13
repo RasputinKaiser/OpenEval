@@ -27,7 +27,7 @@ test("UX-250 source contracts retain theme and responsive safeguards", () => {
   assert.match(css, /:root\.light/);
   assert.match(css, /@media \(max-width: 767px\)/);
   assert.doesNotMatch(css, /transition:\s*all\b/);
-  assert.match(evaluateNav, /overflow-x-auto/);
+  assert.match(evaluateNav, /grid-cols-2.*sm:grid-cols-3.*xl:grid-cols-6/);
   assert.match(evaluateNav, /aria-current/);
   assert.match(mobileNav, /safe-area-inset-bottom/);
   assert.match(mobileNav, /role="dialog"/);

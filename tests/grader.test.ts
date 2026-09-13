@@ -5,6 +5,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { runGrader, evaluate } from "../lib/grader";
+import { CaseDefinitionSchema } from "../lib/cases";
 import { extractJudgeJson } from "../lib/grader/judge";
 import { MAX_RETAINED_BYTES } from "../lib/runner/spawn";
 import type { GraderResult, GraderSpec, RunnerResult } from "../lib/types";
@@ -464,4 +465,21 @@ test("evaluate fails when a forbidden grader fails, regardless of ratio", () => 
   assert.equal(e.passed, false);
   // a passing forbidden grader does not force failure
   assert.equal(evaluate([res(true, { weight: 1, forbidden: true })], 1).passed, true);
+});
+
+ test("evaluation rejects invalid scoring inputs and cannot pass absent evidence", () => {
+  const result = { spec: { type: "file_exists", path: "a" }, passed: true, durationMs: 0 } as GraderResult;
+  for (const threshold of [-1, 1.1, NaN, Infinity]) assert.throws(() => evaluate([result], threshold), RangeError);
+  for (const weight of [-1, NaN, Infinity]) assert.throws(() => evaluate([{ ...result, spec: { ...result.spec, weight } }]), RangeError);
+  assert.equal(evaluate([], 0).passed, false);
+  assert.equal(evaluate([{ ...result, spec: { ...result.spec, weight: 0 } }], 0).passed, false);
+  assert.equal(evaluate([{ ...result, infraError: true }], 0).passed, false);
+  assert.equal(evaluate([result], 0).passed, true);
+});
+
+test("case admission rejects invalid weights and thresholds", () => {
+ const base = { id: "scoring-validation", name: "Scoring", category: "agentic-swe", prompt: "test", graders: [{ type: "file_exists", path: "a" }] };
+ for (const pass_threshold of [-1, 1.01, Infinity]) assert.equal(CaseDefinitionSchema.safeParse({ ...base, pass_threshold }).success, false);
+ assert.equal(CaseDefinitionSchema.safeParse({ ...base, graders: [{ type: "file_exists", path: "a", weight: -1 }] }).success, false);
+ assert.equal(CaseDefinitionSchema.safeParse({ ...base, pass_threshold: 0.5 }).success, true);
 });

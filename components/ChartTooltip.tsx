@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 /**
@@ -48,34 +48,51 @@ export function useChartTooltip() {
   const pinned = tip?.pinKey != null;
   const pinnedRef = useRef(pinned);
   pinnedRef.current = pinned;
+  const frame = useRef<number | null>(null);
+  const pending = useRef<TipState | null>(null);
+  const cancelMove = useCallback(() => {
+    if (frame.current !== null) cancelAnimationFrame(frame.current);
+    frame.current = null;
+    pending.current = null;
+  }, []);
+  useEffect(() => cancelMove, [cancelMove]);
 
-  const show = (e: { clientX: number; clientY: number }, content: ReactNode) => {
+  const show = useCallback((e: { clientX: number; clientY: number }, content: ReactNode) => {
     if (pinnedRef.current) return;
-    setTip({ x: e.clientX, y: e.clientY, content });
-  };
+    pending.current = { x: e.clientX, y: e.clientY, content };
+    if (frame.current !== null) return;
+    frame.current = requestAnimationFrame(() => {
+      frame.current = null;
+      if (!pinnedRef.current && pending.current) setTip(pending.current);
+      pending.current = null;
+    });
+  }, []);
   /** Focus events carry no pointer coords — anchor to the focused element instead. */
-  const showAt = (el: Element, content: ReactNode) => {
+  const showAt = useCallback((el: Element, content: ReactNode) => {
     if (pinnedRef.current) return;
+    cancelMove();
     const r = el.getBoundingClientRect();
     setTip({ x: r.left + r.width / 2, y: r.top, content });
-  };
-  const hide = () => {
+  }, [cancelMove]);
+  const hide = useCallback(() => {
+    cancelMove();
     if (pinnedRef.current) return;
     setTip(null);
-  };
-  const unpin = () => setTip(null);
+  }, [cancelMove]);
+  const unpin = useCallback(() => { cancelMove(); pinnedRef.current = false; setTip(null); }, [cancelMove]);
   /**
    * Tap/click/Enter on a mark: pin the tip there; the same mark toggles off.
    * Callers must stopPropagation so the document-level dismiss doesn't fire;
    * a broadcast event still unpins every OTHER chart's tooltip instance.
    */
-  const togglePin = (e: MarkEvent, content: ReactNode, pinKey: string) => {
+  const togglePin = useCallback((e: MarkEvent, content: ReactNode, pinKey: string) => {
+    cancelMove();
     // Resolve the anchor before the updater runs — React nulls a synthetic
     // event's currentTarget as soon as the handler returns.
     const { x, y } = anchorOf(e);
     document.dispatchEvent(new CustomEvent(PIN_EVENT, { detail: instanceId.current }));
     setTip((cur) => (cur?.pinKey === pinKey ? null : { x, y, content, pinKey }));
-  };
+  }, [cancelMove]);
 
   // A pinned tip dismisses on Escape, any tap/click outside a pinning mark,
   // any scroll (fixed positioning would leave it floating over moved content),
@@ -105,15 +122,24 @@ export function useChartTooltip() {
 
 export function ChartTooltip({ tip }: { tip: TipState | null }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  const size = useRef({ width: 0, height: 0 });
+  const content = tip?.content;
+  const isPinned = tip?.pinKey != null;
 
   useLayoutEffect(() => {
-    if (!tip || !ref.current) { setPos(null); return; }
-    const { width, height } = ref.current.getBoundingClientRect();
+    if (!ref.current) return;
+    const rect = ref.current.getBoundingClientRect();
+    size.current = { width: rect.width, height: rect.height };
+  }, [content, isPinned]);
+  useLayoutEffect(() => {
+    if (!tip || !ref.current) return;
+    const { width, height } = size.current;
     const left = Math.min(Math.max(tip.x - width / 2, 8), window.innerWidth - width - 8);
     let top = tip.y - height - 10;
     if (top < 8) top = tip.y + 14; // flip below the pointer near the viewport top
-    setPos({ left, top });
+    top = Math.max(8, Math.min(top, window.innerHeight - height - 8));
+    ref.current.style.transform = `translate3d(${Math.max(8, left)}px, ${top}px, 0)`;
+    ref.current.style.visibility = "visible";
   }, [tip]);
 
   if (!tip) return null;
@@ -127,7 +153,7 @@ export function ChartTooltip({ tip }: { tip: TipState | null }) {
           "fixed z-50 pointer-events-none rounded-md border bg-bg-elev px-2.5 py-1.5 text-[11px] shadow-lg max-w-[300px] " +
           (pinned ? "border-accent/60" : "border-bd")
         }
-        style={pos ? { left: pos.left, top: pos.top } : { left: -9999, top: -9999 }}
+        style={{ left: 0, top: 0, visibility: "hidden", maxWidth: "min(300px, calc(100vw - 16px))" }}
       >
         {tip.content}
         {pinned && <div className="mt-1 text-[9px] text-fg-dim">pinned — esc or tap away to close</div>}

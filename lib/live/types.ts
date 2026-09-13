@@ -106,6 +106,8 @@ export interface LiveSession {
   lastPromptPreview: string | null;
   project: string;
   model: string | null;
+  /** Provider identifiers explicitly recorded by the host, separate from source and model. */
+  observedProviders?: string[];
   startedAt: number;
   lastEventAt: number;
   durationMs: number;
@@ -376,6 +378,8 @@ export interface TranscriptCursorState {
   };
   recordIndex: number;
   semanticTurns: number;
+  /** Replay a compound raw record without dropping its remaining blocks. */
+  skipCandidates?: number;
 }
 
 export interface LiveSessionDetailResult {
@@ -383,7 +387,7 @@ export interface LiveSessionDetailResult {
   error?: string;
 }
 
-export type LiveTraceFormat = "claude-projects" | "codex-sessions" | "jsonl-dir" | "hermes-json" | "hermes-sqlite";
+export type LiveTraceFormat = "claude-projects" | "codex-sessions" | "jsonl-dir" | "hermes-json" | "hermes-sqlite" | "agent-sqlite" | "kimi-wire" | "deepseek-jsonl" | "grok-markdown";
 
 export interface LiveTraceSource {
   id: string;

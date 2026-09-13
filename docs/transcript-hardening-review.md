@@ -1,0 +1,19 @@
+# Transcript/data review and typography follow-up
+
+The five findings below were subsequently implemented. See [Data and transcript hardening](data-transcript-hardening.md) for current behavior, migration and verification. The review text records the original findings.
+
+## Original prioritized findings
+
+1. **Opaque message links.** `lib/collection/transcript-cursor.ts` signs a base64url-encoded payload containing `file` and `project`; the transcript reader/search put these cursors into message URLs. Signing prevents tampering but does not conceal paths. Use an opaque server-resolved reference or authenticated encryption, with versioned migration and restart/stale-reference behavior. Test that decoded/shared URLs contain no local path, username or transcript text, while exact-message navigation remains stable. This is a sharing/privacy issue; it does not establish arbitrary-file access, since the resolver still checks inventory.
+2. **Consistent model populations.** `filterAnalysisSessions` matches every attributed model; `buildOptions` and model grouping still use only `session.model`. The Models table, dropdown counts and evidence cohort can therefore disagree for mixed-model sessions. Define and label primary-model grouping versus contains-model filtering explicitly, use attributed identities for filter counts, and fixture-test the menu/table/evidence journey. Do not assign a mixed session's entire usage to each model.
+3. **Explicit redaction search semantics.** `responseForWindow` matches raw text before producing a redacted excerpt, including a special redacted-match message when the query disappears after redaction. This reveals existence of a raw-text match even when the excerpt is hidden. Prefer redacted-surface search for the ordinary UI, and separately define any intentional local raw-evidence mode. Test secret/path substrings as well as harmless text spanning a redaction boundary.
+4. **Known free versus missing cost.** `costValue` treats every inferred zero as unavailable, whereas model aggregation can recognize listed-rate zero-cost sessions as priced. Preserve that distinction through analytics with a pricing/provenance-aware eligibility rule and explicit fixtures for measured zero, listed free price, unpriced placeholder and malformed cost. A bare numeric zero is insufficient evidence.
+5. **Coverage and parser compatibility.** Database adapters and Grok exports have explicit size/schema limits; the experimental evidence-judge extractor does not yet understand all new native formats. Keep readable, searchable, normalized and judge-supported coverage separate in the UI. Add support only alongside versioned fixtures, including attachments, interrupted streams and cross-window tool pairing.
+
+Existing protections retained: source-qualified inventory resolution; signed revision/parser-bound cursors; stale-source responses; bounded transcript windows and search batches; cancellation of superseded searches; distinct raw-pruned/archive states. No data/parser/API behavior changed in this follow-up.
+
+## Typography change
+
+Pricing provenance is now a separate block below each model name with a 4px gap. Identifier wrapping uses word boundaries where possible and only breaks long identifiers when necessary. Table-heading tracking is reduced from 0.12em to 0.07em, pricing-label tracking is 0.06em, and numeric tracking stays normal. Proportional page/chart headings use native font kerning. Tabular numbers and transcript/code content are unchanged.
+
+Validation: typecheck, lint, production build and diff check passed; focused transcript/analysis/UI tests passed 26/26. Computer Use confirmed separate model/provenance blocks with a measured 4px gap in normal and 390px narrow layouts, and no document overflow. Search and viewport overrides were cleared. Production preview is running on port 3177. Data findings above remain recommendations; no parser/API behavior was changed.

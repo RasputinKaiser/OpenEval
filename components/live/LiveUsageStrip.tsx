@@ -11,7 +11,7 @@ import { DailyVolumeChart } from "./DailyVolumeChart";
 
 // The parent re-renders on every poll tick (updatedAt); this strip only
 // depends on `data`, so memo lets the unchanged-reference case skip it.
-export const LiveUsageStrip = React.memo(function LiveUsageStrip({ data }: { data: LiveAggregateList }) {
+export const LiveUsageStrip = React.memo(function LiveUsageStrip({ data, onExploreDay }: { data: LiveAggregateList; onExploreDay?: (fromMs: number, toMs: number) => void }) {
   const usage = data.usageSummary;
   const tokenMeasured = usage.sessionsWithMeasuredUsage;
   const hasTokenEvidence = tokenMeasured > 0;
@@ -92,7 +92,7 @@ export const LiveUsageStrip = React.memo(function LiveUsageStrip({ data }: { dat
       {/* Volume dimension: how much work did those days carry? (stacked daily split) */}
       {data.sessions.length > 0 && (
         <div className="border-t border-bd-subtle px-4 py-3">
-          <DailyVolumeChart sessions={data.sessions.map((s) => ({ startedAt: s.startedAt, inputTokens: s.inputTokens, outputTokens: s.outputTokens, cacheReadTokens: s.cacheReadTokens }))} />
+          <DailyVolumeChart onExplore={onExploreDay} sessions={data.sessions.map((s) => ({ startedAt: s.startedAt, inputTokens: s.inputTokens, outputTokens: s.outputTokens, cacheReadTokens: s.cacheReadTokens }))} />
         </div>
       )}
       {data.totalSessions > 0 && tokenMeasured === 0 && (

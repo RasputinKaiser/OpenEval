@@ -61,7 +61,7 @@ test("snapshot metadata remains visible instead of treating HTTP 200 as fresh", 
   assert.match(timeline, /next\.generatedAtMs \?\? Date\.now\(\)/);
   assert.match(
     timeline,
-    /fetch\("\/api\/collection\/timeline\?fresh=1", \{ cache: "no-store" \}\)/,
+    /fetch\(`\/api\/collection\/timeline\?\$\{forceRefresh \? "fresh=1&" : ""\}\$\{key\}`, \{ cache: "no-store", signal: controller.signal \}\)/,
     "automatic retries must bypass both browser and server-side stale-while-revalidate responses",
   );
   const timelinePage = read("app/collection/timeline/page.tsx");

@@ -338,7 +338,7 @@ export async function executeCase(
     } else if (rec.budget_exceeded) {
       rec.status = "failed";
       if (!rec.error_msg) rec.error_msg = "Budget exceeded";
-    } else if (agentGraderFailure) {
+    } else if (agentGraderFailure && !evaluate(graderResults.filter(g => !g.infraError), def.pass_threshold ?? 1).passed) {
       // Real evidence that the agent failed must not be masked by a concurrent
       // unavailable LLM judge.
       rec.status = "failed";

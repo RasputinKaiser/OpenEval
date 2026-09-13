@@ -223,10 +223,10 @@ test("markerImpact switches to judged-only medians at 5 judged per side", () => 
   // Judge 6 sessions on each side of t=21: before scores 0.2, after scores 0.9.
   const judgments = new Map<string, StoredJudgment>();
   for (const t of [15, 16, 17, 18, 19, 20]) {
-    judgments.set(`/sessions/s${t * 1000}.jsonl`, { file: "", sessionId: "", mtimeMs: 0, score: 0.2, reasons: [], judge: "codex", judgedAt: 1 });
+    judgments.set(`/sessions/s${t * 1000}.jsonl`, { file: `/sessions/s${t * 1000}.jsonl`, sessionId: `s${t * 1000}`, mtimeMs: 0, score: 0.2, reasons: [], judge: "codex", judgedAt: 1 });
   }
   for (const t of [21, 22, 23, 24, 25, 26]) {
-    judgments.set(`/sessions/s${t * 1000}.jsonl`, { file: "", sessionId: "", mtimeMs: 0, score: 0.9, reasons: [], judge: "codex", judgedAt: 1 });
+    judgments.set(`/sessions/s${t * 1000}.jsonl`, { file: `/sessions/s${t * 1000}.jsonl`, sessionId: `s${t * 1000}`, mtimeMs: 0, score: 0.9, reasons: [], judge: "codex", judgedAt: 1 });
   }
   const points = toPoints(sessions, judgments);
   const marker = detectMarkers(points).find((m) => m.name === "tdd")!;

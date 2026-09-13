@@ -1,3 +1,4 @@
+import { parseAgentDbSessions } from "../live/parse-agent-db";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -151,6 +152,7 @@ function parseCandidate(
   sessionId?: string,
 ): LiveSession | null {
   const sourceFormat = spec.format;
+  if (sourceFormat === "agent-sqlite") return parseAgentDbSessions(file).find(session => session.sessionId === sessionId) ?? null;
   return sourceFormat === "codex-sessions"
     ? summarizeCodexSessionFile(file, project, mtime, stat)
     : sourceFormat === "hermes-json"

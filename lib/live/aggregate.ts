@@ -2,7 +2,7 @@ import { displayModelId, rateForModelInfo } from "../pricing";
 import type { LiveAggregate, LiveQueueSummary, LiveScanCoverage, LiveSession, LiveTraceSource, LiveUsageSummary } from "./types";
 import { countSessionWarnings, emptyParseWarningCounts } from "./warning-taxonomy";
 import { resolveLiveSource } from "./sources";
-import { attributedModelUsage, increment, metricMissing, modelUsageCosts, modelUsageVolume, topEntries } from "./util";
+import { availableSessionCost, listedZeroUsage, attributedModelUsage, increment, metricMissing, modelUsageCosts, modelUsageVolume, topEntries } from "./util";
 
 function emptyUsageSummary(): LiveUsageSummary {
   return {
@@ -150,9 +150,8 @@ export function aggregate(
     if (s.metricSources.model === "measured") sessionsWithMeasuredModel++;
     if (s.metricSources.model === "missing") sessionsWithMissingModel++;
     if (s.metricSources.model === "inferred") sessionsWithInferredModel++;
-    if (s.costUsd > 0) sessionsWithPricedUsage++;
-    else if (s.metricSources.cost === "inferred" && cachedRateInfo(s.model)?.confidence === "listed") sessionsWithPricedUsage++;
-    if (s.metricSources.cost === "inferred" && (s.costUsd > 0 || cachedRateInfo(s.model)?.confidence === "listed")) {
+    if (availableSessionCost(s) !== null) sessionsWithPricedUsage++;
+    if (s.metricSources.cost === "inferred" && availableSessionCost(s) !== null) {
       // A listed $0 (free tier) is real rate evidence — attribute confidence,
       // don't let it dissolve into unpriced fallback territory.
       const confidence = cachedRateInfo(s.model)?.confidence;
@@ -206,13 +205,13 @@ export function aggregate(
       cur.totalDur += s.durationMs;
       cur.totalQuality += s.dataQuality;
       if (metricMissing(s.metricSources.tokens)) cur.missingTokens++;
-      if (metricMissing(s.metricSources.cost) || (s.metricSources.cost === "inferred" && rowCost === 0 && modelUsageVolume(row) > 0)) cur.missingCost++;
-      if (rowCost > 0) cur.pricedSessions++;
+      const rowPriced = !metricMissing(s.metricSources.cost) && Number.isFinite(rowCost) && rowCost >= 0 && (rowCost > 0 || s.metricSources.cost === "measured" || (!metricMissing(s.metricSources.tokens) && listedZeroUsage(row)));
+      if (!rowPriced) cur.missingCost++;
       // A listed $0 is still a price: free-tier sessions carry a real catalog
       // rate that simply costs nothing. They are priced evidence, not gaps —
       // otherwise every OpenRouter :free model reads as an unpriced fallback.
       const rowRateConfidence = cachedRateInfo(row.model)?.confidence;
-      if (rowCost > 0 || (s.metricSources.cost === "inferred" && rowRateConfidence === "listed" && modelUsageVolume(row) > 0)) cur.pricedSessions++;
+      if (rowPriced) cur.pricedSessions++;
       // A measured $0 is still a recorded cost. Do not turn a valid free run
       // into an unavailable model-row provenance marker merely because its
       // numeric value is zero.
@@ -221,7 +220,7 @@ export function aggregate(
         else cur.measuredCostSessions++;
       }
       if (s.metricSources.model === "inferred") cur.inferredModelSessions++;
-      if (s.metricSources.cost === "inferred" && (rowCost > 0 || rowRateConfidence === "listed") && modelUsageVolume(row) > 0) {
+      if (s.metricSources.cost === "inferred" && rowPriced && modelUsageVolume(row) > 0) {
         // Confidence attribution includes listed-$0 free tiers: the rate is a
         // real catalog price, so the estimate is provenance-grade even at $0.
         if (rowRateConfidence === "listed") cur.listedRateSessions++;

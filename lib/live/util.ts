@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { estimateCostUsd, isPlaceholderModel } from "../pricing";
+import { estimateCostUsd, isPlaceholderModel, rateForModelInfo } from "../pricing";
 import type { LiveMetricSources, LiveModelUsage, LiveSession, LiveSessionToolDuration, LiveUsageSegment, MetricSource } from "./types";
 
 /**
@@ -573,4 +573,21 @@ export function scoreQuality(sources: LiveMetricSources, malformedLineCount: num
   if (hookErrors > 0) score -= Math.min(12, hookErrors * 2);
   if (toolErrorRate > 0.25) score -= 6;
   return Math.max(0, Math.min(100, score));
+}
+
+/** A zero estimate is known only when recorded token classes price to exactly zero. */
+export function listedZeroUsage(row: LiveModelUsage): boolean {
+  const tokens = [row.inputTokens, row.outputTokens, row.cacheReadTokens, row.cacheCreateTokens];
+  if (tokens.some(value => !Number.isFinite(value) || value < 0) || modelUsageVolume(row) <= 0) return false;
+  return rateForModelInfo(row.model)?.confidence === 'listed' && estimateCostUsd(row.model, {
+    input: row.inputTokens, output: row.outputTokens, cacheRead: row.cacheReadTokens, cacheCreate: row.cacheCreateTokens,
+  }) === 0;
+}
+
+export function availableSessionCost(session: LiveSession): number | null {
+  if (metricMissing(session.metricSources.cost) || !Number.isFinite(session.costUsd) || session.costUsd < 0) return null;
+  if (session.metricSources.cost === 'measured' || session.costUsd > 0) return session.costUsd;
+  if (metricMissing(session.metricSources.tokens)) return null;
+  const rows = attributedModelUsage(session).filter(row => modelUsageVolume(row) > 0);
+  return rows.length > 0 && rows.every(listedZeroUsage) ? 0 : null;
 }

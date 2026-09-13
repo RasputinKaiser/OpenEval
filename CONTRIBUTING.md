@@ -5,15 +5,14 @@ Thanks for helping improve OpenEval. This project is a local-first evaluation da
 ## Development Setup
 
 ```bash
-nvm use 20
-npm ci
-npm run doctor
+nvm use
+npm run setup -- --no-build
 npm run dev
 ```
 
 Open http://localhost:3000 (or the port printed by Next.js) to use the dashboard.
 If `better-sqlite3` fails to load after changing Node versions, run
-`npm rebuild better-sqlite3` after switching back to Node 20.
+`npm rebuild better-sqlite3` after switching back to Node 22.
 
 Before sending a change, run the canonical CI checks:
 

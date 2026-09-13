@@ -1,5 +1,6 @@
 node_modules/
 .next/
+.next-interactive/
 .next.pre-release-build-*/
 out/
 dist/

@@ -146,12 +146,17 @@ export default function HarnessesClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    const restore = () => { const requested = readHarnessParam(); setSelected(payload.harnesses.some((item) => item.id === requested) ? requested : payload.harnesses.find((item) => item.status === "available")?.id ?? payload.harnesses[0]?.id ?? null); };
+    window.addEventListener("popstate", restore); return () => window.removeEventListener("popstate", restore);
+  }, [payload.harnesses]);
+
   function choose(id: string) {
     setSelected(id);
     try {
       const url = new URL(window.location.href);
       url.searchParams.set("harness", id);
-      window.history.replaceState(window.history.state, "", url);
+      window.history.pushState(null, "", url);
     } catch {}
   }
 
@@ -300,7 +305,7 @@ export default function HarnessesClient() {
   const activeConnection = active as ConnectionHarness | undefined;
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-5 sm:p-6 lg:p-8">
+    <div className="mx-auto min-w-0 max-w-7xl px-4 py-5 sm:p-6 lg:p-8">
       <PageHeader
         icon={Plug}
         title="Harnesses"
@@ -359,6 +364,10 @@ export default function HarnessesClient() {
         />
       </section>
 
+      <details className="card p-4 mb-5"><summary className="cursor-pointer text-sm font-medium">Compare declared harness capabilities</summary>
+        <p className="text-xs text-fg-muted my-3">Registry declarations describe supported features. Ready status and observed telemetry are separate checks.</p>
+        <div className="analysis-table analysis-reveal" role="region" tabIndex={0} aria-label="Harness capability comparison"><table><thead><tr><th>Harness</th><th>Cost</th><th>Tokens</th><th>Turns</th><th>Vision</th><th>Permission modes</th></tr></thead><tbody>{payload.harnesses.map(item => <tr key={item.id}><th><button type="button" className="analysis-control" aria-pressed={selected === item.id} onClick={() => choose(item.id)}>{item.label}</button></th>{[item.capabilities.reportsCost, item.capabilities.reportsTokens, item.capabilities.reportsTurns, item.capabilities.supportsVisionInput].map((value, index) => <td key={index}>{value === true ? "Yes" : value === false ? "No" : "Unknown"}</td>)}<td>{item.capabilities.permissionModes.join(", ") || "None declared"}</td></tr>)}</tbody></table></div>
+      </details>
       {payload.descriptorIssues.length > 0 && (
         <section aria-labelledby="descriptor-issues-title" className="mb-5 rounded-xl border border-warn/30 bg-warn/5 p-4">
           <div className="flex items-center gap-2 text-sm font-medium text-warn">
@@ -642,7 +651,7 @@ function HarnessDetail({
                 <div key={root} className="flex min-w-0 items-center gap-2 rounded-lg border border-bd-subtle bg-bg px-3 py-2.5">
                   <Terminal aria-hidden="true" className="size-3.5 shrink-0 text-fg-dim" />
                   <code className="min-w-0 flex-1 truncate text-xs">{show(root)}</code>
-                  <CopyButton text={root} label={`Copy trace root ${root}`} className="min-h-9 min-w-9" />
+                  <CopyButton text={root} label={`Copy trace root ${root}`} className="min-h-10 min-w-10" />
                 </div>
               ))}
             </div>

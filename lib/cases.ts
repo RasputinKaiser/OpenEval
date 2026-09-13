@@ -14,7 +14,7 @@ const CATEGORIES = new Set<string>(CASE_CATEGORIES);
 // than intended). `forbidden` lives on every member because .strict() cannot
 // coexist with the old intersection wrapper.
 const GraderCommonShape = {
-  weight: z.number().optional(),
+  weight: z.number().finite().nonnegative().optional(),
   forbidden: z.boolean().optional(),
 };
 
@@ -197,7 +197,7 @@ export const CaseDefinitionSchema = z.object({
   }).strict().optional(),
   visual: VisualSchema.optional(),
   graders: z.array(GraderSpecSchema).min(1),
-  pass_threshold: z.number().optional(),
+  pass_threshold: z.number().finite().min(0).max(1).optional(),
 }).strict();
 
 export type ZodCaseDefinition = z.infer<typeof CaseDefinitionSchema>;

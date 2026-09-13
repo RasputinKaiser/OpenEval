@@ -12,7 +12,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
   const cases = listRunCases(params.id);
   const harnessInfo = cases.find((c) => c.harness_info)?.harness_info;
   return (
-    <main className="p-4 max-w-7xl mx-auto">
+    <main className="p-4 w-full">
       <EvaluateNav />
       <RunDetailClient
         runId={params.id}

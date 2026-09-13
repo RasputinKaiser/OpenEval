@@ -26,6 +26,7 @@ import PageHeader from "./PageHeader";
 import HarnessPicker from "./HarnessPicker";
 import ModelPicker from "./ModelPicker";
 import SystemNav from "./SystemNav";
+import UpdatePanel from "./UpdatePanel";
 import { useRedaction } from "@/lib/use-redaction";
 import {
   boundedRunInt,
@@ -335,7 +336,7 @@ export default function SettingsClient() {
   const effectiveSource = environmentOverrides.source ? "environment" : savedJudge?.judgeSource ? "saved setting" : "automatic fallback";
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-5 sm:p-6 lg:p-8">
+    <div className="mx-auto min-w-0 max-w-6xl px-4 py-5 sm:p-6 lg:p-8">
       <PageHeader
         icon={SettingsIcon}
         title="Settings"
@@ -346,6 +347,7 @@ export default function SettingsClient() {
         }
       />
       <SystemNav />
+      <UpdatePanel />
 
       <div aria-live="polite" className="sr-only">{savedNotice || maintenanceNotice}</div>
       {error && (
@@ -362,6 +364,7 @@ export default function SettingsClient() {
         </div>
       )}
 
+      <nav className="analysis-toolbar mb-4" aria-label="Settings sections">{[["run-defaults", "Run defaults"], ["judge", "Judge backend"], ["storage", "Storage"], ["privacy", "Privacy"], ["experience", "Experience"]].filter(([id]) => id !== "storage" || db).map(([id, label]) => <a key={id} className="analysis-control" href={`#${id}-title`}>{label}</a>)}</nav>
       <section aria-label="Configuration summary" className="mb-5 grid grid-cols-2 overflow-hidden rounded-xl border border-bd bg-bg-subtle lg:grid-cols-4">
         <Summary icon={SlidersHorizontal} label="Run defaults" value={runDirty ? "Unsaved" : "Browser local"} detail={`${settings.defaultParallel} parallel · ${settings.defaultSamples} sample${settings.defaultSamples === 1 ? "" : "s"}`} tone={runDirty ? "warn" : undefined} />
         <Summary icon={KeyRound} label="Global judge" value={effectiveJudge?.name ?? (loading ? "Loading…" : "Unavailable")} detail={`resolved from ${effectiveSource}`} />

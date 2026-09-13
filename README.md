@@ -9,13 +9,34 @@ OpenEval is a local-first, harness-agnostic evaluation dashboard for agent CLIs.
 
 The project is designed for people who want to compare agent behavior on practical software tasks, inspect the exact traces behind a score, and keep their private run history on their own machine.
 
+## Install and start
+
+Install **Node 22 with npm 10**, then run:
+
+```bash
+git clone --branch v0.2.0 --depth 1 https://github.com/RasputinKaiser/OpenEval.git
+cd OpenEval
+npm run setup
+npm run open
+```
+
+Open **http://127.0.0.1:3000**. Setup installs the locked dependencies, checks the
+SQLite native binding, and builds the production dashboard. The first build can
+take several minutes; later starts reuse it. Stop with **Ctrl+C**.
+
+**No API key, account connection, or paid run is needed to inspect existing local
+transcripts.** Open Collection first. Agent authentication is only needed when
+you choose to launch an evaluation. No `.env` file is required for the defaults.
+
+[First-run guide, custom ports, updates, and troubleshooting](docs/getting-started.md)
+
 ## Launch Film
 
 https://github.com/user-attachments/assets/97375fda-e019-451b-b15b-8d914792f0c7
 
-The 29.5-second v0.1.1 launch film shows the real OpenEval dashboard: live sessions, collection history, repeatable runs, comparisons, coverage, telemetry, and accuracy audits. The current application release is [v0.1.6](https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.6).
+The 29.5-second v0.1.1 launch film shows the real OpenEval dashboard: live sessions, collection history, repeatable runs, comparisons, coverage, telemetry, and accuracy audits. The current application release is [v0.2.0](https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.2.0).
 
-[Download the full-resolution MP4](https://github.com/RasputinKaiser/OpenEval/releases/download/v0.1.1/openeval-launch-v0.1.1.mp4) · [Open the v0.1.1 media release](https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.1) · [Latest release: v0.1.6](https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.6)
+[Download the full-resolution MP4](https://github.com/RasputinKaiser/OpenEval/releases/download/v0.1.1/openeval-launch-v0.1.1.mp4) · [Open the v0.1.1 media release](https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.1.1) · [Latest release: v0.2.0](https://github.com/RasputinKaiser/OpenEval/releases/tag/v0.2.0)
 
 ### Build Credits
 
@@ -24,6 +45,18 @@ The 29.5-second v0.1.1 launch film shows the real OpenEval dashboard: live sessi
 - **Launch film:** GPT-5.6 Sol (High) led the edit, composition, visual QA, and final release pass; GPT-5.6 Luna (xhigh) contributed additional iteration passes.
 - **Production stack:** Codex, ImageGen, TouchDesigner, HyperFrames, GSAP, CDP Recorder, and FFmpeg.
 - **Acknowledgment:** huge thanks to [@KingBootoshi](https://x.com/KingBootoshi) from [righttointelligence.org](https://righttointelligence.org).
+
+## What’s new in v0.2.0
+
+- **Follow a chart into its evidence.** Shared date controls, pinned inspections, model/source breakdowns, and matching-session links connect analytics to source-qualified conversations. Missing measurements remain distinct from zero; estimated API-equivalent cost remains distinct from recorded cost.
+- **Read and search whole sessions.** Bounded search reaches beyond the loaded page, opens the matching message window, and keeps tool calls, results, recorded reasoning, and source revisions explicit.
+- **Watch evaluations.** Five interactive reference demos join a 40-case library: route planning, a data story, marble physics, a firefly garden, and a rhythm game. Play, stop, and replay artifact previews; reference demos are labelled separately from agent output.
+- **Compare evidence carefully.** Saved experiment snapshots and calibration tools distinguish human attestations, synthetic observations, missing evidence, and cohort differences.
+- **More local source formats.** Fixture-backed readers cover Kimi wire streams, DeepSeek plaintext session v3, compatible OpenCode/ZCode databases, and Grok Markdown exports. See the [version and field coverage table](docs/interactive-analytics-transcripts.md#source-coverage) for unsupported formats and limits.
+- **Easier installation and updates.** `npm run setup` installs, verifies SQLite, and builds; `npm run open` starts the dashboard on loopback. **Settings → OpenEval updates** checks GitHub on demand and shows release links and installation instructions. Updating is a terminal operation, not an automatic server replacement.
+- **A calmer, more usable interface.** Responsive chart controls, keyboard inspection, reduced-motion behavior, clearer evaluation setup, readable transcripts, and refined typography preserve OpenEval’s charcoal/violet design.
+
+[Release notes and validation limits](docs/releases/v0.2.0.md) · [Installation guide](docs/getting-started.md) · [Watchable evaluations](docs/watchable-evaluations.md)
 
 ## What's New in v0.1.6
 
@@ -177,14 +210,13 @@ OpenEval v0.1.3 makes large local transcript collections faster to inspect and m
 Start the app and open the dashboard:
 
 ```bash
-nvm use 20
-npm ci
-npm run doctor
-npm run dev
+nvm use
+npm run setup
+npm run open
 ```
 
 Open [http://localhost:3000](http://localhost:3000) (or the port printed by
-Next.js). Node 20 and npm 10 are the supported release toolchain. The
+Next.js). Node 22 and npm 10 are the supported setup toolchain. The
 dashboard itself is local-first, but running an evaluation requires at least
 one supported agent CLI installed and authenticated on the same machine.
 
@@ -210,6 +242,8 @@ The dashboard currently exposes these primary routes:
 | `/runs/[id]/bench` | Bench view for per-case cost, token, duration, and throughput diagnostics. |
 | `/runs/leaderboard` | Cross-harness comparison by pass rate, cost, tokens, and speed. |
 | `/runs/compare` | Side-by-side comparison of selected runs. |
+| `/cases/playground` | Interactive reference demos with play/replay controls and links to evaluate the matching cases. |
+| `/settings` | Defaults, privacy, storage health, and on-demand release checks. |
 | `/harnesses` | Harness discovery, binary availability, capabilities, version probe, and sample command display. |
 | `/accuracy` | Case quality audit: evidence tiers, oracle coverage, known-bad rejection, and weak grader warnings. |
 | `/live` | Live local trace intelligence from the selected harness descriptor's `liveTrace` roots, or the descriptor-driven default harness. |
@@ -573,9 +607,7 @@ Use a descriptor when a CLI emits Claude stream JSON, Codex JSONL, generic JSONL
 
 ## Operating Notes
 
-- Node 20 with npm 10 is the supported release toolchain. Node 22+ may work,
-  but it is outside the release-tested range and native modules should be
-  rebuilt after a runtime change.
+- Node 22 with npm 10 is the supported setup toolchain. Reinstall dependencies after a runtime change. Earlier release notes describe their historical toolchains.
 - The app uses `better-sqlite3`, so native dependency installation must succeed for the local platform.
 - macOS and Linux are the release-tested platforms. Windows may work when a
   compatible `better-sqlite3` prebuild is available; otherwise install the

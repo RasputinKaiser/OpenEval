@@ -30,7 +30,7 @@ test("support links are reachable from both persistent desktop and mobile naviga
   const mobile = read("components/MobileNav.tsx");
   const readme = read("README.md");
 
-  assert.match(sidebar, /<SupportLinks collapsed=\{collapsed\} headingId="desktop-support-links-title" \/>/);
+  assert.match(sidebar, /<SupportLinks compact collapsed=\{collapsed\} headingId="desktop-support-links-title" \/>/);
   assert.match(mobile, /<SupportLinks headingId="mobile-support-links-title" \/>/);
   assert.match(mobile, /useFocusTrap\(panelRef, open\)/);
   assert.match(readme, /\]\(https:\/\/ko-fi\.com\/rasputinkaiser\)/);

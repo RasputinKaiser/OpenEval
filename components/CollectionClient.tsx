@@ -1,16 +1,20 @@
 "use client";
+import { SourceCapabilities } from "./SourceCapabilities";
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
+import { SessionEvidenceLink } from "./SessionEvidenceLink";
 import clsx from "clsx";
 import {
   Boxes, RefreshCw, HelpCircle, AlertTriangle, Activity, Search, DatabaseZap,
-  Layers, Coins, Hammer, TrendingUp, CalendarClock, Cpu, Wrench, HardDrive, History,
+  Layers, Coins, Hammer, TrendingUp, CalendarClock, Cpu, Wrench, HardDrive, History, BarChart3,
   ShieldCheck,
   ArrowDownWideNarrow, Filter, ChevronDown,
   type LucideIcon,
 } from "lucide-react";
 import PageHeader from "./PageHeader";
+import ModelInspection from "./ModelInspection";
+import { modelMeasure as measureModel, modelBarFraction } from "@/lib/model-ranking";
 import { SectionHeader } from "./Section";
 import { ProgressiveSectionNav, sectionVisibilityClass, useProgressiveSection } from "./mobile/ProgressiveSectionNav";
 import { RedactToggle } from "./RedactToggle";
@@ -20,7 +24,10 @@ import { DAYS, fmtNum, fmtNumFull, fmtUsd, fmtUsdFull, fmtRel, fmtDuration } fro
 import type { AllSourcesResult } from "@/lib/collection/aggregate";
 import type { RollupReport } from "@/lib/collection/rollup";
 import type { FtsHit } from "@/lib/live-cache";
+import type { ChartSelection } from "@/lib/chart-analysis";
+import { useChartSelection } from "@/lib/use-chart-selection";
 import { WeeklyUsageChart, ActivityHeatmap, ToolHealthList } from "./CollectionCharts";
+import CollectionAnalysis from "./CollectionAnalysis";
 import { EvidenceComposition, EvidenceCoverageRow } from "./evidence/EvidenceComposition";
 import { EvidenceReview } from "./evidence/EvidenceReview";
 
@@ -35,23 +42,23 @@ function StatCell({ label, value, sub, title, tone, featured }: { label: string;
   return (
     <div
       className={clsx(
-        "min-w-0 px-3 py-2.5",
+        "collection-stat min-w-0 px-3 py-2.5",
         featured && "col-span-2 border-b border-bd-subtle bg-bg/35 px-4 py-3",
       )}
       title={title}
     >
-      <div className="text-[10px] uppercase tracking-[0.12em] text-fg-muted">{label}</div>
-      <div className={clsx(featured ? "mt-0.5 text-[22px]" : "mt-1 text-base", "mono font-semibold tabular-nums leading-tight", tone)}>{value}</div>
-      <div className={clsx("mt-1 text-fg-dim mono", featured ? "text-[11px]" : "text-[10px]")}>{sub ?? " "}</div>
+      <div className="metric-label">{label}</div>
+      <div className={clsx(featured ? "mt-1 text-2xl" : "mt-1 text-lg", "mono font-semibold tabular-nums leading-tight", tone)}>{value}</div>
+      <div className={clsx("metric-detail mt-1 text-fg-muted")}>{sub ?? " "}</div>
     </div>
   );
 }
 
-function StatGroup({ icon: Icon, label, children }: { icon: LucideIcon; label: string; children: ReactNode }) {
+function StatGroup({ icon: Icon, label, children, tone = "info" }: { icon: LucideIcon; label: string; children: ReactNode; tone?: "info" | "estimate" | "activity" }) {
   return (
-    <div className="card min-w-0 overflow-hidden">
-      <div className="flex items-center gap-2 border-b border-bd-subtle px-3 py-2 text-[10px] uppercase tracking-[0.12em] text-fg-dim">
-        <span className="grid size-6 place-items-center rounded-md border border-bd-subtle bg-bg text-accent-soft">
+    <div className={`card metric-group metric-group--${tone} min-w-0 overflow-hidden`}>
+      <div className="metric-group-heading flex items-center gap-2 border-b border-bd-subtle px-3 py-2">
+        <span className="grid size-6 place-items-center rounded-md">
           <Icon className="size-3.5" />
         </span>
         {label}
@@ -264,7 +271,7 @@ function ShareBar({ frac }: { frac: number }) {
   return (
     <div className="flex items-center gap-1.5 justify-end">
       <div className="h-1.5 w-20 rounded-full bg-bg-elev overflow-hidden shrink-0" role="img" aria-label={`${pct.toFixed(0)} percent share`}>
-        <div className="h-full rounded-full transition-[width] duration-500 motion-reduce:transition-none" style={{ width: `${Math.max(pct > 0 ? 2 : 0, pct)}%`, background: "color-mix(in srgb, var(--color-accent) 55%, transparent)" }} />
+        <div className="h-full rounded-full transition-[width] duration-500 motion-reduce:transition-none" style={{ width: `${pct}%`, background: "color-mix(in srgb, var(--color-accent) 55%, transparent)" }} />
       </div>
       <span className="text-fg-dim text-[10px] tabular-nums w-8 text-right">{pct < 1 && pct > 0 ? "<1" : pct.toFixed(0)}%</span>
     </div>
@@ -296,7 +303,7 @@ function PricingEvidence({ model }: { model: AllSourcesResult["byModel"][number]
     `${fmtNumFull(model.fallbackRateSessions)} fallback estimates`,
     `${fmtNumFull(model.inferredModelSessions)} sessions have an inferred model id`,
   ].join(" · ");
-  return <span className={clsx("text-[10px] uppercase tracking-[0.12em]", tone)} title={title}>{label}</span>;
+  return <span className={clsx("model-pricing-evidence text-[10px] uppercase", tone)} title={title}>{label}</span>;
 }
 
 /** Compact labeled <select> pill — mirrors the LiveClient sort/filter pills. */
@@ -407,25 +414,25 @@ function EvidenceRail({
   hasError: boolean;
   hasCoverageCaveat: boolean;
 }) {
-  const snapshotLabel = hasError ? "scan error" : refreshing ? "refreshing" : hasCoverageCaveat ? "caveats" : "current";
+  const snapshotLabel = hasError ? "scan error" : refreshing ? "refreshing" : hasCoverageCaveat ? "partial" : "current";
   const snapshotTone = hasError || hasCoverageCaveat ? "text-warn" : refreshing ? "text-accent-soft" : "text-ok";
   const navItems = [
-    { id: "all", label: "Full report", detail: "show every section", icon: Layers },
+    { id: "all", label: "All sections", detail: "View the full collection", icon: Layers },
     { id: "overview", label: "Overview", detail: "collection summary", icon: Boxes },
     { id: "fidelity", label: "Evidence quality", detail: "coverage & limits", icon: ShieldCheck },
-    { id: "harnesses", label: "Sources", detail: "harness inventory", icon: HardDrive },
+    { id: "harnesses", label: "Sources", detail: "Local tools and imports", icon: HardDrive },
     { id: "sessions", label: "Sessions", detail: "search retained sessions", icon: Search },
   ];
 
   return (
-    <aside className="mb-4 hidden min-w-0 max-w-full lg:sticky lg:top-4 lg:mb-0 lg:block lg:self-start" aria-label="Evidence orientation">
+    <aside className="mb-4 hidden min-w-0 max-w-full lg:sticky lg:top-4 lg:mb-0 lg:block lg:self-start" aria-label="Collection navigation">
       <div className="card min-w-0 max-w-full overflow-hidden p-3">
-        <div className="flex items-baseline justify-between gap-3">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
           <div className="min-w-0">
-            <h2 className="text-[11px] font-medium uppercase tracking-[0.12em] text-fg">Evidence room</h2>
-            <p className="mt-1 text-[10px] leading-snug text-fg-dim">What is kept, what compares, and where to look.</p>
+            <h2 className="text-sm font-medium text-fg">In this collection</h2>
+            <p className="mt-1 text-xs leading-snug text-fg-dim">Browse the summary, sources, and sessions.</p>
           </div>
-          <span className={clsx("shrink-0 text-[9px] font-medium uppercase tracking-[0.12em]", snapshotTone)}>{snapshotLabel}</span>
+          <span className={clsx("shrink-0 text-xs font-medium", snapshotTone)}>{snapshotLabel}</span>
         </div>
         <div className="mt-3 max-w-full overflow-x-auto overscroll-x-contain lg:overflow-visible">
           <div className="flex w-max min-w-full gap-1 lg:block">
@@ -443,8 +450,8 @@ function EvidenceRail({
               >
                 <Icon className="size-3.5 shrink-0 text-accent-soft" aria-hidden="true" />
                 <span className="min-w-0">
-                  <span className="block truncate text-[11px] font-medium">{label}</span>
-                  <span className="block truncate text-[9px] text-fg-dim">{detail}</span>
+                  <span className="block text-sm font-medium">{label}</span>
+                  <span className="block text-xs text-fg-dim">{detail}</span>
                 </span>
               </button>
             ))}
@@ -454,42 +461,42 @@ function EvidenceRail({
             >
               <Activity className="size-3.5 shrink-0 text-accent-soft" aria-hidden="true" />
               <span className="min-w-0">
-                <span className="block truncate text-[11px] font-medium">Compare outcomes</span>
-                <span className="block truncate text-[9px] text-fg-dim">Outcome basis &amp; limits</span>
+                <span className="block text-sm font-medium">Compare outcomes</span>
+                <span className="block text-xs text-fg-dim">Compare session outcomes</span>
               </span>
             </Link>
           </div>
         </div>
         <div className="mt-3 border-t border-bd-subtle pt-3">
           <div className="mb-2 flex items-center justify-between gap-2">
-            <span className="text-[9px] font-medium uppercase tracking-[0.12em] text-fg-dim">Population</span>
-            <span className={clsx("text-[9px] font-medium uppercase tracking-[0.12em]", snapshotTone)}>{snapshotLabel}</span>
+            <span className="text-xs font-medium text-fg-dim">Session coverage</span>
+            <span className={clsx("text-xs font-medium", snapshotTone)}>{snapshotLabel}</span>
           </div>
           <div className="flex min-w-0 max-w-full gap-2 overflow-x-auto overscroll-x-contain lg:block lg:space-y-1.5 lg:overflow-visible">
             <div className="min-w-[8.5rem] rounded-md border border-bd-subtle bg-bg px-2.5 py-2 lg:min-w-0" title={`${fmtNumFull(retainedSessions)} parsed session summaries are retained in Collection.`}>
-              <div className="flex items-baseline justify-between gap-2">
-                <span className="text-[10px] text-fg-muted">Retained</span>
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <span className="text-xs text-fg-muted">Saved summaries</span>
                 <span className="mono text-[12px] font-semibold tabular-nums text-fg">{fmtNum(retainedSessions)}</span>
               </div>
-              <div className="mt-0.5 text-[9px] text-fg-dim">parsed summaries{archivedSessions > 0 ? ` · ${fmtNum(archivedSessions)} archived` : ""}</div>
+              <div className="mt-0.5 text-xs text-fg-dim">parsed summaries{archivedSessions > 0 ? ` · ${fmtNum(archivedSessions)} archived` : ""}</div>
             </div>
             <Link
               href="/collection/timeline"
               className="block min-w-[8.5rem] rounded-md border border-bd-subtle bg-bg px-2.5 py-2 transition-colors hover:bg-bg-elev focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent lg:min-w-0"
               title="Timeline owns outcome signals, comparable windows, and their denominator."
             >
-              <div className="flex items-baseline justify-between gap-2">
-                <span className="text-[10px] text-fg-muted">Comparable</span>
-                <span className="text-[10px] font-medium text-accent-soft">Timeline <span aria-hidden="true">→</span></span>
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <span className="text-xs text-fg-muted">Outcomes</span>
+                <span className="text-xs font-medium text-accent-soft">Timeline <span aria-hidden="true">→</span></span>
               </div>
-              <div className="mt-0.5 text-[9px] text-fg-dim">outcome comparison lives there</div>
+              <div className="mt-0.5 text-xs text-fg-dim">Compare in Timeline</div>
             </Link>
             <div className="min-w-[8.5rem] rounded-md border border-bd-subtle bg-bg px-2.5 py-2 lg:min-w-0" title={`${fmtNumFull(staleSessions)} parsed sessions last emitted an event more than 12 hours ago. Historical sessions are expected in the archive and are not parser failures.`}>
-              <div className="flex items-baseline justify-between gap-2">
-                <span className="text-[10px] text-fg-muted">Stale</span>
-                <span className={clsx("mono text-[12px] font-semibold tabular-nums", staleSessions > 0 ? "text-warn" : "text-fg")}>{fmtNum(staleSessions)}</span>
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <span className="text-xs text-fg-muted">Last active over 12h ago</span>
+                <span className={clsx("mono text-[12px] font-semibold tabular-nums", "text-fg")}>{fmtNum(staleSessions)}</span>
               </div>
-              <div className="mt-0.5 text-[9px] text-fg-dim">older than 12h · retained</div>
+              <div className="mt-0.5 text-xs text-fg-dim">Historical sessions are retained</div>
             </div>
           </div>
         </div>
@@ -499,6 +506,7 @@ function EvidenceRail({
 }
 
 export default function CollectionClient({ initialData, error, initialQuery, rollup }: { initialData: AllSourcesResult; error?: string; initialQuery?: string; rollup?: RollupReport }) {
+  const { setSelection: setChartSelection } = useChartSelection();
   const [data, setData] = useState(initialData);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -508,6 +516,8 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
   const [sessionSort, setSessionSort] = useState<SessionSort>("recent");
   const [harnessFilter, setHarnessFilter] = useState("all");
   const [modelFilter, setModelFilter] = useState("all");
+  const [allModelColumns, setAllModelColumns] = useState(false);
+  const [inspectedModel, setInspectedModel] = useState<string | null>(null);
   const [modelSort, setModelSort] = useState<ModelSort>("cost");
   const [modelQuery, setModelQuery] = useState("");
   // Exhaustion is cursor-driven: the API returns nextCursor=null once the
@@ -701,6 +711,8 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
 
   const models = useMemo(() => data.byModel ?? [], [data.byModel]);
   const [showAllModels, setShowAllModels] = useState(false);
+  const modelMeasure = (model: typeof models[number]) => measureModel(model, modelSort);
+  const modelMetricLabel = { cost: "API-equivalent estimate", sessions: "sessions", tokens: "I/O tokens", cache: "cache reads", tools: "tool calls", errors: "tool error rate" }[modelSort];
   const tools = data.byTool ?? [];
   const visibleModels = useMemo(() => {
     const query = modelQuery.trim().toLowerCase();
@@ -777,15 +789,21 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
 
   const sections = useMemo(() => [
     { id: "overview", label: "Start here", description: "Corpus size, estimated API cost, work volume, and transcript search." },
+    ...(hasModels ? [{ id: "models", label: "Model mix", description: "Compare model use, tokens, estimated cost, and errors." }] : []),
     { id: "fidelity", label: "Evidence quality", description: "Check coverage, storage limits, and how totals were built." },
+    { id: "analysis", label: "Explore evidence", description: "Filter the full population and inspect matching sessions." },
     ...(hasWeekly ? [{ id: "usage", label: "Spend & usage", description: "Track sessions, tokens, and estimated API cost over time." }] : []),
     ...(hasHeatmap ? [{ id: "rhythm", label: "When you work", description: "See when sessions start across the week and day." }] : []),
-    ...(hasModels ? [{ id: "models", label: "Model mix", description: "Compare model use, tokens, estimated cost, and errors." }] : []),
+
     ...(hasTools ? [{ id: "tools", label: "Tool health", description: "See which tools run most and where they fail." }] : []),
     { id: "harnesses", label: "Sources", description: "Check which harnesses were found, parsed, or archived." },
     { id: "sessions", label: "Find a session", description: "Search and open retained transcript summaries." },
   ], [hasWeekly, hasHeatmap, hasModels, hasTools]);
   const { activeSection, selectSection, isVisible } = useProgressiveSection(sections, "all");
+  const exploreAnalysis = (selection: ChartSelection) => {
+    setChartSelection(selection);
+    selectSection("analysis");
+  };
 
   // A search handoff is a direct request to find evidence. Move the user to
   // the session catalog once results arrive instead of leaving them at the
@@ -846,7 +864,6 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
   }
 
   const totalModelCost = models.reduce((a, m) => a + m.costUsd, 0);
-  const totalModelSessions = Math.max(1, models.reduce((a, m) => a + m.sessions, 0));
   const topCostModel = models.reduce<(typeof models)[number] | null>((best, model) => !best || model.costUsd > best.costUsd ? model : best, null);
   const topSessionModel = models.reduce<(typeof models)[number] | null>((best, model) => !best || model.sessions > best.sessions ? model : best, null);
   const topErrorModel = models
@@ -857,11 +874,11 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
     }, null);
 
   return (
-    <div className="min-w-0 p-4 md:p-6 max-w-6xl mx-auto">
+    <div className="min-w-0 p-4 md:p-6 w-full">
       <PageHeader
         icon={Boxes}
         title="Collection"
-        subtitle="Browse sessions from configured sources on this machine, including archived summaries."
+        subtitle="Explore local sessions, compare usage, and open the conversation behind each result."
         actions={
           <>
             <ScannedAgo generatedAtMs={data.generatedAtMs} />
@@ -932,12 +949,12 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
         <div className="mb-4 rounded-lg border border-warn/40 bg-warn/10 p-3 flex items-start gap-2.5" role={data.partial ? "alert" : "status"}>
           <AlertTriangle className="size-4 text-warn shrink-0 mt-0.5" />
           <div className="min-w-0">
-            <div className="text-sm font-medium text-warn">Collection coverage has caveats</div>
-            <p className="text-[12px] text-fg-muted mt-0.5">These notes describe completeness, not activity. Parsed totals remain bounded by the evidence that was readable in this scan.</p>
+            <div className="text-sm font-medium text-warn">Some collection evidence is unavailable</div>
+            <p className="text-[12px] text-fg-muted mt-0.5">Totals include readable evidence only. Missing files or fields may leave gaps in this report.</p>
             <ul className="mt-1.5 space-y-0.5 text-[11px] leading-4 text-fg-muted">
               {data.partial && <li>Scan stopped early; older files were not parsed in this pass{partialSourceLabels ? ` (${partialSourceLabels})` : ""}. Use Rescan to continue.</li>}
-              {data.inventoryPartial && <li>File inventory is a lower bound{inventoryPartialSourceLabels ? ` for ${inventoryPartialSourceLabels}` : ""}; found-only counts may be incomplete.</li>}
-              {data.coveragePartial && <li>Some discovered transcript files could not be included in parsed totals{coveragePartialSourceLabels ? ` for ${coveragePartialSourceLabels}` : ""}; parser warnings describe retained sessions.</li>}
+              {data.inventoryPartial && <li>The file count may be incomplete{inventoryPartialSourceLabels ? ` for ${inventoryPartialSourceLabels}` : ""}; some files may not have been discovered.</li>}
+              {data.coveragePartial && <li>Some discovered transcript files could not be included in parsed totals{coveragePartialSourceLabels ? ` for ${coveragePartialSourceLabels}` : ""}. Check Sources for format support and parsing notes.</li>}
             </ul>
           </div>
         </div>
@@ -957,10 +974,10 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
             <StatCell label="Files" value={fmtNum(data.totalFiles)} title={`${fmtNumFull(data.totalFiles)} session files on disk`} sub="on-disk inventory" />
           </StatGroup>
 
-          <StatGroup icon={Coins} label="Estimated API cost">
+          <StatGroup icon={Coins} label="API-equivalent estimate" tone="estimate">
             <StatCell
               featured
-              label="List estimate"
+              label="At published API rates"
               value={tilde + fmtUsd(data.totalCostUsd)}
               title={`${fmtUsdFull(data.totalCostUsd)} API-equivalent estimate from recorded token classes and ${data.pricingSource} rates checked ${data.pricingListDate}. Not actual subscription/provider spend. Aggregate estimates exclude request-level long-context surcharges when the transcript does not preserve enough threshold evidence.`}
               sub={`${(pricingCoverage * 100).toFixed(0)}% coverage · ${fmtNum(data.totalPricedSessions)} priced`}
@@ -979,8 +996,8 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
             />
           </StatGroup>
 
-          <StatGroup icon={Hammer} label="Work">
-            <StatCell featured label="Calls" value={fmtNum(data.totalToolCalls)} title={`${fmtNumFull(data.totalToolCalls)} tool calls`} sub="tool invocations" />
+          <StatGroup icon={Hammer} label="Tool activity" tone="activity">
+            <StatCell featured label="Tool calls" value={fmtNum(data.totalToolCalls)} title={`${fmtNumFull(data.totalToolCalls)} tool calls`} sub="tool invocations" />
             <StatCell
               label="Errors"
               value={data.totalToolCalls > 0 ? `${toolErrPct.toFixed(1)}%` : "—"}
@@ -996,6 +1013,149 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
           </StatGroup>
         </div>
       </section>}
+
+      {hasModels && isVisible("models") && (
+        <section id="models" className={clsx("model-explorer scroll-mt-16 mb-6", sectionVisibilityClass(true))}>
+          <SectionHeader
+            icon={Cpu}
+            title="Models"
+            desc="Compare all-time model usage. Select a model to inspect its activity and conversations."
+            right={`${models.length} models · ${tilde}${fmtUsd(totalModelCost)} API eq.`}
+          />
+          <div className="card min-w-0 overflow-hidden">
+            <div className="grid grid-cols-1 divide-y divide-bd-subtle border-b border-bd-subtle sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+              <div className="min-w-0 px-4 py-3">
+                <div className="text-[10px] uppercase tracking-[0.12em] text-fg-dim">Highest API equivalent</div>
+                <button type="button" disabled={!topCostModel} className="mt-1 text-left break-all text-sm font-medium mono hover:text-accent-soft min-h-10" onClick={() => topCostModel && setInspectedModel(topCostModel.model)}>{topCostModel ? show(topCostModel.model) : "—"}</button>
+                <div className="mt-1 text-lg font-semibold mono tabular-nums">{topCostModel ? `${topCostModel.listedRateSessions + topCostModel.familyRateSessions + topCostModel.fallbackRateSessions + topCostModel.allocatedCostSessions > 0 ? "~" : ""}${fmtUsd(topCostModel.costUsd)}` : "—"}</div>
+              </div>
+              <div className="min-w-0 px-4 py-3">
+                <div className="text-[10px] uppercase tracking-[0.12em] text-fg-dim">Most sessions</div>
+                <button type="button" disabled={!topSessionModel} className="mt-1 text-left break-all text-sm font-medium mono hover:text-accent-soft min-h-10" onClick={() => topSessionModel && setInspectedModel(topSessionModel.model)}>{topSessionModel ? show(topSessionModel.model) : "—"}</button>
+                <div className="mt-1 text-lg font-semibold mono tabular-nums">{topSessionModel ? fmtNum(topSessionModel.sessions) : "—"} <span className="text-[10px] font-normal text-fg-dim">sessions</span></div>
+              </div>
+              <div className="min-w-0 px-4 py-3">
+                <div className="text-[10px] uppercase tracking-[0.12em] text-fg-dim">Highest tool error rate</div>
+                <button type="button" disabled={!topErrorModel} className="mt-1 text-left break-all text-sm font-medium mono hover:text-accent-soft min-h-10" onClick={() => topErrorModel && setInspectedModel(topErrorModel.model)}>{topErrorModel ? show(topErrorModel.model) : "—"}</button>
+                <div className={clsx("mt-1 text-lg font-semibold mono tabular-nums", topErrorModel && topErrorModel.toolErrors / topErrorModel.toolCalls >= 0.05 ? "text-err" : undefined)}>
+                  {topErrorModel ? `${((topErrorModel.toolErrors / topErrorModel.toolCalls) * 100).toFixed(1)}%` : "—"} <span className="text-[10px] font-normal text-fg-dim">{topErrorModel ? `${fmtNumFull(topErrorModel.toolErrors)} / ${fmtNumFull(topErrorModel.toolCalls)} calls · minimum 10` : "minimum 10 calls"}</span>
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 border-b border-bd-subtle px-3 py-2">
+              <label className="flex min-h-10 min-w-[220px] flex-1 items-center gap-2 rounded-lg border border-bd bg-bg px-3 text-xs text-fg-muted focus-within:border-accent/70">
+                <Search className="size-3.5 shrink-0" />
+                <input
+                  value={modelQuery}
+                  onChange={(event) => setModelQuery(event.target.value)}
+                  placeholder="Find a model"
+                  aria-label="Find a model"
+                  className="min-w-0 flex-1 bg-transparent text-xs text-fg outline-none placeholder:text-fg-dim"
+                />
+                {modelQuery && (
+                  <button type="button" onClick={() => setModelQuery("")} className="min-h-8 rounded px-2 py-1 text-[10px] text-fg-dim hover:bg-bg-elev hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent" aria-label="Clear model search">
+                    Clear
+                  </button>
+                )}
+              </label>
+              <SelectPill
+                icon={ArrowDownWideNarrow}
+                value={modelSort}
+                onChange={(value) => setModelSort(value as ModelSort)}
+                options={[
+                  ["cost", "API equivalent"],
+                  ["sessions", "Sessions"],
+                  ["tokens", "I/O tokens"],
+                  ["cache", "Cache reads"],
+                  ["tools", "Tool calls"],
+                  ["errors", "Tool error rate"],
+                ]}
+              />
+              <span className="ml-auto text-[10px] text-fg-dim mono tabular-nums" aria-live="polite">{fmtNum(visibleModels.length)} of {fmtNum(models.length)} models</span>
+            </div>
+            <button type="button" className="analysis-control model-columns-toggle m-3" aria-pressed={allModelColumns} onClick={() => setAllModelColumns(v => !v)}>{allModelColumns ? "Compact columns" : "All columns"}</button>
+            {inspectedModel && <ModelInspection key={inspectedModel} model={inspectedModel} onClose={() => setInspectedModel(null)} onExplore={exploreAnalysis} />}
+            <div className="chart-scroll-well overflow-x-auto pb-2">
+              <table className={clsx("data-table model-explorer-table min-w-[840px]", allModelColumns && "model-all-columns")} aria-label="Model usage and pricing evidence">
+                <thead>
+                  <tr>
+                    <th scope="col" className={STICKY_TH}>Model</th><th scope="col" className="model-mobile-metric num">{modelMetricLabel}</th>
+                    <th scope="col" className="num">Sessions</th>
+                    <th scope="col" className="num">I/O tokens</th>
+                    <th scope="col" className="num">Cache reads</th>
+                    <th scope="col" className="num">Tool calls</th>
+                    <th scope="col" className="num">Tool error rate</th>
+                    <th scope="col" className="num">API equiv.</th>
+                    <th scope="col" className="num">{modelSort === "errors" ? "Error rate" : "Share"}</th>
+                    <th scope="col">Explore</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleModels.length === 0 && (
+                    <tr>
+                      <td colSpan={10} className="px-4 py-8 text-center text-sm text-fg-dim">
+                        No models match “{modelQuery}”.{" "}
+                        <button type="button" onClick={() => setModelQuery("")} className="text-accent-soft underline underline-offset-2 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-sm">
+                          Clear search
+                        </button>
+                      </td>
+                    </tr>
+                  )}
+                  {visibleModels.map((m) => {
+                    const errPct = m.toolCalls ? (m.toolErrors / m.toolCalls) * 100 : 0;
+                    const share = modelBarFraction(m, models, modelSort);
+                    const modelCostEstimated = m.listedRateSessions + m.familyRateSessions + m.fallbackRateSessions + m.allocatedCostSessions > 0;
+                    return (
+                      <tr key={m.model} className="cv-auto">
+                        <th scope="row" className={clsx("max-w-[240px] px-3 py-2 text-left font-normal mono text-[11px]", STICKY_TD)}>
+                          <button type="button" className="model-name text-left break-all text-sm min-h-10 hover:text-accent-soft" aria-pressed={inspectedModel === m.model} onClick={() => setInspectedModel(m.model)}>{m.model === "unknown" ? "Unknown model" : show(m.model)}</button>
+                          <PricingEvidence model={m} />
+                        </th>
+                        <td className="model-mobile-metric num">{modelSort === "cost" ? (m.costUsd > 0 || m.pricedSessions > 0 ? (modelCostEstimated ? "~" : "") + fmtUsd(m.costUsd) : "—") : modelSort === "errors" ? (m.toolCalls ? `${(modelMeasure(m) * 100).toFixed(1)}%` : "—") : fmtNum(modelMeasure(m))}</td>
+                        <td className="num" title={`${fmtNumFull(m.pricedSessions)} priced · ${fmtNumFull(m.inferredModelSessions)} inferred model ids`}>{fmtNum(m.sessions)}</td>
+                        <td className="num text-fg-muted" title={`${fmtNumFull(m.inputTokens + m.outputTokens)} input + output — ↑${fmtNum(m.inputTokens)} ↓${fmtNum(m.outputTokens)}; processed usage, not unique text`}>
+                          {fmtNum(m.inputTokens + m.outputTokens)}
+                          <span className="sr-only">{fmtNumFull(m.inputTokens + m.outputTokens)} input + output tokens</span>
+                        </td>
+                        <td className="num text-fg-dim" title={fmtNumFull(m.cacheReadTokens)}>{fmtNum(m.cacheReadTokens)}</td>
+                        <td className="num text-fg-muted">{fmtNum(m.toolCalls)}</td>
+                        <td className={clsx("num", errPct >= 5 ? "text-err" : "text-fg-dim")}>{m.toolCalls ? `${errPct.toFixed(1)}%` : "—"}</td>
+                        <td className="num" title={`${fmtUsdFull(m.costUsd)} API-equivalent estimate · ${fmtNumFull(m.pricedSessions)}/${fmtNumFull(m.sessions)} sessions priced · ${fmtNumFull(m.measuredCostSessions)} recorded, ${fmtNumFull(m.allocatedCostSessions)} allocated, ${fmtNumFull(m.listedRateSessions)} listed, ${fmtNumFull(m.familyRateSessions)} family-mapped, ${fmtNumFull(m.fallbackRateSessions)} fallback · not actual spend`}>
+                          {/* A listed $0 (free tier) is a real price, not missing data — show ~$0. */}
+                          {m.costUsd > 0 || m.pricedSessions > 0
+                            ? (modelCostEstimated ? "~" : "") + fmtUsd(m.costUsd)
+                            : "—"}
+                          <span className="sr-only">{fmtUsdFull(m.costUsd)} API-equivalent estimate, not actual spend</span>
+                        </td>
+                        <td className="num">{modelSort === "cost" && !m.pricedSessions ? <span className="text-fg-dim">Unavailable</span> : <ShareBar frac={share} />}</td>
+                        <td>
+                          <button type="button" className="analysis-control min-h-8 px-2 py-1 text-[10px]" onClick={() => exploreAnalysis({ model: m.model })}>Explore</button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {models.length > 12 && !modelQuery && (
+              <div className="px-4 py-2 border-t border-bd-subtle text-center">
+                <button
+                  type="button"
+                  onClick={() => setShowAllModels((v) => !v)}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-bd px-3 py-1.5 text-xs text-fg-muted hover:bg-bg-elev hover:text-fg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                  aria-expanded={showAllModels}
+                >
+                  {showAllModels ? `Show fewer (top 12 of ${models.length})` : `Show all ${models.length} models`}
+                </button>
+              </div>
+            )}
+            <div className="px-3 py-1.5 border-t border-bd-subtle text-[10px] text-fg-dim">
+              {modelSort === "errors" ? "Bars show failed calls divided by total calls for each model." : `Bars show each model’s share of all-time ${modelMetricLabel} across all ${models.length} models; search does not change that denominator. Mixed-model sessions count once for each model they contain.`} Input + output is processed usage, not unique text; cache reads are reported separately. Pricing evidence: {fmtNum(models.reduce((sum, model) => sum + model.allocatedCostSessions, 0))} allocated, {fmtNum(data.totalListedRateSessions)} listed-rate, {fmtNum(data.totalFamilyRateSessions)} family-mapped, {fmtNum(data.totalFallbackRateSessions)} fallback session estimates.
+            </div>
+          </div>
+        </section>
+      )}
+
 
       {isVisible("fidelity") && <section id="fidelity" className={clsx("scroll-mt-16 mb-6", sectionVisibilityClass(true))}>
         <SectionHeader
@@ -1126,6 +1286,18 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
         </div>
       </section>}
 
+      {isVisible("analysis") && (
+        <section id="analysis" className={clsx("scroll-mt-16 mb-6", sectionVisibilityClass(true))}>
+          <SectionHeader
+            icon={BarChart3}
+            title="Explore evidence"
+            desc="Filter every matching parsed session, then hand off a bounded view to Timeline"
+            right="full population"
+          />
+          <CollectionAnalysis />
+        </section>
+      )}
+
       {hasWeekly && rollup && isVisible("usage") && (
         <section id="usage" className={clsx("scroll-mt-16 mb-6", sectionVisibilityClass(true))}>
           <SectionHeader
@@ -1135,7 +1307,7 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
             right={`${rollup.weekly.length}w window`}
           />
           <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-3">
-            <WeeklyUsageChart rollup={rollup} />
+            <WeeklyUsageChart rollup={rollup} onExplore={exploreAnalysis} />
             <ProjectRanking
               projects={rollup.byProject}
               generatedAtMs={data.generatedAtMs}
@@ -1154,143 +1326,8 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
             right={`${fmtNum(rollup.heatmapSessions ?? 0)} sessions`}
           />
           <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-3">
-            <ActivityHeatmap heatmap={hm} totalSessions={rollup.heatmapSessions ?? 0} />
+            <ActivityHeatmap heatmap={hm} totalSessions={rollup.heatmapSessions ?? 0} onExplore={exploreAnalysis} />
             <RhythmPanel heatmap={hm} />
-          </div>
-        </section>
-      )}
-
-      {hasModels && isVisible("models") && (
-        <section id="models" className={clsx("scroll-mt-16 mb-6", sectionVisibilityClass(true))}>
-          <SectionHeader
-            icon={Cpu}
-            title="Models"
-            desc="Normalized model names, usage, and rate sources"
-            right={`${models.length} models · ${tilde}${fmtUsd(totalModelCost)} API eq.`}
-          />
-          <div className="card min-w-0 overflow-hidden">
-            <div className="grid grid-cols-1 divide-y divide-bd-subtle border-b border-bd-subtle sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-              <div className="min-w-0 px-4 py-3">
-                <div className="text-[10px] uppercase tracking-[0.12em] text-fg-dim">Highest API equivalent</div>
-                <div className="mt-1 truncate text-[12px] font-medium mono" title={topCostModel ? show(topCostModel.model) : undefined}>{topCostModel ? show(topCostModel.model) : "—"}</div>
-                <div className="mt-1 text-lg font-semibold mono tabular-nums">{topCostModel ? `${topCostModel.listedRateSessions + topCostModel.familyRateSessions + topCostModel.fallbackRateSessions + topCostModel.allocatedCostSessions > 0 ? "~" : ""}${fmtUsd(topCostModel.costUsd)}` : "—"}</div>
-              </div>
-              <div className="min-w-0 px-4 py-3">
-                <div className="text-[10px] uppercase tracking-[0.12em] text-fg-dim">Most sessions</div>
-                <div className="mt-1 truncate text-[12px] font-medium mono" title={topSessionModel ? show(topSessionModel.model) : undefined}>{topSessionModel ? show(topSessionModel.model) : "—"}</div>
-                <div className="mt-1 text-lg font-semibold mono tabular-nums">{topSessionModel ? fmtNum(topSessionModel.sessions) : "—"} <span className="text-[10px] font-normal text-fg-dim">sessions</span></div>
-              </div>
-              <div className="min-w-0 px-4 py-3">
-                <div className="text-[10px] uppercase tracking-[0.12em] text-fg-dim">Highest tool error rate</div>
-                <div className="mt-1 truncate text-[12px] font-medium mono" title={topErrorModel ? show(topErrorModel.model) : undefined}>{topErrorModel ? show(topErrorModel.model) : "—"}</div>
-                <div className={clsx("mt-1 text-lg font-semibold mono tabular-nums", topErrorModel && topErrorModel.toolErrors / topErrorModel.toolCalls >= 0.05 ? "text-err" : undefined)}>
-                  {topErrorModel ? `${((topErrorModel.toolErrors / topErrorModel.toolCalls) * 100).toFixed(1)}%` : "—"} <span className="text-[10px] font-normal text-fg-dim">min. 10 calls</span>
-                </div>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2 border-b border-bd-subtle px-3 py-2">
-              <label className="flex min-h-10 min-w-[220px] flex-1 items-center gap-2 rounded-lg border border-bd bg-bg px-3 text-xs text-fg-muted focus-within:border-accent/70">
-                <Search className="size-3.5 shrink-0" />
-                <input
-                  value={modelQuery}
-                  onChange={(event) => setModelQuery(event.target.value)}
-                  placeholder="Find a model"
-                  aria-label="Find a model"
-                  className="min-w-0 flex-1 bg-transparent text-xs text-fg outline-none placeholder:text-fg-dim"
-                />
-                {modelQuery && (
-                  <button type="button" onClick={() => setModelQuery("")} className="min-h-8 rounded px-2 py-1 text-[10px] text-fg-dim hover:bg-bg-elev hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent" aria-label="Clear model search">
-                    Clear
-                  </button>
-                )}
-              </label>
-              <SelectPill
-                icon={ArrowDownWideNarrow}
-                value={modelSort}
-                onChange={(value) => setModelSort(value as ModelSort)}
-                options={[
-                  ["cost", "API equivalent"],
-                  ["sessions", "Sessions"],
-                  ["tokens", "I/O tokens"],
-                  ["cache", "Cache reads"],
-                  ["tools", "Tool calls"],
-                  ["errors", "Tool error rate"],
-                ]}
-              />
-              <span className="ml-auto text-[10px] text-fg-dim mono tabular-nums" aria-live="polite">{fmtNum(visibleModels.length)} of {fmtNum(models.length)} models</span>
-            </div>
-            <div className="chart-scroll-well overflow-x-auto pb-2">
-              <table className="data-table min-w-[760px]" aria-label="Model usage and pricing evidence">
-                <thead>
-                  <tr>
-                    <th scope="col" className={STICKY_TH}>Model</th>
-                    <th scope="col" className="num">Sessions</th>
-                    <th scope="col" className="num">I/O tokens</th>
-                    <th scope="col" className="num">Cache reads</th>
-                    <th scope="col" className="num">Tool calls</th>
-                    <th scope="col" className="num">Tool error rate</th>
-                    <th scope="col" className="num">API equiv.</th>
-                    <th scope="col" className="num">Share</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleModels.length === 0 && (
-                    <tr>
-                      <td colSpan={8} className="px-4 py-8 text-center text-sm text-fg-dim">
-                        No models match “{modelQuery}”.{" "}
-                        <button type="button" onClick={() => setModelQuery("")} className="text-accent-soft underline underline-offset-2 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-sm">
-                          Clear search
-                        </button>
-                      </td>
-                    </tr>
-                  )}
-                  {visibleModels.map((m) => {
-                    const errPct = m.toolCalls ? (m.toolErrors / m.toolCalls) * 100 : 0;
-                    const share = totalModelCost > 0 ? m.costUsd / totalModelCost : m.sessions / totalModelSessions;
-                    const modelCostEstimated = m.listedRateSessions + m.familyRateSessions + m.fallbackRateSessions + m.allocatedCostSessions > 0;
-                    return (
-                      <tr key={m.model} className="cv-auto">
-                        <th scope="row" className={clsx("max-w-[240px] px-3 py-2 text-left font-normal mono text-[11px]", STICKY_TD)}>
-                          <div className="truncate" title={m.model === "unknown" ? undefined : show(m.model)}>{m.model === "unknown" ? <span className="text-fg-dim">unknown</span> : show(m.model)}</div>
-                          <PricingEvidence model={m} />
-                        </th>
-                        <td className="num" title={`${fmtNumFull(m.pricedSessions)} priced · ${fmtNumFull(m.inferredModelSessions)} inferred model ids`}>{fmtNum(m.sessions)}</td>
-                        <td className="num text-fg-muted" title={`${fmtNumFull(m.inputTokens + m.outputTokens)} input + output — ↑${fmtNum(m.inputTokens)} ↓${fmtNum(m.outputTokens)}; processed usage, not unique text`}>
-                          {fmtNum(m.inputTokens + m.outputTokens)}
-                          <span className="sr-only">{fmtNumFull(m.inputTokens + m.outputTokens)} input + output tokens</span>
-                        </td>
-                        <td className="num text-fg-dim" title={fmtNumFull(m.cacheReadTokens)}>{fmtNum(m.cacheReadTokens)}</td>
-                        <td className="num text-fg-muted">{fmtNum(m.toolCalls)}</td>
-                        <td className={clsx("num", errPct >= 5 ? "text-err" : "text-fg-dim")}>{m.toolCalls ? `${errPct.toFixed(1)}%` : "—"}</td>
-                        <td className="num" title={`${fmtUsdFull(m.costUsd)} API-equivalent estimate · ${fmtNumFull(m.pricedSessions)}/${fmtNumFull(m.sessions)} sessions priced · ${fmtNumFull(m.measuredCostSessions)} recorded, ${fmtNumFull(m.allocatedCostSessions)} allocated, ${fmtNumFull(m.listedRateSessions)} listed, ${fmtNumFull(m.familyRateSessions)} family-mapped, ${fmtNumFull(m.fallbackRateSessions)} fallback · not actual spend`}>
-                          {/* A listed $0 (free tier) is a real price, not missing data — show ~$0. */}
-                          {m.costUsd > 0 || (modelCostEstimated && m.pricedSessions > 0)
-                            ? (modelCostEstimated ? "~" : "") + fmtUsd(m.costUsd)
-                            : "—"}
-                          <span className="sr-only">{fmtUsdFull(m.costUsd)} API-equivalent estimate, not actual spend</span>
-                        </td>
-                        <td className="num"><ShareBar frac={share} /></td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            {models.length > 12 && !modelQuery && (
-              <div className="px-4 py-2 border-t border-bd-subtle text-center">
-                <button
-                  type="button"
-                  onClick={() => setShowAllModels((v) => !v)}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-bd px-3 py-1.5 text-xs text-fg-muted hover:bg-bg-elev hover:text-fg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                  aria-expanded={showAllModels}
-                >
-                  {showAllModels ? `Show fewer (top 12 of ${models.length})` : `Show all ${models.length} models`}
-                </button>
-              </div>
-            )}
-            <div className="px-3 py-1.5 border-t border-bd-subtle text-[10px] text-fg-dim">
-              Share is of {totalModelCost > 0 ? "estimated API-equivalent value" : "sessions"}. Input + output is processed usage, not unique text; cache reads are reported separately. Pricing evidence: {fmtNum(models.reduce((sum, model) => sum + model.allocatedCostSessions, 0))} allocated, {fmtNum(data.totalListedRateSessions)} listed-rate, {fmtNum(data.totalFamilyRateSessions)} family-mapped, {fmtNum(data.totalFallbackRateSessions)} fallback session estimates.
-            </div>
           </div>
         </section>
       )}
@@ -1303,7 +1340,7 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
             desc="Most-called tools across every harness, with failure rates"
             right={`${fmtNum(data.totalToolCalls)} calls`}
           />
-          <ToolHealthList tools={tools} fullWidth hideHeading />
+          <ToolHealthList tools={tools} fullWidth hideHeading onExplore={exploreAnalysis} />
         </section>
       )}
 
@@ -1348,9 +1385,10 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
                       </div>
                       {!s.parseable && <div className="text-[10px] text-fg-dim flex items-center gap-1"><HelpCircle className="size-3" /> detect-only{s.note ? ` — ${s.note}` : ""}</div>}
                       {s.parseable && parsed > 0 && <div className="text-[10px] text-fg-dim truncate" title={sourceFidelityTitle}>{fmtNum(s.sessionsWithMeasuredUsage ?? 0)}/{fmtNum(parsed)} measured tokens · {fmtNum(s.sessionsWithInferredCost ?? 0)} inferred cost</div>}
+                      <SourceCapabilities format={s.format} parseable={s.parseable} compact />
                     </td>
                     <td><StatusPill status={s.status} /></td>
-                    <td className="mono text-[11px] text-fg-muted">{s.format}</td>
+                    <td className="text-[11px] text-fg-muted"><span className="mono">{s.format}</span></td>
                     <td className="num">{s.filesFound ? fmtNum(s.filesFound) : "—"}</td>
                     <td className="num" title={s.archivedSessions > 0 ? `${s.archivedSessions} archived (files pruned from disk; kept from the parse archive)` : undefined}>
                       {s.parseable ? <>{fmtNum(s.parsedSessions)}{s.archivedSessions > 0 && <span className="text-fg-dim text-[10px]"> incl. {fmtNum(s.archivedSessions)}a</span>}</> : <span className="text-fg-dim">n/a</span>}
@@ -1449,7 +1487,7 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
               {hits.length === 0 && <p className="text-sm text-fg-dim py-2">No matches. Try a shorter phrase or another term.</p>}
               <div className="space-y-1">
                 {hits.map((h) => (
-                  <Link
+                  <SessionEvidenceLink
                     key={h.file}
                     href={`/collection/session?sourceId=${encodeURIComponent(h.sourceId)}&pathHint=${encodeURIComponent(h.file)}`}
                     className="block min-h-11 rounded-md px-2 py-2 -mx-2 hover:bg-bg-elev transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
@@ -1461,7 +1499,7 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
                     </div>
                     <div className="text-[12px] text-fg-muted mono mt-0.5 line-clamp-2">{show(h.snippet)}</div>
                     <div className="text-[10px] text-fg-dim truncate" title={compactDisplayPath(h.project, redact)}>{compactDisplayPath(h.project, redact)}</div>
-                  </Link>
+                  </SessionEvidenceLink>
                 ))}
               </div>
             </div>
@@ -1525,16 +1563,17 @@ export default function CollectionClient({ initialData, error, initialQuery, rol
                     <tr key={collectionSessionIdentity(s)} data-new-batch={newBatchIdsRef.current.has(collectionSessionIdentity(s)) || undefined} className="cv-auto">
                       <td className={clsx(STICKY_TD, "min-w-[220px] max-w-[300px]")}>
                         {s.path ? (
-                          <Link href={`/collection/session?sourceId=${encodeURIComponent(s.sourceId)}&sessionId=${encodeURIComponent(s.sessionId)}`} className="block group" title={title}>
+                          <SessionEvidenceLink href={`/collection/session?sourceId=${encodeURIComponent(s.sourceId)}&sessionId=${encodeURIComponent(s.sessionId)}`} className="block group" title={title}>
                             <span className="block truncate text-[12px] text-fg group-hover:text-accent-soft group-hover:underline">{title}</span>
                             <span className="block truncate text-[10px] text-fg-dim">{project}</span>
-                          </Link>
+                          </SessionEvidenceLink>
                         ) : (
                           <span className="block" title={title}>
                             <span className="block truncate text-[12px] text-fg-muted">{title}</span>
                             <span className="block truncate text-[10px] text-fg-dim">{project}</span>
                           </span>
                         )}
+                        <SessionEvidenceLink href={`/collection/session?sourceId=${encodeURIComponent(s.sourceId)}&sessionId=${encodeURIComponent(s.sessionId)}`} className="mt-1 inline-flex text-[10px] text-accent-soft hover:underline">Inspect evidence</SessionEvidenceLink>
                         <div className="mt-1 flex flex-wrap gap-1">
                           <span className="rounded bg-accent/10 text-accent-soft px-1.5 py-0.5 text-[10px] whitespace-nowrap">{s.sourceLabel}</span>
                           {s.isSubagent && <span className="rounded bg-accent/10 text-accent-soft px-1.5 py-0.5 text-[10px]" title={s.parentSessionId ? `Child trace of ${s.parentSessionId}` : "Child-agent trace"}>child</span>}

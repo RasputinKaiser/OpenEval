@@ -8,7 +8,7 @@ const read = (relativePath: string) => fs.readFileSync(path.join(ROOT, relativeP
 
 const EVALUATE_ROUTES = [
   { href: "/runs", label: "Runs", description: "Track evaluations" },
-  { href: "/runs/leaderboard", label: "Leaderboard", description: "Rank harnesses" },
+  { href: "/runs/leaderboard", label: "Leaderboard", description: "Review standings" },
   { href: "/runs/compare", label: "Compare", description: "Find regressions" },
   { href: "/cases", label: "Cases", description: "Curate the suite" },
   { href: "/runs/new", label: "New run", description: "Launch an experiment" },
@@ -42,7 +42,7 @@ test("Evaluate workflow exposes the complete route inventory in stable order", (
   }
 
   assert.match(evaluateNav, /data-testid="evaluate-workflow-nav"/);
-  assert.match(evaluateNav, /overflow-x-auto/);
+  assert.match(evaluateNav, /grid-cols-2.*sm:grid-cols-3.*xl:grid-cols-6/);
   assert.match(evaluateNav, /aria-label="Evaluate pages"/);
   assert.match(evaluateNav, /EVALUATE_ITEMS\.map/);
   assert.match(evaluateNav, /aria-current=\{selected \? "page" : undefined\}/);

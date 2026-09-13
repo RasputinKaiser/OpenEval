@@ -142,7 +142,7 @@ test("mobile Observe surfaces avoid competing persistent rails and stacked cavea
   assert.match(nav, /md:sticky md:top-0/);
   assert.match(css, /\.timeline-section-nav__context \{\n    display: none;/);
   assert.match(collection, /mb-4 hidden min-w-0 max-w-full lg:sticky/);
-  assert.match(collection, /Collection coverage has caveats/);
+  assert.match(collection, /Some collection evidence is unavailable/);
   assert.match(live, /hasLiveCoverageNotes/);
   assert.match(newRun, /new-run-summary-panel order-first/);
 });

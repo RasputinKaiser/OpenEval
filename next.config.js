@@ -2,6 +2,7 @@ const path = require("path");
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  distDir: process.env.OPENEVAL_BUILD_DIR || ".next",
   // Pin the workspace root so a stray parent-directory lockfile doesn't confuse file tracing.
   outputFileTracingRoot: path.join(__dirname),
   serverExternalPackages: ["better-sqlite3"],

@@ -36,6 +36,10 @@ export interface CollectionSourceDef {
  * best-effort defaults; a root that doesn't exist is simply reported absent.
  */
 export const KNOWN_COLLECTION_SOURCES: CollectionSourceDef[] = [
+  { id: "zcode", label: "ZCode", roots: ["~/.zcode/cli/db"], format: "agent-sqlite", parseable: true, note: "ZCode 0.16.3/0.16.5 session/message/part database; read-only, separate from GLM in other tools." },
+  { id: "kimi-code", label: "Kimi Code", roots: [process.env.KIMI_CODE_HOME ? path.join(process.env.KIMI_CODE_HOME, "sessions") : "~/.kimi-code/sessions", "~/.kimi/sessions"], format: "kimi-wire", parseable: true, note: "Wire event projection with parent/agent identity; request snapshots do not count as conversation or usage." },
+  { id: "deepseek-harness", label: "DeepSeek Harness", roots: process.env.OPENEVAL_DEEPSEEK_ROOT ? [process.env.OPENEVAL_DEEPSEEK_ROOT] : [], format: "deepseek-jsonl", parseable: true, note: "Plaintext v3 event logs. Set OPENEVAL_DEEPSEEK_ROOT to the persistence root used by your harness; the upstream backend has no default root. Compressed or other versions are unsupported." },
+  { id: "grok-exports", label: "Grok Build exports", roots: ["~/.grok/exports"], format: "grok-markdown", parseable: true, note: "Markdown exports: conversation text and compact tool summaries only; no usage or billing evidence." },
   {
     id: "hermes",
     label: "Hermes Agent",
@@ -102,11 +106,11 @@ export const KNOWN_COLLECTION_SOURCES: CollectionSourceDef[] = [
   {
     id: "opencode",
     label: "opencode",
-    roots: ["~/.local/share/opencode"],
-    format: "jsonl-dir",
-    parseable: false,
+    roots: [process.env.XDG_DATA_HOME ? path.join(process.env.XDG_DATA_HOME, "opencode") : "~/.local/share/opencode"],
+    format: "agent-sqlite",
+    parseable: true,
     detectExts: [".json", ".jsonl"],
-    note: "opencode stores per-message JSON.",
+    note: "OpenCode v1 SQLite message/part projection. New v2-only sessions report unsupported rather than invented metrics.",
   },
   {
     id: "gemini-cli",

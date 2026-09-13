@@ -1,3 +1,4 @@
+import { parseAgentDbSessions } from "./parse-agent-db";
 import fs from "node:fs";
 import path from "node:path";
 import { getCachedSessionRows, listCachedFilesUnder, PARSER_VERSION } from "../live-cache";
@@ -234,7 +235,7 @@ function parseSourceSessionList(
   // flow through the one-file-one-session loop below. Profiles keep separate
   // ledgers (~/.hermes/profiles/<name>/state.db), so every discovered DB is
   // parsed and the id-deduped merge wins.
-  if (source.format === "hermes-sqlite") {
+  if (source.format === "hermes-sqlite" || source.format === "agent-sqlite") {
     const files = preCollected ? [...preCollected.files] : collectLiveTraceFiles(source, scanWarnings);
     files.sort((a, b) => b.mtime - a.mtime || a.file.localeCompare(b.file));
     if (files.length === 0) {
@@ -243,11 +244,14 @@ function parseSourceSessionList(
         coverage: { requestedLimit: limit, discoveredFiles: 0, scannedFiles: 0, parsedFiles: 0, droppedFiles: 0, unscannedFiles: 0, archivedSessionsAdded: 0, truncated: false, partial: false },
       };
     }
-    const all = parseHermesDbSource(files);
+    let failedFiles = 0;
+    const all = source.format === "hermes-sqlite" ? parseHermesDbSource(files) : files.flatMap(file => {
+      try { return parseAgentDbSessions(file.file); } catch (error) { failedFiles++; scanWarnings.push(error instanceof Error ? error.message : String(error)); return []; }
+    });
     sessions.push(...all.slice(0, limit).map(refreshInferredSessionCost));
     return {
       sessions,
-      coverage: { requestedLimit: limit, discoveredFiles: files.length, scannedFiles: files.length, parsedFiles: files.length, droppedFiles: 0, unscannedFiles: 0, archivedSessionsAdded: 0, truncated: all.length > limit, partial: false },
+      coverage: { requestedLimit: limit, discoveredFiles: files.length, scannedFiles: files.length, parsedFiles: files.length - failedFiles, droppedFiles: failedFiles, unscannedFiles: 0, archivedSessionsAdded: 0, truncated: all.length > limit, partial: failedFiles > 0 },
     };
   }
   let files: SourceFile[];
@@ -471,6 +475,14 @@ function collectLiveTraceFiles(source: LiveTraceSource, scanWarnings: string[]):
           collectClaudeSubagentFiles(subagentsDir, 2, files, pd, visited, scanWarnings, depthProbeBudget);
         }
       }
+    } else if (source.format === "agent-sqlite") {
+      collectJsonlRecursive(root, 3, files, root, name => name === "opencode.db" || name === "db.sqlite", visited, scanWarnings, depthProbeBudget);
+    } else if (source.format === "kimi-wire") {
+      collectJsonlRecursive(root, 6, files, root, name => name === "wire.jsonl", visited, scanWarnings, depthProbeBudget);
+    } else if (source.format === "deepseek-jsonl") {
+      collectJsonlRecursive(root, 4, files, root, name => name === "session.v3.jsonl", visited, scanWarnings, depthProbeBudget);
+    } else if (source.format === "grok-markdown") {
+      collectJsonlRecursive(root, 3, files, root, name => name.endsWith(".md"), visited, scanWarnings, depthProbeBudget);
     } else if (source.format === "hermes-json") {
       // Hermes sessions are single-JSON files; skip its request_dump_* payload logs.
       collectJsonlRecursive(root, source.maxDepth, files, root, (name) => name.startsWith("session_") && name.endsWith(".json"), visited, scanWarnings, depthProbeBudget);

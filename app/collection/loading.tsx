@@ -4,7 +4,7 @@ function Bar({ className }: { className: string }) {
 
 export default function Loading() {
   return (
-    <div role="status" aria-live="polite" className="p-4 md:p-6 max-w-6xl mx-auto" aria-busy="true" aria-label="Loading collection">
+    <div role="status" aria-live="polite" className="p-4 md:p-6 w-full" aria-busy="true" aria-label="Loading collection">
       <span className="sr-only">Loading collection…</span>
       <header className="mb-6">
         <div className="flex flex-wrap items-end justify-between gap-4">

@@ -126,6 +126,7 @@ export default function FirstRunGuide() {
         </div>
       </div>
 
+      <p className="mb-4 text-sm text-fg-muted">Start with Collection to inspect existing local transcripts. No API key or evaluation run is required. If you have no history yet, use your agent normally once, then re-check.</p>
       <ol className="space-y-3">
         {steps.map((step, i) => (
           <li key={step.key} className="flex flex-wrap sm:flex-nowrap items-start gap-3 p-3.5 rounded-lg border border-bd-subtle bg-bg/40 min-w-0">

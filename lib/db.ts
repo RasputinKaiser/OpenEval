@@ -178,6 +178,78 @@ const MIGRATIONS: Array<{ version: number; apply: (conn: Database.Database) => v
     },
   },
   { version: 2, apply: () => {} },
+  {
+    version: 3,
+    apply: (conn) => {
+      conn.exec(`
+        CREATE TABLE IF NOT EXISTS calibration_references (
+          reference_id TEXT NOT NULL,
+          version INTEGER NOT NULL,
+          label TEXT NOT NULL,
+          author_label TEXT NOT NULL,
+          provenance TEXT NOT NULL,
+          source_id TEXT NOT NULL,
+          session_id TEXT NOT NULL,
+          evidence_digest TEXT NOT NULL,
+          evidence_version TEXT NOT NULL,
+          rubric TEXT NOT NULL,
+          outcome TEXT NOT NULL,
+          rationale TEXT NOT NULL,
+          cited_ids_json TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          payload_json TEXT NOT NULL,
+          PRIMARY KEY (reference_id, version)
+        );
+        CREATE INDEX IF NOT EXISTS idx_calibration_references_created ON calibration_references(created_at DESC);
+        CREATE TABLE IF NOT EXISTS calibration_observations (
+          record_id TEXT PRIMARY KEY,
+          reference_id TEXT NOT NULL,
+          reference_version INTEGER NOT NULL,
+          provenance TEXT NOT NULL,
+          source_id TEXT NOT NULL,
+          session_id TEXT NOT NULL,
+          evidence_digest TEXT NOT NULL,
+          evidence_version TEXT NOT NULL,
+          rubric TEXT NOT NULL,
+          outcome TEXT NOT NULL,
+          cited_ids_json TEXT NOT NULL,
+          inventory_ids_json TEXT,
+          backend TEXT NOT NULL,
+          model TEXT NOT NULL,
+          reasoning_effort TEXT NOT NULL,
+          prompt_version INTEGER NOT NULL,
+          cost_usd REAL,
+          elapsed_ms REAL,
+          created_at INTEGER NOT NULL,
+          payload_json TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_calibration_observations_method ON calibration_observations(backend, model, reasoning_effort, prompt_version);
+        CREATE INDEX IF NOT EXISTS idx_calibration_observations_reference ON calibration_observations(reference_id, reference_version);
+      `);
+    },
+  },
+  {
+    version: 4,
+    apply: (conn) => {
+      conn.exec(`
+        CREATE TABLE IF NOT EXISTS experiments (
+          experiment_id TEXT PRIMARY KEY,
+          hypothesis TEXT NOT NULL,
+          baseline_run_id TEXT NOT NULL,
+          candidate_run_id TEXT NOT NULL,
+          cohort_json TEXT NOT NULL,
+          cohort_count INTEGER NOT NULL,
+          cohort_digest TEXT NOT NULL,
+          origin_source_id TEXT,
+          origin_session_id TEXT,
+          created_at INTEGER NOT NULL,
+          baseline_snapshot_json TEXT NOT NULL,
+          candidate_snapshot_json TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_experiments_created ON experiments(created_at DESC);
+      `);
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.reduce((max, m) => Math.max(max, m.version), 0);
@@ -597,8 +669,8 @@ export function countRuns(): number {
   return Number(getDb().prepare(`SELECT COUNT(*) FROM runs`).pluck().get() ?? 0);
 }
 
-export function getRun(id: string): RunRecord | null {
-  const r = getDb().prepare(`SELECT * FROM runs WHERE id = ?`).get(id) as any;
+export function getRun(id: string, conn?: Database.Database): RunRecord | null {
+  const r = (conn ?? getDb()).prepare(`SELECT * FROM runs WHERE id = ?`).get(id) as any;
   return r ? rowToRun(r) : null;
 }
 
@@ -611,35 +683,62 @@ export function listRunsByStatus(status: RunRecord["status"]): RunRecord[] {
   return rows.map(rowToRun);
 }
 
-export function listRunCases(runId: string): RunCaseRecord[] {
-  const rows = getDb().prepare(`SELECT * FROM run_cases WHERE run_id = ? ORDER BY seq ASC`).all(runId) as any[];
+export function listRunCases(runId: string, conn?: Database.Database): RunCaseRecord[] {
+  const rows = (conn ?? getDb()).prepare(`SELECT * FROM run_cases WHERE run_id = ? ORDER BY seq ASC`).all(runId) as any[];
   return rows.map(rowToRunCase);
 }
 
 export interface RunCaseSummary {
+  case_id: string;
+  category: string | null;
+  sample: number;
+  model: string | null;
   status: string;
   runner_cost_usd: number | null;
+  runner_cost_source: "measured" | "inferred" | "unspecified" | "missing";
   runner_input_tokens: number | null;
   runner_output_tokens: number | null;
   runner_duration_ms: number | null;
+  runner_duration_source: "measured" | "inferred" | "unspecified" | "missing";
+}
+
+function finiteMetric(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+function metricSource(value: unknown): "measured" | "inferred" | "unspecified" | "missing" {
+  return value === "measured" || value === "inferred" || value === "unspecified" || value === "missing"
+    ? value
+    : "unspecified";
 }
 
 export function getRunCaseSummariesBatch(runIds: string[]): Map<string, RunCaseSummary[]> {
   if (runIds.length === 0) return new Map();
   const placeholders = runIds.map(() => "?").join(",");
   const rows = getDb().prepare(
-    `SELECT run_id, status, runner_result_json FROM run_cases WHERE run_id IN (${placeholders}) ORDER BY seq ASC`
+    `SELECT run_id, case_id, category, sample, status, runner_result_json FROM run_cases WHERE run_id IN (${placeholders}) ORDER BY seq ASC`
   ).all(...runIds) as any[];
   const result = new Map<string, RunCaseSummary[]>();
   for (const row of rows) {
     let parsed: any = null;
     try { parsed = JSON.parse(row.runner_result_json); } catch {}
+    const usage = parsed?.usage;
+    const cost = finiteMetric(usage?.costUsd);
+    const costSource = metricSource(usage?.costSource ?? (cost === null ? "missing" : "unspecified"));
+    const duration = finiteMetric(parsed?.durationMs);
+    const durationSource = metricSource(parsed?.durationSource ?? (duration === null ? "missing" : "measured"));
     const summary: RunCaseSummary = {
+      case_id: String(row.case_id ?? ""),
+      category: typeof row.category === "string" && row.category ? row.category : null,
+      sample: Number.isFinite(Number(row.sample)) ? Number(row.sample) : 0,
+      model: typeof parsed?.model === "string" && parsed.model.trim() ? parsed.model : null,
       status: row.status,
-      runner_cost_usd: parsed?.usage?.costUsd ?? null,
-      runner_input_tokens: parsed?.usage?.inputTokens ?? null,
-      runner_output_tokens: parsed?.usage?.outputTokens ?? null,
-      runner_duration_ms: parsed?.durationMs ?? null,
+      runner_cost_usd: costSource === "missing" ? null : cost,
+      runner_cost_source: costSource,
+      runner_input_tokens: finiteMetric(usage?.inputTokens),
+      runner_output_tokens: finiteMetric(usage?.outputTokens),
+      runner_duration_ms: durationSource === "missing" ? null : duration,
+      runner_duration_source: durationSource,
     };
     const list = result.get(row.run_id) ?? [];
     list.push(summary);

@@ -1,0 +1,65 @@
+{
+  "ts": "2026-09-13T01:37:10+00:00",
+  "cwd": "<project-root>",
+  "git": {
+    "rev": "519d3a5",
+    "dirty": true
+  },
+  "output_estimator": "heuristic-chars/4",
+  "probes": {
+    "types": {
+      "cmd": "npx tsc --noEmit",
+      "runs": 1,
+      "samples_s": [
+        2.365
+      ],
+      "median_s": 2.365,
+      "exit": 0,
+      "ok": true,
+      "output_bytes": 0,
+      "output_tokens": 0,
+      "output_tail": null
+    },
+    "test": {
+      "cmd": "npm test --silent",
+      "runs": 3,
+      "samples_s": [
+        14.4,
+        19.957,
+        14.02
+      ],
+      "median_s": 14.4,
+      "exit": 0,
+      "ok": true,
+      "output_bytes": 948,
+      "output_tokens": 237,
+      "output_tail": null
+    },
+    "lint": {
+      "cmd": "npm run lint --silent",
+      "runs": 1,
+      "samples_s": [
+        2.559
+      ],
+      "median_s": 2.559,
+      "exit": 0,
+      "ok": true,
+      "output_bytes": 267,
+      "output_tokens": 67,
+      "output_tail": null
+    },
+    "build": {
+      "cmd": "npm run build --silent",
+      "runs": 1,
+      "samples_s": [
+        138.518
+      ],
+      "median_s": 138.518,
+      "exit": 0,
+      "ok": true,
+      "output_bytes": 4013,
+      "output_tokens": 965,
+      "output_tail": null
+    }
+  }
+}

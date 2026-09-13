@@ -1,3 +1,5 @@
+import { isNativeEventFormat, normalizeNativeEvent, nativeIdentity, grokMarkdownRecords, kimiSessionMetadata } from "./native-events";
+import type { LiveTraceFormat } from "./types";
 import fs from "node:fs";
 import type { FieldMapping } from "../adapters/generic";
 import { hermesJsonToRecords } from "../adapters/hermes";
@@ -18,7 +20,32 @@ export function summarizeLiveSessionFile(file: string, projectDir: string, mtime
     decodeProject,
     mtime,
   });
-  return summarizeWithCache(file, projectDir, mtime, contextKey, (f, lines, bytes, pd, mt) => parseLiveSession(f, lines, bytes, pd, mt, opts.fields, opts.inferredModel, decodeProject), opts.stat, opts.forceReparse);
+  return summarizeWithCache(file, projectDir, mtime, contextKey, (f, lines, bytes, pd, mt) => (() => {
+    if (opts.sourceFormat === "grok-markdown") {
+      const session = parseLiveSession(f, grokMarkdownRecords(f), bytes, pd, mt, undefined, undefined, false);
+      if (session) { session.metricSources.tokens = "missing"; session.metricSources.cost = "missing"; session.metricSources.duration = "missing"; session.parseWarnings.push("Markdown export: timestamps, model, tool structure and usage are unavailable."); }
+      return session;
+    }
+    if (!isNativeEventFormat(opts.sourceFormat)) return parseLiveSession(f, lines, bytes, pd, mt, opts.fields, opts.inferredModel, decodeProject);
+    const identity = nativeIdentity(f, opts.sourceFormat!);
+    const providers = new Set<string>();
+    const projected = (function* () {
+      yield JSON.stringify({ type: "system", subtype: "init", sessionId: identity.sessionId });
+      for (const line of lines) { let obj; try { obj = JSON.parse(line); } catch { yield line; continue; } const normalized = normalizeNativeEvent(obj, opts.sourceFormat as LiveTraceFormat); if (typeof normalized.message?.provider === "string") providers.add(normalized.message.provider); yield JSON.stringify(normalized); }
+    })();
+    const session = parseLiveSession(f, projected, bytes, pd, mt, undefined, undefined, false);
+    if (session) {
+      session.observedProviders = [...providers];
+      if (opts.sourceFormat === "kimi-wire") {
+        Object.assign(session, identity);
+        const metadata = kimiSessionMetadata(f);
+        if (metadata.title) session.displayTitle = identity.isSubagent ? `${metadata.title} · ${identity.agentLabel}` : metadata.title;
+        if (metadata.warning) session.parseWarnings.push(metadata.warning);
+      }
+      session.parseWarnings.push("Native event projection; request mirrors excluded from metrics. Usage and model stay unavailable when not recorded in supported fields.");
+    }
+    return session;
+  })(), opts.stat, opts.forceReparse);
 }
 
 const HERMES_MAX_BYTES = 32 * 1024 * 1024; // whole-file JSON parse; real sessions are ≤ a few MB

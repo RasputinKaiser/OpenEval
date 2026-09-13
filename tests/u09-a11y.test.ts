@@ -31,7 +31,7 @@ test("reduced-motion is respected by owned animations", () => {
   const css = read("app/globals.css");
   const reducedBlocks = css.match(/@media \(prefers-reduced-motion: reduce\)[^{]*\{[\s\S]*?\n\}/g) ?? [];
   const reduced = reducedBlocks.join("\n");
-  for (const needle of [".anim-menu-enter", ".shimmer", ".drawer-stagger", ".stagger-grid", "scroll-behavior: auto"]) {
+  for (const needle of [".anim-menu-enter", ".shimmer", ".drawer-stagger", ".stagger-grid", ".toast-message", ".inspection-receipt", ".copy-feedback", "scroll-behavior: auto"]) {
     assert.ok(reduced.includes(needle), `prefers-reduced-motion must cover ${needle}`);
   }
   // Modal primitives must use the class (overridable), not inline animation styles.
@@ -43,7 +43,8 @@ test("reduced-motion is respected by owned animations", () => {
   ]) {
     const src = read(file);
     assert.ok(!/style=\{\{\s*animation:\s*"menu-enter/.test(src), `${file} must not inline the menu-enter animation`);
-    assert.match(src, /anim-menu-enter/, `${file} must use .anim-menu-enter`);
+    const animationClass = file === "components/ToastProvider.tsx" ? "toast-message" : "anim-menu-enter";
+    assert.ok(src.includes(animationClass), `${file} must use its reduced-motion-aware animation class`);
   }
 });
 

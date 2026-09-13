@@ -1,5 +1,8 @@
 "use client";
 
+import { TimelineReviewQueue } from "./TimelineReviewQueue";
+import type { JudgeQueueFilters } from "@/lib/insights/judge-queue";
+import { SessionEvidenceExplorer } from "./SessionEvidenceExplorer";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import clsx from "clsx";
@@ -19,6 +22,11 @@ import { shouldPollJudgeStatus, timelinePollError, timelineRefreshPhase } from "
 import { EvidenceComposition } from "./evidence/EvidenceComposition";
 import { EvidenceReview } from "./evidence/EvidenceReview";
 import JudgePicker from "./JudgePicker";
+import { useChartSelection } from "@/lib/use-chart-selection";
+import { selectionParams, chartSelectionHref } from "@/lib/chart-analysis";
+import { parseEvidenceNavigation } from "@/lib/collection/evidence-navigation";
+import { DateRangeControls, SelectionChips } from "./charts/SelectionControls";
+import { TimelineRangeComparison } from "./TimelineRangeComparison";
 import type { JudgeSelectionInput } from "@/lib/grader/selection";
 
 
@@ -79,6 +87,12 @@ type TimelinePayload = TimelineReport & {
 
 export default function TimelineClient({ data: initialData, error }: { data: TimelinePayload; error?: string }) {
   const [data, setData] = useState(initialData);
+  const { selection, setSelection, ready: selectionReady, error: selectionError } = useChartSelection();
+  const selectionKey = selectionParams(selection).toString();
+  const selectionKeyRef = useRef(selectionKey);
+  selectionKeyRef.current = selectionKey;
+  const timelineAbort = useRef<AbortController | null>(null);
+  const requestVersion = useRef(0);
   const [judging, setJudging] = useState(false);
   const [judgeMsg, setJudgeMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | undefined>();
@@ -118,8 +132,9 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
   const [markerVisibleCount, setMarkerVisibleCount] = useState(TIMELINE_MARKER_WINDOW);
 
   useEffect(() => {
-    const fromUrl = new URLSearchParams(window.location.search).get("kind");
-    if (isMarkerKind(fromUrl)) setKindFilter(fromUrl);
+    const restore = () => { const fromUrl = new URLSearchParams(window.location.search).get("kind"); setKindFilter(isMarkerKind(fromUrl) ? fromUrl : "all"); };
+    restore(); window.addEventListener("popstate", restore);
+    return () => window.removeEventListener("popstate", restore);
   }, []);
 
   const applyKindFilter = useCallback((kind: KindFilter) => {
@@ -127,7 +142,7 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
     const url = new URL(window.location.href);
     if (kind === "all") url.searchParams.delete("kind");
     else url.searchParams.set("kind", kind);
-    window.history.replaceState(null, "", url);
+    window.history.pushState(null, "", url);
   }, []);
 
   const visibleMarkers = useMemo(
@@ -170,11 +185,17 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
   const sections = useMemo(() => [
     { id: "overview", label: "Start here", description: "Check the corpus, signal coverage, and provenance." },
     { id: "outcome", label: "Outcome trend", description: "Read the trend and its limits." },
+    { id: "evidence", label: "Session evidence", description: "Inspect task episodes, receipts, and review history." },
     { id: "impact", label: "Compare before/after", description: "Compare before/after windows around adoption." },
     ...((data.changePoints ?? []).length > 0 ? [{ id: "shifts", label: "Explain shifts", description: "See population shifts without claiming a cause." }] : []),
     { id: "adoptions", label: "Adoption history", description: "See when skills, plugins, models, and subagents first appeared." },
   ], [data.changePoints]);
   const { activeSection, selectSection, isVisible } = useProgressiveSection(sections, "all");
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const navigation = parseEvidenceNavigation(url.searchParams);
+    if (navigation.sourceId && navigation.sessionId && !url.searchParams.get("section") && !url.hash) selectSection("evidence");
+  }, [selectSection]);
 
   const trend = data.overall.trend;
   const firstHalfN = data.overall.firstHalfN ?? Math.floor(data.signalSessions / 2);
@@ -182,8 +203,13 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
   const trendComparable = data.overall.comparable ?? (firstHalfN > 0 && secondHalfN > 0);
   const TrendIcon = !trendComparable ? Activity : trend >= 0 ? TrendingUp : TrendingDown;
 
-  const refreshData = useCallback(async (): Promise<boolean> => {
+  const refreshData = useCallback(async (forceRefresh = true): Promise<boolean> => {
     if (refreshInFlightRef.current) return refreshInFlightRef.current;
+    const version = ++requestVersion.current;
+    timelineAbort.current?.abort();
+    const controller = new AbortController();
+    timelineAbort.current = controller;
+    const key = selectionKeyRef.current;
 
     const request = (async (): Promise<boolean> => {
       setTimelineLoading(true);
@@ -192,9 +218,10 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
         // The route deliberately permits private browser caching for ordinary
         // navigation. An explicit refresh must bypass that cache or a stale
         // response can be replayed for 30 seconds and keep the UI amber.
-        const fresh = await fetch("/api/collection/timeline?fresh=1", { cache: "no-store" });
+        const fresh = await fetch(`/api/collection/timeline?${forceRefresh ? "fresh=1&" : ""}${key}`, { cache: "no-store", signal: controller.signal });
         if (!fresh.ok) throw new Error(`HTTP ${fresh.status}`);
         const next = (await fresh.json()) as TimelinePayload;
+        if (version !== requestVersion.current || key !== selectionKeyRef.current) return false;
         setData(next);
         setTimelineLoaded(true);
         setTimelineStale(Boolean(next.stale || next.refreshing || next.refreshError));
@@ -202,11 +229,12 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
         setTimelineUpdatedAt(next.generatedAtMs ?? Date.now());
         return true;
       } catch (e) {
+        if (controller.signal.aborted || version !== requestVersion.current) return false;
         setTimelineError(timelinePollError(e));
         setTimelineStale(true);
         return false;
       } finally {
-        setTimelineLoading(false);
+        if (version === requestVersion.current) setTimelineLoading(false);
       }
     })();
     refreshInFlightRef.current = request;
@@ -216,6 +244,14 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
       if (refreshInFlightRef.current === request) refreshInFlightRef.current = null;
     }
   }, []);
+
+  useEffect(() => {
+    if (!selectionReady || selectionError) return;
+    timelineAbort.current?.abort();
+    refreshInFlightRef.current = null;
+    void refreshData(false);
+    return () => { timelineAbort.current?.abort(); requestVersion.current += 1; };
+  }, [selectionKey, selectionReady, selectionError, refreshData]);
 
   // A stale-while-revalidate response deliberately returns the last-good
   // report before the collection refresh finishes. Follow it once the shared
@@ -292,44 +328,31 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
     if (refreshed && !wasRunning) setJobStatusError(null);
   }, [job?.running, loadJobStatus, refreshData, startPolling]);
 
-  async function judgeAllWindows() {
-    try {
-      const res = await fetch("/api/collection/timeline/judge", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ all: true, selection: judgeSelection }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const r = await res.json();
-      setJob(r.status);
-      setJobStatusError(null);
-      setTimelineStale(Boolean(r.status.running));
-      if (r.started && shouldPollJudgeStatus(r.status)) startPolling();
-      else if (!r.status.running) setJudgeMsg("Every marker-window session is already judged.");
-      setErr(undefined);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    }
-  }
-
-  async function refineWithJudge() {
+  async function refineWithJudge(filters: JudgeQueueFilters) {
     setJudging(true);
     setJudgeMsg(null);
     try {
       const res = await fetch("/api/collection/timeline/judge", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ max: 10, selection: judgeSelection }),
+        body: JSON.stringify({ all: true, max: filters.limit ?? 10, selection: judgeSelection, filters }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const r = await res.json();
+      if (r.mode === "all") {
+        setJob(r.status); setJobStatusError(null); setTimelineStale(Boolean(r.status.running));
+        if (r.started && shouldPollJudgeStatus(r.status)) startPolling();
+        setJudgeMsg(r.started ? `Queued ${r.status.total} sessions for serial background review. You can leave this page.` : "No eligible sessions remain in this review selection.");
+        if (!r.status.running) await refreshData();
+        return;
+      }
       setJudgeMsg(
         r.judged > 0
-          ? `Judged ${r.judged}/${r.sampled} sessions via ${r.judge}${r.failed ? ` (${r.failed} failed)` : ""}.`
+          ? `Reviewed ${r.judged}/${r.sampled} sessions via ${r.judge}${r.failed ? ` (${r.failed} failed)` : ""}.`
           : r.sampled === 0
-            ? "Every sampled session is already judged."
+            ? "No eligible sessions remain in this review selection."
             : r.lastError && /usage limit/i.test(r.lastError)
-              ? `Judge backend is out of plan budget — ${r.lastError.match(/try again at ([^)]+)\.?$/i)?.[1] ? `resets ${r.lastError.match(/try again at ([^)]+)\.?$/i)![1]}` : "try again later"}. Stale receipts keep their old scores until a pass succeeds.`
+              ? `Judge backend is out of plan budget — ${r.lastError.match(/try again at ([^)]+)\.?$/i)?.[1] ? `resets ${r.lastError.match(/try again at ([^)]+)\.?$/i)![1]}` : "try again later"}. Historical receipts remain available; stale results do not become current scores.`
               : `No verdicts returned (${r.failed} failed via ${r.judge}).${r.lastError ? ` Last error: ${r.lastError}` : ""}`,
       );
       const refreshed = await refreshData();
@@ -382,12 +405,24 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
     : "Saved review records share one source, model, and prompt version. Receipt count and comparable score count are intentionally different.";
 
   return (
-    <div className="min-w-0 p-4 md:p-6 max-w-6xl mx-auto">
+    <div className="min-w-0 p-4 md:p-6 w-full">
       <Link href="/collection" className="inline-flex items-center gap-1 text-xs text-fg-muted hover:text-fg mb-2"><ArrowLeft className="size-3.5" /> Collection</Link>
+      <section className="analysis-chart mb-4" aria-label="Timeline dataset selection">
+        <p className="text-xs text-fg-muted mb-3">Dates and evidence filters apply to every Timeline panel below. Adoption comparisons are recalculated within this selection. Chart zoom is inspection; use Explore visible sessions to apply its range.</p>
+        <DateRangeControls selection={selection} onChange={setSelection} />
+        <div className="flex flex-wrap gap-3 my-3">
+          <label className="text-xs text-fg-muted">Outcome evidence <select className="analysis-input" value={selection.outcome ?? ""} onChange={(e) => setSelection({ ...selection, outcome: (e.target.value || undefined) as "judged" | "heuristic" | undefined })}><option value="">All evidence</option><option value="judged">Judged</option><option value="heuristic">Heuristic</option></select></label>
+          <label className="text-xs text-fg-muted">Cost evidence <select className="analysis-input" value={selection.costSource ?? ""} onChange={(e) => setSelection({ ...selection, costSource: (e.target.value || undefined) as "measured" | "inferred" | undefined })}><option value="">All evidence</option><option value="measured">Measured</option><option value="inferred">Inferred</option></select></label>
+          {!selection.outcome && <Link className="analysis-control" href={chartSelectionHref("/collection", selection)}>Explore matching Collection sessions</Link>}
+        </div>
+        <SelectionChips selection={selection} onChange={setSelection} />
+        {selectionError && <p role="alert" className="text-xs text-err">{selectionError} <button className="analysis-control" onClick={() => setSelection({})}>Reset invalid selection</button></p>}
+        {timelineLoading && <p role="status" className="mt-2 text-xs text-fg-muted">Updating selected dataset; the previous report remains visible until the response arrives.</p>}
+      </section>
       <PageHeader
         icon={Activity}
         title={<>Timeline &amp; comparisons</>}
-        subtitle="See what changed around adoption. These are descriptive windows, not causal proof."
+        subtitle="Compare session outcomes before and after adoption. Changes describe the observed sessions; they do not establish cause."
         actions={
           <div className="flex flex-wrap items-center gap-2" aria-label="Timeline actions">
             <button
@@ -409,26 +444,7 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
                   <div className="mb-3 text-[10px] font-medium uppercase tracking-[0.12em] text-fg-muted">Review method</div>
                   <JudgePicker value={judgeSelection} onChange={(next) => { setJudgeSelection(next); setJudgeReadiness({ readiness: "unknown", detail: "Checking judge readiness…" }); }} onReadinessChange={handleJudgeReadiness} idPrefix="timeline-judge" />
                 </div>
-                <button
-                  type="button"
-                  onClick={refineWithJudge}
-                  disabled={judging || !!job?.running || judgeReadiness.readiness !== "ready"}
-                  title="Judge up to 10 new sessions in the adoption windows."
-                  className="mt-1 flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-fg-muted hover:bg-bg-elev hover:text-fg transition-colors disabled:opacity-50"
-                >
-                  <Gavel className={clsx("size-3.5", judging && "animate-pulse")} />
-                  <span><span className="block">{judging ? "Reviewing…" : "Review a sample"}</span><span className="block text-[10px] text-fg-dim">Up to 10 new sessions</span></span>
-                </button>
-                <button
-                  type="button"
-                  onClick={judgeAllWindows}
-                  disabled={judging || !!job?.running || judgeReadiness.readiness !== "ready"}
-                  title="Judge every unjudged session in the adoption windows."
-                  className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-fg-muted hover:bg-bg-elev hover:text-fg transition-colors disabled:opacity-50"
-                >
-                  <Scale className={clsx("size-3.5", job?.running && "animate-pulse")} />
-                  <span><span className="block">{job?.running ? "Reviewing all…" : "Review all windows"}</span><span className="block text-[10px] text-fg-dim">Runs in the background; you can leave this page</span></span>
-                </button>
+                <TimelineReviewQueue selection={selection} method={judgeSelection} disabled={judging || !!job?.running || judgeReadiness.readiness !== "ready"} running={judging} onRun={refineWithJudge} />
               </div>
             </details>
           </div>
@@ -558,7 +574,7 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
               It is a trailing median from {seriesBasisCopy}, using {seriesN}/{seriesDenominator} top-level sessions ({pct(seriesCoverage)}). The two halves are {trendComparable ? "comparable" : "not comparable"}. {retainedJudgeReceiptCount} judge receipts are retained separately, and missing-signal sessions are not counted as zero. {data.outcomeSeries.length} points are plotted after downsampling.
             </div>
           </details>
-          <OutcomeChart series={data.outcomeSeries} markers={visibleMarkers} changePoints={data.changePoints ?? []} evidence={seriesEvidence} />
+          <OutcomeChart onExploreRange={(fromMs, toMs) => setSelection({ ...selection, fromMs, toMs })} series={data.outcomeSeries} markers={visibleMarkers} changePoints={data.changePoints ?? []} evidence={seriesEvidence} />
         </div>
 
         {/* Metric rail: four slim segments, one strip — numbers support the chart, not compete. */}
@@ -725,15 +741,15 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
               <span className="timeline-review-stat"><span>Saved receipts</span><strong>{retainedJudgeReceiptCount}</strong></span>
               <span className="timeline-review-stat"><span>Comparable scores</span><strong>{reviewScoreCount}</strong></span>
               {(data.judgeComparability?.staleReceiptCount ?? 0) > 0 && (
-                <span className="timeline-review-stat" title="Receipts saved under an older prompt version. They stay on disk but cannot be compared with current scores; the next review pass re-judges them.">
-                  <span>Stale (re-judging)</span>
+                <span className="timeline-review-stat" title="Receipts whose prompt, packet version, or source revision is stale. They stay in history; use the changed-evidence review queue to inspect eligible sessions.">
+                  <span>Stale / historical</span>
                   <strong className="text-warn">{data.judgeComparability!.staleReceiptCount}</strong>
                 </span>
               )}
             </div>
             {(data.judgeComparability?.staleReceiptCount ?? 0) > 0 && (
               <p className="timeline-review-status__copy mt-1 text-[11px] text-fg-dim">
-                {data.judgeComparability!.staleReceiptCount} receipt{(data.judgeComparability!.staleReceiptCount) === 1 ? " was" : "s were"} saved under an older prompt contract — excluded from judged provenance and comparable scores until re-reviewed.
+                {data.judgeComparability!.staleReceiptCount} receipt{(data.judgeComparability!.staleReceiptCount) === 1 ? " has" : "s have"} an older review contract or changed source revision — retained in history and excluded from current comparable scores.
               </p>
             )}
           </div>
@@ -964,6 +980,8 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
       </section>
       }
 
+      {isVisible("evidence") && <section id="evidence" className="scroll-mt-16 observe-section"><SessionEvidenceExplorer selection={selection} /></section>}
+
       {/* Does spend buy success? Cost (log) vs deterministic outcome, per session.
           Judged cloud on top so model-reviewed sessions stay visible. */}
       {isVisible("impact") && (
@@ -971,9 +989,10 @@ export default function TimelineClient({ data: initialData, error }: { data: Tim
         <SectionHeader
           icon={ScatterChart}
           title="Cost vs. outcome"
-          desc="Each dot is one session: cost on a log scale against its outcome score. Judged sessions render on top of heuristic ones."
+          desc="Marks group nearby plotted sessions: positive cost on a log scale against outcome. Open a mark to inspect every underlying session."
         />
         <div className="card p-4">
+          <TimelineRangeComparison selection={selection} dateStart={data.dateStart} dateEnd={data.dateEnd} />
           <CostVsOutcome points={data.outcomeScatter} evidence={data.outcomeScatterEvidence} />
         </div>
       </section>

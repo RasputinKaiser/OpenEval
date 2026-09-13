@@ -13,7 +13,7 @@ export default async function Page() {
   const runs = listRuns(50);
   const cases = await loadCases();
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto">
+    <div className="p-4 sm:p-6 lg:p-8 w-full">
       <PageHeader
         icon={Activity}
         title="Runs"
@@ -25,13 +25,6 @@ export default async function Page() {
         }
       />
       <EvaluateNav />
-      <EvaluateOverview
-        totalRuns={countRuns()}
-        caseCount={cases.length}
-        latestRunId={runs[0]?.id ?? null}
-        latestRunName={runs[0]?.name ?? null}
-        latestRunSummary={runs[0]?.summary ?? null}
-      />
       {runs.length === 0 ? (
         <div className="card p-8 text-center text-sm text-fg-muted">
           No runs yet. <Link href="/runs/new" className="text-accent-soft hover:underline">Start one</Link>.
@@ -39,6 +32,15 @@ export default async function Page() {
       ) : (
         <RunsClient runs={runs} />
       )}
+      <details className="mt-6"><summary className="cursor-pointer text-xs text-fg-muted mb-3">Evaluation overview and shortcuts</summary>
+      <EvaluateOverview
+        totalRuns={countRuns()}
+        caseCount={cases.length}
+        latestRunId={runs[0]?.id ?? null}
+        latestRunName={runs[0]?.name ?? null}
+        latestRunSummary={runs[0]?.summary ?? null}
+      />
+      </details>
     </div>
   );
 }

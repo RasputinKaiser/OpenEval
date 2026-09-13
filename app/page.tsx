@@ -1,3 +1,4 @@
+import { DashboardUsagePeriods } from "@/components/DashboardUsagePeriods";
 import fs from "node:fs";
 import Link from "next/link";
 import clsx from "clsx";
@@ -22,6 +23,7 @@ import { ActivityDayStrip } from "@/components/live/ActivityDayStrip";
 import { displayModelId } from "@/lib/pricing";
 import type { AllSourcesResult } from "@/lib/collection/aggregate";
 import type { TimelineReport } from "@/lib/insights/collect";
+import DashboardTrends from "@/components/DashboardTrends";
 
 export const dynamic = "force-dynamic";
 
@@ -89,7 +91,7 @@ export default async function Page() {
   });
 
   return (
-    <div className="p-6 md:p-8 max-w-7xl mx-auto">
+    <div className="p-6 md:p-8 w-full">
       <header className="mb-6 -mx-6 md:-mx-8 -mt-6 md:-mt-8 px-6 md:px-8 py-6 border-b border-bd-subtle bg-gradient-to-b from-bg-subtle/50 to-transparent">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div className="flex min-w-0 items-start gap-3">
@@ -166,14 +168,14 @@ export default async function Page() {
                     !trendAvailable ? "text-fg-dim" : trend > 0 ? "text-ok" : trend < 0 ? "text-err" : "text-fg",
                   )}
                 >
-                  {trendAvailable ? fmtSigned(trend) : "—"}
+                  {trendAvailable ? (Math.abs(trend) > 0 && Math.abs(trend) < 0.005 ? (trend < 0 ? "−<0.01" : "+<0.01") : fmtSigned(trend)) : "—"}
                 </span>
                 <span className="text-sm text-fg-muted">outcome movement, first half → second half</span>
               </div>
               <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-fg-dim">
                 <span>
                   {timeline && trendAvailable
-                    ? `${timeline.overall.firstHalfOutcome.toFixed(2)} → ${timeline.overall.secondHalfOutcome.toFixed(2)} across ${timeline.totalSessions} sessions`
+                    ? `${timeline.overall.firstHalfOutcome.toFixed(2)} → ${timeline.overall.secondHalfOutcome.toFixed(2)} across ${timeline.overall.firstHalfN ?? 0}/${timeline.overall.secondHalfN ?? 0} signal sessions (before/after)`
                     : timelineError ? "analysis unavailable — not evidence that no history exists" : "no comparable outcome evidence yet"}
                 </span>
                 {summary && summary.total > 0 && (
@@ -248,7 +250,7 @@ export default async function Page() {
         <Stat
           icon={trend >= 0 ? TrendingUp : TrendingDown}
           label="Outcome trend"
-          value={trendAvailable ? fmtSigned(trend) : "—"}
+          value={trendAvailable ? (Math.abs(trend) > 0 && Math.abs(trend) < 0.005 ? (trend < 0 ? "−<0.01" : "+<0.01") : fmtSigned(trend)) : "—"}
           tone={trendAvailable ? (trend > 0 ? "ok" : trend < 0 ? "err" : undefined) : undefined}
           sub={timeline && trendAvailable
             ? `${timeline.overall.firstHalfOutcome.toFixed(2)} → ${timeline.overall.secondHalfOutcome.toFixed(2)}`
@@ -270,6 +272,9 @@ export default async function Page() {
       <div className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-fg-dim">
         <Link href="/cases" className="inline-flex items-center gap-1 hover:text-fg-muted transition-colors"><FileText className="size-3" /> {cases.length} test cases across {Object.keys(byCat).length} categories</Link>
       </div>
+
+      <DashboardUsagePeriods />
+      <DashboardTrends timeline={timeline} error={timelineError} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
         <section className="card p-5 lg:col-span-2">

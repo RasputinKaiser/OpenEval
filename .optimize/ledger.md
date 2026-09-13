@@ -386,3 +386,40 @@ OpenEval behavior or treating dirty-checkout timings as clean-release claims.
 - Next run: measure a warm build once more on a comparably idle machine, then
   revisit backlog #4; do not pursue token changes unless a named sink exceeds
   the 2,000-token / 10% threshold.
+
+## Run 12 — 2026-09-11 (interactive analysis baseline, b5ef8df-derived working tree)
+- Pre-edit validation through measure.py: types 2.556s; full test median 13.414s (13.109, 13.414, 15.490); lint 3.141s. All passed.
+- Build probe passed at 161.407s. New unimported chart files and CSS were being prepared during the build, so this timing is not a stable before/after optimization baseline.
+- Fixed 400-point scatter SSR probe initially failed because the standalone tsx runner used classic JSX (React is not defined). Corrected the probe's tsconfig to react-jsx without changing application code. Failed and corrected raw runs are retained under ignored .optimize/runs/.
+- Corrected chart process median: 0.605s (0.785, 0.597, 0.605). Separate detail sample: 25 warm renders, median 3.504ms, p95 5.950ms, 124,556 HTML bytes. SSR measurements do not prove browser interaction latency.
+- No optimization improvement claimed. This run is feature expansion plus correctness; compare only equivalent fixed workloads and preserve evidence of failures.
+- Next: implement bounded analytical summaries and interactions, measure the same scatter fixture after changes, and record correctness/performance separately.
+
+## Interactive analysis — scatter expansion checkpoint (2026-09-11, codex/interactive-analysis, dirty)
+- Fixed 400-point, 5-warmup/25-render workload promoted to scripts/perf/chart-render.tsx and probes.sh.
+- measure.py process median: baseline 0.605s → expanded 0.812s (+0.207s); below the 2s absolute noise threshold. No speed improvement claimed; this is a feature expansion with accessible tables and overlap evidence.
+- Raw after measurement: runs/20260911-chart-expanded.json; render detail: runs/20260911-chart-render-expanded-detail.json. These are SSR timings, not browser interaction latency.
+- Next run: reuse scripts/perf/chart-tsconfig.json (jsx react-jsx); standalone tsx otherwise uses classic JSX and fails with React is not defined.
+
+## Analysis aggregation optimization attempt (2026-09-11, a5706d2, dirty UI tree)
+- Fixed fixture: 12,000 sessions over 300 days, alternating all/model selections, 3 warmups and 30 reports per process.
+- Hypothesis: replace 90 scans with bucket assignment and map only paged evidence rows. Exact report parity passed for 0, 1, 80, 191, and 12,000 sessions.
+- measure.py: 3.154s → 2.332s (-26.1%, -0.822s). Does not clear the required max(5%, 2s) threshold; optimization discarded by restoring the exact baseline file. The separate integer bucket-bound correctness fix remains committed. No performance win claimed.
+- Raw runs: runs/20260911-analysis-before.json and runs/20260911-analysis-after.json. Temporary parity harness removed after comparison.
+- Next run: retain the reproducible analysis-filter probe; pursue caching/incremental aggregation only if a realistic repeated-request workload justifies it.
+
+## Setup and repeated-analysis optimization — 2026-09-12 (fae9070, dirty)
+- Added bounded memoization for analysis API pages from an immutable collection snapshot. Cache invalidates on array identity or generation and includes selection, paging, freshness and error metadata. Eight entries maximum, each at most 1 MiB serialized; pages over 200 rows bypass it.
+- Same fixed synthetic workload: 12,000 sessions, two alternating filters, 3 warmups and 60 requests. measure.py process median across three runs: 10.540s before (10.17, 10.54, 11.55) -> 1.022s after (1.022, 1.184, 0.632), -90.3%. This measures repeated same-snapshot reports, not cold scanning or browser latency.
+- Raw receipts: ignored runs/20260912-setup-before.json and runs/20260912-setup-after.json. Dedicated parity/invalidation tests exercise population replacement, changed generation, metadata, filters, pagination and eviction.
+- Work remains local and uncommitted to preserve the existing mixed worktree. The existing probes/ledger are reused; no new agent-workflow harness was added.
+- Next run: use analysis-repeat for repeated requests and analysis-filter for uncached aggregation. Cold scans and build latency remain separate unoptimized workloads.
+
+## Build-loop optimization trial — 2026-09-13 (fae9070, dirty primary checkout)
+- Baseline measure.py suite passed: build 130.286s, tests median 14.184s, lint 2.526s, types 3.508s; live bench 2.714s, chart SSR 0.798s, cold analysis 2.767s, repeated analysis 0.407s.
+- Rejected webpackBuildWorker trial: build 138.518s (+6.3%); tests 14.400s, lint 2.559s, types 2.365s all passed. Removed only the trial setting, preserving existing distDir and all other WIP.
+- Restored-config build passed at 275.466s. Large variation invalidates a causal worker-regression claim; no reliable speedup established. Build settings change cache inputs, and mutable data/host load are not controlled here.
+- Trace points to node-file-trace-plugin: 99.89s baseline, 101.37s trial. Manifests repeat mutable data files across routes. Installed Next applies route exclusions after the initial trace; do not assume packaging exclusions solve this phase.
+- Frozen single-session token scan: heuristic chars/4, 62 estimated identical-refetch waste tokens; no token win above threshold. Convention: 10k wasted tokens =60s. No information removed.
+- Durable receipts and exact probe snapshot: .optimize/checkpoints/20260913-build-loop/. Original raw reports remain ignored under runs/. Checkpoint cwd normalized only. Baseline checkpoint commit 519d3a5 excluded all pre-existing WIP.
+- Next run: controlled fixed runtime-data snapshot, then profile file tracing and explicitly define runtime-versus-bundled content. Do not retry worker flag blind. No accepted source optimization this run.

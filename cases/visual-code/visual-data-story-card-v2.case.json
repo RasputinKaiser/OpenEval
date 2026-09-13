@@ -1,0 +1,65 @@
+{
+  "id": "visual-data-story-card-v2",
+  "name": "Build Interactive Outcome Story",
+  "category": "visual-code",
+  "difficulty": "medium",
+  "description": "Interactive v2 of an existing visual benchmark; deterministic behavior checks and explicit evidence semantics. Original case remains available for historical comparisons.",
+  "tags": [
+    "visual-code",
+    "interactive",
+    "v2",
+    "data"
+  ],
+  "prompt": "Create a polished responsive self-contained data-story-card-v2.html with inline HTML/CSS/JavaScript only. No network, dependencies or other files. Use accessible keyboard/touch controls, 44px targets and reduced-motion-friendly transitions. Use this exact dataset: baseline pass 2/5=40%, median latency 4.8s, API-equivalent cost unavailable, known-bad rejection 3/4=75%; current pass 4/5=80%, latency 3.1s, API-equivalent estimate $0.42/case, known-bad 4/4=100%. Both latency cohorts have 5 measurements. Provide four metric selectors, paired bars sharing a labeled scale per metric, exact denominators, and a dataset table or readable listing. Missing baseline cost must have no bar and no computed change. Distinguish percentage-point changes, lower-is-better latency/cost and estimated cost from spend. Do not assert causation. Expose window.evaluationDemo.select(key), reset(), getState() returning {metric,baseline,current,unit,lowerIsBetter}; keys pass_rate, latency, cost, known_bad. Reset selects pass_rate. Invalid keys throw. Source and state checks do not certify rendered quality.",
+  "benchmark": {
+    "intent": "Evaluate meaningful interaction and information accuracy, beyond static text matching.",
+    "deliverable": "data-story-card-v2.html",
+    "evidence": [
+      "deterministic",
+      "artifact"
+    ],
+    "usage": "medium"
+  },
+  "setup": {
+    "type": "none"
+  },
+  "budget": {
+    "max_turns": 18,
+    "max_cost_usd": 0.8
+  },
+  "visual": {
+    "kind": "web_ui",
+    "expected_artifacts": [
+      "data-story-card-v2.html"
+    ]
+  },
+  "graders": [
+    {
+      "type": "file_exists",
+      "path": "data-story-card-v2.html",
+      "weight": 1
+    },
+    {
+      "type": "exit_code",
+      "command": "node -e 'const fs=require('\"'\"'fs'\"'\"'),vm=require('\"'\"'vm'\"'\"'),assert=require('\"'\"'assert'\"'\"');const html=fs.readFileSync('\"'\"'data-story-card-v2.html'\"'\"','\"'\"'utf8'\"'\"');const script=[...html.matchAll(/<script[^>]*>([\\s\\S]*?)<\\/script>/gi)].map(m=>m[1]).join('\"'\"'\\n'\"'\"');const nodes=new Map();const get=k=>{if(!nodes.has(k))nodes.set(k,{style:{},setAttribute(){},addEventListener(){}});return nodes.get(k)};const box={window:{},document:{querySelector:get,getElementById:get,querySelectorAll:()=>[],addEventListener(){}},setInterval:()=>1,clearInterval(){},assert,console};vm.createContext(box);vm.runInContext(script,box,{timeout:1000});vm.runInContext(\"const api=window.evaluationDemo;api.reset();assert.equal(api.getState().baseline,40);assert.equal(api.getState().current,80);assert.equal(api.select('\"'\"'latency'\"'\"').current,3.1);assert.equal(api.getState().lowerIsBetter,true);assert.equal(api.select('\"'\"'cost'\"'\"').baseline,null);assert.equal(api.getState().current,.42);assert.equal(api.select('\"'\"'known_bad'\"'\"').current,100);assert.throws(()=>api.select('\"'\"'invented'\"'\"'));api.reset();assert.equal(api.getState().metric,'\"'\"'pass_rate'\"'\"');\",box,{timeout:1000});'",
+      "weight": 8
+    },
+    {
+      "type": "file_contains",
+      "path": "data-story-card-v2.html",
+      "pattern": "https?://|<script[^>]+src=|<iframe|fetch\\s*\\(",
+      "negate": true,
+      "forbidden": true,
+      "weight": 1
+    }
+  ],
+  "pass_threshold": 1,
+  "oracle": {
+    "solve": "oracle/visual-data-story-card-v2.sh",
+    "known_bad": [
+      "oracle/visual-data-story-card-v2-bad.sh",
+      "oracle/visual-data-story-card-v2-behavior-bad.sh"
+    ],
+    "noop_max_score": 0.2
+  }
+}

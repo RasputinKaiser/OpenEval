@@ -1,4 +1,6 @@
+import { sourceCapabilities } from "@/lib/collection/source-capabilities";
 import fs from "node:fs";
+import { collectPathUsernames, redactDisplay } from "@/lib/redaction";
 import { NextResponse } from "next/server";
 import { readTranscriptWindow, type LiveTranscriptTurn } from "@/lib/live";
 import { PARSER_VERSION } from "@/lib/live-cache";
@@ -39,6 +41,7 @@ function responseForWindow(
   resolved: ResolvedCollectionSession,
   window: ReturnType<typeof readTranscriptWindow>,
   cursor: TranscriptCursorPayload | null,
+  query?: string,
 ): NextResponse {
   const nextCursor = window.done || !window.nextState
     ? null
@@ -55,8 +58,34 @@ function responseForWindow(
         byteOffset: window.nextByteOffset,
         state: window.nextState,
       });
+  const windowCursor = encodeTranscriptCursor(cursor ?? {
+      v: 1, sourceId: resolved.sourceId, sessionId: resolved.sessionId, file: resolved.file,
+      project: resolved.project, format: resolved.spec.format, parserVersion: PARSER_VERSION,
+      descriptorHash: transcriptDescriptorHash(resolved.sourceId, resolved.spec), revision: window.revision,
+      byteOffset: 0, state: { calls: [], recordIndex: 0, semanticTurns: 0 },
+    });
+  if (query !== undefined) {
+    const lower = query.toLocaleLowerCase();
+    const texts = window.turns.map(turn => [turn.label, turn.preview, turn.tool?.name, turn.tool?.callId].filter(Boolean).join("\n"));
+    const usernames = new Set<string>();
+    texts.forEach(text => collectPathUsernames(text, usernames));
+    const matches = window.turns.flatMap((turn, index) => {
+      const text = texts[index];
+      // Redact before excerpting: slicing a username or credential first can
+      // remove the prefix required to recognize its sensitive shape.
+      const safe = redactDisplay(text, { usernames, secrets: true });
+      const at = safe.toLocaleLowerCase().indexOf(lower);
+      if (at < 0) return [];
+      return [{ index: window.offset + index, label: redactDisplay(turn.label, { usernames, secrets: true }), excerpt: safe.slice(Math.max(0, at - 100), at + query.length + 200), windowCursor }];
+    });
+    return NextResponse.json({ matches, scannedTurns: window.offset + window.turns.length, complete: window.done, nextCursor, revision: window.revision, truncated: window.truncated ?? false }, { headers: { "Cache-Control": "private, no-store" } });
+  }
   const body = {
+    capabilities: sourceCapabilities(resolved.spec.format),
+    windowCursor,
     turns: window.turns,
+    error: window.error,
+    truncated: window.truncated,
     offset: window.offset,
     counts: countTurns(window.turns),
     normalization: window.normalization,
@@ -78,10 +107,14 @@ function responseForWindow(
  */
 export async function GET(request: Request) {
   const url = new URL(request.url);
+  const query = url.searchParams.get("q");
+  if (query !== null && (!query.trim() || query.length > 256)) return badRequest("Search must contain 1–256 characters.");
   const rawCursor = url.searchParams.get("cursor");
   const cursor = rawCursor ? decodeTranscriptCursor(rawCursor) : null;
   if (rawCursor && !cursor) return stale("This transcript cursor is invalid or was created by an older parser; refresh the transcript.");
 
+  const requested = sessionReference(url);
+  if (cursor && requested && (requested.sourceId !== cursor.sourceId || requested.sessionId !== cursor.sessionId)) return badRequest("Cursor belongs to a different session.");
   if (!cursor && !sessionReference(url)) {
     const legacyFile = url.searchParams.get("file") ?? "";
     if (!legacyFile) return badRequest("A source-qualified session reference is required.");
@@ -122,10 +155,11 @@ export async function GET(request: Request) {
       // Cursor continuations resume an earlier bounded window; DB-backed
       // formats always need the session id that scopes the expansion.
       ...(cursor ? { byteOffset: cursor.byteOffset, state: cursor.state } : {}),
-      ...(resolved.spec.format === "hermes-sqlite" ? { sessionId: resolved.sessionId } : {}),
+      ...((resolved.spec.format === "hermes-sqlite" || resolved.spec.format === "agent-sqlite") ? { sessionId: resolved.sessionId } : {}),
     });
     if (cursor && (window.revision.fingerprint !== cursor.revision.fingerprint || window.revision.size !== cursor.revision.size || window.revision.mtimeMs !== cursor.revision.mtimeMs)) return stale("The transcript changed; refresh before loading another window.");
-    return responseForWindow(resolved, window, cursor);
+    if (window.error) return badRequest(window.error, 422);
+    return responseForWindow(resolved, window, cursor, query?.trim());
   } catch (error) {
     return badRequest(error instanceof Error ? error.message : "Transcript window could not be loaded.", 422);
   }

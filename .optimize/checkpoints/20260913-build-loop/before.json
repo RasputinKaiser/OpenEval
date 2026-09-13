@@ -1,0 +1,125 @@
+{
+  "ts": "2026-09-13T01:31:49+00:00",
+  "cwd": "<project-root>",
+  "git": {
+    "rev": "fae9070",
+    "dirty": true
+  },
+  "output_estimator": "heuristic-chars/4",
+  "probes": {
+    "types": {
+      "cmd": "npx tsc --noEmit",
+      "runs": 1,
+      "samples_s": [
+        3.508
+      ],
+      "median_s": 3.508,
+      "exit": 0,
+      "ok": true,
+      "output_bytes": 0,
+      "output_tokens": 0,
+      "output_tail": null
+    },
+    "test": {
+      "cmd": "npm test --silent",
+      "runs": 3,
+      "samples_s": [
+        14.269,
+        12.753,
+        14.184
+      ],
+      "median_s": 14.184,
+      "exit": 0,
+      "ok": true,
+      "output_bytes": 948,
+      "output_tokens": 237,
+      "output_tail": null
+    },
+    "lint": {
+      "cmd": "npm run lint --silent",
+      "runs": 1,
+      "samples_s": [
+        2.526
+      ],
+      "median_s": 2.526,
+      "exit": 0,
+      "ok": true,
+      "output_bytes": 267,
+      "output_tokens": 67,
+      "output_tail": null
+    },
+    "build": {
+      "cmd": "npm run build --silent",
+      "runs": 1,
+      "samples_s": [
+        130.286
+      ],
+      "median_s": 130.286,
+      "exit": 0,
+      "ok": true,
+      "output_bytes": 3948,
+      "output_tokens": 949,
+      "output_tail": null
+    },
+    "bench": {
+      "cmd": "npm run bench:live --silent",
+      "runs": 3,
+      "samples_s": [
+        3.538,
+        2.556,
+        2.714
+      ],
+      "median_s": 2.714,
+      "exit": 0,
+      "ok": true,
+      "output_bytes": 112,
+      "output_tokens": 28,
+      "output_tail": null
+    },
+    "chart-render": {
+      "cmd": "TSX_TSCONFIG_PATH=scripts/perf/chart-tsconfig.json node --import tsx scripts/perf/chart-render.tsx",
+      "runs": 3,
+      "samples_s": [
+        0.741,
+        0.81,
+        0.798
+      ],
+      "median_s": 0.798,
+      "exit": 0,
+      "ok": true,
+      "output_bytes": 145,
+      "output_tokens": 37,
+      "output_tail": null
+    },
+    "analysis-filter": {
+      "cmd": "node --import tsx scripts/perf/analysis.ts",
+      "runs": 3,
+      "samples_s": [
+        3.363,
+        2.767,
+        2.586
+      ],
+      "median_s": 2.767,
+      "exit": 0,
+      "ok": true,
+      "output_bytes": 725,
+      "output_tokens": 182,
+      "output_tail": null
+    },
+    "analysis-repeat": {
+      "cmd": "node --import tsx scripts/perf/repeated-analysis.ts",
+      "runs": 3,
+      "samples_s": [
+        0.407,
+        0.408,
+        0.376
+      ],
+      "median_s": 0.407,
+      "exit": 0,
+      "ok": true,
+      "output_bytes": 1494,
+      "output_tokens": 374,
+      "output_tail": null
+    }
+  }
+}

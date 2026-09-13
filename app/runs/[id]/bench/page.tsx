@@ -10,7 +10,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
   const run = getRun(params.id);
   if (!run) notFound();
   return (
-    <div className="max-w-7xl mx-auto">
+    <div className="w-full">
       <EvaluateNav />
       <BenchClient
         runId={params.id}

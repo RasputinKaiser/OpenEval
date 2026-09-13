@@ -76,7 +76,7 @@ export default function Sidebar() {
       } catch {}
     }
     checkRunning();
-    const interval = setInterval(checkRunning, 15000);
+    const interval = setInterval(() => { if (document.visibilityState === "visible") void checkRunning(); }, 15000);
     function onVis() { if (document.visibilityState === "visible") checkRunning(); }
     document.addEventListener("visibilitychange", onVis);
     return () => { cancelled = true; clearInterval(interval); document.removeEventListener("visibilitychange", onVis); };
@@ -84,10 +84,10 @@ export default function Sidebar() {
 
   return (
     <aside className={clsx(
-      "sidebar-shell relative z-[130] hidden shrink-0 border-b border-bd backdrop-blur md:flex md:min-h-screen md:flex-col md:border-b-0 md:border-r transition-[width]",
+      "sidebar-shell relative z-[130] hidden shrink-0 border-b border-bd md:sticky md:top-0 md:flex md:h-dvh md:self-start md:flex-col md:border-b-0 md:border-r",
       collapsed ? "md:w-14" : "md:w-60"
     )}>
-      <div className="px-4 py-3 md:border-b md:border-bd md:py-5">
+      <div className="shrink-0 px-4 py-3 md:border-b md:border-bd md:py-5">
         <div className="flex items-center gap-2">
           <div className="size-7 rounded-md bg-gradient-to-br from-accent to-accent-soft grid place-items-center shrink-0">
             <Terminal className="size-4 text-white" />
@@ -100,7 +100,7 @@ export default function Sidebar() {
           )}
         </div>
       </div>
-      <nav aria-label="Primary" className="sidebar-nav flex gap-1 overflow-x-auto px-2 pb-2 md:flex-1 md:flex-col md:space-y-0.5 md:overflow-visible md:p-2">
+      <nav aria-label="Primary" className="sidebar-nav flex gap-1 overflow-x-auto px-2 pb-2 md:min-h-0 md:flex-1 md:flex-col md:space-y-0.5 md:overflow-x-hidden md:overflow-y-auto md:overscroll-contain md:p-2">
         {SECTIONS.map((section, si) => (
           <div key={section.label ?? si} className="flex gap-1 md:block md:space-y-0.5 shrink-0">
             {section.label && !collapsed && (
@@ -144,10 +144,10 @@ export default function Sidebar() {
           </div>
         ))}
       </nav>
-      <div className="hidden border-t border-bd md:block">
-        <SupportLinks collapsed={collapsed} headingId="desktop-support-links-title" />
+      <div className="hidden shrink-0 border-t border-bd md:block">
+        <SupportLinks compact collapsed={collapsed} headingId="desktop-support-links-title" />
       </div>
-      <div className="hidden border-t border-bd p-3 md:flex md:items-center md:justify-between">
+      <div className={clsx("hidden shrink-0 border-t border-bd md:flex md:items-center md:justify-between", collapsed ? "p-1" : "p-3")}>
         {!collapsed && (
           <a
             href={`https://github.com/RasputinKaiser/OpenEval/releases/tag/v${packageMetadata.version}`}
@@ -161,7 +161,7 @@ export default function Sidebar() {
             v{packageMetadata.version}
           </a>
         )}
-        <div className="flex items-center gap-1">
+        <div className={clsx("flex items-center gap-1", collapsed && "flex-col")} >
           <ThemeToggle collapsed={collapsed} />
           <button
             onClick={() => setCollapsed(!collapsed)}

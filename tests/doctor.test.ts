@@ -312,3 +312,13 @@ test("runDoctor: staled .next is flagged but stays exit 0 (warn, not fail)", asy
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("node version: rejects the exclusive engine upper bound", () => {
+  const root = tmpdir("doctor-node-upper-");
+  try {
+    fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ engines: { node: ">=22 <23" } }));
+    assert.equal(checkNodeVersion(root, "22.22.3").status, "ok");
+    assert.equal(checkNodeVersion(root, "23.0.0").status, "fail");
+    assert.equal(checkNodeVersion(root, "24.0.0").status, "fail");
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});

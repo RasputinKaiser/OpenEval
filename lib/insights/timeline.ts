@@ -3,6 +3,7 @@ import type { LiveSession, MetricSource } from "../live";
 import type { StoredJudgment } from "../live-cache";
 import type { JudgeSelection } from "../grader/selection";
 import { scoreOutcome } from "./outcome";
+import { buildEvidencePacket } from "./evidence";
 
 export type OutcomeProvenance = "heuristic" | "judged" | "unavailable";
 export type EvidenceProvenance = "judged" | "heuristic" | "observed" | "measured" | "inferred" | "mixed" | "unavailable";
@@ -19,11 +20,19 @@ export type MetricEvidenceSet = Record<ImpactMetric, MetricEvidence>;
 
 export interface SessionPoint {
   sessionId: string;
+  /** Source-qualified identity is optional for legacy direct callers. */
+  sourceId?: string;
   at: number;
   source: string;
   model: string | null;
   path: string | null;
+  /** Parser revision hints used to fence evidence-bound judge receipts. */
+  pathBytes?: number;
+  lineCount?: number;
   outcome: number;
+  /** Heuristic baseline retained even when a judge replaces `outcome`. */
+  heuristicOutcome?: number;
+  heuristicOutcomeHasSignal?: boolean;
   outcomeHasSignal: boolean;
   outcomeProvenance: OutcomeProvenance;
   outcomeReasons: string[];
@@ -88,12 +97,36 @@ const lowerBoundAt = (points: SessionPoint[], t: number): number => {
 };
 
 /** A receipt is only comparable to the transcript revision it judged. */
-function judgmentMatchesSession(session: LiveSession, judgment: StoredJudgment): boolean {
+export function judgmentMatchesSession(session: LiveSession, judgment: StoredJudgment, options: { verifyDigest?: boolean } = {}): boolean {
   // Pre-revision receipts used 0 as an informational timestamp. Keep those
   // readable for backwards compatibility; new receipts always persist mtime.
-  if (judgment.mtimeMs <= 0 || !session.path) return true;
+  if (!session.path || judgment.sessionId !== session.sessionId) return false;
+  if (judgment.mtimeMs <= 0 && !judgment.revision && !judgment.evidenceDigest && !judgment.sourceId) return true;
+  const sessionSourceId = (session as LiveSession & { sourceId?: string }).sourceId;
+  if (judgment.sourceId && judgment.sourceId !== sessionSourceId) return false;
+  if (judgment.evidenceVersion && judgment.evidenceVersion !== "evidence-packet.v1") return false;
   try {
-    return fs.statSync(session.path).mtimeMs === judgment.mtimeMs;
+    const stat = fs.statSync(session.path);
+    if (judgment.mtimeMs > 0 && stat.mtimeMs !== judgment.mtimeMs) return false;
+    if (judgment.revision) {
+      const currentRevision = `${stat.mtimeMs}:${stat.size}:${session.pathBytes ?? 0}:${session.lineCount ?? 0}${judgment.revision.split(":").length >= 5 ? `:${stat.ctimeMs}` : ""}`;
+      if (currentRevision !== judgment.revision) return false;
+    }
+    // A v4 receipt carries the normalized packet digest. Re-read only the
+    // bounded packet when that field exists; legacy receipts retain the old
+    // stat-only compatibility behavior.
+    if (options.verifyDigest !== false && judgment.evidenceDigest) {
+      const packet = buildEvidencePacket(session.path, {
+        sourceId: sessionSourceId ?? "unknown-source",
+        sessionId: session.sessionId,
+        maxRecords: 256,
+        maxBytes: 4 * 1024 * 1024,
+        excerptChars: 600,
+        maxEpisodes: 16,
+      });
+      if (packet.contentDigest !== judgment.evidenceDigest) return false;
+    }
+    return true;
   } catch {
     return false;
   }
@@ -143,7 +176,7 @@ export function toPoints(
     .map((s) => {
       const o = scoreOutcome(s);
       const candidate = s.path ? judgments?.get(s.path) : undefined;
-      const j = candidate && judgmentMatchesSession(s, candidate) && Number.isFinite(candidate.score) && candidate.score >= 0 && candidate.score <= 1
+      const j = candidate && judgmentMatchesSession(s, candidate, { verifyDigest: false }) && Number.isFinite(candidate.score) && candidate.score >= 0 && candidate.score <= 1
         ? candidate
         : undefined;
       const costSource = s.metricSources?.cost ?? "missing";
@@ -155,11 +188,16 @@ export function toPoints(
           : false;
       return {
         sessionId: s.sessionId,
+        ...(typeof (s as { sourceId?: unknown }).sourceId === "string" ? { sourceId: (s as unknown as { sourceId: string }).sourceId } : {}),
         at: s.startedAt,
         source: s.sourceLabel ?? "?",
         model: s.model,
         path: s.path ?? null,
+        pathBytes: Number.isFinite(s.pathBytes) ? s.pathBytes : undefined,
+        lineCount: Number.isFinite(s.lineCount) ? s.lineCount : undefined,
         outcome: j ? j.score : o.score,
+        heuristicOutcome: o.score,
+        heuristicOutcomeHasSignal: o.hasSignal,
         outcomeHasSignal: j ? true : o.hasSignal,
         outcomeProvenance: (j ? "judged" : o.hasSignal ? "heuristic" : "unavailable") as OutcomeProvenance,
         outcomeReasons: j ? j.reasons : o.reasons,

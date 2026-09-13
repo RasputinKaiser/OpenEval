@@ -43,8 +43,8 @@ export default function ArtifactStage({
   useEffect(() => {
     if (!selected || collapsed) return;
     let cancelled = false;
+    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
     async function load() {
-      setLoading(true);
       setError(null);
       try {
         const main = await fetchArtifact(runId, caseId, selected);
@@ -65,11 +65,15 @@ export default function ArtifactStage({
           setError(e instanceof Error ? e.message : "Artifact is not available yet.");
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+          if (status === "running" || status === "pending") refreshTimer = setTimeout(load, 4000);
+        }
       }
     }
+    setLoading(true);
     load();
-    return () => { cancelled = true; };
+    return () => { cancelled = true; if (refreshTimer) clearTimeout(refreshTimer); };
   }, [artifacts, caseId, runId, selected, status, collapsed]);
 
   return (
