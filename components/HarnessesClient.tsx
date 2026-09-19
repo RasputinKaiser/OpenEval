@@ -804,7 +804,7 @@ function ReadinessPanel({ harness, probing, onProbe }: { harness: ConnectionHarn
       {layers.length === 0 ? (
         <div className="mt-4 rounded-lg border border-warn/25 bg-warn/5 p-3 text-xs text-warn">Readiness is unavailable while the registry response is being refreshed.</div>
       ) : (
-        <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+        <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
           {layers.map((layer) => <ReadinessCard key={layer.id} layer={layer} probing={probing && layer.id === "binary"} onProbe={onProbe} />)}
         </div>
       )}
@@ -816,9 +816,9 @@ function ReadinessCard({ layer, probing, onProbe }: { layer: ReadinessLayer; pro
   const meta = readinessMeta(layer.state);
   return (
     <div className={clsx("min-w-0 rounded-xl border p-3", meta.border, meta.bg)}>
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-fg-dim">{layer.label}</span>
-        <span className={clsx("inline-flex items-center gap-1 rounded border px-1.5 py-1 text-[9px] font-medium uppercase tracking-[0.12em]", meta.badge)}><span className={clsx("size-1.5 rounded-full", meta.dot)} />{layer.state}</span>
+      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+        <span className="min-w-0 break-words text-[10px] font-semibold uppercase tracking-[0.12em] text-fg-dim">{layer.label}</span>
+        <span className={clsx("inline-flex max-w-full shrink-0 items-center gap-1 rounded border px-1.5 py-1 text-[9px] font-medium uppercase tracking-[0.12em]", meta.badge)}><span className={clsx("size-1.5 shrink-0 rounded-full", meta.dot)} /><span className="min-w-0 break-words">{layer.state}</span></span>
       </div>
       <p className="mt-2 text-xs font-medium leading-4">{layer.summary}</p>
       <p className="mt-1 text-[10px] leading-4 text-fg-muted">{layer.diagnostic}</p>
