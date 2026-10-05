@@ -127,15 +127,27 @@ Bundled evaluation harness descriptors include Claude Code, Codex, and ncode. Ot
 
 ## Contributing
 
-Use Node 22 and npm 10. Install locked dependencies with `npm ci`, then start development with `npm run dev`.
+The install above pins the v0.2.0 release. To work on the current source, clone
+the default branch instead (the release clone is a detached checkout):
 
 ```bash
-npm run typecheck
-npm run lint
-npm test
+git clone https://github.com/RasputinKaiser/OpenEval.git
+cd OpenEval
+nvm use                    # Node 22; use npm 10
+npm run setup -- --no-build
+npm run dev
 ```
 
-For the release gate, stop the development server first and run `npm run verify:release`. Development and production builds share `.next` by default. See [CONTRIBUTING.md](CONTRIBUTING.md) for the contribution workflow.
+Before submitting a change, run `npm run verify:ci`. It checks runtime health,
+types, lint, the full test suite, selftests, strict accuracy, and the public
+upload audit. Focused tests are useful while iterating, but do not replace this
+gate.
+
+GitHub CI runs `npm ci` followed by `npm run verify:release`, which also builds
+the production dashboard. Stop the development server before that build:
+development and production share `.next` by default. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for the contribution workflow and
+[the script reference](docs/project-reference.md#npm-scripts) for focused checks.
 
 [Report a bug](https://github.com/RasputinKaiser/OpenEval/issues/new/choose) · [Discuss an idea](https://github.com/RasputinKaiser/OpenEval/discussions) · [Support the project](https://ko-fi.com/rasputinkaiser)
 
