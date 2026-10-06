@@ -77,10 +77,14 @@ The dashboard currently exposes these primary routes:
 
 | Script | Command | Purpose |
 | --- | --- | --- |
+| `setup` | `node scripts/setup.mjs` | Install locked dependencies, verify SQLite, and build; `--no-build` prepares development. |
+| `open` | `node scripts/open.mjs` | Serve the existing production build on loopback; accepts `--port <n>`. |
+| `verify:ci` | `doctor → typecheck → lint → test → selftest → audit:accuracy:strict → public-upload-audit.sh --all` | Canonical pre-PR checks; stops on the first failure. |
+| `verify:release` | `npm run verify:ci && npm run build` | The GitHub CI and release gate, including the production build. |
 | `dev` | `next dev` | Start the local Next.js dashboard. |
 | `build` | `next build` | Build the production Next.js app. |
 | `start` | `next start` | Serve the production build. |
-| `lint` | `next lint` | Run the Next.js ESLint pass. |
+| `lint` | `next lint --max-warnings=0` | Run the Next.js ESLint pass. |
 | `typecheck` | `tsc --noEmit` | Run TypeScript without emitting files. |
 | `doctor` | `tsx scripts/doctor.ts` | Diagnose dev-runtime health: Node vs `.nvmrc`, `better-sqlite3` binding, stale `.next` cache (`--fix` clears), port 3000, read-only DB `quick_check`, disk headroom. |
 | `test` | `node --import tsx --test --test-reporter=dot tests/*.test.ts` | Run the full test suite (what CI runs); judge by exit code — the dot reporter keeps output terse. |
@@ -301,11 +305,16 @@ data/                        ignored local SQLite DB, transcripts, and workdirs
 
 ## Development
 
-Install dependencies:
+Use Node 22 and npm 10, then install the locked development dependencies and
+verify the SQLite binding from the repository root:
 
 ```bash
-npm install
+nvm use
+npm run setup -- --no-build
 ```
+
+The README installation pins a release tag. For a contribution, use a fresh
+clone of the default branch as shown in [Contributing](../README.md#contributing).
 
 Run the dashboard:
 
@@ -339,12 +348,21 @@ Run internal selftests:
 npm run selftest
 ```
 
-Build for production:
+Run the canonical pre-PR checks:
 
 ```bash
-npm run build
-npm start
+npm run verify:ci
 ```
+
+For the full CI/release gate, stop the development server first. The build and
+dev server share `.next` by default:
+
+```bash
+npm run verify:release
+npm run open
+```
+
+`npm run open` binds to `127.0.0.1`; it requires a completed production build.
 
 ## Troubleshooting
 
