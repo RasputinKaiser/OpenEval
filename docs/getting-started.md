@@ -8,24 +8,38 @@ Node 20 is end-of-life; the [official release schedule](https://github.com/nodej
 OpenEval currently verifies Node 22; other majors are rejected by setup so native SQLite failures do not appear later as dashboard errors.
 
 ```bash
-git clone --branch v0.2.0 --depth 1 https://github.com/RasputinKaiser/OpenEval.git
+git clone --depth 1 https://github.com/RasputinKaiser/OpenEval.git
 cd OpenEval
-npm run setup
 npm run open
 ```
 
-Without Git, download and extract the repository source archive, open a terminal in that folder, and start at `npm run setup`.
+This uses the current default branch, which includes automatic first-run setup.
+For the tagged v0.2.0 release, add `--branch v0.2.0` to the clone command and run
+`npm run setup` before `npm run open`; that release has the older launcher.
+Without Git, download and extract the default branch's source archive, open a
+terminal in that folder, and run `npm run open`.
 
-Setup runs from a fresh checkout without requiring dependencies beforehand. It
-uses `npm ci --include=dev`, tests an in-memory SQLite database, and builds the
-application. A failed step stops with its output intact. Builds can take several
-minutes. Rerunning setup reinstalls dependencies and rebuilds; it does not clear
-transcript history, modify agent configuration, or create API credentials.
+On first launch, OpenEval runs `npm ci --include=dev`, tests an in-memory SQLite
+database, and builds the application. No separate install command is required.
+Dependency downloads require network access, and installation/build can take
+several minutes. Each stage is printed in the terminal; a failed stage stops
+with its output intact and can be retried with the same command.
 
-Open http://127.0.0.1:3000. `npm run open` binds only to loopback, keeps running
-in the terminal, and stops with Ctrl+C. It never kills another process. If port
-3000 is occupied, use `npm run open -- --port 3177`. Set the same
-`OPENEVAL_BUILD_DIR` for setup and open if you use a custom build directory.
+Wait for the terminal's Ready message, then open http://127.0.0.1:3000.
+`npm run open` binds only to loopback, keeps running in the terminal, and stops
+with Ctrl+C. It checks for an occupied port before setup and never kills
+another process. Choose another port with `npm run open -- --port 3177`.
+Set the same `OPENEVAL_BUILD_DIR` for setup and open if using a custom build
+directory. Stop any dev/production server before preparing the same checkout.
+
+Subsequent launches reuse verified dependencies and the prepared dashboard.
+A changed lockfile, runtime ABI, broken SQLite binding, missing/incomplete build,
+or changed application source triggers installation or rebuilding as needed.
+After a manual `npm run build`, the launcher may build once more to record its
+own preparation metadata. Documentation edits and local transcript history do
+not trigger rebuilds. Setup never clears transcript history, modifies agent
+configuration, or creates API credentials. Do not run simultaneous setup/open
+commands in the same checkout; preparation is protected by a lock.
 
 ## Choose what you want to do
 
@@ -72,8 +86,8 @@ installation while both instances are stopped. Back up local data before upgradi
 The update panel does not install or restart the running server.
 
 
-- Start again with `npm run open`; no install or rebuild is needed for an unchanged checkout.
-- After updating source, stop OpenEval, then run `npm run setup` and `npm run open`.
+- Start again with `npm run open`; no install or rebuild is needed for an unchanged, prepared checkout.
+- After updating source, stop OpenEval, then run `npm run open`. It prepares changed dependencies/source automatically. `npm run setup` remains available for a full reinstall and rebuild.
 - To keep an already verified dependency installation, use `npm run setup -- --skip-install`.
 - For development, use `npm run setup -- --no-build`, then `npm run dev`. Stop dev before building into the same output directory.
 - `npm run setup -- --check` checks the runtime and installed SQLite binding without writes.
@@ -87,12 +101,14 @@ The update panel does not install or restart the running server.
 | Wrong Node or npm major | Use Node 22 and npm 10. With nvm: `nvm use 22`. If needed, `npm install -g npm@10`. |
 | Dependency download fails | Check network/proxy access to the npm registry, then rerun setup. No lockfile deletion is needed. |
 | SQLite/native build fails | Use the supported Node version and rerun setup. If no prebuilt binary exists, install native compiler tools: Xcode Command Line Tools on macOS, a C/C++ toolchain and Python on Linux, or Visual Studio C++ build tools and Python on Windows. |
-| Production build missing | Run `npm run setup`, then `npm run open`. |
+| Preparation or build interrupted | Retry `npm run open`. To force a full reinstall and rebuild, stop the server and run `npm run setup`. |
+| Already preparing this checkout | Wait for the other setup/open command. If a command was interrupted and the lock persists, confirm no setup is running before removing `.openeval-setup.lock`, then retry. |
 | Port already in use | Choose another port with `npm run open -- --port 3177`. |
 | No local sessions | Use a supported agent once, then re-scan Collection. Check source locations and coverage before expecting metrics. |
 | Agent cannot run | Check Harnesses and authenticate through the agent's own CLI. Transcript inspection does not require a working runner. |
 
-This pass verifies installation on macOS. Linux is covered by the repository CI
-configuration; that CI job must run to establish a fresh Linux result. Windows
-launcher arguments are portable, but native dependencies and shell-based graders
-have not been validated here; WSL is an alternative for those workflows.
+The automated Linux startup smoke check exercises a clean dependency install,
+production build, HTTP response, repeated launch, and occupied-port handling.
+macOS installation was verified for v0.2.0; the new automatic preparation flow
+has not been revalidated on macOS. Windows native dependencies and shell-based
+graders remain unverified; WSL is an alternative for those workflows.

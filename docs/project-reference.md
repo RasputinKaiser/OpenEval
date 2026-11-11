@@ -22,7 +22,6 @@ Start the app and open the dashboard:
 
 ```bash
 nvm use
-npm run setup
 npm run open
 ```
 
@@ -78,7 +77,7 @@ The dashboard currently exposes these primary routes:
 | Script | Command | Purpose |
 | --- | --- | --- |
 | `setup` | `node scripts/setup.mjs` | Install locked dependencies, verify SQLite, and build; `--no-build` prepares development. |
-| `open` | `node scripts/open.mjs` | Serve the existing production build on loopback; accepts `--port <n>`. |
+| `open` | `node scripts/open.mjs` | Prepare dependencies/build as needed, then serve on loopback; accepts `--port <n>`. |
 | `verify:ci` | `doctor → typecheck → lint → test → selftest → audit:accuracy:strict → public-upload-audit.sh --all` | Canonical pre-PR checks; stops on the first failure. |
 | `verify:release` | `npm run verify:ci && npm run build` | The GitHub CI and release gate, including the production build. |
 | `dev` | `next dev` | Start the local Next.js dashboard. |
@@ -362,7 +361,7 @@ npm run verify:release
 npm run open
 ```
 
-`npm run open` binds to `127.0.0.1`; it requires a completed production build.
+`npm run open` binds to `127.0.0.1`; on the current default branch it installs missing/changed dependencies and prepares a production build automatically, then reuses it on later starts. The v0.2.0 tag requires `npm run setup` first.
 
 ## Troubleshooting
 

@@ -57,15 +57,19 @@ flowchart LR
 Install **Node 22 with npm 10**, then run:
 
 ```bash
-git clone --branch v0.2.0 --depth 1 https://github.com/RasputinKaiser/OpenEval.git
+git clone --depth 1 https://github.com/RasputinKaiser/OpenEval.git
 cd OpenEval
-npm run setup
 npm run open
 ```
 
-Open **http://127.0.0.1:3000**. Setup installs the locked dependencies, checks the
-SQLite native binding, and builds the production dashboard. The first build can
-take several minutes; later starts reuse it. Stop with **Ctrl+C**.
+Open **http://127.0.0.1:3000** when the terminal says Ready. The first launch
+installs locked dependencies, checks SQLite, and builds the dashboard. It needs
+network access and can take several minutes. Later launches reuse the prepared
+dashboard; source or dependency changes trigger preparation automatically.
+Stop with **Ctrl+C**. If port 3000 is busy, use `npm run open -- --port 3177`.
+
+This quick start uses the current default branch. For the tagged v0.2.0 release,
+clone with `--branch v0.2.0` and run `npm run setup` before `npm run open`.
 
 **No API key, account connection, or paid run is needed to inspect existing local
 transcripts.** Open Collection first. Agent authentication is only needed when
@@ -131,8 +135,8 @@ For OpenEval inquiries, email [rasputinkaiser@artificiallexicon.com](mailto:rasp
 
 ## Contributing
 
-The install above pins the v0.2.0 release. To work on the current source, clone
-the default branch instead (the release clone is a detached checkout):
+The quick start above uses the default branch. For development, use a full
+clone and install without the production build:
 
 ```bash
 git clone https://github.com/RasputinKaiser/OpenEval.git
