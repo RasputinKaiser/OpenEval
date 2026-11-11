@@ -61,3 +61,6 @@ GOAL.md
 
 # Generated GitHub Pages output.
 .pages-dist/
+
+# Serializes first-run installation/build preparation.
+.openeval-setup.lock

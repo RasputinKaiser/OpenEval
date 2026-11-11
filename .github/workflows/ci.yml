@@ -23,3 +23,17 @@ jobs:
       - run: npm run verify:release
         env:
           NEXT_TELEMETRY_DISABLED: "1"
+
+  startup-scripts:
+    name: Startup scripts (${{ matrix.os }})
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      # These scripts must work before any dependency installation.
+      - run: node --test tests/setup.test.ts tests/startup.test.ts
