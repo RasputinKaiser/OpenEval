@@ -20,8 +20,13 @@ for (const [,target] of html.matchAll(/(?:href|src)="([^"]+)"/g)) {
     }
     continue;
   }
+  if (target.startsWith('mailto:')) {
+    assert.equal(target, 'mailto:rasputinkaiser@artificiallexicon.com', 'Project email links must use the dedicated contact address');
+    continue;
+  }
   assert.ok(fs.existsSync(path.join(out,target.split('?')[0])), `Missing local asset ${target}`);
 }
+assert.ok(html.includes('href="mailto:rasputinkaiser@artificiallexicon.com"'), 'The project contact must be available without JavaScript');
 assert.ok(!html.includes('{{'), 'No unresolved placeholders');
 assert.ok(html.includes('EXAMPLE DATA') && html.includes('not a benchmark result'), 'Illustration provenance must be explicit');
 assert.ok(html.includes('id="install-command"'), 'Install commands must be available without JavaScript');

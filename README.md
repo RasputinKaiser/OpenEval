@@ -125,6 +125,10 @@ Bundled evaluation harness descriptors include Claude Code, Codex, and ncode. Ot
 | [GitHub Pages](docs/github-pages.md) | Building and publishing the static project website. |
 | [Release history](docs/release-history.md) | Earlier release highlights, preserved as historical context. |
 
+## Contact
+
+For OpenEval inquiries, email [rasputinkaiser@artificiallexicon.com](mailto:rasputinkaiser@artificiallexicon.com).
+
 ## Contributing
 
 The install above pins the v0.2.0 release. To work on the current source, clone
